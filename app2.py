@@ -5,10 +5,10 @@ import os
 import re
 
 # 📁 Pasta onde estão os arquivos
-PASTA_ARQUIVOS = "GamesDay"
+PASTA_ARQUIVOS = r'C:\Users\flavia\FlashScore\PyCaret\Jogosdodia\JogosDia'
 
 st.set_page_config(page_title="Previsões dos Jogos do Dia", layout="wide")
-st.title("🔮 Previsões dos Jogos de Futebol")
+st.title("🔮 Previsões para os Jogos do Dia")
 
 # 🧠 Função auxiliar para extrair datas disponíveis dos arquivos
 def datas_disponiveis(pasta):
@@ -51,6 +51,19 @@ try:
     df_filtrado = df[df['Date'] == data_escolhida]
 
     st.markdown(f"### 📆 Jogos de **{data_escolhida.strftime('%Y-%m-%d')}**")
+
+    st.markdown(
+        f"Summario dos jogos do dia:\n"
+        f"- **Total de jogos:** {len(df_filtrado)}\n"
+        f"- **Total de ligas:** {df_filtrado['League'].nunique()}\n"
+        f"- **Explicando as Colunas:**\n"
+        f"- **Diff_HT_P:** = Diferença da Força do time Home menos a força do time Away, considerando o power rating no Primeiro tempo. HT\n"
+        f"- **Diff_Power:** = Diferença da Força do time Home menos a força do time Away, considerando o Power Rating Geral. FT\n"
+        f"- **Cores:** Quanto mais <span style='color:green;'>verde</span>, maior a probabilidade de vitória do time da casa. Quanto mais <span style='color:red;'>vermelho</span>, maior a probabilidade de vitória do time visitante.\n"
+        f"- **OU_Total:** = Total de gols esperado para o jogo, considerando o Power Rating dos times. Quanto mais azul, maior a expectativa de over 2.5 gols.\n",
+        unsafe_allow_html=True
+    )
+
 
     if df_filtrado.empty:
         st.warning("⚠️ Nenhum jogo encontrado para esta data no arquivo.")
