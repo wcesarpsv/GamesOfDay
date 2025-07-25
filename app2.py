@@ -5,7 +5,7 @@ import os
 import re
 
 # 📁 Pasta onde estão os arquivos
-PASTA_ARQUIVOS = r'C:\Users\flavia\FlashScore\PyCaret\Jogosdodia\JogosDia'
+PASTA_ARQUIVOS = "GamesDay"
 
 st.set_page_config(page_title="Previsões dos Jogos do Dia", layout="wide")
 st.title("🔮 Previsões para os Jogos do Dia")
