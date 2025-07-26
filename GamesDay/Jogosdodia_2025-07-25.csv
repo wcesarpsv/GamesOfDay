@@ -1,31 +1,31 @@
-Time,Home,Away,Diff_HT_P,Diff_Power,OU_Total,Odd_H,Odd_D,Odd_A,League
-5:30,Manly United,Western Sydney Wanderers AM,-10.10435897,-7.388241758,25.98,1.75,4,3.5,NSW Premier League  
-12:00,Jaro,Vaasa VPS,26.55642857,-7.686071429,64.73,3.4,3.4,2,Finland Veikkausliga  
-14:45,Cork City,Sligo Rovers,-5.755606061,9.07,23.62,2.15,3.25,3,Ireland Premier Division  
-14:45,Galway United,Waterford United,-14.8569697,-1.413636364,53.8,1.9,3.4,3.6,Ireland Premier Division  
-14:45,Derry City,Bohemians,15.09166667,2.581666667,48.95,2.35,3.3,2.8,Ireland Premier Division  
-15:00,Deportes Recoleta,D. Concepcion,-24.39380952,-6.463809524,66.89,2.25,3.25,3,Chile Primera B  
-15:00,FC Nacional Asuncion,General Caballero LJM,10.08782051,5.694615385,16.05,1.8,3.4,4.33,Primera Division de Paraguay  
-15:00,Academia del Balompie Boliviano,Aurora,-3.6875,-18.6625,25.65,3.1,3.4,2,Copa LFPB  
-16:00,Sport Huancayo,Juan Pablo II College,13.51666667,13.52777778,53.67,1.4,4.33,7.5,Peru Primera Division  
-17:00,Boca Juniors De Cali,Inter Palmira,11.03015873,-28.9852381,29.02,4.75,3.7,1.7,Colombia Primera B  
-17:30,2 de Mayo PJC,Sportivo Luqueno,26.92717949,-21.01769231,21.51,2.1,3.1,3.5,Primera Division de Paraguay  
-18:00,Real Oruro,Always Ready,15.32785714,-17.83464286,40.27,3.4,3.4,1.95,Copa LFPB  
-18:00,Sarmiento Junin,Lanus,-7.862222222,10.46777778,18.06,3.75,2.8,2.25,Argentine Division 1  
-19:00,Deportes Limache,Nublense,-15.26178571,-6.14,16.89,2.3,3.4,2.8,Chile Primera Division  
-19:00,Atletico Huila,Tigres Zipaquira,2.631666667,10.11,8.1,1.6,3.3,7,Colombia Primera B  
-19:00,EM Deportivo Binacional,UTC Cajamarca,6.801111111,-6.548888889,23.61,2.05,3.3,3.5,Peru Primera Division  
-19:20,Deportes Tolima,Deportivo Pereira,8.516103896,15.15376623,56.26,2.05,3.1,4,Primera Division de Colombiano-Apertura  
-19:30,Academia Puerto Cabello,Zamora Barinas,13.34136364,13.71045455,37.85,2.2,3.3,3,Primera Division de Venezuela  
-19:30,Columbus Crew,Orlando City,-11.225,-27.71666667,49.76,1.95,3.75,3.4,USA Major League Soccer  
-19:30,New England Revolution,Montreal Impact,-27.9,-28.68,16.14,1.8,3.8,4.1,USA Major League Soccer  
-20:00,CD El Nacional,Libertad FC,0.12,-35.86,-2,2.05,3.3,3.5,Primera Division de Ecuador  
-20:10,Colegiales,Quilmes,25.05818182,1.356363636,4.77,2.9,2.75,2.8,Argentine Division 2  
-20:15,Club Atlético Unión,Club Atletico Tigre,-5.93,3.11,21.39,2.2,3,3.8,Argentine Division 1  
-20:15,Independiente Rivadavia,Belgrano,-3.263333333,0.122222222,51.39,2.3,3,3.5,Argentine Division 1  
-20:30,Houston Dynamo,Los Angeles Galaxy,-6.784615385,-15.96307692,38.49,2.1,3.8,3.2,USA Major League Soccer  
-20:30,FC Dallas,New York City FC,-9.876212121,-28.45878788,16,2.45,3.5,2.75,USA Major League Soccer  
-21:00,Gimnasia yTiro,San Martin Tucuman,21.79818182,-2.593636364,50.69,2.88,2.6,3,Argentine Division 2  
-21:30,Atletico Nacional Medellin,Independiente Santa Fe,3.24125,-23.3025,60,1.57,4,5.75,Primera Division de Colombiano-Apertura  
-22:30,San Diego FC,Nashville,-12.66853147,-19.72545455,38.01,2.2,3.75,2.9,USA Major League Soccer  
-22:30,Los Angeles FC,Portland Timbers,-15.89833333,8.05,25.05,1.44,4.75,6.5,USA Major League Soccer  
+Date,Time,Home,Away,Diff_HT_P,Diff_Power,OU_Total,Odd_H,Odd_D,Odd_A,League
+25-07-2025,5:30,Manly United,Western Sydney Wanderers AM,-10.10435897,-7.388241758,25.98,1.75,4,3.5,NSW Premier League  
+25-07-2025,12:00,Jaro,Vaasa VPS,26.55642857,-7.686071429,64.73,3.4,3.4,2,Finland Veikkausliga  
+25-07-2025,14:45,Cork City,Sligo Rovers,-5.755606061,9.07,23.62,2.15,3.25,3,Ireland Premier Division  
+25-07-2025,14:45,Galway United,Waterford United,-14.8569697,-1.413636364,53.8,1.9,3.4,3.6,Ireland Premier Division  
+25-07-2025,14:45,Derry City,Bohemians,15.09166667,2.581666667,48.95,2.35,3.3,2.8,Ireland Premier Division  
+25-07-2025,15:00,Deportes Recoleta,D. Concepcion,-24.39380952,-6.463809524,66.89,2.25,3.25,3,Chile Primera B  
+25-07-2025,15:00,FC Nacional Asuncion,General Caballero LJM,10.08782051,5.694615385,16.05,1.8,3.4,4.33,Primera Division de Paraguay  
+25-07-2025,15:00,Academia del Balompie Boliviano,Aurora,-3.6875,-18.6625,25.65,3.1,3.4,2,Copa LFPB  
+25-07-2025,16:00,Sport Huancayo,Juan Pablo II College,13.51666667,13.52777778,53.67,1.4,4.33,7.5,Peru Primera Division  
+25-07-2025,17:00,Boca Juniors De Cali,Inter Palmira,11.03015873,-28.9852381,29.02,4.75,3.7,1.7,Colombia Primera B  
+25-07-2025,17:30,2 de Mayo PJC,Sportivo Luqueno,26.92717949,-21.01769231,21.51,2.1,3.1,3.5,Primera Division de Paraguay  
+25-07-2025,18:00,Real Oruro,Always Ready,15.32785714,-17.83464286,40.27,3.4,3.4,1.95,Copa LFPB  
+25-07-2025,18:00,Sarmiento Junin,Lanus,-7.862222222,10.46777778,18.06,3.75,2.8,2.25,Argentine Division 1  
+25-07-2025,19:00,Deportes Limache,Nublense,-15.26178571,-6.14,16.89,2.3,3.4,2.8,Chile Primera Division  
+25-07-2025,19:00,Atletico Huila,Tigres Zipaquira,2.631666667,10.11,8.1,1.6,3.3,7,Colombia Primera B  
+25-07-2025,19:00,EM Deportivo Binacional,UTC Cajamarca,6.801111111,-6.548888889,23.61,2.05,3.3,3.5,Peru Primera Division  
+25-07-2025,19:20,Deportes Tolima,Deportivo Pereira,8.516103896,15.15376623,56.26,2.05,3.1,4,Primera Division de Colombiano-Apertura  
+25-07-2025,19:30,Academia Puerto Cabello,Zamora Barinas,13.34136364,13.71045455,37.85,2.2,3.3,3,Primera Division de Venezuela  
+25-07-2025,19:30,Columbus Crew,Orlando City,-11.225,-27.71666667,49.76,1.95,3.75,3.4,USA Major League Soccer  
+25-07-2025,19:30,New England Revolution,Montreal Impact,-27.9,-28.68,16.14,1.8,3.8,4.1,USA Major League Soccer  
+25-07-2025,20:00,CD El Nacional,Libertad FC,0.12,-35.86,-2,2.05,3.3,3.5,Primera Division de Ecuador  
+25-07-2025,20:10,Colegiales,Quilmes,25.05818182,1.356363636,4.77,2.9,2.75,2.8,Argentine Division 2  
+25-07-2025,20:15,Club Atlético Unión,Club Atletico Tigre,-5.93,3.11,21.39,2.2,3,3.8,Argentine Division 1  
+25-07-2025,20:15,Independiente Rivadavia,Belgrano,-3.263333333,0.122222222,51.39,2.3,3,3.5,Argentine Division 1  
+25-07-2025,20:30,Houston Dynamo,Los Angeles Galaxy,-6.784615385,-15.96307692,38.49,2.1,3.8,3.2,USA Major League Soccer  
+25-07-2025,20:30,FC Dallas,New York City FC,-9.876212121,-28.45878788,16,2.45,3.5,2.75,USA Major League Soccer  
+25-07-2025,21:00,Gimnasia yTiro,San Martin Tucuman,21.79818182,-2.593636364,50.69,2.88,2.6,3,Argentine Division 2  
+25-07-2025,21:30,Atletico Nacional Medellin,Independiente Santa Fe,3.24125,-23.3025,60,1.57,4,5.75,Primera Division de Colombiano-Apertura  
+25-07-2025,22:30,San Diego FC,Nashville,-12.66853147,-19.72545455,38.01,2.2,3.75,2.9,USA Major League Soccer  
+25-07-2025,22:30,Los Angeles FC,Portland Timbers,-15.89833333,8.05,25.05,1.44,4.75,6.5,USA Major League Soccer  
