@@ -49,6 +49,8 @@ try:
     # 📆 Garantir tipo de data
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True).dt.date
     df_filtrado = df[df['Date'] == data_escolhida]
+    df_visual = df_filtrado.drop(columns=['Date'])  # Oculta a coluna 'Date'
+    df_visual.index = range(len(df_visual))         # Remove o índice original
 
     st.markdown(f"### 📆 Jogos de **{data_escolhida.strftime('%Y-%m-%d')}**")
 
@@ -70,7 +72,7 @@ try:
     else:
         # ✅ Tabela com scroll e estilo
         st.dataframe(
-            df_filtrado.style
+            df_visual.style
             .format({
                 'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
                 'Diff_HT_P': '{:.2f}', 'Diff_Power': '{:.2f}', 'OU_Total': '{:.2f}'
