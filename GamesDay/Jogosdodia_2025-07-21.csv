@@ -1,24 +1,24 @@
-﻿ League,Date,Time,Home,Vs,Away,H,D,A,Diff_HT_P,Diff_Power,OU_Total,,,,,,,
-J1 League   , 21-07-2025 , 05:00 , Avispa Fukuoka , vs , Kyoto Sanga ,2.88,3.1,2.6,13.86,-14.93,45.68,,,,,,,
-J3 League   , 21-07-2025 , 06:00 , Kagoshima United , vs , Osaka FC ,2.55,3.1,2.5,15.25,5.3,28.76,,,,,,,
-J3 League   , 21-07-2025 , 06:00 , Miyazaki , vs , Giravanz Kitakyushu ,1.75,3.3,4.1,-58.38,39.27,9.77,,,,,,,
-J3 League   , 21-07-2025 , 06:00 , FC Gifu , vs , Nara Club ,2,3.3,3.25,19.4,-6.62,19.76,,,,,,,
-Chinese Football Association Jia League   , 21-07-2025 , 07:30 , ShenZhen Juniors , vs , Shanghai Jiading Huilong ,2.5,3.1,2.63,2.52,38.62,44.21,,,,,,,
-Finland Veikkausliga   , 21-07-2025 , 11:00 , IFK Mariehamn , vs , FC Haka ,3,3.5,2.1,29.92,-17.05,58.45,,,,,,,
-Latvian Higher League   , 21-07-2025 , 11:00 , Tukums-2000 , vs , Grobina ,2.45,3.4,2.55,-10.22,20.55,13.77,,,,,,,
-Lithuania - 1.Division   , 21-07-2025 , 12:30 , Kauno Zalgiris , vs , DFK Dainava Alytus ,1.17,6.5,12,25.39,15.41,52.17,,,,,,,
-Sweden Superettan   , 21-07-2025 , 13:00 , Utsiktens BK , vs , Helsingborg ,2.63,3.5,2.38,4.26,-8.52,19.93,,,,,,,
-Sweden Superettan   , 21-07-2025 , 13:00 , Landskrona BoIS , vs , Trelleborgs FF ,1.8,3.6,4.1,-17.03,21.59,19.93,,,,,,,
-Swedish Allsvenskan   , 21-07-2025 , 13:00 , IFK Norrkoping FK , vs , IFK Varnamo ,2.2,3.5,3,0.84,8.29,24.99,,,,,,,
-Argentine Division 2   , 21-07-2025 , 13:00 , Agropecuario de Carlos Casares , vs , Estudiantes de Caseros ,2.3,2.8,3.1,-17.99,20.46,27.53,,,,,,,
-Colombia Primera B   , 21-07-2025 , 17:00 , Bogota FC , vs , Real Cartagena ,3.4,3.4,2,-34.07,-2.82,39.79,,,,,,,
-Primera Division de Paraguay   , 21-07-2025 , 17:30 , Deportivo Recoleta , vs , Sportivo Ameliano ,3.2,3.1,2.3,-16.61,-10.94,20.63,,,,,,,
-Argentine Division 1   , 21-07-2025 , 18:00 , Estudiantes La Plata , vs , CA Huracan ,2.1,3.1,4,-28.72,-2.25,18.14,,,,,,,
-Bolivia Primera Division   , 21-07-2025 , 19:00 , Blooming , vs , Club Guabira ,1.83,4.1,3.25,-25.46,38.69,58.54,,,,,,,
-Chile Primera Division   , 21-07-2025 , 19:00 , Huachipato , vs , O.Higgins ,2.6,3.3,2.6,-6.5,7.94,29.76,,,,,,,
-Colombia Primera B   , 21-07-2025 , 19:05 , Patriotas FC , vs , Real Soacha Cundinamarca ,1.9,3.2,4.33,-33.89,-13.39,21.9,,,,,,,
-Primera Division de Ecuador   , 21-07-2025 , 20:00 , Libertad FC , vs , Manta FC ,2.05,3.4,3.6,0.11,18.14,38,,,,,,,
-Argentine Division 1   , 21-07-2025 , 20:15 , Defensa Y Justicia , vs , Aldosivi Mar del Plata ,1.8,3.4,5,-27.35,-11.81,21.05,,,,,,,
-Argentine Division 1   , 21-07-2025 , 20:15 , San Martin San Juan , vs , Deportivo Riestra ,2.35,2.8,3.75,-39.95,-36.64,22.44,,,,,,,
-Chile Primera B   , 21-07-2025 , 20:30 , Santiago Wanderers , vs , Union San Felipe ,2.25,3.5,2.9,7.81,15.33,63.51,,,,,,,
-Colombia Primera B   , 21-07-2025 , 21:10 , Inter Palmira , vs , Cucuta ,2.8,3.2,2.5,-15.52,7.93,50.76,,,,,,,
+Date,League,Home,Away,Diff_HT_P,Diff_Power,OU_Total,Goals_H_FT,Goals_A_FT,Odd_H,Odd_D,Odd_A
+2025-07-21,J1 League  ,Avispa Fukuoka,Kyoto Sanga,13.860769230769227,-14.92166666666667,45.68000000000001,2,2,2.88,3.1,2.6
+2025-07-21,J3 League  ,Kagoshima United,Osaka FC,15.253636363636364,5.295555555555559,28.759999999999998,2,1,2.55,3.1,2.5
+2025-07-21,J3 League  ,Miyazaki,Giravanz Kitakyushu,-58.38272727272727,39.272222222222226,9.769999999999996,1,3,1.75,3.3,4.1
+2025-07-21,J3 League  ,FC Gifu,Nara Club,19.398181818181822,-6.62111111111111,19.759999999999998,1,1,2.0,3.3,3.25
+2025-07-21,Chinese Football Association Jia League  ,ShenZhen Juniors,Shanghai Jiading Huilong,2.5132142857142803,38.620000000000005,44.21,1,2,2.5,3.1,2.63
+2025-07-21,Finland Veikkausliga  ,IFK Mariehamn,FC Haka,29.925714285714292,-17.05571428571429,58.45,1,1,3.0,3.5,2.1
+2025-07-21,Latvian Higher League  ,Tukums-2000,Grobina,-10.218181818181812,20.55181818181818,13.77,2,1,2.45,3.4,2.55
+2025-07-21,Lithuania - 1.Division  ,Kauno Zalgiris,DFK Dainava Alytus,25.385277777777773,15.407777777777781,52.17,3,0,1.17,6.5,12.0
+2025-07-21,Sweden Superettan  ,Utsiktens BK,Helsingborg,4.258571428571429,-8.522857142857148,19.929999999999996,1,2,2.63,3.5,2.38
+2025-07-21,Sweden Superettan  ,Landskrona BoIS,Trelleborgs FF,-17.031428571428574,21.59285714285714,19.929999999999996,1,2,1.8,3.6,4.1
+2025-07-21,Swedish Allsvenskan  ,IFK Norrkoping FK,IFK Varnamo,0.8332142857142903,8.293928571428577,24.99,3,1,2.2,3.5,3.0
+2025-07-21,Argentine Division 2  ,Agropecuario de Carlos Casares,Estudiantes de Caseros,-17.985454545454544,20.46363636363636,27.53,1,2,2.3,2.8,3.1
+2025-07-21,Colombia Primera B  ,Bogota FC,Real Cartagena,-34.06857142857143,-2.8171428571428603,39.79,0,3,3.4,3.4,2.0
+2025-07-21,Primera Division de Paraguay  ,Deportivo Recoleta,Sportivo Ameliano,-16.609545454545447,-10.93954545454546,20.630000000000006,3,1,3.2,3.1,2.3
+2025-07-21,Argentine Division 1  ,Estudiantes La Plata,CA Huracan,-28.724285714285717,-2.2498412698412764,18.139999999999997,2,1,2.1,3.1,4.0
+2025-07-21,Bolivia Primera Division  ,Blooming,Club Guabira,-25.46428571428572,38.691428571428574,58.54,2,1,1.83,4.1,3.25
+2025-07-21,Chile Primera Division  ,Huachipato,O.Higgins,-6.498928571428575,7.938571428571443,29.760000000000005,2,1,2.6,3.3,2.6
+2025-07-21,Colombia Primera B  ,Patriotas FC,Real Soacha Cundinamarca,-33.89,-13.39,21.9,2,1,1.9,3.2,4.33
+2025-07-21,Primera Division de Ecuador  ,Libertad FC,Manta FC,0.11000000000000298,18.14,38.0,1,0,2.05,3.4,3.6
+2025-07-21,Argentine Division 1  ,Defensa Y Justicia,Aldosivi Mar del Plata,-27.353571428571428,-11.815357142857145,21.049999999999997,2,0,1.8,3.4,5.0
+2025-07-21,Argentine Division 1  ,San Martin San Juan,Deportivo Riestra,-39.95333333333335,-36.64222222222223,22.439999999999998,3,2,2.35,2.8,3.75
+2025-07-21,Chile Primera B  ,Santiago Wanderers,Union San Felipe,7.802142857142858,15.328928571428571,63.510000000000005,1,3,2.25,3.5,2.9
+2025-07-21,Colombia Primera B  ,Inter Palmira,Cucuta,-15.517272727272728,7.932727272727272,50.76,0,2,2.8,3.2,2.5
