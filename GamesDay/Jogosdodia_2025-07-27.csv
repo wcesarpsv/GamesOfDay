@@ -1,83 +1,78 @@
-Date,Time,League,Home,Away,Diff_HT_P,Diff_Power,OU_Total,Odd_H,Odd_D,Odd_A
-27-07-2025,1:00,NSW Premier League  ,St George Saints,Blacktown City Demons,7.42,2.47,37.23,3.4,3.6,1.85
-27-07-2025,1:00,NSW Premier League  ,Rockdale City Suns,Sydney United,5.08,-9.843333333,57.95,1.73,3.9,3.6
-27-07-2025,1:00,NSW Premier League  ,Central Coast Mariners (Youth),Sydney FC (Youth),6.136515152,14.01742424,25.25,3.2,3.75,1.9
-27-07-2025,3:00,Australia FFA Cup  ,Perth Glory,Wellington Phoenix,-2.219230769,-13.81461538,42.13,1.75,4,3.7
-27-07-2025,4:00,Chinese Football Association Yi League  ,Chengdu Rongcheng B,Wenzhou Professional,-31.76388889,-1.775,2.13,1.7,3.4,4.33
-27-07-2025,4:00,Chinese Football Association Yi League  ,Guangdong Mingtu,Kunming City Star,-4.792222222,-20.03666667,64.68,2.05,3,3.4
-27-07-2025,4:00,Chinese Football Association Yi League  ,Quanzhou Yassin,Guangxi Lanhang,-20.52888889,-21.47777778,41.87,1.8,3.2,4
-27-07-2025,4:00,Chinese Football Association Yi League  ,Guizhou Zhucheng Jingji FC,Shenzhen 2028,-29.74,-38.03888889,20.94,2.25,3.1,2.88
-27-07-2025,4:00,Chinese Football Association Yi League  ,Guangxi Hengchen,Guangzhou dandelion FC,-12.51428571,-15.48,32.7,1.45,3.75,6.25
-27-07-2025,4:00,Chinese Football Association Yi League  ,Ganzhou Ruishi,Wuhan Three Towns B,-1.724603175,-0.821428571,23.01,4,3,1.9
-27-07-2025,6:00,K League 1  ,Gangwon FC,Ulsan HD FC,8.162727273,-0.036363636,7,3.4,3.4,2.1
-27-07-2025,6:00,K League 1  ,Daegu FC,Pohang Steelers,2.750909091,-2.690909091,30.15,3.75,3.6,1.95
-27-07-2025,6:00,K League 2  ,Suwon Samsung Bluewings,Seoul E-Land FC,-5.393636364,10.91454545,50.69,1.8,4,3.8
-27-07-2025,6:00,K League 2  ,Seongnam FC,Jeonnam Dragons,14.53333333,-7.44,12.93,2.88,3.3,2.45
-27-07-2025,6:00,J1 League  ,Urawa Red Diamonds,Avispa Fukuoka,2.474545455,29.04333333,19.4,2.25,3.2,3.25
-27-07-2025,6:00,K League 2  ,Incheon United,Ansan Greeners FC,-21.45727273,13.74090909,-3.26,1.33,4.75,8.5
-27-07-2025,6:00,K League 1  ,Daejeon Citizen,FC Seoul,2.720909091,11.52893939,-22.84,3.5,3.4,2.15
-27-07-2025,7:00,Chinese Football Association Jia League  ,Dalian Kun City,Qingdao Red Lions,-17.99194444,11.64027778,8.2,1.5,3.8,5.25
-27-07-2025,7:00,Chinese Super League  ,Qingdao Manatee,Tianjin Tigers,-29.835,1.8625,26.02,3.3,3.3,2.25
-27-07-2025,7:00,Sweden Superettan  ,Kalmar,Utsiktens BK,-29.85857143,0.171428571,36.83,1.3,5,8
-27-07-2025,7:00,Chinese Super League  ,Changchun Yatai,Dalian Zhixing,-38.55444444,0.585833333,-6.8,2.7,3.4,2.55
-27-07-2025,7:30,Chinese Football Association Jia League  ,Guangxi Pingguo Football Club,Suzhou Dongwu,-10.2275,-14.41833333,47.32,3.6,3.4,1.83
-27-07-2025,7:30,Chinese Football Association Jia League  ,Guangdong GZ-Power,Dingnan Ganlian,-31.25928571,-6.031071429,20.02,1.67,3.5,4.2
-27-07-2025,7:30,Chinese Football Association Jia League  ,Nantong Zhiyun,Nanjing City,3.7875,0.075,26.95,2.15,2.88,3.25
-27-07-2025,7:35,Chinese Super League  ,Zhejiang Professional FC,Wuhan Three Towns,7.65,11.4,57.98,1.62,4.2,5
-27-07-2025,7:35,Chinese Super League  ,Shanghai Shenhua,Henan Football Club,15.125,-3.625,44.45,1.4,5,7
-27-07-2025,8:00,Latvian Higher League  ,BFC Daugavpils,Jelgava,27.27363636,21.87090909,-19.2,2.25,3.3,2.8
-27-07-2025,8:00,Chinese Super League  ,Shandong Taishan,Meizhou Hakka,-18.5875,-3.5875,37.86,1.36,5.75,7
-27-07-2025,8:00,Swedish Allsvenskan  ,AIK Solna,Osters IF,2.630357143,43.86464286,16.89,1.48,3.9,7.5
-27-07-2025,8:00,Swedish Allsvenskan  ,Hacken,Djurgardens,9.338214286,10.39,24.99,3.25,3.6,2.1
-27-07-2025,9:00,Sweden Superettan  ,Falkenberg,Landskrona BoIS,0.042857143,12.88142857,71.32,2.15,3.4,3.1
-27-07-2025,9:00,Sweden Superettan  ,Orgryte,Ostersunds FK,-29.85,18.925,10.7,1.8,3.75,3.9
-27-07-2025,9:45,Lithuania - 1.Division  ,Suduva,Dziugas Telsiai,5.652727273,8.653636364,0.21,1.7,3.4,4.75
-27-07-2025,10:00,Finland Veikkausliga  ,Inter Turku,SJK Seinajoen,31.32678571,6.1675,52.26,1.57,4.2,4.5
-27-07-2025,10:00,Latvian Higher League  ,FK Liepaja,FK Auda Riga,19.89787879,9.937878788,26.3,2.55,3.3,2.5
-27-07-2025,10:30,Swedish Allsvenskan  ,IFK Varnamo,Hammarby,11.93642857,-9.014642857,26.61,4.5,3.7,1.73
-27-07-2025,10:30,Swedish Allsvenskan  ,Mjallby AIF,IK Sirius FK,-11.1125,18.8875,36.24,1.57,4.2,5.25
-27-07-2025,12:00,Lithuania - 1.Division  ,FK Zalgiris Vilnius,DFK Dainava Alytus,-11.4525,-14.79,4.35,1.33,4.6,7.5
-28-07-2025,12:00,Lithuania - 1.Division  ,Siauliai,Kauno Zalgiris,36.63111111,-20.08,63.57,5.2,3.9,1.53
-28-07-2025,12:00,Finland Veikkausliga  ,Gnistan Helsinki,HJK Helsinki,14.69321429,-0.8325,43.55,4.2,3.5,1.75
-28-07-2025,12:30,Lithuania - 1.Division  ,FK Panevezys,Banga Gargzdai,-24.38272727,-12.32636364,26.69,1.73,3.3,4.5
-27-07-2025,12:30,Chile Primera Division  ,O.Higgins,Colo Colo,20.67964286,32.97642857,24.99,3.2,3.25,2.2
-27-07-2025,12:35,Argentine Division 2  ,Arsenal de Sarandi,CA San Miguel,4.459090909,-0.472727273,21.96,3.9,2.7,2.3
-27-07-2025,14:00,Primera Division de Ecuador  ,Mushuc Runa,Tecnico Universitario,-8.88,6.037777778,47,1.91,3.4,3.8
-27-07-2025,14:00,Argentine Division 2  ,Alvarado Mar del Plata,Ferrol Carril Oeste,0.051818182,0.127272727,46.14,2.9,2.7,2.88
-27-07-2025,14:00,Peru Primera Division  ,FBC Melgar,Cusco FC,-13.16444444,-39.88333333,28.05,1.57,3.75,5.75
-27-07-2025,14:30,Argentine Division 2  ,Deportivo Maipu,Club Atletico Guemes,4.146363636,-3.679090909,41.85,2.25,2.63,4.2
-27-07-2025,14:30,Argentine Division 2  ,Atletico Mitre de Santiago del Estero,Central Norte Salta,-13.46272727,11.07454545,5.37,2,3.2,4.1
-27-07-2025,14:30,Argentine Division 2  ,Temperley,Gimnasia Jujuy,-7.491818182,-22.43272727,43.6,2.88,2.38,3.4
-27-07-2025,14:30,Primera Division de Paraguay  ,Sportivo Ameliano,Olimpia Asuncion,45.31397436,28.37102564,22.78,3.4,3,2.2
-27-07-2025,14:30,Argentine Division 2  ,Defensores Unidos,Agropecuario de Carlos Casares,-33.59727273,-26.43484848,91.99,3.25,3.2,2.25
-27-07-2025,15:00,Argentine Division 1  ,Talleres Cordoba,Godoy Cruz Antonio Tomba,-33.17444444,-33.16333333,42.48,1.85,3,5
-27-07-2025,15:00,Brazil Serie A  ,Sao Paulo,Fluminense RJ,-32.83535714,8.381428571,8.58,2.25,3,3.5
-27-07-2025,15:00,Brazil Serie A  ,Cruzeiro,Ceara,15.86642857,36.7275,51.86,1.44,4.2,8
-27-07-2025,15:00,Copa LFPB  ,San Antonio Bulo Bulo,San Jose de Oruro,11.35,24.22,32.4,1.73,3.9,3.6
-27-07-2025,15:00,Argentine Division 1  ,Gimnasia La Plata,Independiente,-8.475555556,-8.814444444,26.68,3.7,3,2.15
-27-07-2025,15:00,Chile Primera B  ,Rangers Talca,CD Copiapo S.A.,-11.175,-37.425,4.45,2.55,3.2,2.63
-27-07-2025,15:00,Chile Primera Division  ,Univ Catolica,Coquimbo Unido,2.523928571,5.751428571,28.14,2.63,2.9,2.88
-27-07-2025,15:00,Colombia Primera B  ,Bogota FC,Atletico FC,-29.95857143,-13.6525,45.58,2.1,3.1,3.2
-27-07-2025,15:00,Argentine Division 2  ,Estudiantes Rio Cuarto,Nueva Chicago,-13.45636364,-16.10818182,46.14,1.95,2.75,5.25
-27-07-2025,15:00,Chile Primera Division  ,Palestino,Union Espanola,-17.03,43.2247619,32.8,1.8,3.6,4.1
-27-07-2025,15:00,Brazil Serie B  ,Volta Redonda,Vila Nova,-32.21166667,16.23027778,-12.53,2.2,3.1,3.4
-27-07-2025,15:00,Brazil Serie B  ,Coritiba PR,Amazonas FC,3.9375,45.2,31.4,1.48,3.9,7.5
-27-07-2025,15:30,Argentine Division 2  ,Chaco For Ever,Almirante Brown,0.14,36.17,43,1.85,2.8,6
-27-07-2025,16:15,Peru Primera Division  ,Comerciantes Unidos,Deportivo Garcilaso,-9.912222222,-36.63111111,43.59,3,3.3,2.25
-27-07-2025,16:30,Primera Division de Ecuador  ,Macara,Universidad Catolica,8.226363636,-12.21636364,21.66,3.3,3.3,2.15
-27-07-2025,17:00,Primera Division de Colombiano-Apertura  ,Envigado FC,La Equidad,28.65924242,10.9,63.89,2.1,3.1,3.75
-27-07-2025,17:00,Primera Division de Paraguay  ,Atletico Tembetary,Guarani CA,-27.47166667,-40.02,45.11,2.63,3,2.55
-27-07-2025,17:15,Copa LFPB  ,Real Tomayapo,The Strongest,8.923571429,-11.2375,38.49,3.7,3.5,1.8
-27-07-2025,17:30,Brazil Serie B  ,America MG,Atletico Paranaense,-18.4925,-4.7275,65.13,2.3,3.2,3.1
-27-07-2025,17:30,Brazil Serie A  ,Bahia,Juventude,43.25571429,59.65,35.01,1.33,4.75,9.5
-27-07-2025,17:30,Argentine Division 1  ,CA Huracan,Boca Juniors,-16.11393939,4.14959596,27.33,2.8,2.9,2.8
-27-07-2025,17:30,Brazil Serie A  ,Internacional RS,Vasco da Gama,-16.79095238,36.74571429,54.02,1.62,3.7,6
-27-07-2025,18:00,Colombia Primera B  ,Real Cartagena,Leones,6.285555556,8.205555556,49.35,1.4,4.2,6.5
-27-07-2025,18:00,Brazil Serie B  ,Atletico Clube Goianiense,Chapecoense SC,-39.89444444,-3.182222222,4.45,1.9,3.2,4.33
-27-07-2025,18:00,Chile Primera Division  ,Deportes Iquique,Audax Italiano,-12.78285714,-21.49857143,58.54,3,2.88,2.55
-27-07-2025,19:00,Peru Primera Division  ,Alianza Lima,Alianza Atletico Sullana,-6.493333333,-9.891111111,-6.45,1.42,4.1,8
-27-07-2025,19:00,Primera Division de Ecuador  ,Deportivo Cuenca,Independiente del Valle,-11.61545455,-19.83272727,40.63,3.1,3.2,2.25
-27-07-2025,19:20,Primera Division de Colombiano-Apertura  ,Union Magdalena,Dep.Independiente Medellin,-13.99666667,-36.94333333,12.9,5.5,3.6,1.67
-27-07-2025,19:30,Brazil Serie A  ,Flamengo,Atletico Mineiro,11.3625,33.8625,20.02,1.45,4,7.5
-27-07-2025,19:30,Argentine Division 1  ,River Plate,San Lorenzo,-17.49,-19.45,21.93,1.6,3.6,6.25
-27-07-2025,21:20,Primera Division de Colombiano-Apertura  ,Fortaleza F.C,Alianza Petrolera,-10.70272727,8.299090909,15.6,2.2,3.1,3.4
+Date,League,Home,Away,Diff_HT_P,Diff_Power,OU_Total,Goals_H_FT,Goals_A_FT,Odd_H,Odd_D,Odd_A
+2025-07-27,NSW Premier League  ,St George Saints,Blacktown City Demons,7.42,2.469999999999999,37.23,3,2,3.4,3.6,1.85
+2025-07-27,NSW Premier League  ,Rockdale City Suns,Sydney United,5.0799999999999965,-9.843333333333328,57.95,0,0,1.73,3.9,3.6
+2025-07-27,NSW Premier League  ,Central Coast Mariners (Youth),Sydney FC (Youth),6.136515151515148,14.017424242424235,25.25,0,3,3.2,3.75,1.9
+2025-07-27,Australia FFA Cup  ,Perth Glory,Wellington Phoenix,-2.2192307692307587,-13.81461538461538,42.13000000000001,1,1,1.75,4.0,3.7
+2025-07-27,Chinese Football Association Yi League  ,Chengdu Rongcheng B,Wenzhou Professional,-31.76388888888889,-1.7749999999999986,2.129999999999999,3,0,1.7,3.4,4.33
+2025-07-27,Chinese Football Association Yi League  ,Guangdong Mingtu,Kunming City Star,-4.792222222222218,-20.03666666666667,64.68,1,1,2.05,3.0,3.4
+2025-07-27,Chinese Football Association Yi League  ,Quanzhou Yassin,Guangxi Lanhang,-20.528888888888893,-21.47777777777778,41.870000000000005,1,0,1.8,3.2,4.0
+2025-07-27,Chinese Football Association Yi League  ,Guizhou Zhucheng Jingji FC,Shenzhen 2028,-29.74,-38.03888888888889,20.94,0,1,2.25,3.1,2.88
+2025-07-27,Chinese Football Association Yi League  ,Guangxi Hengchen,Guangzhou dandelion FC,-12.514285714285714,-15.480000000000002,32.7,1,0,1.45,3.75,6.25
+2025-07-27,Chinese Football Association Yi League  ,Ganzhou Ruishi,Wuhan Three Towns B,-1.7246031746031765,-0.821428571428573,23.009999999999994,1,0,4.0,3.0,1.9
+2025-07-27,K League 1  ,Gangwon FC,Ulsan HD FC,8.16272727272727,-0.0363636363636361,7.0,2,2,3.4,3.4,2.1
+2025-07-27,K League 1  ,Daegu FC,Pohang Steelers,2.750909090909092,-2.690909090909088,30.15,0,1,3.75,3.6,1.95
+2025-07-27,K League 2  ,Suwon Samsung Bluewings,Seoul E-Land FC,-5.393636363636361,10.914545454545454,50.69,0,2,1.8,4.0,3.8
+2025-07-27,K League 2  ,Seongnam FC,Jeonnam Dragons,14.533333333333331,-7.440000000000001,12.930000000000003,2,2,2.88,3.3,2.45
+2025-07-27,J1 League  ,Urawa Red Diamonds,Avispa Fukuoka,2.474545454545452,29.04333333333333,19.4,0,0,2.25,3.2,3.25
+2025-07-27,K League 2  ,Incheon United,Ansan Greeners FC,-21.45727272727273,13.7409090909091,-3.26,4,2,1.33,4.75,8.5
+2025-07-27,K League 1  ,Daejeon Citizen,FC Seoul,2.720909090909092,11.528939393939387,-22.84,0,1,3.5,3.4,2.15
+2025-07-27,Chinese Football Association Jia League  ,Dalian Kun City,Qingdao Red Lions,-17.991944444444442,11.64027777777778,8.200000000000001,2,1,1.5,3.8,5.25
+2025-07-27,Chinese Super League  ,Qingdao Manatee,Tianjin Tigers,-29.835,1.8625000000000007,26.020000000000003,2,0,3.3,3.3,2.25
+2025-07-27,Sweden Superettan  ,Kalmar,Utsiktens BK,-29.85857142857143,0.1714285714285743,36.83,1,0,1.3,5.0,8.0
+2025-07-27,Chinese Super League  ,Changchun Yatai,Dalian Zhixing,-38.55444444444444,0.5858333333333314,-6.799999999999997,0,2,2.7,3.4,2.55
+2025-07-27,Chinese Football Association Jia League  ,Guangxi Pingguo Football Club,Suzhou Dongwu,-10.227499999999996,-14.418333333333331,47.31999999999999,0,0,3.6,3.4,1.83
+2025-07-27,Chinese Football Association Jia League  ,Guangdong GZ-Power,Dingnan Ganlian,-31.25928571428571,-6.031071428571423,20.02,0,1,1.67,3.5,4.2
+2025-07-27,Chinese Football Association Jia League  ,Nantong Zhiyun,Nanjing City,3.7875000000000014,0.0749999999999992,26.950000000000003,0,1,2.15,2.88,3.25
+2025-07-27,Chinese Super League  ,Zhejiang Professional FC,Wuhan Three Towns,7.649999999999999,11.4,57.98,3,2,1.62,4.2,5.0
+2025-07-27,Chinese Super League  ,Shanghai Shenhua,Henan Football Club,15.125000000000004,-3.625,44.45,3,2,1.4,5.0,7.0
+2025-07-27,Latvian Higher League  ,BFC Daugavpils,Jelgava,27.27363636363636,21.87090909090909,-19.2,2,0,2.25,3.3,2.8
+2025-07-27,Chinese Super League  ,Shandong Taishan,Meizhou Hakka,-18.5875,-3.587500000000002,37.86,3,0,1.36,5.75,7.0
+2025-07-27,Swedish Allsvenskan  ,AIK Solna,Osters IF,2.6303571428571395,43.86464285714285,16.89,0,0,1.48,3.9,7.5
+2025-07-27,Swedish Allsvenskan  ,Hacken,Djurgardens,9.33821428571429,10.39,24.99,1,6,3.25,3.6,2.1
+2025-07-27,Sweden Superettan  ,Falkenberg,Landskrona BoIS,0.0428571428571444,12.881428571428568,71.32000000000001,1,1,2.15,3.4,3.1
+2025-07-27,Sweden Superettan  ,Orgryte,Ostersunds FK,-29.85,18.925,10.700000000000005,6,0,1.8,3.75,3.9
+2025-07-27,Lithuania - 1.Division  ,Suduva,Dziugas Telsiai,5.65272727272728,8.653636363636366,0.2099999999999973,2,3,1.7,3.4,4.75
+2025-07-27,Finland Veikkausliga  ,Inter Turku,SJK Seinajoen,31.326785714285712,6.167500000000002,52.260000000000005,4,1,1.57,4.2,4.5
+2025-07-27,Latvian Higher League  ,FK Liepaja,FK Auda Riga,19.89787878787878,9.937878787878788,26.300000000000004,2,0,2.55,3.3,2.5
+2025-07-27,Swedish Allsvenskan  ,IFK Varnamo,Hammarby,11.93642857142857,-9.014642857142857,26.61,2,3,4.5,3.7,1.73
+2025-07-27,Swedish Allsvenskan  ,Mjallby AIF,IK Sirius FK,-11.1125,18.887500000000003,36.24,2,1,1.57,4.2,5.25
+2025-07-27,Chile Primera Division  ,O.Higgins,Colo Colo,20.67964285714285,32.97642857142857,24.99,1,1,3.2,3.25,2.2
+2025-07-27,Argentine Division 2  ,Arsenal de Sarandi,CA San Miguel,4.459090909090907,-0.4727272727272728,21.96,5,2,3.9,2.7,2.3
+2025-07-27,Primera Division de Ecuador  ,Mushuc Runa,Tecnico Universitario,-8.879999999999999,6.03777777777778,47.0,0,1,1.91,3.4,3.8
+2025-07-27,Argentine Division 2  ,Alvarado Mar del Plata,Ferrol Carril Oeste,0.0518181818181791,0.1272727272727278,46.14,3,0,2.9,2.7,2.88
+2025-07-27,Peru Primera Division  ,FBC Melgar,Cusco FC,-13.164444444444449,-39.88333333333335,28.050000000000004,0,2,1.57,3.75,5.75
+2025-07-27,Argentine Division 2  ,Deportivo Maipu,Club Atletico Guemes,4.146363636363635,-3.679090909090908,41.85,1,1,2.25,2.63,4.2
+2025-07-27,Argentine Division 2  ,Atletico Mitre de Santiago del Estero,Central Norte Salta,-13.462727272727273,11.074545454545452,5.370000000000001,0,2,2.0,3.2,4.1
+2025-07-27,Argentine Division 2  ,Temperley,Gimnasia Jujuy,-7.491818181818179,-22.43272727272728,43.6,1,0,2.88,2.38,3.4
+2025-07-27,Primera Division de Paraguay  ,Sportivo Ameliano,Olimpia Asuncion,45.31397435897435,28.371025641025643,22.78,1,1,3.4,3.0,2.2
+2025-07-27,Argentine Division 2  ,Defensores Unidos,Agropecuario de Carlos Casares,-33.597272727272724,-26.434848484848487,91.99,3,2,3.25,3.2,2.25
+2025-07-27,Argentine Division 1  ,Talleres Cordoba,Godoy Cruz Antonio Tomba,-33.17444444444445,-33.163333333333334,42.47999999999999,0,0,1.85,3.0,5.0
+2025-07-27,Brazil Serie A  ,Sao Paulo,Fluminense RJ,-32.83535714285714,8.381428571428575,8.579999999999995,3,1,2.25,3.0,3.5
+2025-07-27,Brazil Serie A  ,Cruzeiro,Ceara,15.866428571428576,36.727500000000006,51.86,1,2,1.44,4.2,8.0
+2025-07-27,Copa LFPB  ,San Antonio Bulo Bulo,San Jose de Oruro,11.350000000000003,24.22000000000001,32.4,0,1,1.73,3.9,3.6
+2025-07-27,Argentine Division 1  ,Gimnasia La Plata,Independiente,-8.475555555555557,-8.814444444444447,26.68,1,0,3.7,3.0,2.15
+2025-07-27,Chile Primera B  ,Rangers Talca,CD Copiapo S.A.,-11.175,-37.425,4.450000000000003,0,0,2.55,3.2,2.63
+2025-07-27,Chile Primera Division  ,Univ Catolica,Coquimbo Unido,2.52392857142857,5.751428571428569,28.14,0,3,2.63,2.9,2.88
+2025-07-27,Colombia Primera B  ,Bogota FC,Atletico FC,-29.95857142857143,-13.652500000000002,45.58,2,0,2.1,3.1,3.2
+2025-07-27,Argentine Division 2  ,Estudiantes Rio Cuarto,Nueva Chicago,-13.456363636363635,-16.108181818181816,46.14,0,1,1.95,2.75,5.25
+2025-07-27,Chile Primera Division  ,Palestino,Union Espanola,-17.03,43.2247619047619,32.8,1,0,1.8,3.6,4.1
+2025-07-27,Brazil Serie B  ,Volta Redonda,Vila Nova,-32.211666666666666,16.23027777777778,-12.530000000000005,2,1,2.2,3.1,3.4
+2025-07-27,Brazil Serie B  ,Coritiba PR,Amazonas FC,3.9375,45.2,31.399999999999995,1,1,1.48,3.9,7.5
+2025-07-27,Argentine Division 2  ,Chaco For Ever,Almirante Brown,0.1400000000000005,36.17,43.0,2,1,1.85,2.8,6.0
+2025-07-27,Peru Primera Division  ,Comerciantes Unidos,Deportivo Garcilaso,-9.91222222222222,-36.63111111111111,43.59,0,0,3.0,3.3,2.25
+2025-07-27,Primera Division de Ecuador  ,Macara,Universidad Catolica,8.226363636363635,-12.216363636363637,21.660000000000004,1,4,3.3,3.3,2.15
+2025-07-27,Primera Division de Colombiano-Apertura  ,Envigado FC,La Equidad,28.65924242424242,10.899999999999997,63.89,1,1,2.1,3.1,3.75
+2025-07-27,Primera Division de Paraguay  ,Atletico Tembetary,Guarani CA,-27.471666666666664,-40.02000000000001,45.11000000000001,0,1,2.63,3.0,2.55
+2025-07-27,Copa LFPB  ,Real Tomayapo,The Strongest,8.923571428571424,-11.2375,38.49,3,3,3.7,3.5,1.8
+2025-07-27,Brazil Serie B  ,America MG,Atletico Paranaense,-18.492500000000003,-4.7275000000000045,65.13,2,2,2.3,3.2,3.1
+2025-07-27,Brazil Serie A  ,Bahia,Juventude,43.25571428571429,59.650000000000006,35.01,3,0,1.33,4.75,9.5
+2025-07-27,Argentine Division 1  ,CA Huracan,Boca Juniors,-16.11393939393939,4.1495959595959615,27.33,1,0,2.8,2.9,2.8
+2025-07-27,Brazil Serie A  ,Internacional RS,Vasco da Gama,-16.79095238095239,36.745714285714286,54.02,1,1,1.62,3.7,6.0
+2025-07-27,Brazil Serie B  ,Atletico Clube Goianiense,Chapecoense SC,-39.89444444444445,-3.1822222222222223,4.450000000000001,0,0,1.9,3.2,4.33
+2025-07-27,Chile Primera Division  ,Deportes Iquique,Audax Italiano,-12.782857142857145,-21.498571428571427,58.54,1,0,3.0,2.88,2.55
+2025-07-27,Peru Primera Division  ,Alianza Lima,Alianza Atletico Sullana,-6.493333333333332,-9.89111111111111,-6.450000000000005,1,1,1.42,4.1,8.0
+2025-07-27,Primera Division de Ecuador  ,Deportivo Cuenca,Independiente del Valle,-11.61545454545455,-19.832727272727272,40.63,0,3,3.1,3.2,2.25
+2025-07-27,Primera Division de Colombiano-Apertura  ,Union Magdalena,Dep.Independiente Medellin,-13.996666666666666,-36.94333333333333,12.9,0,2,5.5,3.6,1.67
+2025-07-27,Brazil Serie A  ,Flamengo,Atletico Mineiro,11.3625,33.862500000000004,20.02,1,0,1.45,4.0,7.5
+2025-07-27,Argentine Division 1  ,River Plate,San Lorenzo,-17.490000000000006,-19.45,21.930000000000003,0,0,1.6,3.6,6.25
+2025-07-27,Primera Division de Colombiano-Apertura  ,Fortaleza F.C,Alianza Petrolera,-10.702727272727262,8.29909090909091,15.6,2,2,2.2,3.1,3.4
