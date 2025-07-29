@@ -1,22 +1,22 @@
-Date,Time,League,Home,Away,Odd_H,Odd_D,Odd_A,Diff_HT_P,Diff_Power,OU_Total
-29-07-2025,05:30,Australia FFA Cup  ,Western United FC,Sydney FC,2.8,4.1,2.15,41.630256410256415,22.348205128205123,34.910000000000004
-29-07-2025,15:00,Primera Division de Paraguay  ,General Caballero LJM,Sportivo Trinidense,3.9,3.3,1.91,3.0464102564102475,-8.481923076923078,18.530000000000005
-29-07-2025,15:30,Venezuela Cup  ,Monagas SC,Academia Puerto Cabello,2.25,3.25,2.75,-20.560000000000002,1.995000000000001,17.450000000000003
-29-07-2025,15:30,Venezuela Cup  ,Deportivo Rayo Zuliano,Deportivo Tachira,3.5,3.3,1.9,27.94083333333334,25.400000000000002,-2.1499999999999986
-29-07-2025,16:30,Ecuador Campeonato Serie B  ,22 de Julio,Leones del Norte,3.9,3.9,1.7,-13.895555555555553,37.77555555555556,-28.02
-29-07-2025,17:30,Bolivia Primera Division  ,Academia del Balompie Boliviano,Independiente Petrolero,1.95,3.7,3.3,-22.349999999999998,-18.599999999999998,5.689999999999996
-29-07-2025,17:30,Primera Division de Paraguay  ,Sportivo Luqueno,FC Nacional Asuncion,3.2,3.1,2.3,-20.34589743589743,10.344743589743588,3.9400000000000013
-29-07-2025,18:00,Venezuela Cup  ,Caracas FC,Metropolitanos FC,2.15,3.25,2.9,0.8535064935064947,-6.670454545454541,18.389999999999997
-29-07-2025,18:00,Copa do Brasil  ,Botafogo RJ,Bragantino,1.57,3.8,6.25,4.290476190476198,-4.244285714285706,47.879999999999995
-29-07-2025,18:00,Venezuela Cup  ,Estudiantes Merida FC,Portuguesa FC,2.45,3.2,2.5,-21.25204545454545,-22.39282828282829,24.6
-29-07-2025,19:00,Colombia Copa Cup  ,Atletico Nacional Medellin,Cucuta,1.33,4.1,10.0,4.789999999999999,0.5081818181818161,65.03
-29-07-2025,19:00,Colombia Copa Cup  ,Independiente Santa Fe,Inter Palmira,1.33,4.33,9.5,-0.34555555555555273,-18.763333333333332,47.82
-29-07-2025,19:00,USL Championship  ,Pittsburgh Riverhounds,Miami FC,1.65,3.6,4.75,-1.7442857142857147,19.660000000000007,-0.14000000000000057
-29-07-2025,19:30,Brazil Serie B  ,Criciuma,Cuiaba,2.05,3.1,4.0,-19.887777777777778,-3.2044444444444444,37.19
-29-07-2025,19:30,Brazil Serie A  ,Gremio (RS),Fortaleza,2.2,3.25,3.3,8.13761904761905,31.65619047619048,0.46999999999999886
-29-07-2025,20:00,Ecuador Campeonato Serie B  ,San Antonio(ECU),CD Vargas Torres,1.67,3.9,4.1,-3.084444444444447,-9.431666666666665,17.35
-29-07-2025,20:00,Bolivia Primera Division  ,Nacional Potosi,Oriente Petrolero,1.25,5.25,9.5,14.905714285714286,6.340000000000002,53.17
-29-07-2025,20:30,Colombia Copa Cup  ,Deportes Tolima,Real Soacha Cundinamarca,1.38,4.1,8.5,-19.63571428571429,-1.1362337662337687,47.260000000000005
-29-07-2025,20:30,Colombia Copa Cup  ,Atletico Junior Barranquilla,Atletico Huila,1.3,4.33,11.0,6.2215384615384615,3.5185714285714296,24.059999999999995
-29-07-2025,20:35,Brazil Serie B  ,Goias,Remo Belem (PA),1.67,3.4,5.75,-5.859999999999999,-7.069999999999997,30.700000000000003
-29-07-2025,21:20,Colombia Copa Cup  ,America de Cali,Tigres Zipaquira,1.25,5.75,10.0,-11.925000000000002,6.066666666666663,21.280000000000005
+Date,Time,League,Home,Away,Diff_HT_P,Diff_Power,OU_Total,Odd_H,Odd_D,Odd_A
+29-07-2025,5:30,Australia FFA Cup  ,Western United FC,Sydney FC,41.63025641,22.34820513,34.91,2.8,4.1,2.15
+29-07-2025,15:00,Primera Division de Paraguay  ,General Caballero LJM,Sportivo Trinidense,3.046410256,-8.481923077,18.53,3.9,3.3,1.91
+29-07-2025,15:30,Venezuela Cup  ,Monagas SC,Academia Puerto Cabello,-20.56,1.995,17.45,2.25,3.25,2.75
+29-07-2025,15:30,Venezuela Cup  ,Deportivo Rayo Zuliano,Deportivo Tachira,27.94083333,25.4,-2.15,3.5,3.3,1.9
+29-07-2025,16:30,Ecuador Campeonato Serie B  ,22 de Julio,Leones del Norte,-13.89555556,37.77555556,-28.02,3.9,3.9,1.7
+29-07-2025,17:30,Bolivia Primera Division  ,Academia del Balompie Boliviano,Independiente Petrolero,-22.35,-18.6,5.69,1.95,3.7,3.3
+29-07-2025,17:30,Primera Division de Paraguay  ,Sportivo Luqueno,FC Nacional Asuncion,-20.34589744,10.34474359,3.94,3.2,3.1,2.3
+29-07-2025,18:00,Venezuela Cup  ,Caracas FC,Metropolitanos FC,0.853506494,-6.670454545,18.39,2.15,3.25,2.9
+29-07-2025,18:00,Copa do Brasil  ,Botafogo RJ,Bragantino,4.29047619,-4.244285714,47.88,1.57,3.8,6.25
+29-07-2025,18:00,Venezuela Cup  ,Estudiantes Merida FC,Portuguesa FC,-21.25204545,-22.39282828,24.6,2.45,3.2,2.5
+29-07-2025,19:00,Colombia Copa Cup  ,Atletico Nacional Medellin,Cucuta,4.79,0.508181818,65.03,1.33,4.1,10
+29-07-2025,19:00,Colombia Copa Cup  ,Independiente Santa Fe,Inter Palmira,-0.345555556,-18.76333333,47.82,1.33,4.33,9.5
+29-07-2025,19:00,USL Championship  ,Pittsburgh Riverhounds,Miami FC,-1.744285714,19.66,-0.14,1.65,3.6,4.75
+29-07-2025,19:30,Brazil Serie B  ,Criciuma,Cuiaba,-19.88777778,-3.204444444,37.19,2.05,3.1,4
+29-07-2025,19:30,Brazil Serie A  ,Gremio (RS),Fortaleza,8.137619048,31.65619048,0.47,2.2,3.25,3.3
+29-07-2025,20:00,Ecuador Campeonato Serie B  ,San Antonio(ECU),CD Vargas Torres,-3.084444444,-9.431666667,17.35,1.67,3.9,4.1
+29-07-2025,20:00,Bolivia Primera Division  ,Nacional Potosi,Oriente Petrolero,14.90571429,6.34,53.17,1.25,5.25,9.5
+29-07-2025,20:30,Colombia Copa Cup  ,Deportes Tolima,Real Soacha Cundinamarca,-19.63571429,-1.136233766,47.26,1.38,4.1,8.5
+29-07-2025,20:30,Colombia Copa Cup  ,Atletico Junior Barranquilla,Atletico Huila,6.221538462,3.518571429,24.06,1.3,4.33,11
+29-07-2025,20:35,Brazil Serie B  ,Goias,Remo Belem (PA),-5.86,-7.07,30.7,1.67,3.4,5.75
+29-07-2025,21:20,Colombia Copa Cup  ,America de Cali,Tigres Zipaquira,-11.925,6.066666667,21.28,1.25,5.75,10
