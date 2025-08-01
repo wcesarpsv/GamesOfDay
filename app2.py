@@ -7,8 +7,8 @@ import re
 # 📁 Pasta onde estão os arquivos
 PASTA_ARQUIVOS = "GamesDay"
 
-st.set_page_config(page_title="Previsões dos Jogos do Dia", layout="wide")
-st.title("🔮 Previsões para os Jogos do Dia")
+st.set_page_config(page_title="Data-Driven Football Insights", layout="wide")
+st.title("🔮 Data-Driven Football Insights")
 
 # 🧠 Função auxiliar para extrair datas disponíveis dos arquivos
 def datas_disponiveis(pasta):
@@ -27,11 +27,11 @@ def datas_disponiveis(pasta):
 datas_csv = datas_disponiveis(PASTA_ARQUIVOS)
 
 if not datas_csv:
-    st.error("❌ Nenhum arquivo CSV encontrado na pasta de jogos.")
+    st.error("❌ No CSV files found in games folder.")
     st.stop()
 
 # 📅 Caixa de seleção com datas válidas
-data_escolhida = st.selectbox("📅 Escolha uma data com jogos disponíveis:", datas_csv, index=len(datas_csv)-1)
+data_escolhida = st.selectbox("📅 Choose a date with games available:", datas_csv, index=len(datas_csv)-1)
 
 # 🛠️ Montar o caminho do arquivo
 nome_arquivo = f'Jogosdodia_{data_escolhida}.csv'
