@@ -37,7 +37,7 @@ show_all = st.checkbox("🔓 Show all available dates", value=False)
 if show_all:
     dates_to_display = available_dates
 else:
-    dates_to_display = available_dates[-15:]  # Show only the last 15 days
+    dates_to_display = available_dates[-7:]  # Show only the last 15 days
 
 # 📅 Date selector
 selected_date = st.selectbox("📅 Select a date:", dates_to_display, index=len(dates_to_display)-1)
