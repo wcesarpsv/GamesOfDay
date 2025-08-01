@@ -52,7 +52,7 @@ try:
     df_visual = df_filtrado.drop(columns=['Date'])  # Oculta a coluna 'Date'
     df_visual.index = range(len(df_visual))         # Remove o índice original
 
-    st.markdown(f"### 📆 Jogos de **{data_escolhida.strftime('%Y-%m-%d')}**")
+    # st.markdown(f"### 📆 Jogos de **{data_escolhida.strftime('%Y-%m-%d')}**")
 
     st.markdown(f"""
 ### 📊 Matchday Summary – *{data_escolhida.strftime('%Y-%m-%d')}*
