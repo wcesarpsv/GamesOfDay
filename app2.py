@@ -54,17 +54,28 @@ try:
 
     st.markdown(f"### 📆 Jogos de **{data_escolhida.strftime('%Y-%m-%d')}**")
 
-    st.markdown(
-        f"Summario dos jogos do dia:\n"
-        f"- **Total de jogos:** {len(df_filtrado)}\n"
-        f"- **Total de ligas:** {df_filtrado['League'].nunique()}\n"
-        f"- **Explicando as Colunas:**\n"
-        f"- **Diff_HT_P:** = Diferença da Força do time Home menos a força do time Away, considerando o power rating no Primeiro tempo. HT\n"
-        f"- **Diff_Power:** = Diferença da Força do time Home menos a força do time Away, considerando o Power Rating Geral. FT\n"
-        f"- **Cores:** Quanto mais <span style='color:green;'>verde</span>, maior a probabilidade de vitória do time da casa. Quanto mais <span style='color:red;'>vermelho</span>, maior a probabilidade de vitória do time visitante.\n"
-        f"- **OU_Total:** = Total de gols esperado para o jogo, considerando o Power Rating dos times. Quanto mais azul, maior a expectativa de over 2.5 gols.\n",
-        unsafe_allow_html=True
-    )
+    st.markdown(f"""
+### 📊 Matchday Summary – *{data_escolhida.strftime('%Y-%m-%d')}*
+
+- **Total matches:** {len(df_filtrado)}
+- **Total leagues:** {df_filtrado['League'].nunique()}
+
+---
+
+### ℹ️ Column Descriptions:
+
+- **`Diff_HT_P`** – Difference in team strength for the **first half**, based on Power Ratings  
+- **`Diff_Power`** – Overall team strength difference for the full match (FT)  
+- **`OU_Total`** – Expected total goals for the match (higher = greater chance of Over 2.5)
+
+---
+
+### 🎨 Color Guide:
+
+- 🟩 **Green**: Advantage for **home team**  
+- 🟥 **Red**: Advantage for **away team**  
+- 🔵 **Blue**: Higher expected total goals
+""")
 
 
     if df_filtrado.empty:
