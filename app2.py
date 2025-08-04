@@ -57,7 +57,7 @@ try:
 
     # 📆 Ensure the 'Date' column is datetime
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True).dt.date
-    df_filtered = df[df['Date'] == selected_date]
+    df_filtered = df[df['Date'].astype(str) == selected_date.strftime('%Y-%m-%d')]
 
     # 👁️ Remove 'Date' column from display and reset index
     df_display = df_filtered.drop(columns=['Date'])
@@ -108,3 +108,4 @@ except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
