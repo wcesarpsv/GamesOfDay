@@ -48,7 +48,7 @@ file_path = os.path.join(DATA_FOLDER, filename)
 
 try:
     # 📥 Load the CSV
-    df = pd.read_csv(file_path)
+    df = pd.read_csv(file_path, parse_dates=['Date'])  # já tenta parsear
 
     # 🧹 Clean up the data
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
@@ -56,7 +56,7 @@ try:
     df = df.dropna(axis=1, how='all')
 
     # 📆 Ensure the 'Date' column is datetime
-    df['Date'] = pd.to_datetime(df['Date'], errors='coerce', dayfirst=True).dt.date
+    df['Date'] = df['Date'].dt.date  # garante tipo date
     df_filtered = df[df['Date'].astype(str) == selected_date.strftime('%Y-%m-%d')]
 
     # 👁️ Remove 'Date' column from display and reset index
@@ -108,4 +108,5 @@ except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
 
