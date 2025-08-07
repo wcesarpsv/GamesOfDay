@@ -1,148 +1,85 @@
+
 import pandas as pd
-import numpy as np
 import streamlit as st
-from pathlib import Path
+import os
 import matplotlib.pyplot as plt
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Constantes
-# ──────────────────────────────────────────────────────────────────────────────
-DATA_FOLDER = Path("GamesDay")
-FILE_PATTERN = "Jogosdodia_*.csv"
-DATE_COL = "Date"
-# Vamos usar sempre estes nomes internos:
-RESULT_COLS = ["Goals_H_FT", "Goals_A_FT"]
-FILTER_COLS = ["Diff_Power", "Diff_HT_P", "Odd_H", "Odd_D", "Odd_A"]
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Carregamento (cache)
-# ──────────────────────────────────────────────────────────────────────────────
-@st.cache_data
-def load_data(folder: Path, pattern: str) -> pd.DataFrame:
-    files = list(folder.glob(pattern))
-    if not files:
-        return pd.DataFrame()
-    dfs = []
-    for f in files:
-        try:
-            df = pd.read_csv(f)
-            df["SourceFile"] = f.name
-            dfs.append(df)
-        except Exception as e:
-            st.warning(f"⚠️ Falha ao ler {f.name}: {e}")
-    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Limpeza e preparação
-# ──────────────────────────────────────────────────────────────────────────────
-def clean_data(df: pd.DataFrame) -> pd.DataFrame:
-    # remover colunas Unnamed, all-NA e strip
-    df = df.loc[:, ~df.columns.str.contains(r"^Unnamed")]
-    df.columns = df.columns.str.strip()
-    df = df.dropna(axis=1, how="all")
-
-    # se o CSV tiver 'Goals_FT_H' e 'Goals_FT_A', renomeie para nosso padrão
-    rename_map = {}
-    if "Goals_FT_H" in df.columns: rename_map["Goals_FT_H"] = "Goals_H_FT"
-    if "Goals_FT_A" in df.columns: rename_map["Goals_FT_A"] = "Goals_A_FT"
-    if rename_map:
-        df = df.rename(columns=rename_map)
-
-    # parse de datas
-    df[DATE_COL] = pd.to_datetime(df[DATE_COL], errors="coerce")
-    df = df.dropna(subset=[DATE_COL])
-
-    # conversão numérica de filtros e resultados
-    for col in FILTER_COLS + RESULT_COLS:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    # apenas linhas com resultados finais
-    df = df.dropna(subset=RESULT_COLS)
-    return df
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Simulação de lucro (vetorizada)
-# ──────────────────────────────────────────────────────────────────────────────
-def simulate_profit(df: pd.DataFrame, bet_on: str) -> pd.Series:
-    if bet_on == "Home":
-        return np.where(df.Goals_H_FT > df.Goals_A_FT, df.Odd_H - 1, -1)
-    else:  # Away
-        return np.where(df.Goals_A_FT > df.Goals_H_FT, df.Odd_A - 1, -1)
-
-# ──────────────────────────────────────────────────────────────────────────────
-# App principal
-# ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Strategy Backtest", layout="wide")
-st.title("📊 Strategy Backtest")
+st.title("📈 Strategy Backtest")
 
-# 1) Load & clean
-raw_df = load_data(DATA_FOLDER, FILE_PATTERN)
-if raw_df.empty:
-    st.error(f"❌ Nenhum CSV encontrado em '{DATA_FOLDER}'.")
+# 📁 Diretório dos arquivos CSV
+PASTA = "GamesDay"
+
+# 📥 Juntar todos os arquivos CSV
+arquivos = [f for f in os.listdir(PASTA) if f.endswith(".csv")]
+df_list = []
+for arquivo in arquivos:
+    caminho = os.path.join(PASTA, arquivo)
+    try:
+        df = pd.read_csv(caminho)
+        df["source_file"] = arquivo
+        df_list.append(df)
+    except:
+        continue
+
+if not df_list:
+    st.error("❌ No CSV files found or failed to load.")
     st.stop()
 
-df = clean_data(raw_df)
-if df.empty:
-    st.error("❌ Nenhum dado válido após limpeza de datas e resultados.")
-    # para ajudar a debugar, mostramos as colunas encontradas
-    st.write("Colunas originais:", raw_df.columns.tolist())
-    st.write("Depois da limpeza, colunas:", df.columns.tolist())
-    st.write("Amostra do raw_df:", raw_df.head())
+df = pd.concat(df_list, ignore_index=True)
+
+# 🧹 Limpeza inicial
+df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
+df.columns = df.columns.str.strip()
+df = df.dropna(subset=["Date"])
+df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+df = df.dropna(subset=["Date"])
+
+# 🎯 Garantir colunas necessárias
+required_columns = ["Odd_H", "Odd_D", "Odd_A", "Diff_Power", "Diff_HT_P", "Goals_H_FT", "Goals_A_FT"]
+missing_cols = [col for col in required_columns if col not in df.columns]
+if missing_cols:
+    st.warning(f"⚠️ Missing required columns: {', '.join(missing_cols)}")
     st.stop()
 
-# 2) Filtros na sidebar
-st.sidebar.header("🔎 Filtros de Partidas")
+# 🎛️ Filtros
+st.sidebar.header("🎯 Filter Matches")
+diff_power_range = st.sidebar.slider("📊 Diff_Power", float(df["Diff_Power"].min()), float(df["Diff_Power"].max()), (float(df["Diff_Power"].min()), float(df["Diff_Power"].max())))
+diff_htp_range = st.sidebar.slider("⏱️ Diff_HT_P", float(df["Diff_HT_P"].min()), float(df["Diff_HT_P"].max()), (float(df["Diff_HT_P"].min()), float(df["Diff_HT_P"].max())))
+odd_h_range = st.sidebar.slider("💰 Odd_H (Home win)", float(df["Odd_H"].min()), float(df["Odd_H"].max()), (float(df["Odd_H"].min()), float(df["Odd_H"].max())))
+odd_d_range = st.sidebar.slider("💰 Odd_D (Draw)", float(df["Odd_D"].min()), float(df["Odd_D"].max()), (float(df["Odd_D"].min()), float(df["Odd_D"].max())))
+odd_a_range = st.sidebar.slider("💰 Odd_A (Away win)", float(df["Odd_A"].min()), float(df["Odd_A"].max()), (float(df["Odd_A"].min()), float(df["Odd_A"].max())))
 
-# filtro por período
-min_date = df[DATE_COL].dt.date.min()
-max_date = df[DATE_COL].dt.date.max()
-date_range = st.sidebar.date_input("Período", [min_date, max_date])
-df = df[df[DATE_COL].between(pd.to_datetime(date_range[0]),
-                              pd.to_datetime(date_range[1]))]
+bet_on = st.sidebar.selectbox("🎯 Bet on", ["Home", "Away"])
 
-# sliders numéricos
-for col in FILTER_COLS:
-    if col in df.columns:
-        mn, mx = float(df[col].min()), float(df[col].max())
-        sel = st.sidebar.slider(col, mn, mx, (mn, mx))
-        df = df[df[col].between(sel[0], sel[1])]
+# 📊 Aplicar filtros
+filtered_df = df[
+    (df["Diff_Power"].between(*diff_power_range)) &
+    (df["Diff_HT_P"].between(*diff_htp_range)) &
+    (df["Odd_H"].between(*odd_h_range)) &
+    (df["Odd_D"].between(*odd_d_range)) &
+    (df["Odd_A"].between(*odd_a_range))
+].copy()
 
-# direção da aposta
-bet_option = st.sidebar.selectbox("🎲 Apostar em", ["Home", "Away"])
+# 🧮 Simular apostas
+if bet_on == "Home":
+    filtered_df["Bet Result"] = filtered_df.apply(lambda row: row["Odd_H"] - 1 if row["Goals_H_FT"] > row["Goals_A_FT"] else -1, axis=1)
+elif bet_on == "Away":
+    filtered_df["Bet Result"] = filtered_df.apply(lambda row: row["Odd_A"] - 1 if row["Goals_A_FT"] > row["Goals_H_FT"] else -1, axis=1)
 
-# 3) Simular e métricas
-df = df.sort_values(DATE_COL)
-df["Profit"] = simulate_profit(df, bet_option)
-df["Cumulative Profit"] = df["Profit"].cumsum()
+filtered_df["Cumulative Profit"] = filtered_df["Bet Result"].cumsum()
+filtered_df["Date"] = pd.to_datetime(filtered_df["Date"], errors="coerce")
 
-total_bets = len(df)
-wins = (df["Profit"] > 0).sum()
-win_rate = wins / total_bets * 100 if total_bets else 0
-roi = df["Profit"].sum() / total_bets * 100 if total_bets else 0
+# 📈 Gráfico
+st.subheader("📉 Cumulative Profit")
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.plot(filtered_df["Date"], filtered_df["Cumulative Profit"], marker="o")
+ax.set_xlabel("Date")
+ax.set_ylabel("Cumulative Profit")
+ax.set_title("Backtest Profit Over Time")
+ax.grid(True)
+st.pyplot(fig)
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Total de Apostas", total_bets)
-c2.metric("Vitórias", wins)
-c3.metric("Win Rate", f"{win_rate:.1f}%")
-c4.metric("ROI", f"{roi:.1f}%")
-
-# 4) Gráfico de lucro acumulado
-if not df.empty:
-    fig, ax = plt.subplots()
-    ax.plot(df[DATE_COL], df["Cumulative Profit"], marker="o")
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Cumulative Profit")
-    ax.set_title("📈 Lucro Acumulado ao Longo do Tempo")
-    ax.grid(True)
-    plt.xticks(rotation=45)
-    st.pyplot(fig)
-else:
-    st.warning("⚠️ Sem partidas após filtros.")
-
-# 5) Tabela e download
-if not df.empty:
-    display_cols = [DATE_COL, "League", "Home", "Away"] + RESULT_COLS + ["Odd_H", "Odd_D", "Odd_A", "Profit", "Cumulative Profit"]
-    st.dataframe(df[display_cols])
-    csv = df.to_csv(index=False).encode("utf-8")
-    st.download_button("⬇️ Baixar CSV", csv, "backtest.csv", "text/csv")
+# 📋 Detalhes
+st.subheader("📋 Filtered Matches")
+st.dataframe(filtered_df[["Date", "League", "Home", "Away", "Odd_H", "Odd_D", "Odd_A", "Diff_Power", "Diff_HT_P", "Goals_H_FT", "Goals_A_FT", "Bet Result", "Cumulative Profit"]])
