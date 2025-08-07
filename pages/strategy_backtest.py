@@ -78,6 +78,8 @@ filtered_df["Profit"] = filtered_df.apply(simulate_profit, axis=1)
 # ✅ Sort by date and calculate cumulative profit
 filtered_df = filtered_df.sort_values("Date")
 filtered_df["Cumulative Profit"] = filtered_df["Profit"].cumsum()
+# Garantir que a coluna Date seja datetime
+filtered_df["Date"] = pd.to_datetime(filtered_df["Date"], errors='coerce')
 
 # 📈 Plot
 if not filtered_df.empty:
