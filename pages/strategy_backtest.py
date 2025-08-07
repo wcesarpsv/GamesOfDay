@@ -81,7 +81,7 @@ if not filtered_df.empty:
     ax.plot(range(len(filtered_df)), filtered_df["Cumulative Profit"], marker="o")
     ax.set_xlabel("Bet Number")
     ax.set_ylabel("Cumulative Profit")
-    ax.set_title("📈 Cumulative Profit by Bet")
+    ax.set_title("Cumulative Profit by Bet")
     st.pyplot(fig)
 
     # 📋 Show filtered table
