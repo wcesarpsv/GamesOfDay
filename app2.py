@@ -1,4 +1,4 @@
-# app2.py (ou main.py)
+# app2.py
 
 import streamlit as st
 import pandas as pd
@@ -56,7 +56,6 @@ if df_filtered.empty:
     st.stop()
 
 df_display = df_filtered.drop(columns=['Date']).reset_index(drop=True)
-# forçar tipos float nas colunas de interesse
 for c in ['Odd_H','Odd_D','Odd_A','Diff_HT_P','Diff_Power','OU_Total']:
     df_display[c] = df_display[c].astype(float)
 
@@ -74,7 +73,7 @@ grid_response = AgGrid(
     height=400
 )
 
-selected_rows = grid_response["selected_rows"]  # sempre uma lista (possivelmente vazia)
+selected_rows = grid_response["selected_rows"]  # lista (talvez vazia) de dicts
 
 # ─── 6) Seleção de colunas para filtrar ────────────────────────────────────────
 cols = ["Diff_Power", "Diff_HT_P", "Odd_H", "Odd_D", "Odd_A"]
@@ -87,10 +86,23 @@ if st.button("🔎 BackTest Check"):
     elif len(chosen) < 2:
         st.warning("❌ Escolha pelo menos 2 colunas de filtro.")
     else:
-        # extrai valores da linha selecionada
         row = selected_rows[0]
-        params = {c: row[c] for c in chosen}
-        query = urllib.parse.urlencode(params)
-        target = f"/Strategy_Backtest?{query}"
-        # redireciona via JS
-        components.html(f"<script>window.location.href = '{target}';</script>", height=0)
+
+        # Cria mapeamento lowercase -> chave original
+        key_map = {k.lower(): k for k in row.keys()}
+
+        # Extrai os valores das colunas escolhidas, usando o mapeamento
+        params = {}
+        missing = []
+        for c in chosen:
+            actual_key = key_map.get(c.lower())
+            if actual_key is None:
+                missing.append(c)
+            else:
+                params[c] = row[actual_key]
+        if missing:
+            st.error(f"As colunas {missing} não foram encontradas na linha selecionada.")
+        else:
+            query = urllib.parse.urlencode(params)
+            target = f"/Strategy_Backtest?{query}"
+            components.html(f"<script>window.location.href = '{target}';</script>", height=0)
