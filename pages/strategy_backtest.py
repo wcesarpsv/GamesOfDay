@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 DATA_FOLDER = Path("GamesDay")
 FILE_PATTERN = "Jogosdodia_*.csv"
 DATE_COL = "Date"
+# Vamos usar sempre estes nomes internos:
 RESULT_COLS = ["Goals_H_FT", "Goals_A_FT"]
 FILTER_COLS = ["Diff_Power", "Diff_HT_P", "Odd_H", "Odd_D", "Odd_A"]
 
@@ -35,20 +36,29 @@ def load_data(folder: Path, pattern: str) -> pd.DataFrame:
 # Limpeza e preparação
 # ──────────────────────────────────────────────────────────────────────────────
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
+    # remover colunas Unnamed, all-NA e strip
     df = df.loc[:, ~df.columns.str.contains(r"^Unnamed")]
     df.columns = df.columns.str.strip()
     df = df.dropna(axis=1, how="all")
-    
+
+    # se o CSV tiver 'Goals_FT_H' e 'Goals_FT_A', renomeie para nosso padrão
+    rename_map = {}
+    if "Goals_FT_H" in df.columns: rename_map["Goals_FT_H"] = "Goals_H_FT"
+    if "Goals_FT_A" in df.columns: rename_map["Goals_FT_A"] = "Goals_A_FT"
+    if rename_map:
+        df = df.rename(columns=rename_map)
+
     # parse de datas
     df[DATE_COL] = pd.to_datetime(df[DATE_COL], errors="coerce")
     df = df.dropna(subset=[DATE_COL])
-    
-    # conversão numérica
+
+    # conversão numérica de filtros e resultados
     for col in FILTER_COLS + RESULT_COLS:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # apenas linhas com resultados finais
     df = df.dropna(subset=RESULT_COLS)
-    
     return df
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -57,7 +67,7 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
 def simulate_profit(df: pd.DataFrame, bet_on: str) -> pd.Series:
     if bet_on == "Home":
         return np.where(df.Goals_H_FT > df.Goals_A_FT, df.Odd_H - 1, -1)
-    else:  # "Away"
+    else:  # Away
         return np.where(df.Goals_A_FT > df.Goals_H_FT, df.Odd_A - 1, -1)
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -75,12 +85,16 @@ if raw_df.empty:
 df = clean_data(raw_df)
 if df.empty:
     st.error("❌ Nenhum dado válido após limpeza de datas e resultados.")
+    # para ajudar a debugar, mostramos as colunas encontradas
+    st.write("Colunas originais:", raw_df.columns.tolist())
+    st.write("Depois da limpeza, colunas:", df.columns.tolist())
+    st.write("Amostra do raw_df:", raw_df.head())
     st.stop()
 
 # 2) Filtros na sidebar
 st.sidebar.header("🔎 Filtros de Partidas")
 
-# filtro por período (usando .dt.date para garantir datetime.date)
+# filtro por período
 min_date = df[DATE_COL].dt.date.min()
 max_date = df[DATE_COL].dt.date.max()
 date_range = st.sidebar.date_input("Período", [min_date, max_date])
@@ -97,7 +111,7 @@ for col in FILTER_COLS:
 # direção da aposta
 bet_option = st.sidebar.selectbox("🎲 Apostar em", ["Home", "Away"])
 
-# 3) Simular e calcular métricas
+# 3) Simular e métricas
 df = df.sort_values(DATE_COL)
 df["Profit"] = simulate_profit(df, bet_option)
 df["Cumulative Profit"] = df["Profit"].cumsum()
@@ -107,7 +121,6 @@ wins = (df["Profit"] > 0).sum()
 win_rate = wins / total_bets * 100 if total_bets else 0
 roi = df["Profit"].sum() / total_bets * 100 if total_bets else 0
 
-# exibir KPIs
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Total de Apostas", total_bets)
 c2.metric("Vitórias", wins)
