@@ -117,6 +117,8 @@ df_all = df_all.sort_values(by="Date").reset_index(drop=True)
 # ──────────────────────────────────────────────────────────────────────────────
 st.sidebar.header("🎯 Filter Matches")
 
+bet_on = st.sidebar.selectbox("🎯 Bet on", ["Home", "Draw", "Away"])
+
 # Faixa de datas (híbrido)
 date_start, date_end = date_range_filter_hibrido("🗓️ Período (Date)", df_all["Date"], key_prefix="date")
 if date_start is None or date_end is None:
@@ -142,7 +144,7 @@ odd_d_sel = range_filter_hibrido("💰 Odd_D (Draw)", od_min, od_max, step=step_
 oa_min, oa_max = float(df_all["Odd_A"].min()), float(df_all["Odd_A"].max())
 odd_a_sel = range_filter_hibrido("💰 Odd_A (Away win)", oa_min, oa_max, step=step_odds, key_prefix="odd_a")
 
-bet_on = st.sidebar.selectbox("🎯 Bet on", ["Home", "Draw", "Away"])
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 🧮 Aplica filtros
