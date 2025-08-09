@@ -62,31 +62,30 @@ def _base_parse_asian_line(text: str) -> list[float]:
 
 
 def parse_asian_line(text: str, odd_h: float, odd_a: float) -> list[float]:
-    """Retorna a(s) partes do handicap já com sinal para o time da casa.
-       Regras de sinal:
-         - Se o texto tiver '+' ou '-', usa-o.
-         - Caso contrário (ex.: '0.5/1'): assume **negativo** para o favorito (odd menor)
-           e **positivo** para o azarão (odd maior).
+    """Retorna a(s) partes do handicap com sinal para o time da casa.
+
+    Regras de sinal:
+      - Se o texto tiver '+' ou '-', respeita esse sinal.
+      - Se NÃO tiver sinal (ex.: '0/0.5', '0.5'), assume **POSITIVO para o time da casa**.
+        (o handicap do away é sempre o inverso; isso já é tratado na hora de liquidar a aposta)
     """
     if text is None:
         return []
     raw = str(text).strip().replace(' ', '')
     parts = _base_parse_asian_line(raw)
-
     if not parts:
         return []
 
-    # sinal explícito?
-    if raw.startswith('+') or raw.startswith('-'):
-        sign = -1 if raw.startswith('-') else 1
+    if raw.startswith('+'):
+        sign = 1
+    elif raw.startswith('-'):
+        sign = -1
     else:
-        # inferir pelo favorito: odd menor -> favorito -> dá handicap (sinal negativo)
-        try:
-            sign = -1 if float(odd_h) <= float(odd_a) else 1
-        except Exception:
-            sign = 1
+        # <- mudança importante: default positivo para o HOME quando não há sinal
+        sign = 1
 
     return [sign * p for p in parts]
+
 
 
 def asian_odds_win_profit(odds: float) -> float:
