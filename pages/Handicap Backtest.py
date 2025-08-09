@@ -71,7 +71,7 @@ def settle_ah_with_odds(goals_h, goals_a, ah_components_home, bet_on: str, net_o
         return 0.0
 
     profits = []
-    score_diff = goals_h - goals_a
+    score_diff = goals_h - goals_a  # H - A
     for h_home in ah_components_home:
         if bet_on == "Home":
             margin = score_diff + h_home
@@ -80,56 +80,43 @@ def settle_ah_with_odds(goals_h, goals_a, ah_components_home, bet_on: str, net_o
             margin = (goals_a - goals_h) + h_away  # = -score_diff - h_home
 
         if margin > 0:
-            profits.append(net_odds)   # win
+            profits.append(net_odds)   # vitória completa
         elif abs(margin) < 1e-9:
             profits.append(0.0)        # push
         else:
-            profits.append(-1.0)       # loss
+            profits.append(-1.0)       # derrota completa
 
     return sum(profits) / len(profits)
 
-# 🔧 Slider + campos numéricos com botão "Aplicar"
-def range_filter_aplicar(label: str, data_min: float, data_max: float, step: float, key_prefix: str):
+# 🔧 componente híbrido: número + slider + seletor de fonte
+def range_filter_hibrido(label: str, data_min: float, data_max: float, step: float, key_prefix: str):
     st.sidebar.markdown(f"**{label}**")
-
-    # Inicia slider state caso não exista
-    if f"{key_prefix}_slider" not in st.session_state:
-        st.session_state[f"{key_prefix}_slider"] = (float(data_min), float(data_max))
-
-    # Slider é a “fonte da verdade” usada no filtro
-    slider_val = st.sidebar.slider(
-        "Arraste para ajustar",
-        min_value=float(data_min),
-        max_value=float(data_max),
-        value=st.session_state[f"{key_prefix}_slider"],
-        step=step,
-        key=f"{key_prefix}_slider_widget"
-    )
-
-    # Campos manuais + Aplicar para sincronizar com o slider
-    c1, c2, c3 = st.sidebar.columns([1,1,1])
-    min_val = c1.number_input("Min", value=float(slider_val[0]),
-                              min_value=float(data_min), max_value=float(data_max),
+    c1, c2 = st.sidebar.columns(2)
+    min_val = c1.number_input("Min", value=float(data_min), min_value=float(data_min), max_value=float(data_max),
                               step=step, key=f"{key_prefix}_min")
-    max_val = c2.number_input("Max", value=float(slider_val[1]),
-                              min_value=float(data_min), max_value=float(data_max),
+    max_val = c2.number_input("Max", value=float(data_max), min_value=float(data_min), max_value=float(data_max),
                               step=step, key=f"{key_prefix}_max")
 
-    # Normaliza ordem antes de aplicar
-    apply_clicked = c3.button("Aplicar", key=f"{key_prefix}_apply")
-    if apply_clicked:
-        if min_val > max_val:
-            min_val, max_val = max_val, min_val
-            st.session_state[f"{key_prefix}_min"] = min_val
-            st.session_state[f"{key_prefix}_max"] = max_val
-        # Copia os números para o slider (sincroniza visualmente)
-        st.session_state[f"{key_prefix}_slider"] = (float(min_val), float(max_val))
-        st.rerun()
+    # garante ordem
+    if min_val > max_val:
+        min_val, max_val = max_val, min_val
+        st.session_state[f"{key_prefix}_min"] = min_val
+        st.session_state[f"{key_prefix}_max"] = max_val
 
+    slider_val = st.sidebar.slider("Arraste para ajustar",
+                                   min_value=float(data_min),
+                                   max_value=float(data_max),
+                                   value=(float(min_val), float(max_val)),
+                                   step=step,
+                                   key=f"{key_prefix}_slider")
+
+    fonte = st.sidebar.radio("Fonte do filtro", ["Slider", "Manual"], horizontal=True, key=f"{key_prefix}_src")
     st.sidebar.divider()
 
-    # Sempre retorna o valor do slider (após eventual “Aplicar”)
-    return st.session_state[f"{key_prefix}_slider"]
+    if fonte == "Slider":
+        return slider_val[0], slider_val[1]
+    else:
+        return float(min_val), float(max_val)
 
 # ⬇️ Carrega todos os CSVs válidos
 all_dfs = []
@@ -175,21 +162,21 @@ if not all_dfs:
 df_all = pd.concat(all_dfs, ignore_index=True)
 df_all = df_all.sort_values(by="Date").reset_index(drop=True)
 
-# 🎚️ Filtros (slider + manual com “Aplicar”)
+# 🎚️ Filtros (híbridos)
 st.sidebar.header("🎯 Filter Matches")
 
 dp_min, dp_max = df_all["Diff_Power"].min(), df_all["Diff_Power"].max()
-diff_power_sel = range_filter_aplicar("📊 Diff_Power", dp_min, dp_max, step=0.01, key_prefix="diff_power")
+diff_power_sel = range_filter_hibrido("📊 Diff_Power", dp_min, dp_max, step=0.01, key_prefix="diff_power")
 
 htp_min, htp_max = df_all["Diff_HT_P"].min(), df_all["Diff_HT_P"].max()
-diff_ht_p_sel = range_filter_aplicar("📉 Diff_HT_P", htp_min, htp_max, step=0.01, key_prefix="diff_htp")
+diff_ht_p_sel = range_filter_hibrido("📉 Diff_HT_P", htp_min, htp_max, step=0.01, key_prefix="diff_htp")
 
 ah_min, ah_max = float(df_all["AH_clean"].min()), float(df_all["AH_clean"].max())
-ah_range_sel = range_filter_aplicar("⚖️ Asian Handicap (Home line, AH_clean)", ah_min, ah_max, step=0.25, key_prefix="ah_clean")
+ah_range_sel = range_filter_hibrido("⚖️ Asian Handicap (Home line, AH_clean)", ah_min, ah_max, step=0.25, key_prefix="ah_clean")
 
 bet_on = st.sidebar.selectbox("🎯 Bet on", ["Home", "Away"])
 
-# 🧮 Aplica filtros usando SEMPRE o valor do slider
+# 🧮 Aplica filtros
 filtered_df = df_all[
     (df_all["Diff_Power"] >= diff_power_sel[0]) & (df_all["Diff_Power"] <= diff_power_sel[1]) &
     (df_all["Diff_HT_P"] >= diff_ht_p_sel[0]) & (df_all["Diff_HT_P"] <= diff_ht_p_sel[1]) &
