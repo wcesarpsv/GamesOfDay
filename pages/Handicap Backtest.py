@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import os
@@ -10,7 +11,7 @@ st.title("⚖️ Asian Handicap Backtest")
 # ──────────────────────────────────────────────────────────────────────────────
 # Config
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_FOLDER = "GamesDay/GamesAsian"   # <- pasta com os CSVs de AH
+DATA_FOLDER = "GamesAsian"   # <- pasta com os CSVs de AH
 
 REQUIRED_COLS = [
     "Date", "League", "Home", "Away",
@@ -22,63 +23,115 @@ REQUIRED_COLS = [
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
-def parse_asian_line(raw: str) -> list[float]:
+def _base_parse_asian_line(text: str) -> list[float]:
+    """Parse básico sem sinal. Retorna a(s) parte(s) como valores absolutos (sempre >=0).
+       Exemplos: '0.5/1' -> [0.5, 1.0], '-0.75' -> [0.75] (sinal tratado depois).
     """
-    Converte 'Asian_Line' em lista de componentes.
-    Exemplos:
-      '0' -> [0.0], 'pk' -> [0.0], '+0.25' -> [0.0, 0.5],
-      '-0.75' -> [-1.0, -0.5], '0.5/1' -> [0.5, 1.0], '-0.5/0' -> [-0.5, 0.0]
-    """
-    if raw is None:
+    if text is None:
         return []
+    s = str(text).strip().lower().replace(' ', '')
+    s = s.replace(',', '.')  # vírgula -> ponto
 
-    s = str(raw).strip().lower().replace(' ', '')
     if s in ('pk', 'p.k.', 'level'):
         return [0.0]
 
-    # troca vírgula por ponto se vier '0,5/1'
-    s = s.replace(',', '.')
+    # remover sinal para pegar valor absoluto
+    s_abs = re.sub(r'^[+-]', '', s)
 
-    # formato a/b
-    if '/' in s:
+    if '/' in s_abs:
         try:
-            a, b = s.split('/')
+            a, b = s_abs.split('/')
             return [float(a), float(b)]
         except Exception:
             return []
 
-    # formato simples: +0.25, -0.75, 1.5, 0, etc.
-    s = re.sub(r'^\+', '', s)
     try:
-        x = float(s)
+        x = float(s_abs)
     except Exception:
         return []
 
-    # se for quarto de gol, quebrar em duas metades vizinhas
+    # transformar quartas em duas metades, sempre positivo aqui
     frac = abs(x) - int(abs(x))
-    sign = 1 if x >= 0 else -1
     base = int(abs(x))
 
     if abs(frac - 0.25) < 1e-9:
-        return [sign * (base + 0.0), sign * (base + 0.5)]
+        return [base + 0.0, base + 0.5]
     if abs(frac - 0.75) < 1e-9:
-        return [sign * (base + 0.5), sign * (base + 1.0)]
+        return [base + 0.5, base + 1.0]
+    return [abs(x)]
 
-    # meia ou inteiro
-    return [x]
+
+def parse_asian_line(text: str, odd_h: float, odd_a: float) -> list[float]:
+    """Retorna a(s) partes do handicap já com sinal para o time da casa.
+       Regras de sinal:
+         - Se o texto tiver '+' ou '-', usa-o.
+         - Caso contrário (ex.: '0.5/1'): assume **negativo** para o favorito (odd menor)
+           e **positivo** para o azarão (odd maior).
+    """
+    if text is None:
+        return []
+    raw = str(text).strip().replace(' ', '')
+    parts = _base_parse_asian_line(raw)
+
+    if not parts:
+        return []
+
+    # sinal explícito?
+    if raw.startswith('+') or raw.startswith('-'):
+        sign = -1 if raw.startswith('-') else 1
+    else:
+        # inferir pelo favorito: odd menor -> favorito -> dá handicap (sinal negativo)
+        try:
+            sign = -1 if float(odd_h) <= float(odd_a) else 1
+        except Exception:
+            sign = 1
+
+    return [sign * p for p in parts]
+
+
+def asian_odds_win_profit(odds: float) -> float:
+    """Converte odds asiáticas (formato Malay/Indo):
+       - odds >= 1.00 → lucro no acerto = odds        (equiv. Indo positivo; decimal ≈ odds+1)
+       - 0 < odds < 1.00 → lucro no acerto = odds     (Malay positivo)
+       - odds < 0 → lucro no acerto = 1.0             (Malay/Indo negativo)
+    """
+    if pd.isna(odds):
+        return 0.0
+    if odds >= 1.0:
+        return float(odds)
+    if odds > 0.0:
+        return float(odds)
+    # negativo
+    return 1.0
+
+
+def asian_odds_loss_profit(odds: float) -> float:
+    """Perda no erro:
+       - odds >= 1.00 → perde 1.0
+       - 0 < odds < 1.00 → perde 1.0
+       - odds < 0 → perde |odds|  (no dataset geralmente já vem como valor negativo; retornamos o próprio odds)
+    """
+    if pd.isna(odds):
+        return 0.0
+    if odds >= 1.0:
+        return -1.0
+    if odds > 0.0:
+        return -1.0
+    # negativo (ex.: -0.95)
+    return float(odds)  # já é negativo
 
 
 def settle_ah_bet(goals_h, goals_a, asian_line_components, odds, bet_side: str) -> float:
+    """Retorna o lucro por stake=1 considerando splits (meias/unidades).
+       odds no formato Asian (Malay/Indo) conforme funções acima.
     """
-    Retorna o lucro por stake=1.
-    bet_side: 'Home' ou 'Away'
-    asian_line_components: lista de floats (ex.: [0.5, 1.0])
-    """
-    # validar inputs
     if len(asian_line_components) == 0:
         return 0.0
     if pd.isna(goals_h) or pd.isna(goals_a) or pd.isna(odds):
         return 0.0
+
+    win_p = asian_odds_win_profit(odds)
+    lose_p = asian_odds_loss_profit(odds)
 
     profits = []
     for h in asian_line_components:
@@ -88,11 +141,11 @@ def settle_ah_bet(goals_h, goals_a, asian_line_components, odds, bet_side: str) 
             margin = (goals_a - goals_h) + (-h)
 
         if margin > 0:
-            profits.append(odds - 1.0)   # win
+            profits.append(win_p)     # full win
         elif margin == 0:
-            profits.append(0.0)          # push
+            profits.append(0.0)       # push
         else:
-            profits.append(-1.0)         # loss
+            profits.append(lose_p)    # full loss
 
     return sum(profits) / len(profits)
 
@@ -114,18 +167,12 @@ for file in sorted(os.listdir(DATA_FOLDER)):
     except Exception:
         continue
 
-    # exigir colunas básicas
     missing = [c for c in REQUIRED_COLS if c not in df.columns]
     if missing:
         continue
 
-    # descartar linhas sem gols (não dá para assentar AH)
     df = df.dropna(subset=["Goals_H_FT", "Goals_A_FT"])
-
-    # parse da data
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
-
-    # manter
     all_dfs.append(df)
 
 if not all_dfs:
@@ -134,8 +181,10 @@ if not all_dfs:
 
 df_all = pd.concat(all_dfs, ignore_index=True)
 
-# criar coluna com a versão "limpa" do handicap para filtro (média dos componentes)
-df_all["AH_components"] = df_all["Asian_Line"].apply(parse_asian_line)
+# construir componentes do AH com sinal (considera favorito pelo menor Odd_H_Asi)
+df_all["AH_components"] = df_all.apply(
+    lambda r: parse_asian_line(r["Asian_Line"], r["Odd_H_Asi"], r["Odd_A_Asi"]), axis=1
+)
 df_all = df_all[df_all["AH_components"].map(len) > 0].copy()
 df_all["AH_clean"] = df_all["AH_components"].apply(lambda lst: sum(lst)/len(lst))
 
