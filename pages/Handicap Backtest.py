@@ -7,14 +7,16 @@ import matplotlib.pyplot as plt
 st.set_page_config(page_title="Strategy Backtest – Asian Handicap (Com Odds)", layout="wide")
 st.title("📈 Strategy Backtest – Asian Handicap (Com Odds)")
 
-# 🔹 Pasta com CSVs
+# 🔹 Pasta com CSVs (contendo Goals, Asian_Line, Odds)
 GAMES_FOLDER = "GamesDay/GamesAsian"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 def _base_parse_asian_line(text: str):
-    """Parse básico sem sinal. Retorna componentes (>=0) para suportar quartas/meias."""
+    """Parse básico sem sinal. Retorna componentes (>=0) para suportar quartas/meias.
+       Exemplos: '0.5/1' -> [0.5, 1.0], '-0.75' -> [0.75] (sinal tratado depois)
+    """
     if text is None:
         return []
     s = str(text).strip().lower().replace(' ', '')
@@ -41,8 +43,8 @@ def _base_parse_asian_line(text: str):
     return [abs(x)]
 
 def parse_asian_line(text: str):
-    """Retorna componentes do handicap **com sinal para o time da casa**.
-       Regra: sem sinal explícito ⇒ POSITIVO para HOME.
+    """Retorna componentes do handicap **com sinal para o time da casa (HOME)**.
+       Sem sinal explícito ⇒ assume POSITIVO para HOME.
     """
     if text is None:
         return []
@@ -71,33 +73,35 @@ def to_net_odds(x):
         return None
     return v - 1.0 if v >= 1.5 else v
 
-def settle_ah_with_odds(goals_h, goals_a, ah_components, bet_on: str, net_odds: float) -> float:
-    """Calcula o lucro por aposta (stake=1) usando **odd líquida**:
-       - vitória componente → +net_odds
-       - push → 0
-       - derrota → -1
-       Resultado final é a MÉDIA dos componentes (gera meia vitória/derrota automaticamente).
+def settle_ah_with_odds(goals_h, goals_a, ah_components_home, bet_on: str, net_odds: float) -> float:
+    """Liquidação com **odd líquida** (stake=1):
+       vitória = +net_odds · push = 0 · derrota = -1
+       A média dos componentes gera meia vitória (+net_odds/2) e meia derrota (-0.5) automaticamente.
+       IMPORTANTE: `ah_components_home` é SEMPRE a linha do HOME; para Away inverto o sinal.
     """
     if (
-        len(ah_components) == 0
+        len(ah_components_home) == 0
         or pd.isna(goals_h) or pd.isna(goals_a)
         or net_odds is None
     ):
         return 0.0
 
     profits = []
-    for h in ah_components:
+    score_diff = goals_h - goals_a  # H - A
+    for h_home in ah_components_home:
         if bet_on == "Home":
-            margin = (goals_h - goals_a) + h
+            margin = score_diff + h_home
         else:
-            margin = (goals_a - goals_h) + (-h)
+            # Linha para Away é o inverso da linha do Home
+            h_away = -h_home
+            margin = (goals_a - goals_h) + h_away  # = -score_diff - h_home
 
         if margin > 0:
-            profits.append(net_odds)   # vitória
+            profits.append(net_odds)   # vitória completa
         elif abs(margin) < 1e-9:
             profits.append(0.0)        # push
         else:
-            profits.append(-1.0)       # derrota
+            profits.append(-1.0)       # derrota completa
 
     return sum(profits) / len(profits)
 
@@ -129,7 +133,7 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
 
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
 
-        # componentes + AH limpo (média, para filtros)
+        # componentes da linha do HOME + versão média para filtro
         df["AH_components"] = df["Asian_Line"].apply(parse_asian_line)
         df = df[df["AH_components"].map(len) > 0].copy()
         df["AH_clean"] = df["AH_components"].apply(lambda lst: sum(lst)/len(lst))
@@ -176,7 +180,7 @@ filtered_df = df_all[
     (df_all["AH_clean"] >= ah_range[0]) & (df_all["AH_clean"] <= ah_range[1])
 ].copy()
 
-# 🧠 Cálculo do lucro com odds
+# 🧠 Cálculo do lucro com odds (stake=1)
 def calculate_profit(row):
     net_odds = row["Odd_H_liq"] if bet_on == "Home" else row["Odd_A_liq"]
     return settle_ah_with_odds(
@@ -212,7 +216,6 @@ if not filtered_df.empty:
     col2.metric("Winrate", f"{winrate:.1%}")
     col3.metric("Mean AH (Home line)", f"{mean_ah:+.2f}")
     col4.metric("ROI (per bet)", f"{roi:.1%}")
-
     st.caption(f"Pushes: {pushes} · Losses: {losses} · Mean net-odds ({bet_on}): {mean_odd_liq:.2f}")
 
     # 📋 Tabela
