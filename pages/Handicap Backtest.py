@@ -10,7 +10,7 @@ st.title("⚖️ Asian Handicap Backtest")
 # ──────────────────────────────────────────────────────────────────────────────
 # Config
 # ──────────────────────────────────────────────────────────────────────────────
-DATA_FOLDER = "GamesAsian"   # <- pasta com os CSVs de AH
+DATA_FOLDER = "GamesDay/GamesAsian"   # <- pasta com os CSVs de AH
 
 REQUIRED_COLS = [
     "Date", "League", "Home", "Away",
