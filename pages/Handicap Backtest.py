@@ -10,7 +10,7 @@ st.set_page_config(page_title="Strategy Backtest – Asian Handicap", layout="wi
 st.title("📈 Strategy Backtest – Asian Handicap")
 
 # 🔹 Folder containing match data CSVs (Asian Handicap)
-GAMES_FOLDER = "GamesAsian"
+GAMES_FOLDER = "GamesDay/GamesAsian"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
