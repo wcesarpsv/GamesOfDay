@@ -7,16 +7,12 @@ import matplotlib.pyplot as plt
 st.set_page_config(page_title="Strategy Backtest – Asian Handicap (Com Odds)", layout="wide")
 st.title("📈 Strategy Backtest – Asian Handicap (Com Odds)")
 
-# 🔹 Pasta com CSVs (contendo Goals, Asian_Line, Odds)
 GAMES_FOLDER = "GamesDay/GamesAsian"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 def _base_parse_asian_line(text: str):
-    """Parse básico sem sinal. Retorna componentes (>=0) para suportar quartas/meias.
-       Exemplos: '0.5/1' -> [0.5, 1.0], '-0.75' -> [0.75] (sinal tratado depois)
-    """
     if text is None:
         return []
     s = str(text).strip().lower().replace(' ', '')
@@ -43,9 +39,6 @@ def _base_parse_asian_line(text: str):
     return [abs(x)]
 
 def parse_asian_line(text: str):
-    """Retorna componentes do handicap **com sinal para o time da casa (HOME)**.
-       Sem sinal explícito ⇒ assume POSITIVO para HOME.
-    """
     if text is None:
         return []
     raw = str(text).strip().replace(' ', '')
@@ -61,10 +54,6 @@ def parse_asian_line(text: str):
     return [sign * p for p in parts]
 
 def to_net_odds(x):
-    """Normaliza odd: aceita formato líquido (~0.8–1.2) ou decimal (>=1.5).
-       - Se x >= 1.5 → retorna (x - 1)
-       - Caso contrário → assume que já é líquida
-    """
     if pd.isna(x):
         return None
     try:
@@ -74,11 +63,6 @@ def to_net_odds(x):
     return v - 1.0 if v >= 1.5 else v
 
 def settle_ah_with_odds(goals_h, goals_a, ah_components_home, bet_on: str, net_odds: float) -> float:
-    """Liquidação com **odd líquida** (stake=1):
-       vitória = +net_odds · push = 0 · derrota = -1
-       A média dos componentes gera meia vitória (+net_odds/2) e meia derrota (-0.5) automaticamente.
-       IMPORTANTE: `ah_components_home` é SEMPRE a linha do HOME; para Away inverto o sinal.
-    """
     if (
         len(ah_components_home) == 0
         or pd.isna(goals_h) or pd.isna(goals_a)
@@ -92,7 +76,6 @@ def settle_ah_with_odds(goals_h, goals_a, ah_components_home, bet_on: str, net_o
         if bet_on == "Home":
             margin = score_diff + h_home
         else:
-            # Linha para Away é o inverso da linha do Home
             h_away = -h_home
             margin = (goals_a - goals_h) + h_away  # = -score_diff - h_home
 
@@ -104,6 +87,36 @@ def settle_ah_with_odds(goals_h, goals_a, ah_components_home, bet_on: str, net_o
             profits.append(-1.0)       # derrota completa
 
     return sum(profits) / len(profits)
+
+# 🔧 componente híbrido: número + slider + seletor de fonte
+def range_filter_hibrido(label: str, data_min: float, data_max: float, step: float, key_prefix: str):
+    st.sidebar.markdown(f"**{label}**")
+    c1, c2 = st.sidebar.columns(2)
+    min_val = c1.number_input("Min", value=float(data_min), min_value=float(data_min), max_value=float(data_max),
+                              step=step, key=f"{key_prefix}_min")
+    max_val = c2.number_input("Max", value=float(data_max), min_value=float(data_min), max_value=float(data_max),
+                              step=step, key=f"{key_prefix}_max")
+
+    # garante ordem
+    if min_val > max_val:
+        min_val, max_val = max_val, min_val
+        st.session_state[f"{key_prefix}_min"] = min_val
+        st.session_state[f"{key_prefix}_max"] = max_val
+
+    slider_val = st.sidebar.slider("Arraste para ajustar",
+                                   min_value=float(data_min),
+                                   max_value=float(data_max),
+                                   value=(float(min_val), float(max_val)),
+                                   step=step,
+                                   key=f"{key_prefix}_slider")
+
+    fonte = st.sidebar.radio("Fonte do filtro", ["Slider", "Manual"], horizontal=True, key=f"{key_prefix}_src")
+    st.sidebar.divider()
+
+    if fonte == "Slider":
+        return slider_val[0], slider_val[1]
+    else:
+        return float(min_val), float(max_val)
 
 # ⬇️ Carrega todos os CSVs válidos
 all_dfs = []
@@ -133,12 +146,10 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
 
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
 
-        # componentes da linha do HOME + versão média para filtro
         df["AH_components"] = df["Asian_Line"].apply(parse_asian_line)
         df = df[df["AH_components"].map(len) > 0].copy()
         df["AH_clean"] = df["AH_components"].apply(lambda lst: sum(lst)/len(lst))
 
-        # normaliza odds para formato líquido
         df["Odd_H_liq"] = df["Odd_H_Asi"].apply(to_net_odds)
         df["Odd_A_liq"] = df["Odd_A_Asi"].apply(to_net_odds)
 
@@ -151,33 +162,25 @@ if not all_dfs:
 df_all = pd.concat(all_dfs, ignore_index=True)
 df_all = df_all.sort_values(by="Date").reset_index(drop=True)
 
-# 🎚️ Filtros
+# 🎚️ Filtros (híbridos)
 st.sidebar.header("🎯 Filter Matches")
-diff_power = st.sidebar.slider(
-    "📊 Diff_Power",
-    float(df_all["Diff_Power"].min()),
-    float(df_all["Diff_Power"].max()),
-    (float(df_all["Diff_Power"].min()), float(df_all["Diff_Power"].max()))
-)
-diff_ht_p = st.sidebar.slider(
-    "📉 Diff_HT_P",
-    float(df_all["Diff_HT_P"].min()),
-    float(df_all["Diff_HT_P"].max()),
-    (float(df_all["Diff_HT_P"].min()), float(df_all["Diff_HT_P"].max()))
-)
+
+dp_min, dp_max = df_all["Diff_Power"].min(), df_all["Diff_Power"].max()
+diff_power_sel = range_filter_hibrido("📊 Diff_Power", dp_min, dp_max, step=0.01, key_prefix="diff_power")
+
+htp_min, htp_max = df_all["Diff_HT_P"].min(), df_all["Diff_HT_P"].max()
+diff_ht_p_sel = range_filter_hibrido("📉 Diff_HT_P", htp_min, htp_max, step=0.01, key_prefix="diff_htp")
+
 ah_min, ah_max = float(df_all["AH_clean"].min()), float(df_all["AH_clean"].max())
-ah_range = st.sidebar.slider(
-    "⚖️ Asian Handicap (Home line, AH_clean)",
-    ah_min, ah_max, (ah_min, ah_max)
-)
+ah_range_sel = range_filter_hibrido("⚖️ Asian Handicap (Home line, AH_clean)", ah_min, ah_max, step=0.25, key_prefix="ah_clean")
 
 bet_on = st.sidebar.selectbox("🎯 Bet on", ["Home", "Away"])
 
 # 🧮 Aplica filtros
 filtered_df = df_all[
-    (df_all["Diff_Power"] >= diff_power[0]) & (df_all["Diff_Power"] <= diff_power[1]) &
-    (df_all["Diff_HT_P"] >= diff_ht_p[0]) & (df_all["Diff_HT_P"] <= diff_ht_p[1]) &
-    (df_all["AH_clean"] >= ah_range[0]) & (df_all["AH_clean"] <= ah_range[1])
+    (df_all["Diff_Power"] >= diff_power_sel[0]) & (df_all["Diff_Power"] <= diff_power_sel[1]) &
+    (df_all["Diff_HT_P"] >= diff_ht_p_sel[0]) & (df_all["Diff_HT_P"] <= diff_ht_p_sel[1]) &
+    (df_all["AH_clean"] >= ah_range_sel[0]) & (df_all["AH_clean"] <= ah_range_sel[1])
 ].copy()
 
 # 🧠 Cálculo do lucro com odds (stake=1)
@@ -191,7 +194,6 @@ if not filtered_df.empty:
     filtered_df["Bet Result"] = filtered_df.apply(calculate_profit, axis=1)
     filtered_df["Cumulative Profit"] = filtered_df["Bet Result"].cumsum()
 
-    # 📈 Gráfico
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(range(len(filtered_df)), filtered_df["Cumulative Profit"], marker="o")
     ax.set_xlabel("Bet Number")
@@ -199,7 +201,6 @@ if not filtered_df.empty:
     ax.set_title("Cumulative Profit by Bet (Asian Handicap, Stake=1)")
     st.pyplot(fig)
 
-    # 🔢 Métricas
     n_matches = len(filtered_df)
     wins = (filtered_df["Bet Result"] > 0).sum()
     pushes = (filtered_df["Bet Result"] == 0).sum()
@@ -218,7 +219,6 @@ if not filtered_df.empty:
     col4.metric("ROI (per bet)", f"{roi:.1%}")
     st.caption(f"Pushes: {pushes} · Losses: {losses} · Mean net-odds ({bet_on}): {mean_odd_liq:.2f}")
 
-    # 📋 Tabela
     show_cols = [
         "Date", "League", "Home", "Away",
         "Asian_Line", "AH_clean",
