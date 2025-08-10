@@ -4,8 +4,8 @@ import os
 import matplotlib.pyplot as plt
 from datetime import date
 
-st.set_page_config(page_title="Strategy Backtest – 1X2 (With Odds)", layout="wide")
-st.title("📈 Strategy Backtest – 1X2 (With Odds)")
+st.set_page_config(page_title="Strategy Backtest – 1X2", layout="wide")
+st.title("📈 Strategy Backtest – 1X2")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
