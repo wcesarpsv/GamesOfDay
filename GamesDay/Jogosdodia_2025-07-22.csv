@@ -1,20 +1,14 @@
 Date,League,Home,Away,Diff_HT_P,Diff_Power,OU_Total,Goals_H_FT,Goals_A_FT,Odd_H,Odd_D,Odd_A
-2025-07-22,K League 1  ,FC Anyang,Daegu FC,13.665454545454544,22.583333333333336,38.1,4,0,1.95,3.5,3.5
-2025-07-22,K League 1  ,Gwangju Football Club,Gimcheon Sangmu FC,-10.844545454545454,-7.453333333333331,17.900000000000006,1,1,2.55,3.1,2.63
-2025-07-22,K League 1  ,Pohang Steelers,Suwon FC,-0.2536363636363665,4.164242424242428,-0.7000000000000064,1,5,1.85,3.4,3.7
-2025-07-22,Chinese FA Cup  ,Qingdao Youth Island,Beijing Guoan,-9.42638888888889,-6.423055555555564,-7.600000000000001,1,1,5.25,4.2,1.55
-2025-07-22,Chinese FA Cup  ,Yunnan Yukun,Guangdong GZ-Power,-0.7867857142857186,7.708214285714291,10.7,3,0,1.36,4.75,7.5
-2025-07-22,UEFA Champions League  ,FK Rigas Futbola skola,Malmo FF,-8.53833333333333,-0.8290909090909064,-27.270000000000003,1,4,3.5,3.25,2.05
-2025-07-22,Ecuador Campeonato Serie B  ,22 de Julio,Chacaritas SC,-5.6866666666666665,47.32666666666668,-47.78,3,0,1.57,3.9,4.75
-2025-07-22,Primera Division de Colombiano-Apertura  ,Alianza Petrolera,Deportes Tolima,15.938333333333336,3.983333333333338,6.4,0,1,2.4,3.1,3.1
-2025-07-22,Brazil Serie B  ,Operario Ferroviario PR,Atletico Clube Goianiense,-6.619999999999997,6.815555555555555,19.19,3,0,2.3,2.9,3.5
-2025-07-22,Copa Sudamericana  ,Cerro Largo,Central Cordoba SDE,3.1788888888888867,7.467222222222226,1.5000000000000036,0,3,3.6,3.0,2.2
-2025-07-22,Bolivia Primera Division  ,Real Tomayapo,Nacional Potosi,-5.642142857142849,-20.590357142857137,-23.4,0,1,2.3,3.25,2.9
-2025-07-22,Brazil Serie B  ,Atletico Paranaense,Ferroviaria SP,-38.81,-14.8,-10.0,1,1,1.5,3.8,7.0
-2025-07-22,Primera Division de Colombiano-Apertura  ,Independiente Santa Fe,Aguilas Doradas,-11.987435897435905,-26.76166666666667,3.800000000000004,0,0,1.83,3.1,5.0
-2025-07-22,Ecuador Campeonato Serie B  ,Cumbaya FC,CD Vargas Torres,-2.036666666666667,-12.026666666666666,-6.800000000000001,2,1,1.7,3.7,4.33
-2025-07-22,Brazil Serie B  ,Athletic Club MG,Coritiba PR,1.492222222222221,-27.12555555555556,5.379999999999999,1,1,2.38,3.0,3.3
-2025-07-22,Copa Sudamericana  ,Vasco da Gama,Independiente del Valle,-19.59166666666666,-29.26772727272727,31.5,1,1,1.75,3.6,5.0
-2025-07-22,Copa Sudamericana  ,America de Cali,Bahia,-9.182857142857138,4.95571428571429,1.3599999999999994,2,0,2.8,3.0,2.8
-2025-07-22,Brazil Serie B  ,Vila Nova,CRB AL,3.907777777777776,30.00888888888889,-12.68,2,0,1.91,3.1,4.75
-2025-07-22,Primera Division de Colombiano-Apertura  ,Deportivo Pereira,Atletico Nacional Medellin,33.445,13.423333333333346,2.719999999999999,2,1,2.8,3.2,2.55
+2025-07-22,K League 1  ,FC Anyang,Daegu FC,13.66545455,22.58333333,38.1,4,0,1.95,3.5,3.5
+2025-07-22,K League 1  ,Gwangju Football Club,Gimcheon Sangmu FC,-10.84454545,-7.453333333,17.9,1,1,2.55,3.1,2.63
+2025-07-22,K League 1  ,Pohang Steelers,Suwon FC,-0.253636364,4.164242424,-0.7,1,5,1.85,3.4,3.7
+2025-07-22,Ecuador Campeonato Serie B  ,22 de Julio,Chacaritas SC,-5.686666667,47.32666667,-47.78,3,0,1.57,3.9,4.75
+2025-07-22,Primera Division de Colombiano-Apertura  ,Alianza Petrolera,Deportes Tolima,15.93833333,3.983333333,6.4,0,1,2.4,3.1,3.1
+2025-07-22,Brazil Serie B  ,Operario Ferroviario PR,Atletico Clube Goianiense,-6.62,6.815555556,19.19,3,0,2.3,2.9,3.5
+2025-07-22,Bolivia Primera Division  ,Real Tomayapo,Nacional Potosi,-5.642142857,-20.59035714,-23.4,0,1,2.3,3.25,2.9
+2025-07-22,Brazil Serie B  ,Atletico Paranaense,Ferroviaria SP,-38.81,-14.8,-10,1,1,1.5,3.8,7
+2025-07-22,Primera Division de Colombiano-Apertura  ,Independiente Santa Fe,Aguilas Doradas,-11.9874359,-26.76166667,3.8,0,0,1.83,3.1,5
+2025-07-22,Ecuador Campeonato Serie B  ,Cumbaya FC,CD Vargas Torres,-2.036666667,-12.02666667,-6.8,2,1,1.7,3.7,4.33
+2025-07-22,Brazil Serie B  ,Athletic Club MG,Coritiba PR,1.492222222,-27.12555556,5.38,1,1,2.38,3,3.3
+2025-07-22,Brazil Serie B  ,Vila Nova,CRB AL,3.907777778,30.00888889,-12.68,2,0,1.91,3.1,4.75
+2025-07-22,Primera Division de Colombiano-Apertura  ,Deportivo Pereira,Atletico Nacional Medellin,33.445,13.42333333,2.72,2,1,2.8,3.2,2.55
