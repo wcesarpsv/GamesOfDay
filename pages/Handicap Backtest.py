@@ -19,10 +19,6 @@ ODDS_ARE_NET = True
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 def to_net_odds(x):
-    """Retorna a odd líquida por stake=1.
-       Se ODDS_ARE_NET=True, retorna o próprio valor (já líquido).
-       Caso contrário, retorna odds_decimais - 1.0
-    """
     if pd.isna(x):
         return None
     try:
@@ -32,7 +28,6 @@ def to_net_odds(x):
     return v if ODDS_ARE_NET else (v - 1.0)
 
 def settle_ah_with_odds(goals_h, goals_a, ah_components_home, bet_on: str, net_odds: float) -> float:
-    """Liquidação de AH por componentes (meias/quarter lines) com odds líquidas."""
     if (
         len(ah_components_home) == 0
         or pd.isna(goals_h) or pd.isna(goals_a)
@@ -64,9 +59,9 @@ def parse_away_line(raw: str):
     Parser robusto para a linha Asian do AWAY.
     - Mantém formatos com '/', ex.: '0/0.5', '0/-0.5', '1/1.5', '-0.5/1'
     - 'pk', 'p.k.', 'level' → [0.0]
-    - ±0.6666... → ±[1.0, 1.5] (como alinhado)
-    - 0.25 → [0, 0.5]; -0.75 → [-0.5, -1.0] (expansão de quarters)
-    Retorna lista de *floats* representando os componentes do AWAY.
+    - ±0.6666... → ±[1.0, 1.5]
+    - 0.25 → [0, 0.5]; -0.75 → [-0.5, -1.0]
+    Retorna lista de floats representando os componentes do AWAY.
     """
     if raw is None:
         return []
@@ -77,7 +72,6 @@ def parse_away_line(raw: str):
     if s in ("pk", "p.k.", "level"):
         return [0.0]
 
-    # Caso com slash: aplicar sinal geral (se houver) nas partes sem sinal próprio
     if "/" in s:
         overall_sign = -1 if s.startswith("-") else (1 if s.startswith("+") else None)
         s_no_pref = s[1:] if s and s[0] in "+-" else s
@@ -86,7 +80,7 @@ def parse_away_line(raw: str):
         for p in parts:
             if p in ("", "nan"):
                 return []
-            if p[0] in "+-":  # parte contém seu próprio sinal
+            if p[0] in "+-":
                 try:
                     parsed.append(float(p))
                 except Exception:
@@ -101,7 +95,6 @@ def parse_away_line(raw: str):
                 parsed.append(val)
         return parsed
 
-    # Numérico simples
     try:
         x = float(s)
     except Exception:
@@ -109,12 +102,12 @@ def parse_away_line(raw: str):
     if pd.isna(x):
         return []
 
-    # Mapeia ±2/3 → ±[1.0, 1.5]
+    # map ±2/3 → ±[1.0, 1.5]
     if abs(abs(x) - 2/3) < 1e-6:
         sign = -1 if x < 0 else 1
         return [sign*1.0, sign*1.5]
 
-    # Expansão de quarters (0.25 / 0.75)
+    # expand quarters 0.25 / 0.75
     frac = abs(x) - int(abs(x))
     base = int(abs(x))
     sign = -1 if x < 0 else 1
@@ -125,7 +118,6 @@ def parse_away_line(raw: str):
     return [x]
 
 def canonical(parts):
-    """Formata componentes em string canônica (ordem ascendente, remove .0)."""
     if not parts:
         return None
     def fmt(v):
@@ -136,7 +128,6 @@ def canonical(parts):
     a, b = sorted(parts)
     return f"{fmt(a)}/{fmt(b)}"
 
-# Componente híbrido: número + slider + seletor de fonte
 def range_filter_hibrido(label: str, data_min: float, data_max: float, step: float, key_prefix: str):
     st.sidebar.markdown(f"**{label}**")
     c1, c2 = st.sidebar.columns(2)
@@ -144,8 +135,6 @@ def range_filter_hibrido(label: str, data_min: float, data_max: float, step: flo
                               step=step, key=f"{key_prefix}_min")
     max_val = c2.number_input("Max", value=float(data_max), min_value=float(data_min), max_value=float(data_max),
                               step=step, key=f"{key_prefix}_max")
-
-    # garante ordem
     if min_val > max_val:
         min_val, max_val = max_val, min_val
         st.session_state[f"{key_prefix}_min"] = min_val
@@ -180,7 +169,6 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
 
     df_path = os.path.join(GAMES_FOLDER, file)
 
-    # 1) autodetect separator + encoding
     try:
         df = pd.read_csv(df_path, sep=None, engine="python", encoding="utf-8-sig")
     except Exception:
@@ -190,7 +178,6 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
             st.warning(f"⚠️ Failed to read {file}: {e}")
             continue
 
-    # 2) normalize headers and key text cols
     df.columns = df.columns.str.strip()
     for c in ["Asian_Line", "League", "Home", "Away"]:
         if c in df.columns:
@@ -202,46 +189,37 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
         "Odd_H_Asi","Odd_A_Asi"
     }
     if not required.issubset(set(df.columns)):
-        missing = sorted(required - set(df.columns))
-        st.info(f"ℹ️ Skipping {file}: missing columns -> {missing}")
+        st.info(f"ℹ️ Skipping {file}: missing columns -> {sorted(required - set(df.columns))}")
         continue
 
-    # 3) coerce numeric (NÃO incluir Asian_Line aqui!)
+    # numéricos (NÃO incluir Asian_Line aqui!)
     for c in ["Odd_H_Asi","Odd_A_Asi","Goals_H_FT","Goals_A_FT","Diff_Power","Diff_HT_P"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    # 4) manter linhas com gols + odds + Asian_Line presentes
+    # manter linhas com gols + odds + Asian_Line presentes
     df["Asian_Line"] = df["Asian_Line"].astype(str).str.strip().replace({"": None, "nan": None})
     df = df.dropna(subset=["Goals_H_FT","Goals_A_FT","Odd_H_Asi","Odd_A_Asi","Asian_Line"])
     if df.empty:
         st.info(f"ℹ️ Skipping {file}: no rows with goals + odds + Asian_Line.")
         continue
 
-    # 5) parse date
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
 
-    # 6) renomeia: a fonte traz a linha do AWAY
+    # a fonte traz a linha do AWAY
     df = df.rename(columns={"Asian_Line": "Asian_Line_Away_raw"})
-
-    # 7) parse da linha do AWAY (mantendo slash) → componentes do Away
     df["AH_components_away"] = df["Asian_Line_Away_raw"].apply(parse_away_line)
-
-    # canônico do Away (visual)
     df["Asian_Line_Away"] = df["AH_components_away"].apply(canonical)
 
-    # 8) converte para componentes do HOME (inverte o sinal de cada componente)
+    # componentes do HOME (inverte sinal)
     df["AH_components_home"] = df["AH_components_away"].apply(lambda lst: [-x for x in lst])
-
-    # descarta linhas sem componentes válidos
     df = df[df["AH_components_home"].map(len) > 0].copy()
     if df.empty:
         st.info(f"ℹ️ Skipping {file}: invalid Asian_Line_Away in all rows.")
         continue
 
-    # 9) AH_clean (HOME) = média dos componentes do HOME
     df["AH_clean_home"] = df["AH_components_home"].apply(lambda lst: sum(lst)/len(lst))
 
-    # 10) odds líquidas
+    # odds líquidas
     df["Odd_H_liq"] = df["Odd_H_Asi"].apply(to_net_odds)
     df["Odd_A_liq"] = df["Odd_A_Asi"].apply(to_net_odds)
     df = df.dropna(subset=["Odd_H_liq","Odd_A_liq"])
@@ -259,34 +237,54 @@ df_all = pd.concat(all_dfs, ignore_index=True)
 df_all = df_all.sort_values(by="Date").reset_index(drop=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Filters
+# Sidebar Filters (inclui filtro de Ligas)
 # ──────────────────────────────────────────────────────────────────────────────
 st.sidebar.header("🎯 Filter Matches")
 
-# Primeiro o lado da aposta (opção 2)
+# 1) League filter (Include only / Exclude)
+st.sidebar.subheader("Leagues")
+league_mode = st.sidebar.radio("Mode", ["Include only", "Exclude"], horizontal=True, key="league_mode")
+all_leagues = sorted([x for x in df_all["League"].dropna().unique().tolist()])
+selected_leagues = st.sidebar.multiselect("Leagues", options=all_leagues, default=[])
+
+if selected_leagues:
+    if league_mode == "Include only":
+        df_work = df_all[df_all["League"].isin(selected_leagues)].copy()
+    else:  # Exclude
+        df_work = df_all[~df_all["League"].isin(selected_leagues)].copy()
+else:
+    df_work = df_all.copy()
+
+if df_work.empty:
+    st.warning("⚠️ No data after league filter.")
+    st.stop()
+
+# 2) Bet side FIRST (Option 2)
 bet_on = st.sidebar.selectbox("🎯 Bet on", ["Home", "Away"])
 
-# Diff_Power / Diff_HT_P
-dp_min, dp_max = df_all["Diff_Power"].min(), df_all["Diff_Power"].max()
+# 3) Numeric filters
+dp_min, dp_max = df_work["Diff_Power"].min(), df_work["Diff_Power"].max()
 diff_power_sel = range_filter_hibrido("📊 Diff_Power", dp_min, dp_max, step=0.01, key_prefix="diff_power")
 
-htp_min, htp_max = df_all["Diff_HT_P"].min(), df_all["Diff_HT_P"].max()
+htp_min, htp_max = df_work["Diff_HT_P"].min(), df_work["Diff_HT_P"].max()
 diff_ht_p_sel = range_filter_hibrido("📉 Diff_HT_P", htp_min, htp_max, step=0.01, key_prefix="diff_htp")
 
 # Mapear AH para o lado apostado:
 # Home → usa AH_clean_home; Away → usa -AH_clean_home
-df_all["AH_clean_for_side"] = df_all["AH_clean_home"] if bet_on == "Home" else -df_all["AH_clean_home"]
+df_work["AH_clean_for_side"] = df_work["AH_clean_home"] if bet_on == "Home" else -df_work["AH_clean_home"]
 
-ah_side_min = float(df_all["AH_clean_for_side"].min())
-ah_side_max = float(df_all["AH_clean_for_side"].max())
+ah_side_min = float(df_work["AH_clean_for_side"].min())
+ah_side_max = float(df_work["AH_clean_for_side"].max())
 ah_range_sel = range_filter_hibrido("⚖️ Asian Handicap (side line, AH_for_side)", ah_side_min, ah_side_max, step=0.25, key_prefix="ah_for_side")
 
-# Epsilon para evitar corte por arredondamento de CSV
+# ──────────────────────────────────────────────────────────────────────────────
+# Apply filters
+# ──────────────────────────────────────────────────────────────────────────────
 eps = 1e-6
-filtered_df = df_all[
-    (df_all["Diff_Power"] >= diff_power_sel[0] - eps) & (df_all["Diff_Power"] <= diff_power_sel[1] + eps) &
-    (df_all["Diff_HT_P"] >= diff_ht_p_sel[0]) & (df_all["Diff_HT_P"] <= diff_ht_p_sel[1]) &
-    (df_all["AH_clean_for_side"] >= ah_range_sel[0]) & (df_all["AH_clean_for_side"] <= ah_range_sel[1])
+filtered_df = df_work[
+    (df_work["Diff_Power"] >= diff_power_sel[0] - eps) & (df_work["Diff_Power"] <= diff_power_sel[1] + eps) &
+    (df_work["Diff_HT_P"] >= diff_ht_p_sel[0]) & (df_work["Diff_HT_P"] <= diff_ht_p_sel[1]) &
+    (df_work["AH_clean_for_side"] >= ah_range_sel[0]) & (df_work["AH_clean_for_side"] <= ah_range_sel[1])
 ].copy()
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -314,8 +312,8 @@ if not filtered_df.empty:
     pushes = (filtered_df["Bet Result"] == 0).sum()
     losses = (filtered_df["Bet Result"] < 0).sum()
     winrate = wins / n_matches if n_matches else 0.0
-    mean_ah_home = filtered_df["AH_clean_home"].mean()          # referência Home (corrigida)
-    mean_ah_side = filtered_df["AH_clean_for_side"].mean()      # referência no lado apostado
+    mean_ah_home = filtered_df["AH_clean_home"].mean()
+    mean_ah_side = filtered_df["AH_clean_for_side"].mean()
     mean_odd_liq = (filtered_df["Odd_H_liq"] if bet_on == "Home" else filtered_df["Odd_A_liq"]).mean()
     total_profit = filtered_df["Bet Result"].sum()
     roi = total_profit / n_matches if n_matches else 0.0
@@ -335,8 +333,8 @@ if not filtered_df.empty:
 
     show_cols = [
         "Date", "League", "Home", "Away",
-        "Asian_Line_Away_raw", "Asian_Line_Away",    # como veio do CSV e canônico do Away
-        "AH_clean_home", "AH_clean_for_side",        # referência do Home e do lado apostado
+        "Asian_Line_Away_raw", "Asian_Line_Away",
+        "AH_clean_home", "AH_clean_for_side",
         "Diff_Power", "Diff_HT_P",
         "Odd_H_Asi", "Odd_A_Asi", "Odd_H_liq", "Odd_A_liq",
         "Goals_H_FT", "Goals_A_FT",
