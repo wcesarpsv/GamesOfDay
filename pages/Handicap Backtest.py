@@ -12,56 +12,17 @@ GAMES_FOLDER = "GamesDay/GamesAsian"
 # ──────────────────────────────────────────────────────────────────────────────
 # Config
 # ──────────────────────────────────────────────────────────────────────────────
-# Suas odds já são LÍQUIDAS (lucro por stake=1)
+# Suas odds Odd_H_Asi / Odd_A_Asi já são líquidas (lucro por stake=1).
 ODDS_ARE_NET = True
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
-def _base_parse_asian_line(text: str):
-    if text is None or (isinstance(text, float) and pd.isna(text)):
-        return []
-    s = str(text).strip().lower().replace(' ', '')
-    s = s.replace(',', '.')
-    if s in ('pk', 'p.k.', 'level'):
-        return [0.0]
-    s_abs = re.sub(r'^[+-]', '', s)
-    if '/' in s_abs:
-        try:
-            a, b = s_abs.split('/')
-            return [float(a), float(b)]
-        except Exception:
-            return []
-    try:
-        x = float(s_abs)
-    except Exception:
-        return []
-    if pd.isna(x):
-        return []
-    frac = abs(x) - int(abs(x))
-    base = int(abs(x))
-    if abs(frac - 0.25) < 1e-9:
-        return [base + 0.0, base + 0.5]
-    if abs(frac - 0.75) < 1e-9:
-        return [base + 0.5, base + 1.0]
-    return [abs(x)]
-
-def parse_asian_line(text: str):
-    if text is None or (isinstance(text, float) and pd.isna(text)):
-        return []
-    raw = str(text).strip().replace(' ', '')
-    parts = _base_parse_asian_line(raw)
-    if not parts:
-        return []
-    if raw.startswith('+'):
-        sign = 1
-    elif raw.startswith('-'):
-        sign = -1
-    else:
-        sign = 1
-    return [sign * p for p in parts]
-
 def to_net_odds(x):
+    """Retorna a odd líquida por stake=1.
+       Se ODDS_ARE_NET=True, retorna o próprio valor (já líquido).
+       Caso contrário, retorna odds_decimais - 1.0
+    """
     if pd.isna(x):
         return None
     try:
@@ -71,6 +32,7 @@ def to_net_odds(x):
     return v if ODDS_ARE_NET else (v - 1.0)
 
 def settle_ah_with_odds(goals_h, goals_a, ah_components_home, bet_on: str, net_odds: float) -> float:
+    """Liquidação de AH por componentes (meias/quarter lines) com odds líquidas."""
     if (
         len(ah_components_home) == 0
         or pd.isna(goals_h) or pd.isna(goals_a)
@@ -96,6 +58,85 @@ def settle_ah_with_odds(goals_h, goals_a, ah_components_home, bet_on: str, net_o
 
     return sum(profits) / len(profits)
 
+# ---------- Parser da linha do AWAY (preserva slashes e trata casos especiais) ----------
+def parse_away_line(raw: str):
+    """
+    Parser robusto para a linha Asian do AWAY.
+    - Mantém formatos com '/', ex.: '0/0.5', '0/-0.5', '1/1.5', '-0.5/1'
+    - 'pk', 'p.k.', 'level' → [0.0]
+    - ±0.6666... → ±[1.0, 1.5] (como alinhado)
+    - 0.25 → [0, 0.5]; -0.75 → [-0.5, -1.0] (expansão de quarters)
+    Retorna lista de *floats* representando os componentes do AWAY.
+    """
+    if raw is None:
+        return []
+    s = str(raw).strip().lower().replace(" ", "")
+    s = s.replace(",", ".")
+    if s in ("", "nan"):
+        return []
+    if s in ("pk", "p.k.", "level"):
+        return [0.0]
+
+    # Caso com slash: aplicar sinal geral (se houver) nas partes sem sinal próprio
+    if "/" in s:
+        overall_sign = -1 if s.startswith("-") else (1 if s.startswith("+") else None)
+        s_no_pref = s[1:] if s and s[0] in "+-" else s
+        parts = s_no_pref.split("/")
+        parsed = []
+        for p in parts:
+            if p in ("", "nan"):
+                return []
+            if p[0] in "+-":  # parte contém seu próprio sinal
+                try:
+                    parsed.append(float(p))
+                except Exception:
+                    return []
+            else:
+                try:
+                    val = float(p)
+                except Exception:
+                    return []
+                if overall_sign is not None:
+                    val *= overall_sign
+                parsed.append(val)
+        return parsed
+
+    # Numérico simples
+    try:
+        x = float(s)
+    except Exception:
+        return []
+    if pd.isna(x):
+        return []
+
+    # Mapeia ±2/3 → ±[1.0, 1.5]
+    if abs(abs(x) - 2/3) < 1e-6:
+        sign = -1 if x < 0 else 1
+        return [sign*1.0, sign*1.5]
+
+    # Expansão de quarters (0.25 / 0.75)
+    frac = abs(x) - int(abs(x))
+    base = int(abs(x))
+    sign = -1 if x < 0 else 1
+    if abs(frac - 0.25) < 1e-9:
+        return [sign*(base + 0.0), sign*(base + 0.5)]
+    if abs(frac - 0.75) < 1e-9:
+        return [sign*(base + 0.5), sign*(base + 1.0)]
+    return [x]
+
+def canonical(parts):
+    """Formata componentes em string canônica (ordem ascendente, remove .0)."""
+    if not parts:
+        return None
+    def fmt(v):
+        s = f"{v:.2f}".rstrip("0").rstrip(".")
+        return "0" if s in ("-0", "+0") else s
+    if len(parts) == 1:
+        return fmt(parts[0])
+    a, b = sorted(parts)
+    return f"{fmt(a)}/{fmt(b)}"
+
+# Componente híbrido: número + slider + seletor de fonte
 def range_filter_hibrido(label: str, data_min: float, data_max: float, step: float, key_prefix: str):
     st.sidebar.markdown(f"**{label}**")
     c1, c2 = st.sidebar.columns(2)
@@ -110,14 +151,14 @@ def range_filter_hibrido(label: str, data_min: float, data_max: float, step: flo
         st.session_state[f"{key_prefix}_min"] = min_val
         st.session_state[f"{key_prefix}_max"] = max_val
 
-    slider_val = st.sidebar.slider("Arraste para ajustar",
+    slider_val = st.sidebar.slider("Drag to adjust",
                                    min_value=float(data_min),
                                    max_value=float(data_max),
                                    value=(float(min_val), float(max_val)),
                                    step=step,
                                    key=f"{key_prefix}_slider")
 
-    fonte = st.sidebar.radio("Fonte do filtro", ["Slider", "Manual"], horizontal=True, key=f"{key_prefix}_src")
+    fonte = st.sidebar.radio("Filter source", ["Slider", "Manual"], horizontal=True, key=f"{key_prefix}_src")
     st.sidebar.divider()
 
     if fonte == "Slider":
@@ -165,34 +206,42 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
         st.info(f"ℹ️ Skipping {file}: missing columns -> {missing}")
         continue
 
-    # 3) coerce numeric
-    for c in ["Odd_H_Asi","Odd_A_Asi","Goals_H_FT","Goals_A_FT","Diff_Power","Diff_HT_P","Asian_Line"]:
+    # 3) coerce numeric (NÃO incluir Asian_Line aqui!)
+    for c in ["Odd_H_Asi","Odd_A_Asi","Goals_H_FT","Goals_A_FT","Diff_Power","Diff_HT_P"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    # 4) keep only rows with goals + odds present
-    df = df.dropna(subset=["Goals_H_FT","Goals_A_FT","Odd_H_Asi","Odd_A_Asi"])
+    # 4) manter linhas com gols + odds + Asian_Line presentes
+    df["Asian_Line"] = df["Asian_Line"].astype(str).str.strip().replace({"": None, "nan": None})
+    df = df.dropna(subset=["Goals_H_FT","Goals_A_FT","Odd_H_Asi","Odd_A_Asi","Asian_Line"])
     if df.empty:
-        st.info(f"ℹ️ Skipping {file}: no rows with goals + odds.")
+        st.info(f"ℹ️ Skipping {file}: no rows with goals + odds + Asian_Line.")
         continue
 
     # 5) parse date
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
 
-    # 6) tirar NaN explícito em Asian_Line
-    df = df.dropna(subset=["Asian_Line"])
+    # 6) renomeia: a fonte traz a linha do AWAY
+    df = df.rename(columns={"Asian_Line": "Asian_Line_Away_raw"})
 
-    # 7) IMPORTANTÍSSIMO: sua Asian_Line é do **Away**.
-    #    Vamos manter a coluna original e inverter o sinal para obter a linha do **Home**.
-    df = df.rename(columns={"Asian_Line": "Asian_Line_Away"})
-    df["AH_components_home"] = df["Asian_Line_Away"].apply(parse_asian_line).apply(lambda lst: [-x for x in lst])
+    # 7) parse da linha do AWAY (mantendo slash) → componentes do Away
+    df["AH_components_away"] = df["Asian_Line_Away_raw"].apply(parse_away_line)
+
+    # canônico do Away (visual)
+    df["Asian_Line_Away"] = df["AH_components_away"].apply(canonical)
+
+    # 8) converte para componentes do HOME (inverte o sinal de cada componente)
+    df["AH_components_home"] = df["AH_components_away"].apply(lambda lst: [-x for x in lst])
+
+    # descarta linhas sem componentes válidos
     df = df[df["AH_components_home"].map(len) > 0].copy()
     if df.empty:
         st.info(f"ℹ️ Skipping {file}: invalid Asian_Line_Away in all rows.")
         continue
 
+    # 9) AH_clean (HOME) = média dos componentes do HOME
     df["AH_clean_home"] = df["AH_components_home"].apply(lambda lst: sum(lst)/len(lst))
 
-    # 8) net odds (identity if already net)
+    # 10) odds líquidas
     df["Odd_H_liq"] = df["Odd_H_Asi"].apply(to_net_odds)
     df["Odd_A_liq"] = df["Odd_A_Asi"].apply(to_net_odds)
     df = df.dropna(subset=["Odd_H_liq","Odd_A_liq"])
@@ -278,15 +327,16 @@ if not filtered_df.empty:
     col3.metric("Mean AH (side)", f"{mean_ah_side:+.2f}")
     col4.metric("ROI (per bet)", f"{roi:.1%}")
     st.caption(
-        "Obs.: 'Asian_Line_Away' vem da fonte como handicap do visitante. "
-        "Internamente convertida para a linha do mandante (AH_clean_home)."
-        f" · Pushes: {pushes} · Losses: {losses} · Mean net-odds ({bet_on}): {mean_odd_liq:.2f} "
+        "Obs.: 'Asian_Line_Away_raw' vem da fonte como handicap do visitante. "
+        "Internamente convertida para a linha do mandante (AH_clean_home). "
+        f"Pushes: {pushes} · Losses: {losses} · Mean net-odds ({bet_on}): {mean_odd_liq:.2f} "
         f"· Mean AH (home ref): {mean_ah_home:+.2f}"
     )
 
     show_cols = [
         "Date", "League", "Home", "Away",
-        "Asian_Line_Away", "AH_clean_home", "AH_clean_for_side",
+        "Asian_Line_Away_raw", "Asian_Line_Away",    # como veio do CSV e canônico do Away
+        "AH_clean_home", "AH_clean_for_side",        # referência do Home e do lado apostado
         "Diff_Power", "Diff_HT_P",
         "Odd_H_Asi", "Odd_A_Asi", "Odd_H_liq", "Odd_A_liq",
         "Goals_H_FT", "Goals_A_FT",
