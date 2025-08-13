@@ -15,6 +15,10 @@ GAMES_FOLDER = "GamesDay/GamesAsian"
 # Suas odds Odd_H_Asi / Odd_A_Asi já são líquidas (lucro por stake=1).
 ODDS_ARE_NET = True
 
+# Palavras-chave de ligas a EXCLUIR (case-insensitive).
+# Edite livremente: ex.: ["cup", "copas", "uefa", "super cup", "league cup", "copa"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa"]
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
@@ -155,6 +159,14 @@ def range_filter_hibrido(label: str, data_min: float, data_max: float, step: flo
     else:
         return float(min_val), float(max_val)
 
+def exclude_leagues_by_keywords(df: pd.DataFrame, keywords) -> pd.DataFrame:
+    """Remove linhas cuja 'League' contém QUALQUER das palavras (case-insensitive)."""
+    if not keywords:
+        return df.copy()
+    pattern = "|".join(re.escape(k) for k in keywords)
+    mask_excl = df["League"].astype(str).str.contains(pattern, case=False, na=False)
+    return df[~mask_excl].copy()
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Load CSVs (tolerant)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -237,54 +249,49 @@ df_all = pd.concat(all_dfs, ignore_index=True)
 df_all = df_all.sort_values(by="Date").reset_index(drop=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Sidebar Filters (inclui filtro de Ligas)
+# EXCLUSÃO fixa de ligas por palavras-chave
+# ──────────────────────────────────────────────────────────────────────────────
+if EXCLUDED_LEAGUE_KEYWORDS:
+    before = len(df_all)
+    df_all = exclude_leagues_by_keywords(df_all, EXCLUDED_LEAGUE_KEYWORDS)
+    after = len(df_all)
+    st.caption(f"🧹 League keyword filter removed {before - after} rows (keywords: {EXCLUDED_LEAGUE_KEYWORDS})")
+
+if df_all.empty:
+    st.warning("⚠️ No data after league keyword exclusion.")
+    st.stop()
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Sidebar Filters (agora sem UI de ligas)
 # ──────────────────────────────────────────────────────────────────────────────
 st.sidebar.header("🎯 Filter Matches")
 
-# 1) League filter (Include only / Exclude)
-st.sidebar.subheader("Leagues")
-league_mode = st.sidebar.radio("Mode", ["Include only", "Exclude"], horizontal=True, key="league_mode")
-all_leagues = sorted([x for x in df_all["League"].dropna().unique().tolist()])
-selected_leagues = st.sidebar.multiselect("Leagues", options=all_leagues, default=[])
-
-if selected_leagues:
-    if league_mode == "Include only":
-        df_work = df_all[df_all["League"].isin(selected_leagues)].copy()
-    else:  # Exclude
-        df_work = df_all[~df_all["League"].isin(selected_leagues)].copy()
-else:
-    df_work = df_all.copy()
-
-if df_work.empty:
-    st.warning("⚠️ No data after league filter.")
-    st.stop()
-
-# 2) Bet side FIRST (Option 2)
+# 1) Lado da aposta (opção 2)
 bet_on = st.sidebar.selectbox("🎯 Bet on", ["Home", "Away"])
 
-# 3) Numeric filters
-dp_min, dp_max = df_work["Diff_Power"].min(), df_work["Diff_Power"].max()
+# 2) Filtros numéricos
+dp_min, dp_max = df_all["Diff_Power"].min(), df_all["Diff_Power"].max()
 diff_power_sel = range_filter_hibrido("📊 Diff_Power", dp_min, dp_max, step=0.01, key_prefix="diff_power")
 
-htp_min, htp_max = df_work["Diff_HT_P"].min(), df_work["Diff_HT_P"].max()
+htp_min, htp_max = df_all["Diff_HT_P"].min(), df_all["Diff_HT_P"].max()
 diff_ht_p_sel = range_filter_hibrido("📉 Diff_HT_P", htp_min, htp_max, step=0.01, key_prefix="diff_htp")
 
-# Mapear AH para o lado apostado:
+# 3) Mapear AH para o lado apostado:
 # Home → usa AH_clean_home; Away → usa -AH_clean_home
-df_work["AH_clean_for_side"] = df_work["AH_clean_home"] if bet_on == "Home" else -df_work["AH_clean_home"]
+df_all["AH_clean_for_side"] = df_all["AH_clean_home"] if bet_on == "Home" else -df_all["AH_clean_home"]
 
-ah_side_min = float(df_work["AH_clean_for_side"].min())
-ah_side_max = float(df_work["AH_clean_for_side"].max())
+ah_side_min = float(df_all["AH_clean_for_side"].min())
+ah_side_max = float(df_all["AH_clean_for_side"].max())
 ah_range_sel = range_filter_hibrido("⚖️ Asian Handicap (side line, AH_for_side)", ah_side_min, ah_side_max, step=0.25, key_prefix="ah_for_side")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Apply filters
 # ──────────────────────────────────────────────────────────────────────────────
 eps = 1e-6
-filtered_df = df_work[
-    (df_work["Diff_Power"] >= diff_power_sel[0] - eps) & (df_work["Diff_Power"] <= diff_power_sel[1] + eps) &
-    (df_work["Diff_HT_P"] >= diff_ht_p_sel[0]) & (df_work["Diff_HT_P"] <= diff_ht_p_sel[1]) &
-    (df_work["AH_clean_for_side"] >= ah_range_sel[0]) & (df_work["AH_clean_for_side"] <= ah_range_sel[1])
+filtered_df = df_all[
+    (df_all["Diff_Power"] >= diff_power_sel[0] - eps) & (df_all["Diff_Power"] <= diff_power_sel[1] + eps) &
+    (df_all["Diff_HT_P"] >= diff_ht_p_sel[0]) & (df_all["Diff_HT_P"] <= diff_ht_p_sel[1]) &
+    (df_all["AH_clean_for_side"] >= ah_range_sel[0]) & (df_all["AH_clean_for_side"] <= ah_range_sel[1])
 ].copy()
 
 # ──────────────────────────────────────────────────────────────────────────────
