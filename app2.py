@@ -10,6 +10,10 @@ DATA_FOLDER = "GamesDay"
 st.set_page_config(page_title="Data-Driven Football Insights", layout="wide")
 st.title("🔮 Data-Driven Football Insights")
 
+# 🚫 Keywords (case-insensitive) that, if found in League, will EXCLUDE the row
+# Edite livremente esta lista (ex.: "Cup", "Copa", "Copas", "UEFA", etc.)
+EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "UEFA"]
+
 # 🧠 Helper function to extract available dates from filenames
 def get_available_dates(folder):
     pattern = r'Jogosdodia_(\d{4}-\d{2}-\d{2})\.csv'
@@ -37,7 +41,7 @@ show_all = st.checkbox("🔓 Show all available dates", value=False)
 if show_all:
     dates_to_display = available_dates
 else:
-    dates_to_display = available_dates[-7:]  # Show only the last 15 days
+    dates_to_display = available_dates[-7:]  # Show only the last 7 days
 
 # 📅 Date selector
 selected_date = st.selectbox("📅 Select a date:", dates_to_display, index=len(dates_to_display)-1)
@@ -55,12 +59,17 @@ try:
     df.columns = df.columns.str.strip()
     df = df.dropna(axis=1, how='all')
 
-    # 📆 Ensure the 'Date' column is datetime
-    df['Date'] = df['Date'].dt.date  # garante tipo date
+    # 📆 Ensure the 'Date' column is datetime.date
+    df['Date'] = df['Date'].dt.date
     df_filtered = df[df['Date'].astype(str) == selected_date.strftime('%Y-%m-%d')]
 
+    # 🚫 Apply internal league filter (case-insensitive), if coluna existir
+    if 'League' in df_filtered.columns and EXCLUDED_LEAGUE_KEYWORDS:
+        pattern = '|'.join(map(re.escape, EXCLUDED_LEAGUE_KEYWORDS))
+        df_filtered = df_filtered[~df_filtered['League'].astype(str).str.contains(pattern, case=False, na=False)]
+
     # 👁️ Remove 'Date' column from display and reset index
-    df_display = df_filtered.drop(columns=['Date'])
+    df_display = df_filtered.drop(columns=['Date'], errors='ignore')
     df_display.index = range(len(df_display))
 
     # 📊 Summary and explanation
@@ -68,7 +77,7 @@ try:
 ### 📊 Matchday Summary – *{selected_date.strftime('%Y-%m-%d')}*
 
 - **Total matches:** {len(df_filtered)}
-- **Total leagues:** {df_filtered['League'].nunique()}
+- **Total leagues:** {df_filtered['League'].nunique() if 'League' in df_filtered.columns else '—'}
 
 ---
 
@@ -89,7 +98,7 @@ try:
 
     # ⚠️ Show warning if no matches found
     if df_filtered.empty:
-        st.warning("⚠️ No matches found for the selected date.")
+        st.warning("⚠️ No matches found for the selected date after applying the internal league filter.")
     else:
         # ✅ Display styled table
         st.dataframe(
@@ -98,8 +107,8 @@ try:
                 'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
                 'Diff_HT_P': '{:.2f}', 'Diff_Power': '{:.2f}', 'OU_Total': '{:.2f}'
             })
-            .background_gradient(cmap='RdYlGn', subset=['Diff_HT_P', 'Diff_Power'])
-            .background_gradient(cmap='Blues', subset=['OU_Total']),
+            .background_gradient(cmap='RdYlGn', subset=[c for c in ['Diff_HT_P', 'Diff_Power'] if c in df_display.columns])
+            .background_gradient(cmap='Blues', subset=[c for c in ['OU_Total'] if c in df_display.columns]),
             height=1200,
             use_container_width=True
         )
@@ -108,5 +117,3 @@ except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
-
-
