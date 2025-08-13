@@ -12,8 +12,8 @@ GAMES_FOLDER = "GamesDay/GamesAsian"
 # ──────────────────────────────────────────────────────────────────────────────
 # Config
 # ──────────────────────────────────────────────────────────────────────────────
-# ➜ Suas colunas Odd_H_Asi / Odd_A_Asi já estão em formato LÍQUIDO.
-ODDS_ARE_NET = True  # se algum dia vierem brutas, mude para False
+# Suas odds já são LÍQUIDAS (lucro por stake=1)
+ODDS_ARE_NET = True
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -36,7 +36,6 @@ def _base_parse_asian_line(text: str):
         x = float(s_abs)
     except Exception:
         return []
-    # guard contra NaN (ex.: "nan" vira float('nan'))
     if pd.isna(x):
         return []
     frac = abs(x) - int(abs(x))
@@ -63,10 +62,6 @@ def parse_asian_line(text: str):
     return [sign * p for p in parts]
 
 def to_net_odds(x):
-    """Retorna a odd líquida por stake=1.
-       Se ODDS_ARE_NET=True, retorna o próprio valor (já líquido).
-       Caso contrário, retorna odds_decimais - 1.0
-    """
     if pd.isna(x):
         return None
     try:
@@ -101,7 +96,6 @@ def settle_ah_with_odds(goals_h, goals_a, ah_components_home, bet_on: str, net_o
 
     return sum(profits) / len(profits)
 
-# 🔧 número + slider + seletor de fonte
 def range_filter_hibrido(label: str, data_min: float, data_max: float, step: float, key_prefix: str):
     st.sidebar.markdown(f"**{label}**")
     c1, c2 = st.sidebar.columns(2)
@@ -110,23 +104,23 @@ def range_filter_hibrido(label: str, data_min: float, data_max: float, step: flo
     max_val = c2.number_input("Max", value=float(data_max), min_value=float(data_min), max_value=float(data_max),
                               step=step, key=f"{key_prefix}_max")
 
-    # enforce order
+    # garante ordem
     if min_val > max_val:
         min_val, max_val = max_val, min_val
         st.session_state[f"{key_prefix}_min"] = min_val
         st.session_state[f"{key_prefix}_max"] = max_val
 
-    slider_val = st.sidebar.slider("Drag to adjust",
+    slider_val = st.sidebar.slider("Arraste para ajustar",
                                    min_value=float(data_min),
                                    max_value=float(data_max),
                                    value=(float(min_val), float(max_val)),
                                    step=step,
                                    key=f"{key_prefix}_slider")
 
-    source = st.sidebar.radio("Filter source", ["Slider", "Manual"], horizontal=True, key=f"{key_prefix}_src")
+    fonte = st.sidebar.radio("Fonte do filtro", ["Slider", "Manual"], horizontal=True, key=f"{key_prefix}_src")
     st.sidebar.divider()
 
-    if source == "Slider":
+    if fonte == "Slider":
         return slider_val[0], slider_val[1]
     else:
         return float(min_val), float(max_val)
@@ -155,7 +149,7 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
             st.warning(f"⚠️ Failed to read {file}: {e}")
             continue
 
-    # 2) normalize headers and some key text cols
+    # 2) normalize headers and key text cols
     df.columns = df.columns.str.strip()
     for c in ["Asian_Line", "League", "Home", "Away"]:
         if c in df.columns:
@@ -171,7 +165,7 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
         st.info(f"ℹ️ Skipping {file}: missing columns -> {missing}")
         continue
 
-    # 3) coerce numeric (avoid NaN from strings)
+    # 3) coerce numeric
     for c in ["Odd_H_Asi","Odd_A_Asi","Goals_H_FT","Goals_A_FT","Diff_Power","Diff_HT_P","Asian_Line"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
@@ -181,26 +175,26 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
         st.info(f"ℹ️ Skipping {file}: no rows with goals + odds.")
         continue
 
-    # 5) parse date (not blocking if NaT)
+    # 5) parse date
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
 
-    # 6) (NOVO) remover NaN explícito em Asian_Line antes do parser
+    # 6) tirar NaN explícito em Asian_Line
     df = df.dropna(subset=["Asian_Line"])
 
-    # 7) AH (Home reference) and clean average — com guards para NaN
-    df["AH_components"] = df["Asian_Line"].apply(parse_asian_line)
-    df = df[df["AH_components"].map(len) > 0].copy()
+    # 7) IMPORTANTÍSSIMO: sua Asian_Line é do **Away**.
+    #    Vamos manter a coluna original e inverter o sinal para obter a linha do **Home**.
+    df = df.rename(columns={"Asian_Line": "Asian_Line_Away"})
+    df["AH_components_home"] = df["Asian_Line_Away"].apply(parse_asian_line).apply(lambda lst: [-x for x in lst])
+    df = df[df["AH_components_home"].map(len) > 0].copy()
     if df.empty:
-        st.info(f"ℹ️ Skipping {file}: invalid Asian_Line in all rows.")
+        st.info(f"ℹ️ Skipping {file}: invalid Asian_Line_Away in all rows.")
         continue
 
-    df["AH_clean"] = df["AH_components"].apply(lambda lst: sum(lst)/len(lst))
+    df["AH_clean_home"] = df["AH_components_home"].apply(lambda lst: sum(lst)/len(lst))
 
     # 8) net odds (identity if already net)
     df["Odd_H_liq"] = df["Odd_H_Asi"].apply(to_net_odds)
     df["Odd_A_liq"] = df["Odd_A_Asi"].apply(to_net_odds)
-
-    # IMPORTANT: DO NOT filter by > 0 here, because 0.0 is valid for net odds = 1.0
     df = df.dropna(subset=["Odd_H_liq","Odd_A_liq"])
     if df.empty:
         st.info(f"ℹ️ Skipping {file}: all rows have invalid net odds.")
@@ -220,7 +214,7 @@ df_all = df_all.sort_values(by="Date").reset_index(drop=True)
 # ──────────────────────────────────────────────────────────────────────────────
 st.sidebar.header("🎯 Filter Matches")
 
-# bet side FIRST (Option 2)
+# Primeiro o lado da aposta (opção 2)
 bet_on = st.sidebar.selectbox("🎯 Bet on", ["Home", "Away"])
 
 # Diff_Power / Diff_HT_P
@@ -230,17 +224,18 @@ diff_power_sel = range_filter_hibrido("📊 Diff_Power", dp_min, dp_max, step=0.
 htp_min, htp_max = df_all["Diff_HT_P"].min(), df_all["Diff_HT_P"].max()
 diff_ht_p_sel = range_filter_hibrido("📉 Diff_HT_P", htp_min, htp_max, step=0.01, key_prefix="diff_htp")
 
-# Map AH to the bet side:
-# Home → AH_clean_for_side = AH_clean; Away → -AH_clean
-df_all["AH_clean_for_side"] = df_all["AH_clean"] if bet_on == "Home" else -df_all["AH_clean"]
+# Mapear AH para o lado apostado:
+# Home → usa AH_clean_home; Away → usa -AH_clean_home
+df_all["AH_clean_for_side"] = df_all["AH_clean_home"] if bet_on == "Home" else -df_all["AH_clean_home"]
 
 ah_side_min = float(df_all["AH_clean_for_side"].min())
 ah_side_max = float(df_all["AH_clean_for_side"].max())
 ah_range_sel = range_filter_hibrido("⚖️ Asian Handicap (side line, AH_for_side)", ah_side_min, ah_side_max, step=0.25, key_prefix="ah_for_side")
 
-# Apply filters
+# Epsilon para evitar corte por arredondamento de CSV
+eps = 1e-6
 filtered_df = df_all[
-    (df_all["Diff_Power"] >= diff_power_sel[0]) & (df_all["Diff_Power"] <= diff_power_sel[1]) &
+    (df_all["Diff_Power"] >= diff_power_sel[0] - eps) & (df_all["Diff_Power"] <= diff_power_sel[1] + eps) &
     (df_all["Diff_HT_P"] >= diff_ht_p_sel[0]) & (df_all["Diff_HT_P"] <= diff_ht_p_sel[1]) &
     (df_all["AH_clean_for_side"] >= ah_range_sel[0]) & (df_all["AH_clean_for_side"] <= ah_range_sel[1])
 ].copy()
@@ -251,7 +246,7 @@ filtered_df = df_all[
 def calculate_profit(row):
     net_odds = row["Odd_H_liq"] if bet_on == "Home" else row["Odd_A_liq"]
     return settle_ah_with_odds(
-        row["Goals_H_FT"], row["Goals_A_FT"], row["AH_components"], bet_on, net_odds
+        row["Goals_H_FT"], row["Goals_A_FT"], row["AH_components_home"], bet_on, net_odds
     )
 
 if not filtered_df.empty:
@@ -270,8 +265,8 @@ if not filtered_df.empty:
     pushes = (filtered_df["Bet Result"] == 0).sum()
     losses = (filtered_df["Bet Result"] < 0).sum()
     winrate = wins / n_matches if n_matches else 0.0
-    mean_ah_home = filtered_df["AH_clean"].mean()              # Home reference
-    mean_ah_side = filtered_df["AH_clean_for_side"].mean()     # Bet side reference
+    mean_ah_home = filtered_df["AH_clean_home"].mean()          # referência Home (corrigida)
+    mean_ah_side = filtered_df["AH_clean_for_side"].mean()      # referência no lado apostado
     mean_odd_liq = (filtered_df["Odd_H_liq"] if bet_on == "Home" else filtered_df["Odd_A_liq"]).mean()
     total_profit = filtered_df["Bet Result"].sum()
     roi = total_profit / n_matches if n_matches else 0.0
@@ -282,11 +277,16 @@ if not filtered_df.empty:
     col2.metric("Winrate", f"{winrate:.1%}")
     col3.metric("Mean AH (side)", f"{mean_ah_side:+.2f}")
     col4.metric("ROI (per bet)", f"{roi:.1%}")
-    st.caption(f"Pushes: {pushes} · Losses: {losses} · Mean net-odds ({bet_on}): {mean_odd_liq:.2f} · Mean AH (home ref): {mean_ah_home:+.2f}")
+    st.caption(
+        "Obs.: 'Asian_Line_Away' vem da fonte como handicap do visitante. "
+        "Internamente convertida para a linha do mandante (AH_clean_home)."
+        f" · Pushes: {pushes} · Losses: {losses} · Mean net-odds ({bet_on}): {mean_odd_liq:.2f} "
+        f"· Mean AH (home ref): {mean_ah_home:+.2f}"
+    )
 
     show_cols = [
         "Date", "League", "Home", "Away",
-        "Asian_Line", "AH_clean", "AH_clean_for_side",
+        "Asian_Line_Away", "AH_clean_home", "AH_clean_for_side",
         "Diff_Power", "Diff_HT_P",
         "Odd_H_Asi", "Odd_A_Asi", "Odd_H_liq", "Odd_A_liq",
         "Goals_H_FT", "Goals_A_FT",
