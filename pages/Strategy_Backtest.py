@@ -13,7 +13,7 @@ st.title("📈 Strategy Backtest – 1X2")
 #    Rows whose League contains any of these keywords (case-insensitive) are excluded.
 #    Ex.: "Cup", "Copa", "UEFA", "Friendly", "Super Cup", etc.
 #    Você pode adicionar/editar os termos diretamente nesta lista.
-EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "UEFA", "Friendly", "Super Cup", "Playoff"]
+EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "UEFA", "Friendly", "Super Cup"]
 _EXC_PATTERN = re.compile("|".join(map(re.escape, EXCLUDED_LEAGUE_KEYWORDS)), flags=re.IGNORECASE) if EXCLUDED_LEAGUE_KEYWORDS else None
 
 # ──────────────────────────────────────────────────────────────────────────────
