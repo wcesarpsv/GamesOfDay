@@ -17,7 +17,7 @@ ODDS_ARE_NET = True
 
 # Palavras-chave de ligas a EXCLUIR (case-insensitive).
 # Edite livremente: ex.: ["cup", "copas", "uefa", "super cup", "league cup", "copa"]
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa","copa"]
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
