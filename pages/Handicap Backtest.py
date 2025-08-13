@@ -19,7 +19,7 @@ ODDS_ARE_NET = True  # se algum dia vierem brutas, mude para False
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 def _base_parse_asian_line(text: str):
-    if text is None:
+    if text is None or (isinstance(text, float) and pd.isna(text)):
         return []
     s = str(text).strip().lower().replace(' ', '')
     s = s.replace(',', '.')
@@ -36,6 +36,9 @@ def _base_parse_asian_line(text: str):
         x = float(s_abs)
     except Exception:
         return []
+    # guard contra NaN (ex.: "nan" vira float('nan'))
+    if pd.isna(x):
+        return []
     frac = abs(x) - int(abs(x))
     base = int(abs(x))
     if abs(frac - 0.25) < 1e-9:
@@ -45,7 +48,7 @@ def _base_parse_asian_line(text: str):
     return [abs(x)]
 
 def parse_asian_line(text: str):
-    if text is None:
+    if text is None or (isinstance(text, float) and pd.isna(text)):
         return []
     raw = str(text).strip().replace(' ', '')
     parts = _base_parse_asian_line(raw)
@@ -181,7 +184,10 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
     # 5) parse date (not blocking if NaT)
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
 
-    # 6) AH (Home reference) and clean average
+    # 6) (NOVO) remover NaN explícito em Asian_Line antes do parser
+    df = df.dropna(subset=["Asian_Line"])
+
+    # 7) AH (Home reference) and clean average — com guards para NaN
     df["AH_components"] = df["Asian_Line"].apply(parse_asian_line)
     df = df[df["AH_components"].map(len) > 0].copy()
     if df.empty:
@@ -190,7 +196,7 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
 
     df["AH_clean"] = df["AH_components"].apply(lambda lst: sum(lst)/len(lst))
 
-    # 7) net odds (identity if already net)
+    # 8) net odds (identity if already net)
     df["Odd_H_liq"] = df["Odd_H_Asi"].apply(to_net_odds)
     df["Odd_A_liq"] = df["Odd_A_Asi"].apply(to_net_odds)
 
