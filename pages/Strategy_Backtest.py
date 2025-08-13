@@ -3,9 +3,18 @@ import pandas as pd
 import os
 import matplotlib.pyplot as plt
 from datetime import date
+import re
 
 st.set_page_config(page_title="Strategy Backtest – 1X2", layout="wide")
 st.title("📈 Strategy Backtest – 1X2")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🔒 Internal league filter (NOT shown in UI)
+#    Rows whose League contains any of these keywords (case-insensitive) are excluded.
+#    Ex.: "Cup", "Copa", "UEFA", "Friendly", "Super Cup", etc.
+#    Você pode adicionar/editar os termos diretamente nesta lista.
+EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "UEFA", "Friendly", "Super Cup", "Playoff"]
+_EXC_PATTERN = re.compile("|".join(map(re.escape, EXCLUDED_LEAGUE_KEYWORDS)), flags=re.IGNORECASE) if EXCLUDED_LEAGUE_KEYWORDS else None
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -40,7 +49,7 @@ def range_filter_hybrid(label: str, data_min: float, data_max: float, step: floa
         return float(min_val), float(max_val)
 
 def date_range_filter_hybrid(label: str, series_dates: pd.Series, key_prefix: str):
-    """Hybrid: (a) two manual date_inputs and (b) slider by date index."""
+    """Hybrid: (a) two manual date_inputs and (b) slider by date index)."""
     st.sidebar.markdown(f"**{label}**")
 
     # Normalize and sort unique dates
@@ -95,12 +104,19 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
             df = pd.read_csv(df_path)
         except Exception:
             continue
+
         required = {"Goals_H_FT","Goals_A_FT","Diff_Power","Diff_HT_P","Odd_H","Odd_D","Odd_A","Date"}
         if not required.issubset(df.columns):
             continue
+
+        # 🔒 Internal league filter applied ASAP (if column exists)
+        if _EXC_PATTERN and "League" in df.columns:
+            df = df[~df["League"].astype(str).str.contains(_EXC_PATTERN, na=False)]
+
         df = df.dropna(subset=["Goals_H_FT","Goals_A_FT"])
         if df.empty:
             continue
+
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
         all_dfs.append(df)
 
@@ -109,6 +125,11 @@ if not all_dfs:
     st.stop()
 
 df_all = pd.concat(all_dfs, ignore_index=True)
+
+# Safety double-check: filter again post-concat (in case of inconsistent files)
+if _EXC_PATTERN and "League" in df_all.columns:
+    df_all = df_all[~df_all["League"].astype(str).str.contains(_EXC_PATTERN, na=False)]
+
 df_all = df_all.sort_values(by="Date").reset_index(drop=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
