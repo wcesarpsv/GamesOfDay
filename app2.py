@@ -246,7 +246,7 @@ try:
 
     history_path = st.text_input(
         "📂 Caminho da base histórica (pasta com CSVs ou CSV único)",
-        value="GamesDay"  # ajuste
+        value="GamesDay/GamesAsian"  # ajuste
     )
 
     colA, colB, colC = st.columns(3)
@@ -323,4 +323,5 @@ except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
 
