@@ -1,78 +1,212 @@
+# app_streamlit_ev_ah.py
+# -*- coding: utf-8 -*-
+import os, re, glob, unicodedata
+import numpy as np
 import pandas as pd
 import streamlit as st
 from datetime import datetime
-import os
-import re
 
-# 📁 Folder containing the game files
-DATA_FOLDER = "GamesDay"
+# ──────────────────────────────────────────────────────────────────────────────
+# Configurações
+# ──────────────────────────────────────────────────────────────────────────────
+DATA_FOLDER = "GamesDay"     # pasta onde ficam os CSVs "Jogosdodia_YYYY-MM-DD.csv"
+EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "UEFA"]  # filtro de copas etc.
 
 st.set_page_config(page_title="Data-Driven Football Insights", layout="wide")
 st.title("🔮 Data-Driven Football Insights")
 
-# 🚫 Keywords (case-insensitive) that, if found in League, will EXCLUDE the row
-# Edite livremente esta lista (ex.: "Cup", "Copa", "Copas", "UEFA", etc.)
-EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "UEFA"]
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers (seu fluxo + novas funções)
+# ──────────────────────────────────────────────────────────────────────────────
+def strip_accents(s: str) -> str:
+    """Remove acentos sem depender do unidecode."""
+    if s is None:
+        return ""
+    s = str(s)
+    return ''.join(c for c in unicodedata.normalize('NFKD', s) if not unicodedata.combining(c))
 
-# 🧠 Helper function to extract available dates from filenames
+def _norm(s: str) -> str:
+    return strip_accents(s).strip().lower()
+
+def _add_keys(df, league="League", home="Home", away="Away"):
+    df = df.copy()
+    for c in (league, home, away):
+        if c not in df.columns:
+            df[c] = ""
+    df["_lgk"] = df[league].apply(_norm)
+    df["_hk"]  = df[home].apply(_norm)
+    df["_ak"]  = df[away].apply(_norm)
+    return df
+
 def get_available_dates(folder):
     pattern = r'Jogosdodia_(\d{4}-\d{2}-\d{2})\.csv'
     dates = []
+    if not os.path.isdir(folder):
+        return dates
     for filename in os.listdir(folder):
-        match = re.match(pattern, filename)
-        if match:
+        m = re.match(pattern, filename)
+        if m:
             try:
-                dates.append(datetime.strptime(match.group(1), '%Y-%m-%d').date())
+                dates.append(datetime.strptime(m.group(1), '%Y-%m-%d').date())
             except:
-                continue
+                pass
     return sorted(dates)
 
-# 🔍 Get available dates from CSV files
-available_dates = get_available_dates(DATA_FOLDER)
+@st.cache_data(show_spinner=False)
+def load_history(history_dir_or_csv: str) -> pd.DataFrame:
+    """
+    Lê um CSV único OU concatena todos os CSVs de uma pasta com histórico por jogo.
+    Requer colunas: Date, League, Home, Away, HomeGoals, AwayGoals, Diff_Power
+    """
+    frames = []
+    if os.path.isdir(history_dir_or_csv):
+        files = sorted(glob.glob(os.path.join(history_dir_or_csv, "*.csv")))
+        for f in files:
+            try:
+                frames.append(pd.read_csv(f))
+            except Exception as e:
+                st.warning(f"[hist] não consegui ler {f}: {e}")
+    else:
+        frames.append(pd.read_csv(history_dir_or_csv))
 
+    hist = pd.concat(frames, ignore_index=True)
+
+    # tipos básicos
+    hist["HomeGoals"]  = pd.to_numeric(hist.get("HomeGoals"), errors="coerce")
+    hist["AwayGoals"]  = pd.to_numeric(hist.get("AwayGoals"), errors="coerce")
+    hist["Diff_Power"] = pd.to_numeric(hist.get("Diff_Power"), errors="coerce")
+
+    # limpa linhas inválidas
+    hist = hist.dropna(subset=["League","Home","Away","HomeGoals","AwayGoals","Diff_Power"])
+    return hist
+
+# Jeffreys smoothing
+def _jeff(count, total, alpha=0.5, beta=0.5):
+    if total <= 0:
+        return 0.0
+    return (count + alpha) / (total + alpha + beta)
+
+def _bin_calibration_for_league(hist_df: pd.DataFrame, n_bins=12):
+    """
+    Constrói calibração empírica Diff_Power -> (p_win, p_draw, p_loss) para UMA liga.
+    Usa bins no intervalo observado + Jeffreys smoothing + leve média móvel.
+    """
+    g = hist_df.copy()
+    g["S"] = g["HomeGoals"] - g["AwayGoals"]
+    g["win"]  = (g["S"] > 0).astype(int)
+    g["draw"] = (g["S"] == 0).astype(int)
+    g["loss"] = (g["S"] < 0).astype(int)
+
+    dmin, dmax = g["Diff_Power"].min(), g["Diff_Power"].max()
+    if pd.isna(dmin) or pd.isna(dmax) or dmin == dmax:
+        xs = np.array([0.0]); p = np.array([1/3])
+        return dict(xs=xs, p_win=p, p_draw=p, p_loss=p)
+
+    edges = np.linspace(dmin, dmax, n_bins+1)
+    mids  = 0.5*(edges[:-1] + edges[1:])
+    xs, pw, pd_, pl = [], [], [], []
+    for i in range(n_bins):
+        lo, hi = edges[i], edges[i+1]
+        m = (g["Diff_Power"] >= lo) & (g["Diff_Power"] < (hi if i < n_bins-1 else hi+1e-9))
+        chunk = g.loc[m]
+        n = len(chunk)
+        if n == 0:
+            xs.append(mids[i]); pw.append(1/3); pd_.append(1/3); pl.append(1/3); continue
+        w = chunk["win"].sum(); d = chunk["draw"].sum(); l = chunk["loss"].sum()
+        p_w = _jeff(w, n); p_d = _jeff(d, n); p_l = _jeff(l, n)
+        s = p_w + p_d + p_l
+        xs.append(mids[i]); pw.append(p_w/s); pd_.append(p_d/s); pl.append(p_l/s)
+
+    xs, pw, pd_, pl = map(np.array, (xs, pw, pd_, pl))
+
+    # média móvel leve (janela=3) p/ suavizar ruído
+    def _smooth(a):
+        if len(a) < 3: return a
+        b = a.copy()
+        for i in range(len(a)):
+            lo = max(0, i-1); hi = min(len(a), i+2)
+            b[i] = a[lo:hi].mean()
+        return b
+    pw, pd_, pl = _smooth(pw), _smooth(pd_), _smooth(pl)
+    s = pw + pd_ + pl
+    return dict(xs=xs, p_win=pw/s, p_draw=pd_/s, p_loss=pl/s)
+
+@st.cache_data(show_spinner=False)
+def build_calibrators_by_league(hist: pd.DataFrame, n_bins=12):
+    cals = {}
+    for lg, g in hist.groupby("League"):
+        g = g.dropna(subset=["Diff_Power","HomeGoals","AwayGoals"])
+        if len(g) >= max(60, 3*n_bins):  # amostra mínima por liga
+            cals[lg] = _bin_calibration_for_league(g, n_bins=n_bins)
+    return cals
+
+def _probs_from_dp(calib, dp):
+    xs = calib["xs"]
+    p_w = float(np.interp(dp, xs, calib["p_win"]))
+    p_d = float(np.interp(dp, xs, calib["p_draw"]))
+    p_l = float(np.interp(dp, xs, calib["p_loss"]))
+    s = p_w + p_d + p_l
+    if s <= 0:
+        return 1/3, 1/3, 1/3
+    p_w, p_d, p_l = p_w/s, p_d/s, p_l/s
+    # clipping leve para estabilidade
+    eps = 1e-6
+    p_w = np.clip(p_w, eps, 1-eps)
+    p_d = np.clip(p_d, eps, 1-eps)
+    p_l = np.clip(p_l, eps, 1-eps)
+    s = p_w + p_d + p_l
+    return p_w/s, p_d/s, p_l/s
+
+def ev_ah(line, odd, p_win, p_draw, p_loss):
+    """EV por 1 unidade apostada no mandante (linhas básicas)."""
+    if abs((p_win+p_draw+p_loss)-1) > 1e-6:
+        raise ValueError("Probabilidades não somam 1.")
+    if line == -0.5:
+        return p_win*(odd-1) - (p_draw + p_loss)
+    elif line == 0.0:
+        return p_win*(odd-1) - p_loss
+    elif line == -0.25:
+        ev_dnb = p_win*(odd-1) - p_loss
+        ev_m05 = p_win*(odd-1) - (p_draw + p_loss)
+        return 0.5*ev_dnb + 0.5*ev_m05
+    elif line == +0.25:
+        return p_win*(odd-1) + 0.5*p_draw*(odd-1) - p_loss
+    else:
+        raise NotImplementedError("Para ±0.75/±1.0, divida em duas linhas vizinhas e some EVs.")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Leitura dos arquivos do dia (o seu fluxo)
+# ──────────────────────────────────────────────────────────────────────────────
+available_dates = get_available_dates(DATA_FOLDER)
 if not available_dates:
     st.error("❌ No CSV files found in the game data folder.")
     st.stop()
 
-# 🔓 Option to show all dates or only the most recent
 show_all = st.checkbox("🔓 Show all available dates", value=False)
-
-# 📅 Limit the list if the user doesn't want full history
-if show_all:
-    dates_to_display = available_dates
-else:
-    dates_to_display = available_dates[-7:]  # Show only the last 7 days
-
-# 📅 Date selector
+dates_to_display = available_dates if show_all else available_dates[-7:]
 selected_date = st.selectbox("📅 Select a date:", dates_to_display, index=len(dates_to_display)-1)
 
-# 🛠️ Build the file path for the selected date
 filename = f'Jogosdodia_{selected_date}.csv'
 file_path = os.path.join(DATA_FOLDER, filename)
 
 try:
-    # 📥 Load the CSV
-    df = pd.read_csv(file_path, parse_dates=['Date'])  # já tenta parsear
-
-    # 🧹 Clean up the data
+    df = pd.read_csv(file_path, parse_dates=['Date'])
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
     df.columns = df.columns.str.strip()
     df = df.dropna(axis=1, how='all')
-
-    # 📆 Ensure the 'Date' column is datetime.date
     df['Date'] = df['Date'].dt.date
+
     df_filtered = df[df['Date'].astype(str) == selected_date.strftime('%Y-%m-%d')]
 
-    # 🚫 Apply internal league filter (case-insensitive), if coluna existir
+    # filtro de ligas (copas etc.)
     if 'League' in df_filtered.columns and EXCLUDED_LEAGUE_KEYWORDS:
         pattern = '|'.join(map(re.escape, EXCLUDED_LEAGUE_KEYWORDS))
         df_filtered = df_filtered[~df_filtered['League'].astype(str).str.contains(pattern, case=False, na=False)]
 
-    # 👁️ Remove 'Date' column from display and reset index
-    df_display = df_filtered.drop(columns=['Date'], errors='ignore')
+    # display base
+    df_display = df_filtered.drop(columns=['Date'], errors='ignore').copy()
     df_display.index = range(len(df_display))
 
-    # 📊 Summary and explanation
     st.markdown(f"""
 ### 📊 Matchday Summary – *{selected_date.strftime('%Y-%m-%d')}*
 
@@ -83,24 +217,16 @@ try:
 
 ### ℹ️ Column Descriptions:
 
-- **`Diff_HT_P`** – Difference in team strength for the **first half**, based on Power Ratings  
-- **`Diff_Power`** – Overall team strength difference for the full match (FT)  
-- **`OU_Total`** – Expected total goals for the match (higher = greater chance of Over 2.5 goals)
+- **`Diff_HT_P`** – 1º tempo (diferença de força)
+- **`Diff_Power`** – força relativa no FT
+- **`OU_Total`** – tendência de gols (Over/Under) já combinada
 
 ---
-
-### 🎨 Color Guide:
-
-- 🟩 **Green**: Advantage for the **home team**  
-- 🟥 **Red**: Advantage for the **away team**  
-- 🔵 **Blue**: Higher expected total goals
 """)
 
-    # ⚠️ Show warning if no matches found
     if df_filtered.empty:
         st.warning("⚠️ No matches found for the selected date after applying the internal league filter.")
     else:
-        # ✅ Display styled table
         st.dataframe(
             df_display.style
             .format({
@@ -109,9 +235,89 @@ try:
             })
             .background_gradient(cmap='RdYlGn', subset=[c for c in ['Diff_HT_P', 'Diff_Power'] if c in df_display.columns])
             .background_gradient(cmap='Blues', subset=[c for c in ['OU_Total'] if c in df_display.columns]),
-            height=1200,
+            height=480,
             use_container_width=True
         )
+
+    # ────────────────────────────────────────────────────────────────────────
+    # 🔮 Probabilidades & EV (AH) a partir do Diff_Power (por liga)
+    # ────────────────────────────────────────────────────────────────────────
+    st.markdown("## 🧮 Probabilidades & EV (Asian Handicap)")
+
+    history_path = st.text_input(
+        "📂 Caminho da base histórica (pasta com CSVs ou CSV único)",
+        value=r"C:\Users\flavia\FlashScore\NowGoal\History"  # ajuste
+    )
+
+    colA, colB, colC = st.columns(3)
+    with colA:
+        n_bins = st.slider("Bins para calibração por liga", 8, 24, 12, 1)
+    with colB:
+        default_ah_line = st.selectbox("Linha AH padrão (mandante)", options=[-0.5, -0.25, 0.0, +0.25], index=1)
+    with colC:
+        default_odd_ah = st.number_input("Odd AH padrão (mandante)", min_value=1.01, max_value=5.0, value=1.90, step=0.01)
+
+    fixtures_today = df_filtered.copy()
+    fixtures_today["Diff_Power"] = pd.to_numeric(fixtures_today.get("Diff_Power"), errors="coerce")
+
+    # usa colunas existentes se tiver; senão, defaults do UI
+    has_line = "AH_line" in fixtures_today.columns
+    has_odd  = "Odd_AH"  in fixtures_today.columns
+    if not has_line:
+        fixtures_today["AH_line"] = default_ah_line
+    if not has_odd:
+        fixtures_today["Odd_AH"]  = default_odd_ah
+
+    # calcular
+    try:
+        hist = load_history(history_path)
+        calibrators = build_calibrators_by_league(hist, n_bins=n_bins)
+
+        rows = []
+        for _, r in fixtures_today.iterrows():
+            lg  = r["League"]
+            dp  = float(r["Diff_Power"])
+            line = float(r["AH_line"])
+            odd  = float(r["Odd_AH"])
+            calib = calibrators.get(lg)
+            if calib is None:
+                p_w = p_d = p_l = 1/3
+            else:
+                p_w, p_d, p_l = _probs_from_dp(calib, dp)
+            ev = ev_ah(line, odd, p_w, p_d, p_l)
+            rr = dict(r)
+            rr.update(dict(p_win=p_w, p_draw=p_d, p_loss=p_l, EV_AH=ev))
+            rows.append(rr)
+
+        out = pd.DataFrame(rows)
+
+        cols_show = [
+            'League','Home','Away','Diff_Power','AH_line','Odd_AH',
+            'p_win','p_draw','p_loss','EV_AH'
+        ]
+        cols_show = [c for c in cols_show if c in out.columns]
+
+        st.dataframe(
+            out[cols_show].sort_values(["EV_AH"], ascending=False).reset_index(drop=True)
+            .style.format({
+                'Diff_Power':'{:.2f}','AH_line':'{:.2f}','Odd_AH':'{:.2f}',
+                'p_win':'{:.3f}','p_draw':'{:.3f}','p_loss':'{:.3f}','EV_AH':'{:.3f}'
+            })
+            .background_gradient(cmap='RdYlGn', subset=['EV_AH']),
+            use_container_width=True
+        )
+
+        # botão para salvar
+        save_csv = st.text_input("📁 Caminho para salvar a tabela (opcional)", value="")
+        if save_csv:
+            try:
+                out[cols_show].to_csv(save_csv, index=False)
+                st.success(f"✅ Tabela salva em: {save_csv}")
+            except Exception as e:
+                st.error(f"Erro ao salvar CSV: {e}")
+
+    except Exception as e:
+        st.error(f"Erro ao calcular EV/Probabilidades: {e}")
 
 except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
