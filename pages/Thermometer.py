@@ -44,8 +44,8 @@ def prepare_historical(df):
     df = df.dropna(subset=['Goals_H_FT', 'Goals_A_FT'])
     return df
 
-def calculate_probability(history_df, diff_power, diff_htp, side, selected_odd):
-    """Calcula a probabilidade de vitória com base no histórico."""
+def calculate_probability_and_count(history_df, diff_power, diff_htp, side, selected_odd):
+    """Calcula a probabilidade de vitória e a quantidade de jogos na amostra."""
     if side == "Home":
         odd_col = 'Odd_H'
         win_mask = history_df['Goals_H_FT'] > history_df['Goals_A_FT']
@@ -63,10 +63,10 @@ def calculate_probability(history_df, diff_power, diff_htp, side, selected_odd):
     filtered = history_df[mask]
     total = len(filtered)
     if total == 0:
-        return None
+        return None, 0
 
     wins = win_mask[mask].sum()
-    return round((wins / total) * 100, 1)
+    return round((wins / total) * 100, 1), total
 
 def color_diff_power(val):
     """Colore o Diff_Power com degradê e zona neutra amarela."""
@@ -115,9 +115,9 @@ games_today = all_games[all_games['Goals_H_FT'].isna()].copy()
 games_today['Side'] = games_today['Diff_Power'].apply(lambda x: "Home" if x > 0 else "Away")
 games_today['Selected_Odd'] = games_today.apply(lambda row: row['Odd_H'] if row['Side'] == "Home" else row['Odd_A'], axis=1)
 
-# Calcular probabilidade
-games_today['Win_Probability'] = games_today.apply(
-    lambda row: calculate_probability(
+# Calcular probabilidade e quantidade de jogos
+results = games_today.apply(
+    lambda row: calculate_probability_and_count(
         history,
         row['Diff_Power'],
         row['Diff_HT_P'],
@@ -126,14 +126,23 @@ games_today['Win_Probability'] = games_today.apply(
     ), axis=1
 )
 
+games_today['Win_Probability'] = [r[0] for r in results]
+games_today['Games_Analyzed'] = [r[1] for r in results]
+
 # Ordenar por probabilidade
 games_today = games_today.sort_values(by='Win_Probability', ascending=False)
 
 # Exibir tabela formatada
 st.dataframe(
-    games_today[['Date', 'League', 'Home', 'Away', 'Diff_Power', 'Diff_HT_P', 'Side', 'Selected_Odd', 'Win_Probability']]
+    games_today[['Date', 'League', 'Home', 'Away', 'Diff_Power', 'Diff_HT_P', 'Side', 'Selected_Odd', 'Games_Analyzed', 'Win_Probability']]
     .style
     .applymap(color_diff_power, subset=['Diff_Power'])
     .applymap(color_probability, subset=['Win_Probability'])
-    .format({'Selected_Odd': '{:.2f}', 'Diff_Power': '{:.2f}', 'Diff_HT_P': '{:.2f}', 'Win_Probability': '{:.1f}%'})
+    .format({
+        'Selected_Odd': '{:.2f}', 
+        'Diff_Power': '{:.2f}', 
+        'Diff_HT_P': '{:.2f}', 
+        'Win_Probability': '{:.1f}%',
+        'Games_Analyzed': '{:,.0f}'
+    })
 )
