@@ -126,7 +126,8 @@ if history.empty:
 # Jogos do dia: apenas último arquivo (menos ligas excluídas)
 games_today = load_last_csv(GAMES_FOLDER)
 games_today = filter_excluded_leagues(games_today)
-games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
+if 'Goals_H_FT' in games_today.columns:
+    games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
 
 # Determinar lado e odd
 games_today['Side'] = games_today['Diff_Power'].apply(lambda x: "Home" if x > 0 else "Away")
