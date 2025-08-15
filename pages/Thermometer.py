@@ -10,9 +10,9 @@ st.title("🔥 Today's Betting Thermometer")
 GAMES_FOLDER = "GamesDay"
 
 # Margens de tolerância
-MARGIN_DIFF_POWER = 0.20
+MARGIN_DIFF_POWER = 10.00
 MARGIN_DIFF_HTP = 10.00
-MARGIN_ODDS = 0.20
+MARGIN_ODDS = 0.40
 
 # ------------------- Funções auxiliares -------------------
 def load_all_games(folder):
