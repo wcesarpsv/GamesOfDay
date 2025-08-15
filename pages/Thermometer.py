@@ -6,6 +6,7 @@ import numpy as np
 st.set_page_config(page_title="Today's Picks – Power Thermometer", layout="wide")
 st.title("🔥 Today's Betting Thermometer")
 
+# Legenda
 st.markdown("""
 **Legend – Diff_Power colors:**
 - 🟩 **Green** → Higher values favor the **Home** team (stronger advantage).
@@ -20,6 +21,9 @@ GAMES_FOLDER = "GamesDay"
 MARGIN_DIFF_POWER = 10.00
 MARGIN_DIFF_HTP = 10.00
 MARGIN_ODDS = 0.50
+
+# Ligas a excluir (não entram na análise)
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa"]
 
 # ------------------- Funções auxiliares -------------------
 def load_all_games(folder):
@@ -39,6 +43,20 @@ def load_all_games(folder):
         return pd.DataFrame()
     return pd.concat(df_list, ignore_index=True)
 
+def load_last_csv(folder):
+    """Carrega apenas o último arquivo CSV (mais recente) da pasta."""
+    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
+    if not files:
+        return pd.DataFrame()
+    latest_file = max(files)  # Assume formato com data no nome YYYY-MM-DD
+    df = pd.read_csv(os.path.join(folder, latest_file))
+    return df
+
+def filter_excluded_leagues(df):
+    """Remove ligas que contenham palavras-chave excluídas."""
+    pattern = '|'.join(EXCLUDED_LEAGUE_KEYWORDS)
+    return df[~df['League'].str.lower().str.contains(pattern, na=False)]
+
 def prepare_historical(df):
     """Filtra apenas jogos com resultado e colunas necessárias."""
     required_cols = ['Goals_H_FT', 'Goals_A_FT', 'Diff_Power', 'Diff_HT_P', 'Odd_H', 'Odd_A']
@@ -46,7 +64,6 @@ def prepare_historical(df):
         if col not in df.columns:
             st.error(f"Coluna necessária ausente no histórico: {col}")
             return pd.DataFrame()
-
     # Apenas jogos com resultados válidos
     df = df.dropna(subset=['Goals_H_FT', 'Goals_A_FT'])
     return df
@@ -79,18 +96,12 @@ def color_diff_power(val):
     """Colore o Diff_Power com degradê e zona neutra amarela."""
     if pd.isna(val):
         return ''
-    
-    # Zona amarela para valores próximos do equilíbrio
     if -8 <= val <= 8:
-        intensity = 1 - (abs(val) / 8)  # mais perto de zero = mais forte o amarelo
+        intensity = 1 - (abs(val) / 8)
         return f'background-color: rgba(255, 255, 0, {0.3 + 0.4 * intensity})'
-    
-    # Positivo = verde
     if val > 0:
-        intensity = min(1, val / 25)  # ajusta para não saturar
+        intensity = min(1, val / 25)
         return f'background-color: rgba(0, 255, 0, {0.3 + 0.4 * intensity})'
-    
-    # Negativo = vermelho
     if val < 0:
         intensity = min(1, abs(val) / 25)
         return f'background-color: rgba(255, 0, 0, {0.3 + 0.4 * intensity})'
@@ -99,24 +110,23 @@ def color_probability(val):
     """Colore a Win_Probability com degradê de verde conforme aumenta a %."""
     if pd.isna(val):
         return ''
-    intensity = min(1, val / 100)  # 0% a 100%
+    intensity = min(1, val / 100)
     return f'background-color: rgba(0, 255, 0, {0.2 + 0.6 * intensity})'
 
 # ------------------- Main -------------------
-# Carregar dados
+# Histórico: todos os arquivos (menos ligas excluídas)
 all_games = load_all_games(GAMES_FOLDER)
-if all_games.empty:
-    st.warning("Nenhum jogo encontrado na pasta GamesDay.")
-    st.stop()
+all_games = filter_excluded_leagues(all_games)
 
-# Histórico
 history = prepare_historical(all_games)
 if history.empty:
     st.warning("Nenhum jogo histórico válido encontrado (com resultados).")
     st.stop()
 
-# Jogos do dia (sem resultado)
-games_today = all_games[all_games['Goals_H_FT'].isna()].copy()
+# Jogos do dia: apenas último arquivo (menos ligas excluídas)
+games_today = load_last_csv(GAMES_FOLDER)
+games_today = filter_excluded_leagues(games_today)
+games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
 
 # Determinar lado e odd
 games_today['Side'] = games_today['Diff_Power'].apply(lambda x: "Home" if x > 0 else "Away")
