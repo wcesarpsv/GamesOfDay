@@ -6,6 +6,13 @@ import numpy as np
 st.set_page_config(page_title="Today's Picks – Power Thermometer", layout="wide")
 st.title("🔥 Today's Betting Thermometer")
 
+st.markdown("""
+**Legend – Diff_Power colors:**
+- 🟩 **Green** → Higher values favor the **Home** team (stronger advantage).
+- 🟥 **Red** → Lower values favor the **Away** team (stronger advantage).
+- 🟨 **Yellow** → Values close to zero (-8 to +8) indicate balanced teams.
+""")
+
 # Pasta com jogos do dia e histórico
 GAMES_FOLDER = "GamesDay"
 
