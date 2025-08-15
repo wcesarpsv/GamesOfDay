@@ -12,7 +12,7 @@ GAMES_FOLDER = "GamesDay"
 # Margens de tolerância
 MARGIN_DIFF_POWER = 10.00
 MARGIN_DIFF_HTP = 10.00
-MARGIN_ODDS = 0.40
+MARGIN_ODDS = 0.50
 
 # ------------------- Funções auxiliares -------------------
 def load_all_games(folder):
@@ -69,13 +69,31 @@ def calculate_probability(history_df, diff_power, diff_htp, side, selected_odd):
     return round((wins / total) * 100, 1)
 
 def color_diff_power(val):
-    """Colore o Diff_Power como termômetro."""
+    """Colore o Diff_Power com degradê e zona neutra amarela."""
     if pd.isna(val):
         return ''
+    
+    # Zona amarela para valores próximos do equilíbrio
+    if -8 <= val <= 8:
+        intensity = 1 - (abs(val) / 8)  # mais perto de zero = mais forte o amarelo
+        return f'background-color: rgba(255, 255, 0, {0.3 + 0.4 * intensity})'
+    
+    # Positivo = verde
     if val > 0:
-        return f'background-color: rgba(0, 255, 0, {min(1, val/5)})'
-    else:
-        return f'background-color: rgba(255, 0, 0, {min(1, abs(val)/5)})'
+        intensity = min(1, val / 25)  # ajusta para não saturar
+        return f'background-color: rgba(0, 255, 0, {0.3 + 0.4 * intensity})'
+    
+    # Negativo = vermelho
+    if val < 0:
+        intensity = min(1, abs(val) / 25)
+        return f'background-color: rgba(255, 0, 0, {0.3 + 0.4 * intensity})'
+
+def color_probability(val):
+    """Colore a Win_Probability com degradê de verde conforme aumenta a %."""
+    if pd.isna(val):
+        return ''
+    intensity = min(1, val / 100)  # 0% a 100%
+    return f'background-color: rgba(0, 255, 0, {0.2 + 0.6 * intensity})'
 
 # ------------------- Main -------------------
 # Carregar dados
@@ -114,6 +132,8 @@ games_today = games_today.sort_values(by='Win_Probability', ascending=False)
 # Exibir tabela formatada
 st.dataframe(
     games_today[['Date', 'League', 'Home', 'Away', 'Diff_Power', 'Diff_HT_P', 'Side', 'Selected_Odd', 'Win_Probability']]
-    .style.applymap(color_diff_power, subset=['Diff_Power'])
+    .style
+    .applymap(color_diff_power, subset=['Diff_Power'])
+    .applymap(color_probability, subset=['Win_Probability'])
     .format({'Selected_Odd': '{:.2f}', 'Diff_Power': '{:.2f}', 'Diff_HT_P': '{:.2f}', 'Win_Probability': '{:.1f}%'})
 )
