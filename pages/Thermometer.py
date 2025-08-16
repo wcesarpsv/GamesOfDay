@@ -20,7 +20,7 @@ GAMES_FOLDER = "GamesDay"
 # Margens de tolerância
 MARGIN_DIFF_POWER = 10.00
 MARGIN_DIFF_HTP = 10.00
-MARGIN_ODDS = 0.50
+MARGIN_ODDS = 0.30
 
 # Ligas a excluir (não entram na análise)
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa"]
