@@ -152,7 +152,7 @@ games_today = games_today.sort_values(by='Win_Probability', ascending=False)
 
 # Exibir tabela formatada
 st.dataframe(
-    games_today[['Date','Time,'League', 'Home', 'Away', 'Diff_Power', 'Diff_HT_P', 'Side', 'Selected_Odd', 'Games_Analyzed', 'Win_Probability']]
+    games_today[['Date','Time' ,'League', 'Home', 'Away', 'Diff_Power', 'Diff_HT_P', 'Side', 'Selected_Odd', 'Games_Analyzed', 'Win_Probability']]
     .style
     .applymap(color_diff_power, subset=['Diff_Power'])
     .applymap(color_probability, subset=['Win_Probability'])
