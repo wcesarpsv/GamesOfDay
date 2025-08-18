@@ -212,8 +212,42 @@ if not filtered_df.empty:
         if df_league.empty:
             continue
         df_league = df_league.sort_values("Date")
+        # 📈 Evolução por número de apostas (X) e ROI acumulado (Y)
+    st.subheader("📈 League Evolution by Number of Bets (ROI %)")
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    for league in selected_leagues:
+        df_league = filtered_df[filtered_df["League"] == league].copy()
+        if df_league.empty:
+            continue
+        df_league = df_league.sort_values("Date")
         df_league["Cumulative Profit"] = df_league["Bet Result"].cumsum()
-        ax.plot(df_league["Date"], df_league["Cumulative Profit"], label=league)
+        df_league["Bet Number"] = range(1, len(df_league) + 1)
+        df_league["ROI"] = df_league["Cumulative Profit"] / df_league["Bet Number"]
+
+        ax.plot(df_league["Bet Number"], df_league["ROI"], label=league)
+
+    ax.set_xlabel("Number of Bets")
+    ax.set_ylabel("ROI (per bet)")
+    ax.set_title("Cumulative ROI by League (based on number of bets)")
+
+    # Legenda dinâmica
+    n_leagues = len(selected_leagues)
+    if n_leagues <= 8:
+        ncol = 2
+    elif n_leagues <= 20:
+        ncol = 3
+    else:
+        ncol = 5
+
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.20),
+        ncol=ncol,
+        fontsize=8
+    )
+    st.pyplot(fig)
 
     ax.set_xlabel("Date")
     ax.set_ylabel("Cumulative Profit (units)")
