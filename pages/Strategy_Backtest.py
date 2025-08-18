@@ -179,97 +179,7 @@ if not filtered_df.empty:
     filtered_df["Bet Result"] = filtered_df.apply(calculate_profit, axis=1)
     filtered_df["Cumulative Profit"] = filtered_df["Bet Result"].cumsum()
 
-    # 📊 Resumo por Liga
-    st.subheader("📊 Performance by League")
-    league_summary = (
-        filtered_df.groupby("League")
-        .agg(
-            Matches=("League", "size"),
-            Wins=("Bet Result", lambda x: (x > 0).sum()),
-            Total_Profit=("Bet Result", "sum"),
-            Mean_Odd=("Odd_H" if bet_on=="Home" else "Odd_D" if bet_on=="Draw" else "Odd_A", "mean"),
-        )
-        .reset_index()
-    )
-    league_summary["Winrate"] = league_summary["Wins"] / league_summary["Matches"]
-    league_summary["ROI"] = league_summary["Total_Profit"] / league_summary["Matches"]
-
-    # Filtro interativo de ligas
-    leagues_available = sorted(league_summary["League"].unique())
-    selected_leagues = st.sidebar.multiselect("📌 Select leagues", leagues_available, default=leagues_available)
-    league_summary = league_summary[league_summary["League"].isin(selected_leagues)]
-    filtered_df = filtered_df[filtered_df["League"].isin(selected_leagues)]
-
-    st.dataframe(league_summary, use_container_width=True)
-
-        # 📈 Evolução temporal por liga
-    st.subheader("📈 League Evolution Over Time")
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-
-    for league in selected_leagues:
-        df_league = filtered_df[filtered_df["League"] == league].copy()
-        if df_league.empty:
-            continue
-        df_league = df_league.sort_values("Date")
-        # 📈 Evolução por número de apostas (X) e ROI acumulado (Y)
-    st.subheader("📈 League Evolution by Number of Bets (ROI %)")
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-
-    for league in selected_leagues:
-        df_league = filtered_df[filtered_df["League"] == league].copy()
-        if df_league.empty:
-            continue
-        df_league = df_league.sort_values("Date")
-        df_league["Cumulative Profit"] = df_league["Bet Result"].cumsum()
-        df_league["Bet Number"] = range(1, len(df_league) + 1)
-        df_league["ROI"] = df_league["Cumulative Profit"] / df_league["Bet Number"]
-
-        ax.plot(df_league["Bet Number"], df_league["ROI"], label=league)
-
-    ax.set_xlabel("Number of Bets")
-    ax.set_ylabel("ROI (per bet)")
-    ax.set_title("Cumulative ROI by League (based on number of bets)")
-
-    # Legenda dinâmica
-    n_leagues = len(selected_leagues)
-    if n_leagues <= 8:
-        ncol = 2
-    elif n_leagues <= 20:
-        ncol = 3
-    else:
-        ncol = 5
-
-    ax.legend(
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.20),
-        ncol=ncol,
-        fontsize=8
-    )
-    st.pyplot(fig)
-
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Cumulative Profit (units)")
-    ax.set_title("Cumulative Profit by League Over Time")
-    n_leagues = len(selected_leagues)
-    if n_leagues <= 8:
-        ncol = 2
-    elif n_leagues <= 20:
-        ncol = 3
-    else:
-        ncol = 5
-
-    ax.legend(
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.20),  # mais espaçado para baixo
-        ncol=ncol,
-        fontsize=8
-    )
-    st.pyplot(fig)
-
-
-    # 📈 Profit acumulado geral
+    # 📈 Profit acumulado geral (antigo gráfico global)
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(range(len(filtered_df)), filtered_df["Cumulative Profit"], marker="o")
     ax.set_xlabel("Bet Number")
@@ -295,15 +205,40 @@ if not filtered_df.empty:
 
     # 📝 Tabela final
     st.subheader("📝 Filtered Matches")
-    st.dataframe(
-        filtered_df[[
-            "Date", "League", "Home", "Away",
-            "Odd_H", "Odd_D", "Odd_A",
-            "Diff_Power", "Diff_HT_P",
-            "Goals_H_FT", "Goals_A_FT",
-            "Bet Result", "Cumulative Profit"
-        ]],
-        use_container_width=True
-    )
-else:
-    st.warning("⚠️ No matches found with selected filters.")
+    st.dataframe(filtered_df[[
+        "Date", "League", "Home", "Away",
+        "Odd_H", "Odd_D", "Odd_A",
+        "Diff_Power", "Diff_HT_P",
+        "Goals_H_FT", "Goals_A_FT",
+        "Bet Result", "Cumulative Profit"
+    ]], use_container_width=True)
+
+    # 📈 Evolução ROI por número de apostas (novo gráfico)
+    st.subheader("📈 League Evolution by Number of Bets (ROI %)")
+    fig, ax = plt.subplots(figsize=(10, 5))
+    for league in selected_leagues:
+        df_league = filtered_df[filtered_df["League"] == league].copy()
+        if df_league.empty:
+            continue
+        df_league = df_league.sort_values("Date")
+        df_league["Cumulative Profit"] = df_league["Bet Result"].cumsum()
+        df_league["Bet Number"] = range(1, len(df_league) + 1)
+        df_league["ROI"] = df_league["Cumulative Profit"] / df_league["Bet Number"]
+        ax.plot(df_league["Bet Number"], df_league["ROI"], label=league)
+    ax.set_xlabel("Number of Bets")
+    ax.set_ylabel("ROI (per bet)")
+    ax.set_title("Cumulative ROI by League (based on number of bets)")
+    n_leagues = len(selected_leagues)
+    if n_leagues <= 8:
+        ncol = 2
+    elif n_leagues <= 20:
+        ncol = 3
+    else:
+        ncol = 5
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.20), ncol=ncol, fontsize=8)
+    st.pyplot(fig)
+
+    # 📊 Resumo por Liga
+    st.subheader("📊 Performance by League")
+    st.dataframe(league_summary, use_container_width=True)
+
