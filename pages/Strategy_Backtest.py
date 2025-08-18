@@ -10,9 +10,6 @@ st.title("📈 Strategy Backtest – 1X2")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 🔒 Internal league filter (NOT shown in UI)
-#    Rows whose League contains any of these keywords (case-insensitive) are excluded.
-#    Ex.: "Cup", "Copa", "UEFA", "Friendly", "Super Cup", etc.
-#    Você pode adicionar/editar os termos diretamente nesta lista.
 EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "UEFA", "Friendly", "Super Cup"]
 _EXC_PATTERN = re.compile("|".join(map(re.escape, EXCLUDED_LEAGUE_KEYWORDS)), flags=re.IGNORECASE) if EXCLUDED_LEAGUE_KEYWORDS else None
 
@@ -27,7 +24,6 @@ def range_filter_hybrid(label: str, data_min: float, data_max: float, step: floa
     max_val = c2.number_input("Max", value=float(data_max), min_value=float(data_min), max_value=float(data_max),
                               step=step, key=f"{key_prefix}_max")
 
-    # Ensure order
     if min_val > max_val:
         min_val, max_val = max_val, min_val
         st.session_state[f"{key_prefix}_min"] = float(min_val)
@@ -49,10 +45,8 @@ def range_filter_hybrid(label: str, data_min: float, data_max: float, step: floa
         return float(min_val), float(max_val)
 
 def date_range_filter_hybrid(label: str, series_dates: pd.Series, key_prefix: str):
-    """Hybrid: (a) two manual date_inputs and (b) slider by date index)."""
     st.sidebar.markdown(f"**{label}**")
 
-    # Normalize and sort unique dates
     dates = pd.to_datetime(series_dates, errors="coerce").dt.date.dropna().unique()
     dates = sorted(dates)
     if not dates:
@@ -60,12 +54,10 @@ def date_range_filter_hybrid(label: str, series_dates: pd.Series, key_prefix: st
 
     dmin, dmax = dates[0], dates[-1]
 
-    # Manual inputs
     c1, c2 = st.sidebar.columns(2)
     d_from = c1.date_input("From", value=dmin, min_value=dmin, max_value=dmax, key=f"{key_prefix}_from")
     d_to   = c2.date_input("To", value=dmax, min_value=dmin, max_value=dmax, key=f"{key_prefix}_to")
 
-    # Slider by index
     idx_min, idx_max = 0, len(dates) - 1
     idx_from, idx_to = st.sidebar.slider(
         "Drag to adjust (by date index)",
@@ -79,10 +71,8 @@ def date_range_filter_hybrid(label: str, series_dates: pd.Series, key_prefix: st
     st.sidebar.divider()
 
     if source == "Slider":
-        # Convert indices to dates
         start_d, end_d = dates[min(idx_from, idx_to)], dates[max(idx_from, idx_to)]
     else:
-        # Ensure order
         start_d, end_d = (d_from, d_to) if d_from <= d_to else (d_to, d_from)
 
     return start_d, end_d
@@ -109,7 +99,6 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
         if not required.issubset(df.columns):
             continue
 
-        # 🔒 Internal league filter applied ASAP (if column exists)
         if _EXC_PATTERN and "League" in df.columns:
             df = df[~df["League"].astype(str).str.contains(_EXC_PATTERN, na=False)]
 
@@ -126,7 +115,6 @@ if not all_dfs:
 
 df_all = pd.concat(all_dfs, ignore_index=True)
 
-# Safety double-check: filter again post-concat (in case of inconsistent files)
 if _EXC_PATTERN and "League" in df_all.columns:
     df_all = df_all[~df_all["League"].astype(str).str.contains(_EXC_PATTERN, na=False)]
 
@@ -137,17 +125,14 @@ df_all = df_all.sort_values(by="Date").reset_index(drop=True)
 # ──────────────────────────────────────────────────────────────────────────────
 st.sidebar.header("🎯 Filter Matches")
 
-# 1️⃣ Bet selection
 bet_on = st.sidebar.selectbox("🎯 Bet on", ["Home", "Draw", "Away"])
 st.sidebar.divider()
 
-# 2️⃣ Date range filter
 date_start, date_end = date_range_filter_hybrid("🗓️ Period (Date)", df_all["Date"], key_prefix="date")
 if date_start is None or date_end is None:
     st.error("❌ Invalid dates.")
     st.stop()
 
-# 3️⃣ Numeric filters
 step_metrics = 0.01
 step_odds = 0.01
 
@@ -179,7 +164,7 @@ filtered_df = df_all[
 ].copy()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Calculate profit (stake = 1)
+# Profit Calculation
 # ──────────────────────────────────────────────────────────────────────────────
 def calculate_profit(row):
     h, a = row["Goals_H_FT"], row["Goals_A_FT"]
@@ -187,14 +172,45 @@ def calculate_profit(row):
         return (row["Odd_H"] - 1) if h > a else -1
     elif bet_on == "Draw":
         return (row["Odd_D"] - 1) if h == a else -1
-    else:  # Away
+    else:
         return (row["Odd_A"] - 1) if a > h else -1
 
 if not filtered_df.empty:
     filtered_df["Bet Result"] = filtered_df.apply(calculate_profit, axis=1)
     filtered_df["Cumulative Profit"] = filtered_df["Bet Result"].cumsum()
 
-    # 📈 Profit chart
+    # 📊 Resumo por Liga
+    st.subheader("📊 Performance by League")
+    league_summary = (
+        filtered_df.groupby("League")
+        .agg(
+            Matches=("League", "size"),
+            Wins=("Bet Result", lambda x: (x > 0).sum()),
+            Total_Profit=("Bet Result", "sum"),
+            Mean_Odd=("Odd_H" if bet_on=="Home" else "Odd_D" if bet_on=="Draw" else "Odd_A", "mean"),
+        )
+        .reset_index()
+    )
+    league_summary["Winrate"] = league_summary["Wins"] / league_summary["Matches"]
+    league_summary["ROI"] = league_summary["Total_Profit"] / league_summary["Matches"]
+
+    # Filtro interativo de ligas
+    leagues_available = sorted(league_summary["League"].unique())
+    selected_leagues = st.sidebar.multiselect("📌 Select leagues", leagues_available, default=leagues_available)
+    league_summary = league_summary[league_summary["League"].isin(selected_leagues)]
+    filtered_df = filtered_df[filtered_df["League"].isin(selected_leagues)]
+
+    st.dataframe(league_summary, use_container_width=True)
+
+    # Gráfico ROI por Liga
+    fig, ax = plt.subplots(figsize=(8, 5))
+    league_summary.sort_values("ROI", inplace=True)
+    ax.barh(league_summary["League"], league_summary["ROI"], color="skyblue")
+    ax.set_xlabel("ROI per Match")
+    ax.set_title("ROI by League")
+    st.pyplot(fig)
+
+    # 📈 Profit acumulado geral
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(range(len(filtered_df)), filtered_df["Cumulative Profit"], marker="o")
     ax.set_xlabel("Bet Number")
@@ -202,25 +218,23 @@ if not filtered_df.empty:
     ax.set_title(f"Cumulative Profit by Bet (1X2 – {bet_on}, Stake=1)")
     st.pyplot(fig)
 
-    # 📊 Metrics
+    # 📊 Metrics globais
     n_matches = len(filtered_df)
     wins = (filtered_df["Bet Result"] > 0).sum()
     winrate = wins / n_matches if n_matches else 0.0
-
     odd_map = {"Home": "Odd_H", "Draw": "Odd_D", "Away": "Odd_A"}
     mean_odd = filtered_df[odd_map[bet_on]].mean()
-
     total_profit = filtered_df["Bet Result"].sum()
     roi = total_profit / n_matches if n_matches else 0.0
 
-    st.subheader("📊 Backtest Results")
+    st.subheader("📊 Backtest Results (Global)")
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Number of Matches", f"{n_matches}")
     col2.metric("Winrate", f"{winrate:.1%}")
     col3.metric("Mean Odd", f"{mean_odd:.2f}")
     col4.metric("ROI", f"{roi:.1%}")
 
-    # 📝 Table
+    # 📝 Tabela final
     st.subheader("📝 Filtered Matches")
     st.dataframe(
         filtered_df[[
