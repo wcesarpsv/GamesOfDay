@@ -213,6 +213,25 @@ if not filtered_df.empty:
         "Bet Result", "Cumulative Profit"
     ]], use_container_width=True)
 
+    # 📊 Resumo por Liga (define league_summary e selected_leagues antes dos gráficos)
+    league_summary = (
+        filtered_df.groupby("League")
+        .agg(
+            Matches=("League", "size"),
+            Wins=("Bet Result", lambda x: (x > 0).sum()),
+            Total_Profit=("Bet Result", "sum"),
+            Mean_Odd=("Odd_H" if bet_on=="Home" else "Odd_D" if bet_on=="Draw" else "Odd_A", "mean"),
+        )
+        .reset_index()
+    )
+    league_summary["Winrate"] = league_summary["Wins"] / league_summary["Matches"]
+    league_summary["ROI"] = league_summary["Total_Profit"] / league_summary["Matches"]
+
+    leagues_available = sorted(league_summary["League"].unique())
+    selected_leagues = st.sidebar.multiselect("📌 Select leagues", leagues_available, default=leagues_available)
+    league_summary = league_summary[league_summary["League"].isin(selected_leagues)]
+    filtered_df = filtered_df[filtered_df["League"].isin(selected_leagues)]
+
     # 📈 Evolução ROI por número de apostas (novo gráfico)
     st.subheader("📈 League Evolution by Number of Bets (ROI %)")
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -237,6 +256,11 @@ if not filtered_df.empty:
         ncol = 5
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.20), ncol=ncol, fontsize=8)
     st.pyplot(fig)
+
+    # 📊 Performance por Liga (tabela final)
+    st.subheader("📊 Performance by League")
+    st.dataframe(league_summary, use_container_width=True)
+
 
     # 📊 Resumo por Liga
     st.subheader("📊 Performance by League")
