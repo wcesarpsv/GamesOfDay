@@ -202,13 +202,25 @@ if not filtered_df.empty:
 
     st.dataframe(league_summary, use_container_width=True)
 
-    # Gráfico ROI por Liga
-    fig, ax = plt.subplots(figsize=(8, 5))
-    league_summary.sort_values("ROI", inplace=True)
-    ax.barh(league_summary["League"], league_summary["ROI"], color="skyblue")
-    ax.set_xlabel("ROI per Match")
-    ax.set_title("ROI by League")
+        # 📈 Evolução temporal por liga
+    st.subheader("📈 League Evolution Over Time")
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    for league in selected_leagues:
+        df_league = filtered_df[filtered_df["League"] == league].copy()
+        if df_league.empty:
+            continue
+        df_league = df_league.sort_values("Date")
+        df_league["Cumulative Profit"] = df_league["Bet Result"].cumsum()
+        ax.plot(df_league["Date"], df_league["Cumulative Profit"], label=league)
+
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Cumulative Profit (units)")
+    ax.set_title("Cumulative Profit by League Over Time")
+    ax.legend(loc="best", fontsize=8)
     st.pyplot(fig)
+
 
     # 📈 Profit acumulado geral
     fig, ax = plt.subplots(figsize=(10, 4))
