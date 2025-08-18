@@ -2,3 +2,5 @@ streamlit
 pandas
 streamlit-aggrid
 matplotlib
+plotly
+
