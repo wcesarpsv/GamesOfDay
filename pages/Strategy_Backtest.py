@@ -262,7 +262,3 @@ if not filtered_df.empty:
     st.dataframe(league_summary, use_container_width=True)
 
 
-    # 📊 Resumo por Liga
-    st.subheader("📊 Performance by League")
-    st.dataframe(league_summary, use_container_width=True)
-
