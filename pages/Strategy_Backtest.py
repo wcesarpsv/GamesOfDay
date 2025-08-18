@@ -218,7 +218,20 @@ if not filtered_df.empty:
     ax.set_xlabel("Date")
     ax.set_ylabel("Cumulative Profit (units)")
     ax.set_title("Cumulative Profit by League Over Time")
-    ax.legend(loc="best", fontsize=8)
+    n_leagues = len(selected_leagues)
+    if n_leagues <= 8:
+        ncol = 2
+    elif n_leagues <= 20:
+        ncol = 3
+    else:
+        ncol = 5
+
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.20),  # mais espaçado para baixo
+        ncol=ncol,
+        fontsize=8
+    )
     st.pyplot(fig)
 
 
