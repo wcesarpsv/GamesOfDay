@@ -12,7 +12,7 @@ st.title("🔮 Data-Driven Football Insights")
 
 # 🚫 Keywords (case-insensitive) that, if found in League, will EXCLUDE the row
 # Edite livremente esta lista (ex.: "Cup", "Copa", "Copas", "UEFA", etc.)
-EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "UEFA"]
+EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "UEFA","nordeste"]
 
 # 🧠 Helper function to extract available dates from filenames
 def get_available_dates(folder):
@@ -117,6 +117,7 @@ except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
 
 
 
