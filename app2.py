@@ -58,6 +58,9 @@ try:
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
     df.columns = df.columns.str.strip()
     df = df.dropna(axis=1, how='all')
+    df["Goals_H_FT"] = df["Goals_H_FT"].astype("Int64")
+    df["Goals_A_FT"] = df["Goals_A_FT"].astype("Int64")
+
 
     # 📆 Ensure the 'Date' column is datetime.date
     df['Date'] = df['Date'].dt.date
@@ -119,6 +122,7 @@ except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
 
 
 
