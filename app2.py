@@ -58,8 +58,7 @@ try:
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
     df.columns = df.columns.str.strip()
     df = df.dropna(axis=1, how='all')
-    df["Goals_H_FT"] = df["Goals_H_FT"].astype("Int64")
-    df["Goals_A_FT"] = df["Goals_A_FT"].astype("Int64")
+    
 
 
     # 📆 Ensure the 'Date' column is datetime.date
@@ -110,7 +109,8 @@ try:
                 'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
                 'Z_HT_H': '{:.2f}','Z_HT_A': '{:.2f}',
                 'Z_H': '{:.2f}','Z_A': '{:.2f}',                
-                'Diff_HT_P': '{:.2f}', 'Diff_Power': '{:.2f}', 'OU_Total': lambda x: f"{x * 100:.2f}"
+                'Diff_HT_P': '{:.2f}', 'Diff_Power': '{:.2f}', 'OU_Total': lambda x: f"{x * 100:.2f}",
+                'Goals_H_FT':'{:.2f}', 'Goals_A_FT':'{:.2f}'
             })
             .background_gradient(cmap='RdYlGn', subset=[c for c in ['Diff_HT_P', 'Diff_Power'] if c in df_display.columns])
             .background_gradient(cmap='Blues', subset=[c for c in ['OU_Total'] if c in df_display.columns]),
@@ -122,6 +122,7 @@ except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
 
 
 
