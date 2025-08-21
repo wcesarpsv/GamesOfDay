@@ -107,8 +107,8 @@ try:
             df_display.style
             .format({
                 'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
-                'Z_HT_H': '{:.2f}','Z_HT_A': '{:.2f}',
-                'Z_H': '{:.2f}','Z_A': '{:.2f}',                
+                'M_HT_H': '{:.2f}','M_HT_A': '{:.2f}',
+                'M_H': '{:.2f}','M_A': '{:.2f}',                
                 'Diff_HT_P': '{:.2f}', 'Diff_Power': '{:.2f}',
                 'OU_Total': lambda x: f"{x * 100:.2f}",
                 'Goals_H_FT': lambda x: f"{int(x)}",
@@ -125,6 +125,7 @@ except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
 
 
 
