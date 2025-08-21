@@ -87,7 +87,7 @@ try:
 
 - **`Diff_HT_P`** – Difference in team strength for the **first half**, based on Power Ratings  
 - **`Diff_Power`** – Overall team strength difference for the full match (FT)  
-- **`OU_Total`** – Expected total goals for the match (higher = greater chance of Over 2.5 goals)
+- **`OU_Total`** – Expected total goals for the match (higher = greater chance of Over Line Goals)
 
 ---
 
@@ -125,6 +125,7 @@ except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
 
 
 
