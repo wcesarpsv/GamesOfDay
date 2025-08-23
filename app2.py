@@ -143,42 +143,43 @@ try:
                 return f"<span style='color:orange;'>➡️ {val:.2f}</span>"
 
         # 🎨 Função para aplicar cor no texto (sem HTML)
-def color_arrows(val):
-    try:
-        v = float(val)
-    except:
-        return "color: black"
-    if v > 0:
-        return "color: blue"
-    elif v < 0:
-        return "color: red"
-    else:
-        return "color: orange"
-
-# ✅ Exibe estilizado no st.dataframe
-st.dataframe(
-    df_display.style
-    .format({
-        "Odd H": "{:.2f}", "Odd D": "{:.2f}", "Odd A": "{:.2f}",
-        "Diff HT": "{:.2f}", "Diff FT": "{:.2f}",
-        "OU %": lambda x: f"{x * 100:.2f}",
-        "Gols H": lambda x: f"{int(x)}",
-        "Gols A": lambda x: f"{int(x)}",
-        "HT Home": "{:.2f}",
-        "HT Away": "{:.2f}",
-        "FT Home": "{:.2f}",
-        "FT Away": "{:.2f}",
-    })
-    .applymap(color_arrows, subset=["HT Home","HT Away","FT Home","FT Away"])
-    .background_gradient(cmap="RdYlGn", subset=["Diff HT", "Diff FT"])
-    .bar(subset=["OU %"], color="lightblue"),
-    height=1200,
-    use_container_width=True
-)
+        def color_arrows(val):
+            try:
+                v = float(val)
+            except:
+                return "color: black"
+            if v > 0:
+                return "color: blue"
+            elif v < 0:
+                return "color: red"
+            else:
+                return "color: orange"
+        
+        # ✅ Exibe estilizado no st.dataframe
+        st.dataframe(
+            df_display.style
+            .format({
+                "Odd H": "{:.2f}", "Odd D": "{:.2f}", "Odd A": "{:.2f}",
+                "Diff HT": "{:.2f}", "Diff FT": "{:.2f}",
+                "OU %": lambda x: f"{x * 100:.2f}",
+                "Gols H": lambda x: f"{int(x)}",
+                "Gols A": lambda x: f"{int(x)}",
+                "HT Home": "{:.2f}",
+                "HT Away": "{:.2f}",
+                "FT Home": "{:.2f}",
+                "FT Away": "{:.2f}",
+            })
+            .applymap(color_arrows, subset=["HT Home","HT Away","FT Home","FT Away"])
+            .background_gradient(cmap="RdYlGn", subset=["Diff HT", "Diff FT"])
+            .bar(subset=["OU %"], color="lightblue"),
+            height=1200,
+            use_container_width=True
+        )
 
 
 except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
 
