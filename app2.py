@@ -88,9 +88,9 @@ try:
 
 ### 🎨 Color Guide:
 
-- 🟦 **Blue ⬆️**: Positive advantage  
-- 🟥 **Red ⬇️**: Negative disadvantage  
-- 🟧 **Orange ➡️**: Neutral  
+- 🟦 **Blue**: Positive advantage  
+- 🟥 **Red**: Negative disadvantage  
+- 🟧 **Orange**: Neutral (~0)  
 - 🔵 **Bars**: Higher = greater chance of Over line goals
 """)
 
@@ -129,20 +129,7 @@ try:
         }
         df_display = df_display.rename(columns=rename_dict)
 
-        # 🎨 Função setas coloridas
-        def arrow_color(val):
-            try:
-                val = float(val)
-            except:
-                return val
-            if val > 0:
-                return f"<span style='color:blue;'>⬆️ {val:.2f}</span>"
-            elif val < 0:
-                return f"<span style='color:red;'>⬇️ {val:.2f}</span>"
-            else:
-                return f"<span style='color:orange;'>➡️ {val:.2f}</span>"
-
-        # 🎨 Função para aplicar cor no texto (sem HTML)
+        # 🎨 Função para cor do texto
         def color_arrows(val):
             try:
                 v = float(val)
@@ -154,14 +141,14 @@ try:
                 return "color: red"
             else:
                 return "color: orange"
-        
-        # ✅ Exibe estilizado no st.dataframe
+
+        # ✅ Exibe estilizado
         st.dataframe(
             df_display.style
             .format({
                 "Odd H": "{:.2f}", "Odd D": "{:.2f}", "Odd A": "{:.2f}",
                 "Diff HT": "{:.2f}", "Diff FT": "{:.2f}",
-                "OU %": lambda x: f"{x * 100:.2f}",
+                "OU %": "{:.2f}%",
                 "Gols H": lambda x: f"{int(x)}",
                 "Gols A": lambda x: f"{int(x)}",
                 "HT Home": "{:.2f}",
@@ -171,15 +158,14 @@ try:
             })
             .applymap(color_arrows, subset=["HT Home","HT Away","FT Home","FT Away"])
             .background_gradient(cmap="RdYlGn", subset=["Diff HT", "Diff FT"])
-            .bar(subset=["OU %"], color="lightblue"),
+            .bar(subset=["OU %"], color="lightblue")
+            .set_properties(**{"text-align": "center"})
+            .set_table_styles([{"selector": "th", "props": [("text-align", "center")]}]),
             height=1200,
             use_container_width=True
         )
-
 
 except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
-
-
