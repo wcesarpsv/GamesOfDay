@@ -33,9 +33,9 @@ def add_arrow(val):
     except:
         return val
     
-    if val > 0:
+    if val >= 0.6:
         return f"⬆️ {val:.2f}"
-    elif val < 0:
+    elif val <= -0.6:
         return f"⬇️ {val:.2f}"
     else:
         return f"➡️ {val:.2f}"
@@ -139,6 +139,7 @@ except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
 
 
 
