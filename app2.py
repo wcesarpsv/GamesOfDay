@@ -27,6 +27,20 @@ def get_available_dates(folder):
                 continue
     return sorted(dates)
 
+def add_arrow(val):
+    try:
+        val = float(val)
+    except:
+        return val
+    
+    if val > 0:
+        return f"⬆️ {val:.2f}"
+    elif val < 0:
+        return f"⬇️ {val:.2f}"
+    else:
+        return f"➡️ {val:.2f}"
+
+
 # 🔍 Get available dates from CSV files
 available_dates = get_available_dates(DATA_FOLDER)
 
@@ -102,23 +116,26 @@ try:
     else:
         # ✅ Display styled table
         st.dataframe(
+            st.dataframe(styled, height=1200, use_container_width=True)
+
             df_display.style
             .format({
                 'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
-                'M_HT_H': '{:.2f}','M_HT_A': '{:.2f}',
-                'M_H': '{:.2f}','M_A': '{:.2f}',                
                 'Diff_HT_P': '{:.2f}', 'Diff_Power': '{:.2f}',
                 'OU_Total': lambda x: f"{x * 100:.2f}",
                 'Goals_H_FT': lambda x: f"{int(x)}",
-                'Goals_A_FT': lambda x: f"{int(x)}"
-            })
-            .background_gradient(cmap='RdYlGn', subset=[c for c in ['Diff_HT_P', 'Diff_Power'] if c in df_display.columns])
-            .background_gradient(cmap='Blues', subset=[c for c in ['OU_Total'] if c in df_display.columns]),
-            height=1200,
-            use_container_width=True
+                'Goals_A_FT': lambda x: f"{int(x)}",
+                'M_HT_H': add_arrow,
+                'M_HT_A': add_arrow,
+                'M_H': add_arrow,
+                'M_A': add_arrow,
+    })
+    .background_gradient(cmap='RdYlGn', subset=['Diff_HT_P','Diff_Power'])
+    .background_gradient(cmap='Blues', subset=['OU_Total'])
         )
 
 except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
