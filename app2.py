@@ -11,7 +11,6 @@ st.set_page_config(page_title="Data-Driven Football Insights", layout="wide")
 st.title("🔮 Data-Driven Football Insights")
 
 # 🚫 Keywords (case-insensitive) that, if found in League, will EXCLUDE the row
-# Edite livremente esta lista (ex.: "Cup", "Copa", "Copas", "UEFA", etc.)
 EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "UEFA","nordeste"]
 
 # 🧠 Helper function to extract available dates from filenames
@@ -27,19 +26,19 @@ def get_available_dates(folder):
                 continue
     return sorted(dates)
 
-def add_arrow(val):
+# 🎯 Função para mostrar setas baseado na média da coluna
+def arrow_trend(val, mean, threshold=0.2):
     try:
-        val = float(val)
+        v = float(val)
     except:
         return val
     
-    if val >= 0.6:
-        return f"⬆️ {val:.2f}"
-    elif val <= -0.6:
-        return f"⬇️ {val:.2f}"
+    if v > mean + threshold:
+        return f"🔵🔼 {v:.2f}"   # acima da média
+    elif v < mean - threshold:
+        return f"🔴🔽 {v:.2f}"   # abaixo da média
     else:
-        return f"➡️ {val:.2f}"
-
+        return f"🟠➡️ {v:.2f}"   # próximo da média
 
 # 🔍 Get available dates from CSV files
 available_dates = get_available_dates(DATA_FOLDER)
@@ -105,16 +104,27 @@ try:
 
 ### 🎨 Color Guide:
 
-- 🟩 **Green**: Advantage for the **home team**  
-- 🟥 **Red**: Advantage for the **away team**  
-- 🔵 **Blue**: Higher expected total goals
+- 🔵🔼 **Above average**  
+- 🔴🔽 **Below average**  
+- 🟠➡️ **Near average**  
+- 🟩 **Green background**: Home advantage  
+- 🟥 **Red background**: Away advantage  
+- 🔵 **Blue background**: Higher expected goals
 """)
 
-        # ⚠️ Show warning if no matches found
+    # ⚠️ Show warning if no matches found
     if df_filtered.empty:
         st.warning("⚠️ No matches found for the selected date after applying the internal league filter.")
     else:
-        # ✅ Cria o estilo
+        # 🔢 Calcula médias por coluna
+        means = {
+            "M_HT_H": df_display["M_HT_H"].mean(),
+            "M_HT_A": df_display["M_HT_A"].mean(),
+            "M_H": df_display["M_H"].mean(),
+            "M_A": df_display["M_A"].mean()
+        }
+
+        # ✅ Cria estilo
         styled = (
             df_display.style
             .format({
@@ -123,25 +133,19 @@ try:
                 'OU_Total': lambda x: f"{x * 100:.2f}",
                 'Goals_H_FT': lambda x: f"{int(x)}",
                 'Goals_A_FT': lambda x: f"{int(x)}",
-                'M_HT_H': add_arrow,
-                'M_HT_A': add_arrow,
-                'M_H': add_arrow,
-                'M_A': add_arrow,
+                'M_HT_H': lambda x: arrow_trend(x, means["M_HT_H"]),
+                'M_HT_A': lambda x: arrow_trend(x, means["M_HT_A"]),
+                'M_H': lambda x: arrow_trend(x, means["M_H"]),
+                'M_A': lambda x: arrow_trend(x, means["M_A"]),
             })
             .background_gradient(cmap='RdYlGn', subset=['Diff_HT_P','Diff_Power'])
             .background_gradient(cmap='Blues', subset=['OU_Total'])
         )
 
-        # ✅ Exibe tabela estilizada
+        # ✅ Show styled table
         st.dataframe(styled, height=1200, use_container_width=True)
 
 except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
-
-
-
-
-
-
