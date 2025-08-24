@@ -118,6 +118,8 @@ try:
         st.dataframe(
             st.dataframe(styled, height=1200, use_container_width=True),
 
+        styled = (
+
             df_display.style
             .format({
                 'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
@@ -138,5 +140,6 @@ except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
 
 
