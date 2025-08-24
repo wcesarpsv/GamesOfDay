@@ -34,11 +34,11 @@ def arrow_trend(val, mean, threshold=0.2):
         return val
     
     if v > mean + threshold:
-        return f"🔵🔼 {v:.2f}"   # acima da média
+        return f"🔵 {v:.2f}"   # acima da média
     elif v < mean - threshold:
-        return f"🔴🔽 {v:.2f}"   # abaixo da média
+        return f"🔴 {v:.2f}"   # abaixo da média
     else:
-        return f"🟠➡️ {v:.2f}"   # próximo da média
+        return f"🟠 {v:.2f}"   # próximo da média
 
 # 🔍 Get available dates from CSV files
 available_dates = get_available_dates(DATA_FOLDER)
@@ -104,9 +104,9 @@ try:
 
 ### 🎨 Color Guide:
 
-- 🔵🔼 **Above average**  
-- 🔴🔽 **Below average**  
-- 🟠➡️ **Near average**  
+- 🔵 **Above average**  
+- 🔴 **Below average**  
+- 🟠 **Near average**  
 - 🟩 **Green background**: Home advantage  
 - 🟥 **Red background**: Away advantage  
 - 🔵 **Blue background**: Higher expected goals
@@ -149,3 +149,4 @@ except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
