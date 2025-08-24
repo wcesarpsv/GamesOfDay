@@ -110,16 +110,12 @@ try:
 - 🔵 **Blue**: Higher expected total goals
 """)
 
-    # ⚠️ Show warning if no matches found
+        # ⚠️ Show warning if no matches found
     if df_filtered.empty:
         st.warning("⚠️ No matches found for the selected date after applying the internal league filter.")
     else:
-        # ✅ Display styled table
-        st.dataframe(
-            st.dataframe(styled, height=1200, use_container_width=True),
-
+        # ✅ Cria o estilo
         styled = (
-
             df_display.style
             .format({
                 'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
@@ -131,15 +127,19 @@ try:
                 'M_HT_A': add_arrow,
                 'M_H': add_arrow,
                 'M_A': add_arrow,
-    })
-    .background_gradient(cmap='RdYlGn', subset=['Diff_HT_P','Diff_Power'])
-    .background_gradient(cmap='Blues', subset=['OU_Total'])
+            })
+            .background_gradient(cmap='RdYlGn', subset=['Diff_HT_P','Diff_Power'])
+            .background_gradient(cmap='Blues', subset=['OU_Total'])
         )
-                )
+
+        # ✅ Exibe tabela estilizada
+        st.dataframe(styled, height=1200, use_container_width=True)
+
 except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
 
 
 
