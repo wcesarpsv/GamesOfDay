@@ -135,11 +135,12 @@ try:
     .background_gradient(cmap='RdYlGn', subset=['Diff_HT_P','Diff_Power'])
     .background_gradient(cmap='Blues', subset=['OU_Total'])
         )
-
+                )
 except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
 
 
 
