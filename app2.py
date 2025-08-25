@@ -33,9 +33,9 @@ def arrow_trend(val, mean, threshold=0.4):
     except:
         return val
     
-    if v > mean + threshold + 0.5:
+    if v > mean + threshold:
         return f"🔵 {v:.2f}"   # acima da média
-    elif v < mean - threshold + 0.5:
+    elif v < mean - threshold:
         return f"🔴 {v:.2f}"   # abaixo da média
     else:
         return f"🟠 {v:.2f}"   # próximo da média
@@ -149,6 +149,7 @@ except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
 
 
 
