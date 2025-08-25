@@ -27,7 +27,7 @@ def get_available_dates(folder):
     return sorted(dates)
 
 # 🎯 Função para mostrar setas baseado na média da coluna
-def arrow_trend(val, mean, threshold=0.6):
+def arrow_trend(val, mean, threshold=0.2):
     try:
         v = float(val)
     except:
@@ -149,6 +149,7 @@ except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
 
 
 
