@@ -27,15 +27,15 @@ def get_available_dates(folder):
     return sorted(dates)
 
 # 🎯 Função para mostrar setas baseado na média da coluna
-def arrow_trend(val, mean, threshold=1):
+def arrow_trend(val, mean, threshold=0.4):
     try:
         v = float(val)
     except:
         return val
     
-    if v > mean + threshold:
+    if v > mean + threshold + 0.5:
         return f"🔵 {v:.2f}"   # acima da média
-    elif v < mean - threshold:
+    elif v < mean - threshold + 0.5:
         return f"🔴 {v:.2f}"   # abaixo da média
     else:
         return f"🟠 {v:.2f}"   # próximo da média
@@ -149,6 +149,7 @@ except FileNotFoundError:
     st.error(f"❌ File `{filename}` not found.")
 except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
+
 
 
 
