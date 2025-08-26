@@ -15,16 +15,17 @@ EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "UEFA","nordeste"]
 
 # 🧠 Helper function to extract available dates from filenames
 def get_available_dates(folder):
-    pattern = r'Jogosdodia_(\d{4}-\d{2}-\d{2})\.csv'
+    pattern = re.compile(r'jogosdodia_(\d{4}-\d{2}-\d{2})\.csv', re.IGNORECASE)
     dates = []
     for filename in os.listdir(folder):
-        match = re.match(pattern, filename)
+        match = pattern.search(filename)
         if match:
             try:
                 dates.append(datetime.strptime(match.group(1), '%Y-%m-%d').date())
             except:
                 continue
     return sorted(dates)
+
 
 # 🎯 Função para mostrar setas baseado na média da coluna
 def arrow_trend(val, mean, threshold=0.4):
@@ -159,3 +160,4 @@ except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
 except Exception as e:
     st.error(f"⚠️ Unexpected error: {e}")
+
