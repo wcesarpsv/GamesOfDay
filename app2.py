@@ -47,6 +47,20 @@ if not available_dates:
     st.error("❌ No CSV files found in the game data folder.")
     st.stop()
 
+# 🧹 Detectar último arquivo e resetar cache se mudou
+latest_date = available_dates[-1] if available_dates else None
+
+# Guardar no session_state o último carregado
+if "last_seen_date" not in st.session_state:
+    st.session_state.last_seen_date = latest_date
+
+# Se aparecer uma data nova (arquivo novo), limpa cache automaticamente
+if latest_date and latest_date != st.session_state.last_seen_date:
+    st.cache_data.clear()
+    st.session_state.last_seen_date = latest_date
+    st.rerun()  # força recarregar app
+
+
 # 🔓 Option to show all dates or only the most recent 7
 show_all = st.checkbox("🔓 Show all available dates", value=False)
 
@@ -166,3 +180,4 @@ except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
 except Exception as e:
     st.error(f"⚠️ Unexpected error: {e}")
+
