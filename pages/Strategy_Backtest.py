@@ -96,12 +96,12 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
         except Exception:
             continue
 
-        required = {"Goals_H_FT","Goals_A_FT","Diff_Power","Diff_HT_P","Odd_H","Odd_D","Odd_A","Date"}
+        required = {"Goals_H_FT","Goals_A_FT","Diff_Power","Odd_H","Odd_D","Odd_A","Date","M_H","M_A"}
         if not required.issubset(df.columns):
             continue
 
-        # 🔧 Garantir colunas das novas métricas
-        for col in ["M_HT_H", "M_HT_A", "M_H", "M_A"]:
+        # 🔧 Garante colunas extras
+        for col in ["Diff_HT_P", "M_HT_H", "M_HT_A"]:
             if col not in df.columns:
                 df[col] = float("nan")
 
@@ -131,9 +131,19 @@ df_all = df_all.sort_values(by="Date").reset_index(drop=True)
 # ──────────────────────────────────────────────────────────────────────────────
 st.sidebar.header("🎯 Filter Matches")
 
-bet_on = st.sidebar.selectbox("🎯 Bet on", ["Home", "Draw", "Away"])
+# 🔘 Botão Reset
+if st.sidebar.button("🔄 Reset filters"):
+    for key in list(st.session_state.keys()):
+        if any(prefix in key for prefix in ["mh", "ma", "diff_power", "odd_h", "odd_d", "odd_a", 
+                                            "date", "bet_on", "diff_htp", "mht_h", "mht_a"]):
+            del st.session_state[key]
+    st.experimental_rerun()
+
+# Escolha de aposta
+bet_on = st.sidebar.selectbox("🎯 Bet on", ["Home", "Draw", "Away"], key="bet_on")
 st.sidebar.divider()
 
+# Período
 date_start, date_end = date_range_filter_hybrid("🗓️ Period (Date)", df_all["Date"], key_prefix="date")
 if date_start is None or date_end is None:
     st.error("❌ Invalid dates.")
@@ -142,48 +152,68 @@ if date_start is None or date_end is None:
 step_metrics = 0.01
 step_odds = 0.01
 
-dp_min, dp_max = float(df_all["Diff_Power"].min()), float(df_all["Diff_Power"].max())
-diff_power_sel = range_filter_hybrid("📊 Diff_Power", dp_min, dp_max, step=step_metrics, key_prefix="diff_power")
-
-htp_min, htp_max = float(df_all["Diff_HT_P"].min()), float(df_all["Diff_HT_P"].max())
-diff_ht_p_sel = range_filter_hybrid("📉 Diff_HT_P", htp_min, htp_max, step=step_metrics, key_prefix="diff_htp")
-
-oh_min, oh_max = float(df_all["Odd_H"].min()), float(df_all["Odd_H"].max())
-odd_h_sel = range_filter_hybrid("💰 Odd_H (Home win)", oh_min, oh_max, step=step_odds, key_prefix="odd_h")
-
-od_min, od_max = float(df_all["Odd_D"].min()), float(df_all["Odd_D"].max())
-odd_d_sel = range_filter_hybrid("💰 Odd_D (Draw)", od_min, od_max, step=step_odds, key_prefix="odd_d")
-
-oa_min, oa_max = float(df_all["Odd_A"].min()), float(df_all["Odd_A"].max())
-odd_a_sel = range_filter_hybrid("💰 Odd_A (Away win)", oa_min, oa_max, step=step_odds, key_prefix="odd_a")
-
-# 🔧 Novos filtros para as 4 métricas
-mht_h_min, mht_h_max = float(df_all["M_HT_H"].min()), float(df_all["M_HT_H"].max())
-mht_h_sel = range_filter_hybrid("📊 M_HT_H", mht_h_min, mht_h_max, step=0.01, key_prefix="mht_h")
-
-mht_a_min, mht_a_max = float(df_all["M_HT_A"].min()), float(df_all["M_HT_A"].max())
-mht_a_sel = range_filter_hybrid("📊 M_HT_A", mht_a_min, mht_a_max, step=0.01, key_prefix="mht_a")
-
+# 📊 M_H
 mh_min, mh_max = float(df_all["M_H"].min()), float(df_all["M_H"].max())
 mh_sel = range_filter_hybrid("📊 M_H", mh_min, mh_max, step=0.01, key_prefix="mh")
 
+# 📊 M_A
 ma_min, ma_max = float(df_all["M_A"].min()), float(df_all["M_A"].max())
 ma_sel = range_filter_hybrid("📊 M_A", ma_min, ma_max, step=0.01, key_prefix="ma")
+
+# 📊 Diff_Power
+dp_min, dp_max = float(df_all["Diff_Power"].min()), float(df_all["Diff_Power"].max())
+diff_power_sel = range_filter_hybrid("📊 Diff_Power", dp_min, dp_max, step=step_metrics, key_prefix="diff_power")
+
+# 💰 Odd_H
+oh_min, oh_max = float(df_all["Odd_H"].min()), float(df_all["Odd_H"].max())
+odd_h_sel = range_filter_hybrid("💰 Odd_H (Home win)", oh_min, oh_max, step=step_odds, key_prefix="odd_h")
+
+# 💰 Odd_D
+od_min, od_max = float(df_all["Odd_D"].min()), float(df_all["Odd_D"].max())
+odd_d_sel = range_filter_hybrid("💰 Odd_D (Draw)", od_min, od_max, step=step_odds, key_prefix="odd_d")
+
+# 💰 Odd_A
+oa_min, oa_max = float(df_all["Odd_A"].min()), float(df_all["Odd_A"].max())
+odd_a_sel = range_filter_hybrid("💰 Odd_A (Away win)", oa_min, oa_max, step=step_odds, key_prefix="odd_a")
+
+# ➕ Filtros extras
+extra_filters = st.sidebar.multiselect(
+    "➕ Filtros extras (opcionais)",
+    options=["Diff_HT_P", "M_HT_H", "M_HT_A"]
+)
+
+if "Diff_HT_P" in extra_filters:
+    htp_min, htp_max = float(df_all["Diff_HT_P"].min()), float(df_all["Diff_HT_P"].max())
+    diff_ht_p_sel = range_filter_hybrid("📉 Diff_HT_P", htp_min, htp_max, step=step_metrics, key_prefix="diff_htp")
+else:
+    diff_ht_p_sel = (float("-inf"), float("inf"))
+
+if "M_HT_H" in extra_filters:
+    mht_h_min, mht_h_max = float(df_all["M_HT_H"].min()), float(df_all["M_HT_H"].max())
+    mht_h_sel = range_filter_hybrid("📊 M_HT_H", mht_h_min, mht_h_max, step=0.01, key_prefix="mht_h")
+else:
+    mht_h_sel = (float("-inf"), float("inf"))
+
+if "M_HT_A" in extra_filters:
+    mht_a_min, mht_a_max = float(df_all["M_HT_A"].min()), float(df_all["M_HT_A"].max())
+    mht_a_sel = range_filter_hybrid("📊 M_HT_A", mht_a_min, mht_a_max, step=0.01, key_prefix="mht_a")
+else:
+    mht_a_sel = (float("-inf"), float("inf"))
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Apply filters
 # ──────────────────────────────────────────────────────────────────────────────
 filtered_df = df_all[
     (df_all["Date"] >= date_start) & (df_all["Date"] <= date_end) &
+    (df_all["M_H"] >= mh_sel[0]) & (df_all["M_H"] <= mh_sel[1]) &
+    (df_all["M_A"] >= ma_sel[0]) & (df_all["M_A"] <= ma_sel[1]) &
     (df_all["Diff_Power"] >= diff_power_sel[0]) & (df_all["Diff_Power"] <= diff_power_sel[1]) &
-    (df_all["Diff_HT_P"] >= diff_ht_p_sel[0]) & (df_all["Diff_HT_P"] <= diff_ht_p_sel[1]) &
     (df_all["Odd_H"] >= odd_h_sel[0]) & (df_all["Odd_H"] <= odd_h_sel[1]) &
     (df_all["Odd_D"] >= odd_d_sel[0]) & (df_all["Odd_D"] <= odd_d_sel[1]) &
     (df_all["Odd_A"] >= odd_a_sel[0]) & (df_all["Odd_A"] <= odd_a_sel[1]) &
+    (df_all["Diff_HT_P"] >= diff_ht_p_sel[0]) & (df_all["Diff_HT_P"] <= diff_ht_p_sel[1]) &
     (df_all["M_HT_H"] >= mht_h_sel[0]) & (df_all["M_HT_H"] <= mht_h_sel[1]) &
-    (df_all["M_HT_A"] >= mht_a_sel[0]) & (df_all["M_HT_A"] <= mht_a_sel[1]) &
-    (df_all["M_H"] >= mh_sel[0]) & (df_all["M_H"] <= mh_sel[1]) &
-    (df_all["M_A"] >= ma_sel[0]) & (df_all["M_A"] <= ma_sel[1])
+    (df_all["M_HT_A"] >= mht_a_sel[0]) & (df_all["M_HT_A"] <= mht_a_sel[1])
 ].copy()
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -233,8 +263,8 @@ if not filtered_df.empty:
     st.dataframe(filtered_df[[
         "Date", "League", "Home", "Away",
         "Odd_H", "Odd_D", "Odd_A",
-        "Diff_Power", "Diff_HT_P",
-        "M_HT_H", "M_HT_A", "M_H", "M_A",   # 👈 Novas colunas
+        "Diff_Power", "M_H", "M_A",
+        "Diff_HT_P", "M_HT_H", "M_HT_A",   # extras (se existirem)
         "Goals_H_FT", "Goals_A_FT",
         "Bet Result", "Cumulative Profit"
     ]], use_container_width=True)
