@@ -137,7 +137,7 @@ if st.sidebar.button("🔄 Reset filters"):
         if any(prefix in key for prefix in ["mh", "ma", "diff_power", "odd_h", "odd_d", "odd_a", 
                                             "date", "bet_on", "diff_htp", "mht_h", "mht_a"]):
             del st.session_state[key]
-    st.experimental_rerun()
+    st.rerun()
 
 # Escolha de aposta
 bet_on = st.sidebar.selectbox("🎯 Bet on", ["Home", "Draw", "Away"], key="bet_on")
