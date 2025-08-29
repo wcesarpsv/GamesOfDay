@@ -149,12 +149,14 @@ games_today = games_today.sort_values(by='Win_Probability', ascending=False)
 
 # ---------------- Display Table ----------------
 st.dataframe(
-    games_today[['Date','Time','League','Home','Away','M_H','M_A','M_Diff','Diff_Power','Recommendation','Games_Analyzed','Win_Probability']]
+    games_today[['Date','Time','League','Home','Away','Odd_H','Odd_D','Odd_A','M_H','M_A','M_Diff','Diff_Power','Recommendation','Games_Analyzed','Win_Probability']]
     .style
     .applymap(color_diff_power, subset=['Diff_Power'])
     .applymap(color_probability, subset=['Win_Probability'])
     .format({
+        'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
         'M_H': '{:.2f}', 'M_A': '{:.2f}', 'M_Diff': '{:.2f}',
         'Diff_Power': '{:.2f}', 'Win_Probability': '{:.1f}%', 'Games_Analyzed': '{:,.0f}'
     })
 )
+
