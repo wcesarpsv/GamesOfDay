@@ -74,9 +74,9 @@ def prepare_history(df):
 def recommend_bet(m_h, m_a, diff_power, power_support=10):
     m_diff = m_h - m_a
     abs_diff = abs(m_diff)
-    if abs_diff < 0.3:
+    if abs_diff < 0.296:
         return "❌ Avoid"
-    if 0.3 <= m_diff < 0.6:
+    if 0.296 <= m_diff < 0.6:
         return "🟦 Home/Draw"
     elif -0.6 < m_diff <= -0.3:
         return "🟥 Away/Draw"
