@@ -114,6 +114,8 @@ try:
     # 👁️ Remove 'Date' column from display and reset index
     df_display = df_filtered.drop(columns=["Date"], errors="ignore")
     df_display.index = range(len(df_display))
+    cols_to_remove = ["Odd_H_Asi", "Asim_line", "Odd_A_Asi"]
+    df_display = df_display.drop(columns=[c for c in cols_to_remove if c in df_display.columns], errors="ignore")
 
     # 🚮 Remove apenas linhas sem gols (NaN em Goals_H_FT ou Goals_A_FT)
     if "Goals_H_FT" in df_display.columns and "Goals_A_FT" in df_display.columns:
@@ -183,3 +185,4 @@ except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
 except Exception as e:
     st.error(f"⚠️ Unexpected error: {e}")
+
