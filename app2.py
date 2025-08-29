@@ -60,7 +60,6 @@ if latest_date and latest_date != st.session_state.last_seen_date:
     st.session_state.last_seen_date = latest_date
     st.rerun()  # força recarregar app
 
-
 # 🔓 Option to show all dates or only the most recent 7
 show_all = st.checkbox("🔓 Show all available dates", value=False)
 
@@ -116,6 +115,10 @@ try:
     df_display = df_filtered.drop(columns=["Date"], errors="ignore")
     df_display.index = range(len(df_display))
 
+    # 🚮 Remove apenas linhas sem gols (NaN em Goals_H_FT ou Goals_A_FT)
+    if "Goals_H_FT" in df_display.columns and "Goals_A_FT" in df_display.columns:
+        df_display = df_display.dropna(subset=["Goals_H_FT", "Goals_A_FT"])
+
     # 📊 Summary and explanation
     st.markdown(f"""
 ### 📊 Matchday Summary – *{selected_date.strftime('%Y-%m-%d')}*
@@ -144,8 +147,8 @@ try:
 """)
 
     # ⚠️ Show warning if no matches found
-    if df_filtered.empty:
-        st.warning("⚠️ No matches found for the selected date after applying the internal league filter.")
+    if df_display.empty:
+        st.warning("⚠️ No matches found for the selected date after applying the filters.")
     else:
         # 🔢 Calcula médias apenas se colunas existirem
         mean_cols = {col: df_display[col].mean() for col in ["M_HT_H", "M_HT_A", "M_H", "M_A"] if col in df_display.columns}
@@ -180,4 +183,3 @@ except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
 except Exception as e:
     st.error(f"⚠️ Unexpected error: {e}")
-
