@@ -11,7 +11,7 @@ st.title("📈 Strategy Backtest – Asian Handicap")
 # ──────────────────────────────────────────────────────────────────────────────
 # Config
 # ──────────────────────────────────────────────────────────────────────────────
-GAMES_FOLDER = "GamesDay"
+GAMES_FOLDER = "GamesDay/GamesAsian"
 ODDS_ARE_NET = True
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa"]
 _EXC_PATTERN = re.compile("|".join(map(re.escape, EXCLUDED_LEAGUE_KEYWORDS)), flags=re.IGNORECASE) if EXCLUDED_LEAGUE_KEYWORDS else None
@@ -27,16 +27,13 @@ def to_net_odds(x):
         return None
 
 def parse_away_line(raw: str):
-    """Parser robusto da linha Asian (AWAY)."""
     if raw is None:
         return []
-    s = str(raw).strip().lower().replace(" ", "")
-    s = s.replace(",", ".")
+    s = str(raw).strip().lower().replace(" ", "").replace(",", ".")
     if s in ("", "nan"):
         return []
     if s in ("pk", "p.k.", "level"):
         return [0.0]
-
     if "/" in s:
         overall_sign = -1 if s.startswith("-") else (1 if s.startswith("+") else None)
         s_no_pref = s[1:] if s and s[0] in "+-" else s
@@ -51,18 +48,15 @@ def parse_away_line(raw: str):
                 val *= overall_sign
             parsed.append(val)
         return parsed
-
     try:
         x = float(s)
     except Exception:
         return []
     if pd.isna(x):
         return []
-
-    if abs(abs(x) - 2/3) < 1e-6:  # map ±0.666... → ±[1.0, 1.5]
+    if abs(abs(x) - 2/3) < 1e-6:
         sign = -1 if x < 0 else 1
         return [sign*1.0, sign*1.5]
-
     frac = abs(x) - int(abs(x))
     base = int(abs(x))
     sign = -1 if x < 0 else 1
@@ -90,22 +84,18 @@ def range_filter_hybrid(label: str, data_min: float, data_max: float, step: floa
                               step=step, key=f"{key_prefix}_min")
     max_val = c2.number_input("Max", value=float(data_max), min_value=float(data_min), max_value=float(data_max),
                               step=step, key=f"{key_prefix}_max")
-
     if min_val > max_val:
         min_val, max_val = max_val, min_val
         st.session_state[f"{key_prefix}_min"] = float(min_val)
         st.session_state[f"{key_prefix}_max"] = float(max_val)
-
     slider_val = st.sidebar.slider("Drag to adjust",
                                    min_value=float(data_min),
                                    max_value=float(data_max),
                                    value=(float(min_val), float(max_val)),
                                    step=step,
                                    key=f"{key_prefix}_slider")
-
     source = st.sidebar.radio("Filter source", ["Slider", "Manual"], horizontal=True, key=f"{key_prefix}_src")
     st.sidebar.divider()
-
     if source == "Slider":
         return float(slider_val[0]), float(slider_val[1])
     else:
@@ -167,12 +157,10 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
         df = pd.read_csv(df_path, encoding="utf-8-sig")
     except Exception:
         continue
-
     required = {"Date","Goals_H_FT","Goals_A_FT","League","Home","Away",
                 "Diff_Power","M_H","M_A","Odd_H_Asi","Odd_A_Asi","Asian_Line"}
     if not required.issubset(df.columns):
         continue
-
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
     df["AH_components_away"] = df["Asian_Line"].apply(parse_away_line)
     df["Asian_Line_Away"] = df["AH_components_away"].apply(canonical)
@@ -265,11 +253,13 @@ if not filtered_df.empty:
     filtered_df["Bet Result"] = filtered_df.apply(calculate_profit, axis=1)
     filtered_df["Cumulative Profit"] = filtered_df["Bet Result"].cumsum()
 
+    # 📈 Profit acumulado
     fig = px.line(filtered_df.reset_index(), x=filtered_df.reset_index().index, y="Cumulative Profit",
                   title=f"Cumulative Profit (Asian Handicap – {bet_on}, Stake=1)",
                   labels={"index":"Bet #","Cumulative Profit":"Profit (units)"})
     st.plotly_chart(fig, use_container_width=True)
 
+    # 📊 Metrics globais
     n_matches = len(filtered_df)
     wins = (filtered_df["Bet Result"]>0).sum()
     pushes = (filtered_df["Bet Result"]==0).sum()
@@ -281,6 +271,7 @@ if not filtered_df.empty:
     col3.metric("Pushes",f"{pushes}")
     col4.metric("ROI",f"{roi:.1%}")
 
+    # 📝 Matches
     st.subheader("📝 Filtered Matches")
     st.dataframe(filtered_df[[
         "Date","League","Home","Away",
@@ -291,5 +282,48 @@ if not filtered_df.empty:
         "Goals_H_FT","Goals_A_FT",
         "Bet Result","Cumulative Profit"
     ]], use_container_width=True)
+
+    # 📊 Resumo por Liga
+    league_summary = (
+        filtered_df.groupby("League")
+        .agg(
+            Matches=("League","size"),
+            Wins=("Bet Result",lambda x:(x>0).sum()),
+            Total_Profit=("Bet Result","sum"),
+            Mean_Odd=("Odd_H_Asi" if bet_on=="Home" else "Odd_A_Asi","mean"),
+        )
+        .reset_index()
+    )
+    league_summary["Winrate"] = league_summary["Wins"]/league_summary["Matches"]
+    league_summary["ROI"] = league_summary["Total_Profit"]/league_summary["Matches"]
+
+    leagues_available = sorted(league_summary["League"].unique())
+    selected_leagues = st.sidebar.multiselect("📌 Select leagues", leagues_available, default=leagues_available)
+    league_summary = league_summary[league_summary["League"].isin(selected_leagues)]
+    filtered_df = filtered_df[filtered_df["League"].isin(selected_leagues)]
+
+    # 📈 ROI por Liga
+    plot_data = []
+    for league in selected_leagues:
+        df_league = filtered_df[filtered_df["League"]==league].copy()
+        if df_league.empty: continue
+        df_league = df_league.sort_values("Date")
+        df_league["Cumulative Profit"] = df_league["Bet Result"].cumsum()
+        df_league["Bet Number"] = range(1,len(df_league)+1)
+        df_league["ROI"] = df_league["Cumulative Profit"]/df_league["Bet Number"]
+        df_league["LeagueName"] = league
+        plot_data.append(df_league)
+    if plot_data:
+        df_plot = pd.concat(plot_data)
+        fig = px.line(df_plot,x="Bet Number",y="ROI",color="LeagueName",
+                      hover_data=["LeagueName","Bet Number","ROI"],
+                      title="Cumulative ROI by League")
+        fig.update_layout(legend=dict(orientation="h",y=-0.25,x=0.5,xanchor="center"))
+        st.plotly_chart(fig, use_container_width=True)
+
+    # 📊 Performance por Liga
+    st.subheader("📊 Performance by League")
+    st.dataframe(league_summary,use_container_width=True)
+
 else:
     st.warning("⚠️ No matches found with selected filters.")
