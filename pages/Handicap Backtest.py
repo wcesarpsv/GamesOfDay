@@ -11,7 +11,7 @@ st.title("📈 Strategy Backtest – Asian Handicap")
 # ──────────────────────────────────────────────────────────────────────────────
 # Configurações
 # ──────────────────────────────────────────────────────────────────────────────
-GAMES_FOLDER = "GamesDay/GamesAsian"
+GAMES_FOLDER = "GamesDay"
 ODDS_ARE_NET = True
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa"]
 _EXC_PATTERN = re.compile("|".join(map(re.escape, EXCLUDED_LEAGUE_KEYWORDS)), flags=re.IGNORECASE) if EXCLUDED_LEAGUE_KEYWORDS else None
