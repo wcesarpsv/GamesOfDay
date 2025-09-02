@@ -93,8 +93,8 @@ oa_min, oa_max = float(df_all["Odd_A"].min()), float(df_all["Odd_A"].max())
 odd_a_sel = range_filter("💰 Odd_A (Away win)", oa_min, oa_max, step=step_odds, key_prefix="odd_a")
 
 # Percentual de teste
-test_size = st.sidebar.slider("📐 Percentual para Teste (%)", 5, 50, 10, step=5) / 100.0
-split_mode = st.sidebar.radio("🔀 Divisão dos Dados", ["Aleatória", "Cronológica"], horizontal=True)
+test_size = st.sidebar.slider("📐 Test Percentage (%)", 5, 50, 10, step=5) / 100.0
+split_mode = st.sidebar.radio("🔀 Data Division", ["Radom", "Chronological"], horizontal=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Apply filters
