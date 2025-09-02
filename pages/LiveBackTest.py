@@ -104,7 +104,8 @@ filtered_df = df_all[
     (df_all["M_A"] >= ma_sel[0]) & (df_all["M_A"] <= ma_sel[1]) &
     (df_all["Diff_Power"] >= diff_power_sel[0]) & (df_all["Diff_Power"] <= diff_power_sel[1]) &
     (df_all["Odd_H"] >= odd_h_sel[0]) & (df_all["Odd_H"] <= odd_h_sel[1]) &
-    (df_all["Odd_A"] >= oa_sel[0]) & (df_all["Odd_A"] <= oa_sel[1])
+    (df_all["Odd_A"] >= odd_a_sel[0]) & (df_all["Odd_A"] <= odd_a_sel[1])
+
 ].copy()
 
 if filtered_df.empty:
