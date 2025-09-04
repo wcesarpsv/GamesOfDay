@@ -330,7 +330,7 @@ if not filtered_df.empty:
         # 🔧 Ajusta eixo Y para dar mais espaço (±20%)
         y_min = df_plot["Cumulative Profit"].min()
         y_max = df_plot["Cumulative Profit"].max()
-        margin = (y_max - y_min) * 0.3 if y_max != y_min else 1  # evita erro se só 1 valor
+        margin = (y_max - y_min) * 0.4 if y_max != y_min else 1  # evita erro se só 1 valor
 
         fig.update_layout(
             yaxis=dict(
