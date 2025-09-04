@@ -302,24 +302,32 @@ if not filtered_df.empty:
     league_summary = league_summary[league_summary["League"].isin(selected_leagues)]
     filtered_df = filtered_df[filtered_df["League"].isin(selected_leagues)]
 
-    # 📈 ROI por Liga
+        # 📈 Profit acumulado por número de apostas (Plotly)
     plot_data = []
     for league in selected_leagues:
-        df_league = filtered_df[filtered_df["League"]==league].copy()
-        if df_league.empty: continue
+        df_league = filtered_df[filtered_df["League"] == league].copy()
+        if df_league.empty:
+            continue
         df_league = df_league.sort_values("Date")
         df_league["Cumulative Profit"] = df_league["Bet Result"].cumsum()
-        df_league["Bet Number"] = range(1,len(df_league)+1)
-        df_league["ROI"] = df_league["Cumulative Profit"]/df_league["Bet Number"]
+        df_league["Bet Number"] = range(1, len(df_league) + 1)
         df_league["LeagueName"] = league
         plot_data.append(df_league)
+
     if plot_data:
         df_plot = pd.concat(plot_data)
-        fig = px.line(df_plot,x="Bet Number",y="ROI",color="LeagueName",
-                      hover_data=["LeagueName","Bet Number","ROI"],
-                      title="Cumulative ROI by League")
-        fig.update_layout(legend=dict(orientation="h",y=-0.25,x=0.5,xanchor="center"))
+        fig = px.line(
+            df_plot,
+            x="Bet Number",
+            y="Cumulative Profit",
+            color="LeagueName",
+            hover_data=["LeagueName", "Bet Number", "Cumulative Profit"],
+            title="Cumulative Profit by League (based on number of bets)",
+            labels={"Cumulative Profit": "Profit (units)", "Bet Number": "Number of Bets"}
+        )
+        fig.update_layout(legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center"))
         st.plotly_chart(fig, use_container_width=True)
+
 
     # 📊 Performance por Liga
     st.subheader("📊 Performance by League")
