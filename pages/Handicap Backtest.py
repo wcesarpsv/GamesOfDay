@@ -337,7 +337,8 @@ if not filtered_df.empty:
                 range=[y_min - margin, y_max + margin],
                 rangemode="tozero"
             ),
-            legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center")
+            legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center"),
+            height=600 
         )
 
         st.plotly_chart(fig, use_container_width=True)
