@@ -312,7 +312,7 @@ if not filtered_df.empty:
             labels={"Cumulative Profit": "Profit (units)", "Bet Number": "Number of Bets"}
         )
         fig.update_layout(legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center"),
-                         height=600)
+                         height=800)
         st.plotly_chart(fig, use_container_width=True)
 
     # 📊 Performance por Liga (tabela final)
