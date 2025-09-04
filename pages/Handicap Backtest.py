@@ -302,7 +302,7 @@ if not filtered_df.empty:
     league_summary = league_summary[league_summary["League"].isin(selected_leagues)]
     filtered_df = filtered_df[filtered_df["League"].isin(selected_leagues)]
 
-        # 📈 Profit acumulado por número de apostas (Plotly)
+            # 📈 Profit acumulado por número de apostas (Plotly)
     plot_data = []
     for league in selected_leagues:
         df_league = filtered_df[filtered_df["League"] == league].copy()
@@ -316,6 +316,7 @@ if not filtered_df.empty:
 
     if plot_data:
         df_plot = pd.concat(plot_data)
+
         fig = px.line(
             df_plot,
             x="Bet Number",
@@ -325,8 +326,22 @@ if not filtered_df.empty:
             title="Cumulative Profit by League (based on number of bets)",
             labels={"Cumulative Profit": "Profit (units)", "Bet Number": "Number of Bets"}
         )
-        fig.update_layout(legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center"))
+
+        # 🔧 Ajusta eixo Y para dar mais espaço (±20%)
+        y_min = df_plot["Cumulative Profit"].min()
+        y_max = df_plot["Cumulative Profit"].max()
+        margin = (y_max - y_min) * 0.2 if y_max != y_min else 1  # evita erro se só 1 valor
+
+        fig.update_layout(
+            yaxis=dict(
+                range=[y_min - margin, y_max + margin],
+                rangemode="tozero"
+            ),
+            legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center")
+        )
+
         st.plotly_chart(fig, use_container_width=True)
+
 
 
     # 📊 Performance por Liga
