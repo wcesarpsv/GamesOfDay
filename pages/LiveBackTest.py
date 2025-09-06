@@ -10,6 +10,11 @@ st.set_page_config(page_title="Live Backtest – 1X2", layout="wide")
 st.title("🔮 Live Backtest – 1X2")
 
 # ──────────────────────────────────────────────────────────────────────────────
+# 🔒 Internal league filter (NOT shown in UI)
+EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "UEFA", "Friendly", "Super Cup"]
+_EXC_PATTERN = re.compile("|".join(map(re.escape, EXCLUDED_LEAGUE_KEYWORDS)), flags=re.IGNORECASE) if EXCLUDED_LEAGUE_KEYWORDS else None
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 def range_filter(label: str, data_min: float, data_max: float, step: float, key_prefix: str):
@@ -58,6 +63,10 @@ if not all_dfs:
     st.stop()
 
 df_all = pd.concat(all_dfs, ignore_index=True)
+
+if _EXC_PATTERN and "League" in df_all.columns:
+    df_all = df_all[~df_all["League"].astype(str).str.contains(_EXC_PATTERN, na=False)]
+    
 df_all = df_all.sort_values(by="Date").reset_index(drop=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
