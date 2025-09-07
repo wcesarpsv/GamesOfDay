@@ -29,7 +29,8 @@ DOMINANT_THRESHOLD = 0.90
 
 # ---------------- Color Helpers ----------------
 def color_diff_power(val):
-    if pd.isna(val): return ''
+    if pd.isna(val): 
+        return ''
     if -8 <= val <= 8:
         intensity = 1 - (abs(val) / 8)
         return f'background-color: rgba(255, 255, 0, {0.3 + 0.4 * intensity})'
@@ -41,12 +42,14 @@ def color_diff_power(val):
         return f'background-color: rgba(255, 0, 0, {0.3 + 0.4 * intensity})'
 
 def color_probability(val):
-    if pd.isna(val): return ''
+    if pd.isna(val): 
+        return ''
     intensity = min(1, float(val) / 100.0)
     return f'background-color: rgba(0, 255, 0, {0.2 + 0.6 * intensity})'
 
 def color_classification(val):
-    if pd.isna(val): return ''
+    if pd.isna(val): 
+        return ''
     if val == "Low Variation":
         return 'background-color: rgba(0, 200, 0, 0.12)'
     if val == "Medium Variation":
@@ -56,7 +59,8 @@ def color_classification(val):
     return ''
 
 def color_band(val):
-    if pd.isna(val): return ''
+    if pd.isna(val): 
+        return ''
     if val == "Top 20%":
         return 'background-color: rgba(0, 128, 255, 0.10)'
     if val == "Bottom 20%":
@@ -66,7 +70,8 @@ def color_band(val):
     return ''
 
 def color_auto_rec(val):
-    if pd.isna(val): return ''
+    if pd.isna(val): 
+        return ''
     m = {
         "✅ Back Home": 'background-color: rgba(0, 200, 0, 0.14)',
         "✅ Back Away": 'background-color: rgba(0, 200, 0, 0.14)',
@@ -79,7 +84,8 @@ def color_auto_rec(val):
 # ---------------- Core Functions ----------------
 def load_all_games(folder):
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
-    if not files: return pd.DataFrame()
+    if not files: 
+        return pd.DataFrame()
     df_list = []
     for file in files:
         try:
@@ -91,7 +97,8 @@ def load_all_games(folder):
 
 def load_last_csv(folder):
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
-    if not files: return pd.DataFrame()
+    if not files: 
+        return pd.DataFrame()
     latest_file = max(files)
     return pd.read_csv(os.path.join(folder, latest_file))
 
@@ -120,14 +127,16 @@ def classify_leagues_variation(history_df):
         ).reset_index()
     )
     agg['Variation_Total'] = (agg['M_H_Max'] - agg['M_H_Min']) + (agg['M_A_Max'] - agg['M_A_Min'])
+
     def label(v):
         if v > 6.0: return "High Variation"
         if v >= 3.0: return "Medium Variation"
         return "Low Variation"
+
     agg['League_Classification'] = agg['Variation_Total'].apply(label)
     return agg[['League','League_Classification','Variation_Total','Hist_Games']]
 
-# Per-league P20/P80 for Diff_M, and separately for M_H (Home) and M_A (Away)
+# Per-league P20/P80 for Diff_M, M_H and M_A
 def compute_league_bands(history_df):
     hist = history_df.copy()
     hist['M_Diff'] = hist['M_H'] - hist['M_A']
@@ -172,10 +181,17 @@ def dominant_side(row, threshold=DOMINANT_THRESHOLD):
         return "Away weak"
     return "Mixed / Neutral"
 
-# 🔙 Lógica antiga restaurada
 def auto_recommendation(row,
-                        diff_mid_lo=0.30, diff_mid_hi=0.60,
-                        diff_mid_hi_highvar=0.75, power_gate=5, power_gate_highvar=8):
+                        diff_mid_lo=0.20, diff_mid_hi=0.80,
+                        diff_mid_hi_highvar=0.75, power_gate=1, power_gate_highvar=5):
+    """
+    Decide between:
+      - Back Home
+      - Back Away
+      - 1X (Home/Draw)
+      - X2 (Away/Draw)
+      - Avoid
+    """
     band_home = row.get('Home_Band')
     band_away = row.get('Away_Band')
     dominant  = row.get('Dominant')
@@ -210,5 +226,120 @@ def auto_recommendation(row,
             if (diff_m <= -diff_mid_lo and diff_m > -diff_mid_hi and diff_pow <= -power_gate):
                 return '🟪 X2 (Away/Draw)'
 
-    # 3) Otherwise
     return '❌ Avoid'
+
+def event_side_for_winprob(auto_rec):
+    if pd.isna(auto_rec): return None
+    s = str(auto_rec)
+    if 'Back Home' in s: return 'HOME'
+    if 'Back Away' in s: return 'AWAY'
+    if '1X' in s:       return '1X'
+    if 'X2' in s:       return 'X2'
+    return None
+
+def win_prob_for_recommendation(history, row,
+                                m_diff_margin=M_DIFF_MARGIN,
+                                power_margin=POWER_MARGIN):
+    m_h, m_a = row['M_H'], row['M_A']
+    diff_m   = m_h - m_a
+    diff_pow = row['Diff_Power']
+
+    hist = history.copy()
+    hist['M_Diff'] = hist['M_H'] - hist['M_A']
+
+    mask = (
+        hist['M_Diff'].between(diff_m - m_diff_margin, diff_m + m_diff_margin) &
+        hist['Diff_Power'].between(diff_pow - power_margin, diff_pow + power_margin)
+    )
+    sample = hist[mask]
+    n = len(sample)
+    if n == 0:
+        return 0, None
+
+    target = event_side_for_winprob(row['Auto_Recommendation'])
+    if target == 'HOME':
+        p = (sample['Goals_H_FT'] > sample['Goals_A_FT']).mean()
+    elif target == 'AWAY':
+        p = (sample['Goals_A_FT'] > sample['Goals_H_FT']).mean()
+    elif target == '1X':
+        p = ((sample['Goals_H_FT'] > sample['Goals_A_FT']) | (sample['Goals_H_FT'] == sample['Goals_A_FT'])).mean()
+    elif target == 'X2':
+        p = ((sample['Goals_A_FT'] > sample['Goals_H_FT']) | (sample['Goals_H_FT'] == sample['Goals_A_FT'])).mean()
+    else:
+        p = None
+
+    return n, (round(float(p)*100, 1) if p is not None else None)
+
+# ---------------- Load Data ----------------
+all_games = filter_leagues(load_all_games(GAMES_FOLDER))
+history = prepare_history(all_games)
+if history.empty:
+    st.warning("No valid historical data found.")
+    st.stop()
+
+games_today = filter_leagues(load_last_csv(GAMES_FOLDER))
+if 'Goals_H_FT' in games_today.columns:
+    games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
+
+# ---------------- Derived Metrics ----------------
+league_class = classify_leagues_variation(history)
+league_bands = compute_league_bands(history)
+
+games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
+games_today = games_today.merge(league_class, on='League', how='left')
+games_today = games_today.merge(league_bands, on='League', how='left')
+
+games_today['Home_Band'] = np.where(
+    games_today['M_H'] <= games_today['Home_P20'], 'Bottom 20%',
+    np.where(games_today['M_H'] >= games_today['Home_P80'], 'Top 20%', 'Balanced')
+)
+games_today['Away_Band'] = np.where(
+    games_today['M_A'] <= games_today['Away_P20'], 'Bottom 20%',
+    np.where(games_today['M_A'] >= games_today['Away_P80'], 'Top 20%', 'Balanced')
+)
+
+games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
+games_today['Auto_Recommendation'] = games_today.apply(lambda r: auto_recommendation(r), axis=1)
+
+ga_wp = games_today.apply(lambda r: win_prob_for_recommendation(history, r), axis=1)
+games_today['Games_Analyzed']  = [x[0] for x in ga_wp]
+games_today['Win_Probability'] = [x[1] for x in ga_wp]
+
+games_today = games_today.sort_values(
+    by=['Win_Probability'],
+    ascending=False,
+    na_position='last'
+).reset_index(drop=True)
+
+# ---------------- Display Table ----------------
+cols_to_show = [
+    'Date','Time','League','League_Classification',
+    'Home','Away','Odd_H','Odd_D','Odd_A',
+    'M_H','M_A','Diff_Power',
+    'Home_Band','Away_Band','Dominant','Auto_Recommendation',
+    'Games_Analyzed','Win_Probability'
+]
+
+missing_cols = [c for c in cols_to_show if c not in games_today.columns]
+if missing_cols:
+    st.warning(f"Some expected columns are missing in today's data: {missing_cols}")
+
+display_cols = [c for c in cols_to_show if c in games_today.columns]
+
+styler = (
+    games_today[display_cols]
+    .style
+    .applymap(color_diff_power, subset=['Diff_Power'])
+    .applymap(color_probability, subset=['Win_Probability'])
+    .applymap(color_classification, subset=['League_Classification'])
+    .applymap(color_band, subset=['Home_Band','Away_Band'])
+    .applymap(color_auto_rec, subset=['Auto_Recommendation'])
+    .format({
+        'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
+        'M_H': '{:.2f}', 'M_A': '{:.2f}',
+        'Diff_Power': '{:.2f}',
+        'Win_Probability': '{:.1f}%', 'Games_Analyzed': '{:,.0f}'
+    }, na_rep='—')
+)
+
+st.dataframe(styler, use_container_width=True)
