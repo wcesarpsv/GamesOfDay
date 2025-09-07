@@ -178,7 +178,7 @@ def dominant_side(row, threshold=DOMINANT_THRESHOLD):
 
 def auto_recommendation(row,
                         diff_mid_lo=0.20, diff_mid_hi=0.80,
-                        diff_mid_hi_highvar=0.75, power_gate=3, power_gate_highvar=5):
+                        diff_mid_hi_highvar=0.75, power_gate=1, power_gate_highvar=5):
     """
     Decide between:
       - Back Home
