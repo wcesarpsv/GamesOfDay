@@ -4,14 +4,14 @@ import numpy as np
 import os
 
 # ================= Page Config =================
-st.set_page_config(page_title="LeagueThermometer – Momentum & Value", layout="wide")
-st.title("🔥 LeagueThermometer – Momentum & Value")
+st.set_page_config(page_title="LeagueThermometer - Momentum & Value", layout="wide")
+st.title("🔥 LeagueThermometer - Momentum & Value")
 
 st.markdown(
     """
     **What this app does**
     - Uses **league stability** (Low/Medium/High Variation) computed from historical M_H/M_A ranges.
-    - Splits each league by **P20 / P80** of `Diff_M = M_H - M_A` → **Bottom 20%**, **Balanced P20–P80**, **Top 20%**.
+    - Splits each league by **P20 / P80** of `Diff_M = M_H - M_A` → **Bottom 20%**, **Balanced P20-P80**, **Top 20%**.
     - Derives **historical outcome rates** by *(League, Band)* to estimate fair probabilities & fair odds.
     - Suggests **minimum fair odds** for handicaps **from history only** (no real odds required).
     """
@@ -119,13 +119,13 @@ def add_diff_and_bands(df: pd.DataFrame, by_league: bool = True, min_hist_games_
         # Vectorized banding per row
         conds = [out['Diff_M'] <= out['P20_Diff'], out['Diff_M'] >= out['P80_Diff']]
         choices = ['Bottom 20%', 'Top 20%']
-        out['Band'] = np.select(conds, choices, default='Balanced P20–P80')
+        out['Band'] = np.select(conds, choices, default='Balanced P20-P80')
     else:
         # Global bands
         p20, p80 = out['Diff_M'].quantile(0.20), out['Diff_M'].quantile(0.80)
         out['P20_Diff'], out['P80_Diff'] = p20, p80
         out['Band'] = np.where(out['Diff_M'] <= p20, 'Bottom 20%',
-                        np.where(out['Diff_M'] >= p80, 'Top 20%', 'Balanced P20–P80'))
+                        np.where(out['Diff_M'] >= p80, 'Top 20%', 'Balanced P20-P80'))
 
     return out
 
@@ -206,7 +206,7 @@ latest.loc[bad, 'P80_Diff'] = p80_global
 
 latest['Band'] = np.where(
     latest['Diff_M'] <= latest['P20_Diff'], 'Bottom 20%',
-    np.where(latest['Diff_M'] >= latest['P80_Diff'], 'Top 20%', 'Balanced P20–P80')
+    np.where(latest['Diff_M'] >= latest['P80_Diff'], 'Top 20%', 'Balanced P20-P80')
 )
 
 # ================= Historical rates per (League, Band) =================
@@ -253,7 +253,7 @@ def highlight_variation(row):
     return ['']*len(row)
 
 # ================= Display =================
-st.subheader("Today's Card – Historical → Fair odds & handicap minimums")
+st.subheader("Today's Card - Historical → Fair odds & handicap minimums")
 
 disp_cols = [
     'Date','Time','League','Home','Away','Classification','Band',
