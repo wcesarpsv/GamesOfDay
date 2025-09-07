@@ -86,27 +86,45 @@ def classify_league_variation(history: pd.DataFrame) -> pd.DataFrame:
     return agg
 
 
-def add_diff_and_bands(df: pd.DataFrame, by_league: bool=True) -> pd.DataFrame:
+def add_diff_and_bands(df: pd.DataFrame, by_league: bool = True) -> pd.DataFrame:
     out = df.copy()
     out['Diff_M'] = out['M_H'] - out['M_A']
+
     if by_league:
-        # compute P20/P80 per league on historical
+        # Quantis por liga
         bands = (
             out.groupby('League')['Diff_M']
-            .quantile([0.20, 0.80])
-            .unstack()
-            .rename(columns={0.2: 'P20_Diff', 0.8: 'P80_Diff'})
-            .reset_index()
+              .quantile([0.20, 0.80])
+              .unstack()
+              .rename(columns={0.2: 'P20_Diff', 0.8: 'P80_Diff'})
+              .reset_index()
         )
+        # (opcional) garantir amostra mínima por liga para quantis estáveis
+        counts = out.groupby('League')['Diff_M'].size().rename('Hist_Jogos').reset_index()
+        bands = bands.merge(counts, on='League', how='left')
+
         out = out.merge(bands, on='League', how='left')
-        out['Band'] = pd.cut(out['Diff_M'], bins=[-np.inf, out['P20_Diff'], out['P80_Diff'], np.inf],
-                             labels=["Bottom 20%", "Equilibrado P80", "Top 20%"], include_lowest=True)
+
+        # Se algum caso tiver P20_Diff >= P80_Diff (amostra pequena), marque como NaN
+        bad = out['P20_Diff'] >= out['P80_Diff']
+        out.loc[bad, ['P20_Diff', 'P80_Diff']] = (np.nan, np.nan)
+
+        # Classificação da banda (vectorizado, sem pd.cut)
+        conds = [
+            out['P20_Diff'].notna() & (out['Diff_M'] <= out['P20_Diff']),
+            out['P80_Diff'].notna() & (out['Diff_M'] >= out['P80_Diff']),
+        ]
+        choices = ['Bottom 20%', 'Top 20%']
+        out['Band'] = np.select(conds, choices, default='Equilibrado P80')
     else:
-        # global bands
-        p20, p80 = out['Diff_M'].quantile(0.2), out['Diff_M'].quantile(0.8)
-        out['Band'] = pd.cut(out['Diff_M'], [-np.inf, p20, p80, np.inf], labels=["Bottom 20%", "Equilibrado P80", "Top 20%"], include_lowest=True)
+        # Quantis globais
+        p20, p80 = out['Diff_M'].quantile(0.20), out['Diff_M'].quantile(0.80)
         out['P20_Diff'], out['P80_Diff'] = p20, p80
+        out['Band'] = np.where(out['Diff_M'] <= p20, 'Bottom 20%',
+                        np.where(out['Diff_M'] >= p80, 'Top 20%', 'Equilibrado P80'))
+
     return out
+
 
 
 def outcomes(df: pd.DataFrame) -> pd.DataFrame:
@@ -168,8 +186,19 @@ latest['Diff_M'] = latest['M_H'] - latest['M_A']
 # attach league P20/P80 from history
 league_bands = history[['League','P20_Diff','P80_Diff']].drop_duplicates()
 latest = latest.merge(league_bands, on='League', how='left')
-latest['Band'] = pd.cut(latest['Diff_M'], bins=[-np.inf, latest['P20_Diff'], latest['P80_Diff'], np.inf],
-                        labels=["Bottom 20%", "Equilibrado P80", "Top 20%"], include_lowest=True)
+
+# Se alguma liga tiver P20 >= P80 (amostra ruim), invalida os limiares
+bad = latest['P20_Diff'] >= latest['P80_Diff']
+latest.loc[bad, ['P20_Diff', 'P80_Diff']] = (np.nan, np.nan)
+
+latest['Band'] = np.where(
+    latest['P20_Diff'].notna() & (latest['Diff_M'] <= latest['P20_Diff']), 'Bottom 20%',
+    np.where(
+        latest['P80_Diff'].notna() & (latest['Diff_M'] >= latest['P80_Diff']), 'Top 20%',
+        'Equilibrado P80'
+    )
+)
+
 
 # ================= Historical rates per league+band =================
 # Build a table of outcome rates per (League, Band)
