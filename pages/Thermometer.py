@@ -315,7 +315,7 @@ cols_to_show = [
     'Home','Away','Odd_H','Odd_D','Odd_A',
     'M_H','M_A','M_Diff','Diff_Power',
     'Dominant','Auto_Recommendation',
-    'Recommendation','Games_Analyzed','Win_Probability'
+    'Games_Analyzed','Win_Probability'
 ]
 
 styler = (
