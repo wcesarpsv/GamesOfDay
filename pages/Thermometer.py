@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import os
 
 # ---------------- Page Config ----------------
@@ -21,6 +22,7 @@ st.markdown("""
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa"]
+MIN_HIST_GAMES_PER_LEAGUE = 10  # fallback to global P20/P80 if fewer than this
 
 # ---------------- Color Helpers ----------------
 def color_diff_power(val):
@@ -41,7 +43,6 @@ def color_probability(val):
     return f'background-color: rgba(0, 255, 0, {0.2 + 0.6 * intensity})'
 
 def color_classification(val):
-    # simple soft tint: Low = greenish, Medium = yellowish, High = reddish
     if pd.isna(val): return ''
     if val == "Low Variation":
         return 'background-color: rgba(0, 200, 0, 0.12)'
@@ -49,6 +50,16 @@ def color_classification(val):
         return 'background-color: rgba(255, 215, 0, 0.12)'
     if val == "High Variation":
         return 'background-color: rgba(255, 0, 0, 0.10)'
+    return ''
+
+def color_band(val):
+    if pd.isna(val): return ''
+    if val == "Top 20%":
+        return 'background-color: rgba(0, 128, 255, 0.10)'
+    if val == "Bottom 20%":
+        return 'background-color: rgba(255, 128, 0, 0.10)'
+    if val == "Balanced P20-80":
+        return 'background-color: rgba(200, 200, 200, 0.08)'
     return ''
 
 # ---------------- Core Functions ----------------
@@ -90,7 +101,6 @@ def classify_leagues_variation(history_df):
       Low Variation    < 3.0
       Medium Variation 3.0–6.0
       High Variation   > 6.0
-    Returns a DataFrame with columns: League, Variation_Total, League_Classification
     """
     agg = (
         history_df.groupby('League')
@@ -114,6 +124,34 @@ def classify_leagues_variation(history_df):
 
     agg['League_Classification'] = agg['Variation_Total'].apply(label)
     return agg[['League', 'Variation_Total', 'League_Classification', 'Hist_Games']]
+
+def compute_league_bands(history_df, min_hist_games=MIN_HIST_GAMES_PER_LEAGUE):
+    """
+    Compute per-league P20/P80 for Diff_M = M_H - M_A with safe fallback.
+    Returns DataFrame: League, P20_Diff, P80_Diff, Hist_Games
+    """
+    hist = history_df.copy()
+    hist['Diff_M'] = hist['M_H'] - hist['M_A']
+    q = (
+        hist.groupby('League')['Diff_M']
+            .quantile([0.20, 0.80])
+            .unstack()
+            .rename(columns={0.2: 'P20_Diff', 0.8: 'P80_Diff'})
+            .reset_index()
+    )
+    counts = hist.groupby('League')['Diff_M'].size().rename('Hist_Games').reset_index()
+    q = q.merge(counts, on='League', how='left')
+
+    # Global fallback
+    p20_global = hist['Diff_M'].quantile(0.20)
+    p80_global = hist['Diff_M'].quantile(0.80)
+
+    # Invalidate thresholds when insufficient sample or inverted
+    bad = (q['Hist_Games'].fillna(0) < min_hist_games) | (q['P20_Diff'] >= q['P80_Diff'])
+    q.loc[bad, 'P20_Diff'] = p20_global
+    q.loc[bad, 'P80_Diff'] = p80_global
+
+    return q[['League', 'P20_Diff', 'P80_Diff', 'Hist_Games']]
 
 def recommend_bet(m_h, m_a, diff_power, power_support=10):
     m_diff = m_h - m_a
@@ -152,8 +190,8 @@ def count_similar_matches(history_df, m_h, m_a, diff_power, side, m_diff_margin=
     total = len(filtered)
     if total == 0:
         return 0, None
-    wins = win_mask[filtered.index].sum()
-    return total, round((wins / total) * 100, 1)
+    wins = win_mask[filtered.index].sum
+    return total, round((wins() / total) * 100, 1)
 
 def extract_side(reco):
     if "Home" in reco:
@@ -170,8 +208,9 @@ if history.empty:
     st.warning("No valid historical data found.")
     st.stop()
 
-# ---- NEW: compute league classification from history and keep for merge later
+# NEW: compute league classification and P20/P80 bands from history
 league_class = classify_leagues_variation(history)
+league_bands = compute_league_bands(history, min_hist_games=MIN_HIST_GAMES_PER_LEAGUE)
 
 games_today = filter_leagues(load_last_csv(GAMES_FOLDER))
 if 'Goals_H_FT' in games_today.columns:
@@ -184,17 +223,35 @@ games_today['Recommendation'] = games_today.apply(
 )
 games_today['Side'] = games_today['Recommendation'].apply(extract_side)
 
-# ---- NEW: attach league classification to today's games
+# Attach league classification and bands
 games_today = games_today.merge(
     league_class[['League', 'League_Classification', 'Variation_Total', 'Hist_Games']],
     on='League', how='left'
+)
+games_today = games_today.merge(
+    league_bands[['League', 'P20_Diff', 'P80_Diff']],
+    on='League', how='left'
+)
+
+# Vectorized per-row banding (no pd.cut with Series)
+# Fallback: if thresholds are missing, compute global thresholds from history
+if games_today['P20_Diff'].isna().any() or games_today['P80_Diff'].isna().any():
+    hist_diff = history.copy()
+    hist_diff['Diff_M'] = hist_diff['M_H'] - hist_diff['M_A']
+    p20_global = hist_diff['Diff_M'].quantile(0.20)
+    p80_global = hist_diff['Diff_M'].quantile(0.80)
+    games_today['P20_Diff'] = games_today['P20_Diff'].fillna(p20_global)
+    games_today['P80_Diff'] = games_today['P80_Diff'].fillna(p80_global)
+
+games_today['Band'] = np.where(
+    games_today['M_Diff'] <= games_today['P20_Diff'], 'Bottom 20%',
+    np.where(games_today['M_Diff'] >= games_today['P80_Diff'], 'Top 20%', 'Balanced P20-80')
 )
 
 results = games_today.apply(
     lambda row: count_similar_matches(history, row['M_H'], row['M_A'], row['Diff_Power'], row['Side']),
     axis=1
 )
-
 games_today['Games_Analyzed'] = [r[0] for r in results]
 games_today['Win_Probability'] = [r[1] for r in results]
 
@@ -202,7 +259,7 @@ games_today = games_today.sort_values(by='Win_Probability', ascending=False)
 
 # ---------------- Display Table ----------------
 cols_to_show = [
-    'Date','Time','League','League_Classification',  # <- NEW column
+    'Date','Time','League','League_Classification','Band',           # NEW columns
     'Home','Away','Odd_H','Odd_D','Odd_A',
     'M_H','M_A','M_Diff','Diff_Power',
     'Recommendation','Games_Analyzed','Win_Probability'
@@ -214,11 +271,11 @@ styler = (
     .applymap(color_diff_power, subset=['Diff_Power'])
     .applymap(color_probability, subset=['Win_Probability'])
     .applymap(color_classification, subset=['League_Classification'])
+    .applymap(color_band, subset=['Band'])
     .format({
         'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
         'M_H': '{:.2f}', 'M_A': '{:.2f}', 'M_Diff': '{:.2f}',
-        'Diff_Power': '{:.2f}', 'Win_Probability': '{:.1f}%', 'Games_Analyzed': '{:,.0f}',
-        'Variation_Total': '{:.2f}'
+        'Diff_Power': '{:.2f}', 'Win_Probability': '{:.1f}%', 'Games_Analyzed': '{:,.0f}'
     })
 )
 
