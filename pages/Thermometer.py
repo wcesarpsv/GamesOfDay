@@ -40,6 +40,17 @@ def color_probability(val):
     intensity = min(1, val / 100)
     return f'background-color: rgba(0, 255, 0, {0.2 + 0.6 * intensity})'
 
+def color_classification(val):
+    # simple soft tint: Low = greenish, Medium = yellowish, High = reddish
+    if pd.isna(val): return ''
+    if val == "Low Variation":
+        return 'background-color: rgba(0, 200, 0, 0.12)'
+    if val == "Medium Variation":
+        return 'background-color: rgba(255, 215, 0, 0.12)'
+    if val == "High Variation":
+        return 'background-color: rgba(255, 0, 0, 0.10)'
+    return ''
+
 # ---------------- Core Functions ----------------
 def load_all_games(folder):
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
@@ -64,12 +75,45 @@ def filter_leagues(df):
     return df[~df['League'].str.lower().str.contains(pattern, na=False)]
 
 def prepare_history(df):
-    required = ['Goals_H_FT', 'Goals_A_FT', 'M_H', 'M_A', 'Diff_Power']
+    required = ['Goals_H_FT', 'Goals_A_FT', 'M_H', 'M_A', 'Diff_Power', 'League']
     for col in required:
         if col not in df.columns:
             st.error(f"Missing required column: {col}")
             return pd.DataFrame()
     return df.dropna(subset=['Goals_H_FT', 'Goals_A_FT'])
+
+def classify_leagues_variation(history_df):
+    """
+    Compute per-league variation from historical M_H/M_A ranges:
+      Variation_Total = (max(M_H)-min(M_H)) + (max(M_A)-min(M_A))
+    Thresholds:
+      Low Variation    < 3.0
+      Medium Variation 3.0–6.0
+      High Variation   > 6.0
+    Returns a DataFrame with columns: League, Variation_Total, League_Classification
+    """
+    agg = (
+        history_df.groupby('League')
+        .agg(
+            M_H_Min=('M_H', 'min'),
+            M_H_Max=('M_H', 'max'),
+            M_A_Min=('M_A', 'min'),
+            M_A_Max=('M_A', 'max'),
+            Hist_Games=('M_H', 'count')
+        )
+        .reset_index()
+    )
+    agg['Variation_Total'] = (agg['M_H_Max'] - agg['M_H_Min']) + (agg['M_A_Max'] - agg['M_A_Min'])
+
+    def label(v):
+        if v > 6.0:
+            return "High Variation"
+        if v >= 3.0:
+            return "Medium Variation"
+        return "Low Variation"
+
+    agg['League_Classification'] = agg['Variation_Total'].apply(label)
+    return agg[['League', 'Variation_Total', 'League_Classification', 'Hist_Games']]
 
 def recommend_bet(m_h, m_a, diff_power, power_support=10):
     m_diff = m_h - m_a
@@ -126,6 +170,9 @@ if history.empty:
     st.warning("No valid historical data found.")
     st.stop()
 
+# ---- NEW: compute league classification from history and keep for merge later
+league_class = classify_leagues_variation(history)
+
 games_today = filter_leagues(load_last_csv(GAMES_FOLDER))
 if 'Goals_H_FT' in games_today.columns:
     games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
@@ -136,6 +183,12 @@ games_today['Recommendation'] = games_today.apply(
     lambda row: recommend_bet(row['M_H'], row['M_A'], row['Diff_Power']), axis=1
 )
 games_today['Side'] = games_today['Recommendation'].apply(extract_side)
+
+# ---- NEW: attach league classification to today's games
+games_today = games_today.merge(
+    league_class[['League', 'League_Classification', 'Variation_Total', 'Hist_Games']],
+    on='League', how='left'
+)
 
 results = games_today.apply(
     lambda row: count_similar_matches(history, row['M_H'], row['M_A'], row['Diff_Power'], row['Side']),
@@ -148,15 +201,25 @@ games_today['Win_Probability'] = [r[1] for r in results]
 games_today = games_today.sort_values(by='Win_Probability', ascending=False)
 
 # ---------------- Display Table ----------------
-st.dataframe(
-    games_today[['Date','Time','League','Home','Away','Odd_H','Odd_D','Odd_A','M_H','M_A','M_Diff','Diff_Power','Recommendation','Games_Analyzed','Win_Probability']]
+cols_to_show = [
+    'Date','Time','League','League_Classification',  # <- NEW column
+    'Home','Away','Odd_H','Odd_D','Odd_A',
+    'M_H','M_A','M_Diff','Diff_Power',
+    'Recommendation','Games_Analyzed','Win_Probability'
+]
+
+styler = (
+    games_today[cols_to_show]
     .style
     .applymap(color_diff_power, subset=['Diff_Power'])
     .applymap(color_probability, subset=['Win_Probability'])
+    .applymap(color_classification, subset=['League_Classification'])
     .format({
         'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
         'M_H': '{:.2f}', 'M_A': '{:.2f}', 'M_Diff': '{:.2f}',
-        'Diff_Power': '{:.2f}', 'Win_Probability': '{:.1f}%', 'Games_Analyzed': '{:,.0f}'
+        'Diff_Power': '{:.2f}', 'Win_Probability': '{:.1f}%', 'Games_Analyzed': '{:,.0f}',
+        'Variation_Total': '{:.2f}'
     })
 )
 
+st.dataframe(styler)
