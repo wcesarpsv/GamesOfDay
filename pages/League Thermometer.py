@@ -5,15 +5,15 @@ import os
 
 # ================= Page Config =================
 st.set_page_config(page_title="LeagueThermometer - Momentum & Value", layout="wide")
-st.title("🔥 LeagueThermometer - Momentum & Value")
+st.title("LeagueThermometer - Momentum & Value")
 
 st.markdown(
     """
-    **What this app does**
-    - Uses **league stability** (Low/Medium/High Variation) computed from historical M_H/M_A ranges.
-    - Splits each league by **P20 / P80** of `Diff_M = M_H - M_A` → **Bottom 20%**, **Balanced P20-P80**, **Top 20%**.
-    - Derives **historical outcome rates** by *(League, Band)* to estimate fair probabilities & fair odds.
-    - Suggests **minimum fair odds** for handicaps **from history only** (no real odds required).
+    What this app does
+    - Uses league stability (Low/Medium/High Variation) computed from historical M_H/M_A ranges.
+    - Splits each league by P20 / P80 of Diff_M = M_H - M_A -> Bottom 20%, Balanced P20-80, Top 20%.
+    - Derives historical outcome rates by (League, Band) to estimate fair probabilities & fair odds.
+    - Suggests minimum fair odds for handicaps from history only (no real odds required).
     """
 )
 
