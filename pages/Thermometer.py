@@ -4,24 +4,28 @@ import numpy as np
 import os
 
 # ---------------- Page Config ----------------
-st.set_page_config(page_title="Today's Picks – Momentum Thermometer", layout="wide")
-st.title("📊 Today's Picks – Momentum Thermometer")
+st.set_page_config(page_title="Today's Picks - Momentum Thermometer", layout="wide")
+st.title("Today's Picks - Momentum Thermometer")
 
 # ---------------- Legend ----------------
 st.markdown("""
-**🔍 Recommendation Rules (based on M_Diff):**
+Recommendation Rules (based on M_Diff and Bands):
 
-- 🔵 **Home (Strong)** → M_Diff ≥ +0.9 with high Diff_Power  
-- 🔴 **Away (Strong)** → M_Diff ≤ -0.9 with low Diff_Power  
-- ✅ **Home / Away** → Clear directional advantage  
-- 🟦 **Home/Draw** → Slight edge for Home  
-- 🟥 **Away/Draw** → Slight edge for Away  
-- ❌ **Avoid** → Balanced match (M_Diff between -0.3 and +0.3)
+- Strong edges -> Back side (Home/Away)
+- Moderate edges with both teams Balanced -> 1X (Home/Draw) or X2 (Away/Draw)
+- Avoid when signals are weak or conflicting
 """)
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa"]
+
+# Similarity windows used for historical estimation
+M_DIFF_MARGIN = 0.30
+POWER_MARGIN = 10
+
+# Threshold used to decide Dominant side by individual strength
+DOMINANT_THRESHOLD = 0.90
 
 # ---------------- Color Helpers ----------------
 def color_diff_power(val):
@@ -38,7 +42,8 @@ def color_diff_power(val):
 
 def color_probability(val):
     if pd.isna(val): return ''
-    intensity = min(1, val / 100)
+    # val expected in percent (0..100)
+    intensity = min(1, float(val) / 100.0)
     return f'background-color: rgba(0, 255, 0, {0.2 + 0.6 * intensity})'
 
 def color_classification(val):
@@ -57,7 +62,7 @@ def color_band(val):
         return 'background-color: rgba(0, 128, 255, 0.10)'
     if val == "Bottom 20%":
         return 'background-color: rgba(255, 128, 0, 0.10)'
-    if val == "Balanced P20-80":
+    if val == "Balanced":
         return 'background-color: rgba(200, 200, 200, 0.08)'
     return ''
 
@@ -68,8 +73,6 @@ def color_auto_rec(val):
         "✅ Back Away": 'background-color: rgba(0, 200, 0, 0.14)',
         "🟦 1X (Home/Draw)": 'background-color: rgba(0, 128, 255, 0.12)',
         "🟪 X2 (Away/Draw)": 'background-color: rgba(128, 0, 255, 0.12)',
-        "🟥 Against Home": 'background-color: rgba(255, 0, 0, 0.10)',
-        "🟥 Against Away": 'background-color: rgba(255, 0, 0, 0.10)',
         "❌ Avoid": 'background-color: rgba(180, 180, 180, 0.10)',
     }
     return m.get(val, '')
@@ -94,8 +97,10 @@ def load_last_csv(folder):
     return pd.read_csv(os.path.join(folder, latest_file))
 
 def filter_leagues(df):
+    if df.empty or 'League' not in df.columns:
+        return df
     pattern = '|'.join(EXCLUDED_LEAGUE_KEYWORDS)
-    return df[~df['League'].str.lower().str.contains(pattern, na=False)]
+    return df[~df['League'].str.lower().str.contains(pattern, na=False)].copy()
 
 def prepare_history(df):
     required = ['Goals_H_FT', 'Goals_A_FT', 'M_H', 'M_A', 'Diff_Power', 'League']
@@ -105,12 +110,8 @@ def prepare_history(df):
             return pd.DataFrame()
     return df.dropna(subset=['Goals_H_FT', 'Goals_A_FT'])
 
-# --- League Variation (Low/Medium/High)
+# League variation classification (Low/Medium/High)
 def classify_leagues_variation(history_df):
-    """
-    Variation_Total = (max(M_H)-min(M_H)) + (max(M_A)-min(M_A))
-    Thresholds: Low < 3.0, 3.0–6.0 Medium, > 6.0 High
-    """
     agg = (
         history_df.groupby('League')
         .agg(
@@ -127,85 +128,39 @@ def classify_leagues_variation(history_df):
     agg['League_Classification'] = agg['Variation_Total'].apply(label)
     return agg[['League','League_Classification','Variation_Total','Hist_Games']]
 
-# --- Per-league P20/P80 bands for Diff_M
+# Per-league P20/P80 for Diff_M, and separately for M_H (Home) and M_A (Away)
 def compute_league_bands(history_df):
-    """
-    Per-league P20/P80 for Diff_M = M_H - M_A.
-    Your dataset already guarantees ≥10 league matches per team, so we assume enough data.
-    """
     hist = history_df.copy()
-    hist['Diff_M'] = hist['M_H'] - hist['M_A']
-    q = (
-        hist.groupby('League')['Diff_M']
-            .quantile([0.20, 0.80])
-            .unstack()
+    hist['M_Diff'] = hist['M_H'] - hist['M_A']
+
+    # Diff_M bands (not displayed in final table, but useful if needed)
+    diff_q = (
+        hist.groupby('League')['M_Diff']
+            .quantile([0.20, 0.80]).unstack()
             .rename(columns={0.2:'P20_Diff', 0.8:'P80_Diff'})
             .reset_index()
     )
-    return q[['League','P20_Diff','P80_Diff']]
 
-# --- Original recommendation (kept)
-def recommend_bet(m_h, m_a, diff_power, power_support=10):
-    m_diff = m_h - m_a
-    abs_diff = abs(m_diff)
-    if abs_diff < 0.296:
-        return "❌ Avoid"
-    if 0.296 <= m_diff < 0.6:
-        return "🟦 Home/Draw"
-    elif -0.6 < m_diff <= -0.3:
-        return "🟥 Away/Draw"
-    if 0.6 <= m_diff < 0.9:
-        return "✅ Home"
-    elif -0.9 < m_diff <= -0.6:
-        return "✅ Away"
-    if m_diff >= 0.9:
-        return "🔵 Home (Strong)" if diff_power > power_support else "✅ Home"
-    elif m_diff <= -0.9:
-        return "🔴 Away (Strong)" if diff_power < -power_support else "✅ Away"
-    return "❌ Avoid"
-
-# --- Count similar matches (kept)
-def count_similar_matches(history_df, m_h, m_a, diff_power, side, m_diff_margin=0.3, power_margin=10):
-    m_diff = m_h - m_a
-    history_df = history_df.copy()
-    history_df['M_Diff'] = history_df['M_H'] - history_df['M_A']
-    if side == "Home":
-        win_mask = history_df['Goals_H_FT'] > history_df['Goals_A_FT']
-    elif side == "Away":
-        win_mask = history_df['Goals_A_FT'] > history_df['Goals_H_FT']
-    else:
-        return 0, None
-    mask = (
-        history_df['M_Diff'].between(m_diff - m_diff_margin, m_diff + m_diff_margin) &
-        history_df['Diff_Power'].between(diff_power - power_margin, diff_power + power_margin)
+    # Home bands from M_H
+    home_q = (
+        hist.groupby('League')['M_H']
+            .quantile([0.20, 0.80]).unstack()
+            .rename(columns={0.2:'Home_P20', 0.8:'Home_P80'})
+            .reset_index()
     )
-    filtered = history_df[mask]
-    total = len(filtered)
-    if total == 0:
-        return 0, None
-    wins = win_mask[filtered.index].sum()
-    return total, round((wins / total) * 100, 1)
 
-def extract_side(reco):
-    if "Home" in reco:
-        return "Home"
-    elif "Away" in reco:
-        return "Away"
-    else:
-        return None
+    # Away bands from M_A
+    away_q = (
+        hist.groupby('League')['M_A']
+            .quantile([0.20, 0.80]).unstack()
+            .rename(columns={0.2:'Away_P20', 0.8:'Away_P80'})
+            .reset_index()
+    )
 
-# --- NEW: Dominant side driver (symmetrical for strong/weak on both teams)
-def dominant_side(row, threshold=0.9):
-    """
-    Identify which side drives the imbalance (symmetric):
-      - Both extremes (Home strong & Away weak): M_H >= thr and M_A <= -thr
-      - Both extremes (Away strong & Home weak): M_A >= thr and M_H <= -thr
-      - Home strong:  M_H >= thr
-      - Home weak:    M_H <= -thr
-      - Away strong:  M_A >= thr
-      - Away weak:    M_A <= -thr
-      - Mixed / Neutral: otherwise
-    """
+    out = diff_q.merge(home_q, on='League', how='inner').merge(away_q, on='League', how='inner')
+    return out  # League, P20_Diff, P80_Diff, Home_P20, Home_P80, Away_P20, Away_P80
+
+def dominant_side(row, threshold=DOMINANT_THRESHOLD):
     m_h, m_a = row['M_H'], row['M_A']
     if (m_h >= threshold) and (m_a <= -threshold):
         return "Both extremes (Home↑ & Away↓)"
@@ -221,43 +176,98 @@ def dominant_side(row, threshold=0.9):
         return "Away weak"
     return "Mixed / Neutral"
 
-# --- NEW: Auto recommendation badge based on Band + Dominant
-def auto_recommendation(band, dominant):
+def auto_recommendation(row,
+                        diff_mid_lo=0.30, diff_mid_hi=0.60,
+                        diff_mid_hi_highvar=0.75, power_gate=5, power_gate_highvar=8):
     """
-    Simple rules:
-      - Top 20%:
-          * Home strong / Both(Home↑ & Away↓) -> ✅ Back Home
-          * Away weak -> ✅ Back Home or 🟥 Against Away (choose safer)
-          * Away strong / Home weak (rare with Top band) -> ❌ Avoid
-      - Bottom 20%:
-          * Away strong / Both(Away↑ & Home↓) -> ✅ Back Away
-          * Home weak -> 🟥 Against Home or ✅ Back Away
-          * Home strong / Away weak (rare with Bottom band) -> ❌ Avoid
-      - Balanced: ❌ Avoid
+    Decide between:
+      - Back Home
+      - Back Away
+      - 1X (Home/Draw)
+      - X2 (Away/Draw)
+      - Avoid
+    Priority to strong extremes (Home Top20 & Away Bottom20, or vice versa).
+    1X/X2 only when both Home_Band and Away_Band are Balanced and Diff_M moderate with Diff_Power support.
     """
-    if pd.isna(band) or pd.isna(dominant):
-        return "❌ Avoid"
+    band_home = row.get('Home_Band')
+    band_away = row.get('Away_Band')
+    dominant  = row.get('Dominant')
+    diff_m    = row.get('M_Diff')
+    diff_pow  = row.get('Diff_Power')
+    league_cls= row.get('League_Classification', 'Medium Variation')
 
-    band = str(band)
-    dominant = str(dominant)
+    # 1) Strong edges
+    if band_home == 'Top 20%' and band_away == 'Bottom 20%':
+        return '✅ Back Home'
+    if band_home == 'Bottom 20%' and band_away == 'Top 20%':
+        return '✅ Back Away'
 
-    if band == "Top 20%":
-        if dominant in ["Home strong", "Both extremes (Home↑ & Away↓)"]:
-            return "✅ Back Home"
-        if dominant == "Away weak":
-            return "✅ Back Home"
-        # counter-intuitive edge cases
-        return "❌ Avoid"
+    if dominant in ['Both extremes (Home↑ & Away↓)', 'Home strong'] and band_away != 'Top 20%':
+        if diff_m is not None and diff_m >= 0.90:
+            return '✅ Back Home'
+    if dominant in ['Both extremes (Away↑ & Home↓)', 'Away strong'] and band_home != 'Top 20%':
+        if diff_m is not None and diff_m <= -0.90:
+            return '✅ Back Away'
 
-    if band == "Bottom 20%":
-        if dominant in ["Away strong", "Both extremes (Away↑ & Home↓)"]:
-            return "✅ Back Away"
-        if dominant == "Home weak":
-            return "✅ Back Away"
-        return "❌ Avoid"
+    # 2) Conservative edges (both Balanced)
+    both_balanced = (band_home == 'Balanced') and (band_away == 'Balanced')
+    if both_balanced and (diff_m is not None) and (diff_pow is not None):
+        if league_cls == 'High Variation':
+            if (diff_m >= 0.45 and diff_m < diff_mid_hi_highvar and diff_pow >= power_gate_highvar):
+                return '🟦 1X (Home/Draw)'
+            if (diff_m <= -0.45 and diff_m > -diff_mid_hi_highvar and diff_pow <= -power_gate_highvar):
+                return '🟪 X2 (Away/Draw)'
+        else:
+            if (diff_m >= diff_mid_lo and diff_m < diff_mid_hi and diff_pow >= power_gate):
+                return '🟦 1X (Home/Draw)'
+            if (diff_m <= -diff_mid_lo and diff_m > -diff_mid_hi and diff_pow <= -power_gate):
+                return '🟪 X2 (Away/Draw)'
 
-    # Balanced
-    return "❌ Avoid"
+    # 3) Otherwise
+    return '❌ Avoid'
+
+def event_side_for_winprob(auto_rec):
+    if pd.isna(auto_rec): return None
+    s = str(auto_rec)
+    if 'Back Home' in s: return 'HOME'
+    if 'Back Away' in s: return 'AWAY'
+    if '1X' in s:       return '1X'
+    if 'X2' in s:       return 'X2'
+    return None
+
+def win_prob_for_recommendation(history, row,
+                                m_diff_margin=M_DIFF_MARGIN,
+                                power_margin=POWER_MARGIN):
+    # Build similar sample
+    m_h, m_a = row['M_H'], row['M_A']
+    diff_m   = m_h - m_a
+    diff_pow = row['Diff_Power']
+
+    hist = history.copy()
+    hist['M_Diff'] = hist['M_H'] - hist['M_A']
+
+    mask = (
+        hist['M_Diff'].between(diff_m - m_diff_margin, diff_m + m_diff_margin) &
+        hist['Diff_Power'].between(diff_pow - power_margin, diff_pow + power_margin)
+    )
+    sample = hist[mask]
+    n = len(sample)
+    if n == 0:
+        return 0, None
+
+    target = event_side_for_winprob(row['Auto_Recommendation'])
+    if target == 'HOME':
+        p = (sample['Goals_H_FT'] > sample['Goals_A_FT']).mean()
+    elif target == 'AWAY':
+        p = (sample['Goals_A_FT'] > sample['Goals_H_FT']).mean()
+    elif target == '1X':
+        p = ((sample['Goals_H_FT'] > sample['Goals_A_FT']) | (sample['Goals_H_FT'] == sample['Goals_A_FT'])).mean()
+    elif target == 'X2':
+        p = ((sample['Goals_A_FT'] > sample['Goals_H_FT']) | (sample['Goals_H_FT'] == sample['Goals_A_FT'])).mean()
+    else:
+        p = None
+
+    return n, (round(float(p)*100, 1) if p is not None else None)
 
 # ---------------- Load Data ----------------
 all_games = filter_leagues(load_all_games(GAMES_FOLDER))
@@ -266,71 +276,78 @@ if history.empty:
     st.warning("No valid historical data found.")
     st.stop()
 
-# Compute league classification and per-league bands
+games_today = filter_leagues(load_last_csv(GAMES_FOLDER))
+if 'Goals_H_FT' in games_today.columns:
+    # Keep only upcoming matches (FT not recorded yet)
+    games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
+
+# ---------------- Derived Metrics ----------------
+# League classification and bands
 league_class = classify_leagues_variation(history)
 league_bands = compute_league_bands(history)
 
-games_today = filter_leagues(load_last_csv(GAMES_FOLDER))
-if 'Goals_H_FT' in games_today.columns:
-    games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
-
-# ---------------- Apply Logic ----------------
+# Join bands/classification to today's games
 games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
-games_today['Recommendation'] = games_today.apply(
-    lambda row: recommend_bet(row['M_H'], row['M_A'], row['Diff_Power']), axis=1
-)
-games_today['Side'] = games_today['Recommendation'].apply(extract_side)
-
-# Attach league classification and bands
 games_today = games_today.merge(league_class, on='League', how='left')
 games_today = games_today.merge(league_bands, on='League', how='left')
 
-# Band per match (vectorized)
-games_today['Band'] = np.where(
-    games_today['M_Diff'] <= games_today['P20_Diff'], 'Bottom 20%',
-    np.where(games_today['M_Diff'] >= games_today['P80_Diff'], 'Top 20%', 'Balanced P20-80')
+# Home_Band and Away_Band from per-league thresholds on M_H and M_A
+games_today['Home_Band'] = np.where(
+    games_today['M_H'] <= games_today['Home_P20'], 'Bottom 20%',
+    np.where(games_today['M_H'] >= games_today['Home_P80'], 'Top 20%', 'Balanced')
+)
+games_today['Away_Band'] = np.where(
+    games_today['M_A'] <= games_today['Away_P20'], 'Bottom 20%',
+    np.where(games_today['M_A'] >= games_today['Away_P80'], 'Top 20%', 'Balanced')
 )
 
-# Dominant side
+# Dominant driver of imbalance (by individual strength)
 games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
 
-# Auto recommendation badge
-games_today['Auto_Recommendation'] = games_today.apply(
-    lambda r: auto_recommendation(r['Band'], r['Dominant']), axis=1
-)
+# Auto Recommendation based on Home_Band, Away_Band, Dominant, Diff_M, Diff_Power
+games_today['Auto_Recommendation'] = games_today.apply(lambda r: auto_recommendation(r), axis=1)
 
-# Similar matches & win prob (as in your original)
-results = games_today.apply(
-    lambda row: count_similar_matches(history, row['M_H'], row['M_A'], row['Diff_Power'], row['Side']),
-    axis=1
-)
-games_today['Games_Analyzed'] = [r[0] for r in results]
-games_today['Win_Probability'] = [r[1] for r in results]
+# Win Probability for the recommended event using historical similarity
+ga_wp = games_today.apply(lambda r: win_prob_for_recommendation(history, r), axis=1)
+games_today['Games_Analyzed']  = [x[0] for x in ga_wp]
+games_today['Win_Probability'] = [x[1] for x in ga_wp]
 
-games_today = games_today.sort_values(by='Win_Probability', ascending=False)
+# Order by Win_Probability desc (placing NaN at the end)
+games_today = games_today.sort_values(
+    by=['Win_Probability'],
+    ascending=False,
+    na_position='last'
+).reset_index(drop=True)
 
 # ---------------- Display Table ----------------
 cols_to_show = [
-    'Date','Time','League','League_Classification','Band',
+    'Date','Time','League','League_Classification',
     'Home','Away','Odd_H','Odd_D','Odd_A',
-    'M_H','M_A','M_Diff','Diff_Power',
-    'Dominant','Auto_Recommendation',
+    'M_H','M_A','Diff_Power',
+    'Home_Band','Away_Band','Dominant','Auto_Recommendation',
     'Games_Analyzed','Win_Probability'
 ]
 
+missing_cols = [c for c in cols_to_show if c not in games_today.columns]
+if missing_cols:
+    st.warning(f"Some expected columns are missing in today's data: {missing_cols}")
+
+display_cols = [c for c in cols_to_show if c in games_today.columns]
+
 styler = (
-    games_today[cols_to_show]
+    games_today[display_cols]
     .style
-    .applymap(color_diff_power, subset=['Diff_Power'])
-    .applymap(color_probability, subset=['Win_Probability'])
-    .applymap(color_classification, subset=['League_Classification'])
-    .applymap(color_band, subset=['Band'])
-    .applymap(color_auto_rec, subset=['Auto_Recommendation'])
+    .applymap(color_diff_power, subset=[c for c in ['Diff_Power'] if c in display_cols])
+    .applymap(color_probability, subset=[c for c in ['Win_Probability'] if c in display_cols])
+    .applymap(color_classification, subset=[c for c in ['League_Classification'] if c in display_cols])
+    .applymap(color_band, subset=[c for c in ['Home_Band','Away_Band'] if c in display_cols])
+    .applymap(color_auto_rec, subset=[c for c in ['Auto_Recommendation'] if c in display_cols])
     .format({
         'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
-        'M_H': '{:.2f}', 'M_A': '{:.2f}', 'M_Diff': '{:.2f}',
-        'Diff_Power': '{:.2f}', 'Win_Probability': '{:.1f}%', 'Games_Analyzed': '{:,.0f}'
-    })
+        'M_H': '{:.2f}', 'M_A': '{:.2f}',
+        'Diff_Power': '{:.2f}',
+        'Win_Probability': '{:.1f}%', 'Games_Analyzed': '{:,.0f}'
+    }, na_rep='—')
 )
 
-st.dataframe(styler)
+st.dataframe(styler, use_container_width=True)
