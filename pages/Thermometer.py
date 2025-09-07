@@ -342,4 +342,4 @@ styler = (
     }, na_rep='—')
 )
 
-st.dataframe(styler, use_container_width=True)
+st.dataframe(styler, use_container_width=True, height=2000)
