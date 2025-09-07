@@ -4,15 +4,15 @@ import numpy as np
 import os
 
 # ================= Page Config =================
-st.set_page_config(page_title="LeagueThermometer - Momentum & Value", layout="wide")
-st.title("LeagueThermometer - Momentum & Value")
+st.set_page_config(page_title="LeagueThermometer - Momentum and Value", layout="wide")
+st.title("LeagueThermometer - Momentum and Value")
 
 st.markdown(
     """
-    What this app does
+    What this app does:
     - Uses league stability (Low/Medium/High Variation) computed from historical M_H/M_A ranges.
-    - Splits each league by P20 / P80 of Diff_M = M_H - M_A -> Bottom 20%, Balanced P20-80, Top 20%.
-    - Derives historical outcome rates by (League, Band) to estimate fair probabilities & fair odds.
+    - Splits each league by P20 / P80 of Diff_M = M_H - M_A into Bottom 20%, Balanced P20-80, Top 20%.
+    - Derives historical outcome rates by (League, Band) to estimate fair probabilities and fair odds.
     - Suggests minimum fair odds for handicaps from history only (no real odds required).
     """
 )
@@ -36,8 +36,7 @@ def load_csvs(folder: str) -> pd.DataFrame:
             st.error(f"Error loading {f}: {e}")
     if not frames:
         return pd.DataFrame()
-    df = pd.concat(frames, ignore_index=True)
-    return df
+    return pd.concat(frames, ignore_index=True)
 
 @st.cache_data(show_spinner=False)
 def load_latest_csv(folder: str) -> pd.DataFrame:
@@ -58,25 +57,26 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
 def require_cols(df: pd.DataFrame, cols: list) -> bool:
     missing = [c for c in cols if c not in df.columns]
     if missing:
-        st.error(f"Missing required columns: {missing}")
+        st.error("Missing required columns: " + ", ".join(missing))
         return False
     return True
 
 
 def classify_league_variation(history: pd.DataFrame) -> pd.DataFrame:
-    # Compute league variation from historical M_H/M_A ranges
     agg = (
         history.groupby('League')
-        .agg(M_H_Min=("M_H", "min"), M_H_Max=("M_H", "max"),
-             M_A_Min=("M_A", "min"), M_A_Max=("M_A", "max"),
-             Games=("M_H", "count"))
+        .agg(
+            M_H_Min=("M_H", "min"), M_H_Max=("M_H", "max"),
+            M_A_Min=("M_A", "min"), M_A_Max=("M_A", "max"),
+            Games=("M_H", "count")
+        )
         .reset_index()
     )
-    agg["Variation_Total"] = (agg["M_H_Max"] - agg["M_H_Min"]) + (agg["M_A_Max"] - agg["M_A_Min"]) 
-    def _label(v):
+    agg["Variation_Total"] = (agg["M_H_Max"] - agg["M_H_Min"]) + (agg["M_A_Max"] - agg["M_A_Min"])
+    def _label(v: float) -> str:
         if v > 6.0:
             return "High Variation"
-        elif v >= 3.0:
+        if v >= 3.0:
             return "Medium Variation"
         return "Low Variation"
     agg['Classification'] = agg['Variation_Total'].apply(_label)
@@ -88,7 +88,6 @@ def add_diff_and_bands(df: pd.DataFrame, by_league: bool = True, min_hist_games_
     out['Diff_M'] = out['M_H'] - out['M_A']
 
     if by_league:
-        # Quantiles per league
         bands = (
             out.groupby('League')['Diff_M']
               .quantile([0.20, 0.80])
@@ -98,34 +97,36 @@ def add_diff_and_bands(df: pd.DataFrame, by_league: bool = True, min_hist_games_
         )
         counts = out.groupby('League')['Diff_M'].size().rename('Hist_Games').reset_index()
         bands = bands.merge(counts, on='League', how='left')
-
         out = out.merge(bands, on='League', how='left')
 
         # Global fallback thresholds
-        p20_global, p80_global = out['Diff_M'].quantile(0.20), out['Diff_M'].quantile(0.80)
+        p20_global = out['Diff_M'].quantile(0.20)
+        p80_global = out['Diff_M'].quantile(0.80)
 
-        # Invalidate per-league thresholds if insufficient history or inverted thresholds
-        bad_mask = (
-            out['Hist_Games'].fillna(0) < min_hist_games_per_league
-        ) | (
+        # Invalidate per-league thresholds when insufficient or inverted
+        bad_mask = (out['Hist_Games'].fillna(0) < min_hist_games_per_league) | (
             out['P20_Diff'].notna() & out['P80_Diff'].notna() & (out['P20_Diff'] >= out['P80_Diff'])
         )
-        out.loc[bad_mask, ['P20_Diff','P80_Diff']] = (np.nan, np.nan)
+        out.loc[bad_mask, ['P20_Diff', 'P80_Diff']] = (np.nan, np.nan)
 
-        # Fill NaN with global thresholds for robust fallback
+        # Fill with global thresholds
         out['P20_Diff'] = out['P20_Diff'].fillna(p20_global)
         out['P80_Diff'] = out['P80_Diff'].fillna(p80_global)
 
-        # Vectorized banding per row
-        conds = [out['Diff_M'] <= out['P20_Diff'], out['Diff_M'] >= out['P80_Diff']]
-        choices = ['Bottom 20%', 'Top 20%']
-        out['Band'] = np.select(conds, choices, default='Balanced P20-P80')
+        # Vectorized banding
+        out['Band'] = np.where(
+            out['Diff_M'] <= out['P20_Diff'], 'Bottom 20%',
+            np.where(out['Diff_M'] >= out['P80_Diff'], 'Top 20%', 'Balanced P20-80')
+        )
     else:
-        # Global bands
-        p20, p80 = out['Diff_M'].quantile(0.20), out['Diff_M'].quantile(0.80)
-        out['P20_Diff'], out['P80_Diff'] = p20, p80
-        out['Band'] = np.where(out['Diff_M'] <= p20, 'Bottom 20%',
-                        np.where(out['Diff_M'] >= p80, 'Top 20%', 'Balanced P20-P80'))
+        p20 = out['Diff_M'].quantile(0.20)
+        p80 = out['Diff_M'].quantile(0.80)
+        out['P20_Diff'] = p20
+        out['P80_Diff'] = p80
+        out['Band'] = np.where(
+            out['Diff_M'] <= p20, 'Bottom 20%',
+            np.where(out['Diff_M'] >= p80, 'Top 20%', 'Balanced P20-80')
+        )
 
     return out
 
@@ -142,12 +143,14 @@ def outcomes(df: pd.DataFrame) -> pd.DataFrame:
     })
 
 
-def fair_odds(p):
-    return np.inf if (p is None or pd.isna(p) or p == 0) else 1.0 / p
+def fair_odds(p: float) -> float:
+    if p is None or pd.isna(p) or p == 0:
+        return np.inf
+    return 1.0 / p
 
 
-def away_plus1_be_odd(p_away, p_draw, p_home_by2):
-    # Away +1 (Asian): win = Away or Draw; push = Home by1; lose = Home by2+
+def away_plus1_be_odd(p_away: float, p_draw: float, p_home_by2: float) -> float:
+    # Away +1: win = Away or Draw; push = Home by 1; loss = Home by 2+
     if any(pd.isna(x) for x in [p_away, p_draw, p_home_by2]):
         return np.nan
     p_win = p_away + p_draw
@@ -156,8 +159,8 @@ def away_plus1_be_odd(p_away, p_draw, p_home_by2):
     return 1.0 + (p_home_by2 / p_win)
 
 
-def home_minus1_be_odd(p_home_by2, p_draw, p_away):
-    # Home -1 (Asian): win = Home by2+; push = Home by1; loss = Draw or Away
+def home_minus1_be_odd(p_home_by2: float, p_draw: float, p_away: float) -> float:
+    # Home -1: win = Home by 2+; push = Home by 1; loss = Draw or Away
     if any(pd.isna(x) for x in [p_home_by2, p_draw, p_away]):
         return np.nan
     p_win = p_home_by2
@@ -185,36 +188,33 @@ if latest.empty:
 if 'Goals_H_FT' in latest.columns:
     latest = latest[latest['Goals_H_FT'].isna()].copy()
 
-# ================= Compute League Variation & Bands (from history) =================
+# ================= Compute League Variation and Bands (history) =================
 variation = classify_league_variation(history)
 
 history = add_diff_and_bands(history, by_league=True, min_hist_games_per_league=MIN_HIST_GAMES_PER_LEAGUE)
 latest = latest.copy()
 latest['Diff_M'] = latest['M_H'] - latest['M_A']
 
-# Attach league P20/P80 from history (with global fallback)
+# Attach league P20/P80 from history with global fallback
 league_bands = history[['League','P20_Diff','P80_Diff']].drop_duplicates()
 latest = latest.merge(league_bands, on='League', how='left')
 
 _hist_with_diff = history.copy()
 _hist_with_diff['Diff_M'] = _hist_with_diff['M_H'] - _hist_with_diff['M_A']
-p20_global, p80_global = _hist_with_diff['Diff_M'].quantile(0.20), _hist_with_diff['Diff_M'].quantile(0.80)
+p20_global = _hist_with_diff['Diff_M'].quantile(0.20)
+p80_global = _hist_with_diff['Diff_M'].quantile(0.80)
 
-bad = latest['P20_Diff'].isna() | latest['P80_Diff'].isna() | (latest['P20_Diff'] >= latest['P80_Diff'])
-latest.loc[bad, 'P20_Diff'] = p20_global
-latest.loc[bad, 'P80_Diff'] = p80_global
+bad_mask = latest['P20_Diff'].isna() | latest['P80_Diff'].isna() | (latest['P20_Diff'] >= latest['P80_Diff'])
+latest.loc[bad_mask, 'P20_Diff'] = p20_global
+latest.loc[bad_mask, 'P80_Diff'] = p80_global
 
 latest['Band'] = np.where(
     latest['Diff_M'] <= latest['P20_Diff'], 'Bottom 20%',
-    np.where(latest['Diff_M'] >= latest['P80_Diff'], 'Top 20%', 'Balanced P20-P80')
+    np.where(latest['Diff_M'] >= latest['P80_Diff'], 'Top 20%', 'Balanced P20-80')
 )
 
 # ================= Historical rates per (League, Band) =================
-hist_rates = (
-    history.groupby(['League','Band'])
-    .apply(outcomes)
-    .reset_index()
-)
+hist_rates = history.groupby(['League','Band']).apply(outcomes).reset_index()
 
 # Merge variation labels
 hist_rates = hist_rates.merge(variation[['League','Classification','Variation_Total','Games']], on='League', how='left')
@@ -238,22 +238,11 @@ preview['BE_HomeMinus1'] = preview.apply(lambda r: home_minus1_be_odd(r.get('p_H
 preview['Fair_HomeMinus1_5'] = preview['p_Home_by2+'].apply(fair_odds)
 preview['Fair_AwayPlus1_5'] = (1 - preview['p_Home_by2+']).apply(fair_odds)
 
-# Order: prioritize band info then safer probabilities
+# Order rows
 preview = preview.sort_values(by=['Band','p_X2','p_Home_by2+'], ascending=[True, False, False])
 
-# ================= Styling helpers =================
-def highlight_variation(row):
-    cls = row.get('Classification','')
-    if cls == 'Low Variation':
-        return ['background-color: rgba(0,255,0,0.12)']*len(row)
-    if cls == 'Medium Variation':
-        return ['background-color: rgba(255,215,0,0.10)']*len(row)
-    if cls == 'High Variation':
-        return ['background-color: rgba(255,0,0,0.08)']*len(row)
-    return ['']*len(row)
-
 # ================= Display =================
-st.subheader("Today's Card - Historical → Fair odds & handicap minimums")
+st.subheader("Today's Card - Historical fair odds and handicap minimums")
 
 disp_cols = [
     'Date','Time','League','Home','Away','Classification','Band',
@@ -279,28 +268,27 @@ styled = (
 
 st.dataframe(styled, use_container_width=True)
 
-# ================= Signals (text badges) =================
+# ================= Signals =================
 st.subheader("Signals")
 for _, row in preview.iterrows():
     league = row['League']
     match_name = f"{row['Home']} vs {row['Away']}"
     cls = row.get('Classification', 'N/A')
     band = row.get('Band', 'N/A')
-    msg = f"**{match_name}** — *{league}* | League: **{cls}**, Band: **{band}**"
+    msg = f"{match_name} — {league} | League: {cls}, Band: {band}"
     tips = []
-    # Purely historical fair/BE suggestions
     if pd.notna(row.get('Fair_X2')) and np.isfinite(row['Fair_X2']):
-        tips.append(f"Min fair X2 ≥ {row['Fair_X2']:.2f}")
+        tips.append(f"Min fair X2 >= {row['Fair_X2']:.2f}")
     if pd.notna(row.get('BE_AwayPlus1')) and np.isfinite(row['BE_AwayPlus1']):
-        tips.append(f"Min fair Away +1 ≥ {row['BE_AwayPlus1']:.2f}")
+        tips.append(f"Min fair Away +1 >= {row['BE_AwayPlus1']:.2f}")
     if pd.notna(row.get('BE_HomeMinus1')) and np.isfinite(row['BE_HomeMinus1']):
-        tips.append(f"Min fair Home -1 ≥ {row['BE_HomeMinus1']:.2f}")
+        tips.append(f"Min fair Home -1 >= {row['BE_HomeMinus1']:.2f}")
     if pd.notna(row.get('Fair_HomeMinus1_5')) and np.isfinite(row['Fair_HomeMinus1_5']):
-        tips.append(f"Min fair Home -1.5 ≥ {row['Fair_HomeMinus1_5']:.2f}")
+        tips.append(f"Min fair Home -1.5 >= {row['Fair_HomeMinus1_5']:.2f}")
     if pd.notna(row.get('Fair_AwayPlus1_5')) and np.isfinite(row['Fair_AwayPlus1_5']):
-        tips.append(f"Min fair Away +1.5 ≥ {row['Fair_AwayPlus1_5']:.2f}")
+        tips.append(f"Min fair Away +1.5 >= {row['Fair_AwayPlus1_5']:.2f}")
     if not tips:
         tips.append("No obvious value by historical metrics.")
-    st.markdown(" • "+msg+"
+    st.markdown(" - " + msg + "
 
-    → "+" | ".join(tips))
+    -> " + " | ".join(tips))
