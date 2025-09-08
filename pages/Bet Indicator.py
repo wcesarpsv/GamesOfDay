@@ -89,14 +89,33 @@ games_today['p_away'] = model_away.predict_proba(X_today)[:,1]
 games_today['EV_Home'] = (games_today['p_home'] * games_today['Odd_H']) - 1
 games_today['EV_Away'] = (games_today['p_away'] * games_today['Odd_A']) - 1
 
+# ---------------- Historical sample size ----------------
+def get_sample_size(df_hist, row, margin_odd=0.15, margin_power=5):
+    """Conta quantos jogos históricos são semelhantes em Odds e Diff_Power"""
+    diff_pow = row['Diff_Power']
+    odd_h, odd_a = row['Odd_H'], row['Odd_A']
+
+    mask = (
+        (df_hist['Odd_H'].between(odd_h*(1-margin_odd), odd_h*(1+margin_odd))) &
+        (df_hist['Odd_A'].between(odd_a*(1-margin_odd), odd_a*(1+margin_odd))) &
+        (df_hist['Diff_Power'].between(diff_pow-margin_power, diff_pow+margin_power))
+    )
+    return mask.sum()
+
+games_today['Sample_Size'] = games_today.apply(lambda r: get_sample_size(history, r), axis=1)
+
+# ---------------- Bet Decision ----------------
 def choose_bet(row):
     ev_home, ev_away = row['EV_Home'], row['EV_Away']
+    p_home, p_away = row['p_home'], row['p_away']
+    sample = row['Sample_Size']
+
     if ev_home > 0 and ev_home >= ev_away:
-        return f"Back Home (EV={ev_home:.1%})"
+        return f"Back Home (EV={ev_home:.1%}, p={p_home:.1%}, n={sample})"
     elif ev_away > 0 and ev_away > ev_home:
-        return f"Back Away (EV={ev_away:.1%})"
+        return f"Back Away (EV={ev_away:.1%}, p={p_away:.1%}, n={sample})"
     else:
-        return "No Bet"
+        return f"No Bet (n={sample})"
 
 games_today['Bet_Indicator'] = games_today.apply(choose_bet, axis=1)
 
@@ -104,7 +123,8 @@ games_today['Bet_Indicator'] = games_today.apply(choose_bet, axis=1)
 cols_to_show = [
     'Date','Time','League','Home','Away',
     'Odd_H','Odd_D','Odd_A',
-    'Diff_Power','M_H','M_A','Bet_Indicator'
+    'Diff_Power','M_H','M_A',
+    'p_home','p_away','Sample_Size','Bet_Indicator'
 ]
 
 styler = (
@@ -112,7 +132,8 @@ styler = (
     .style
     .format({
         'Odd_H':'{:.2f}','Odd_D':'{:.2f}','Odd_A':'{:.2f}',
-        'M_H':'{:.2f}','M_A':'{:.2f}','Diff_Power':'{:.2f}'
+        'M_H':'{:.2f}','M_A':'{:.2f}','Diff_Power':'{:.2f}',
+        'p_home':'{:.1%}','p_away':'{:.1%}'
     }, na_rep='—')
     .applymap(lambda v: 'background-color: rgba(0,200,0,0.2)' if isinstance(v,str) and "Back" in v else '')
     .applymap(lambda v: 'background-color: rgba(255,200,200,0.3)' if isinstance(v,str) and "No Bet" in v else '')
