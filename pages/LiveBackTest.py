@@ -66,8 +66,6 @@ df_all = pd.concat(all_dfs, ignore_index=True)
 
 if _EXC_PATTERN and "League" in df_all.columns:
     df_all = df_all[~df_all["League"].astype(str).str.contains(_EXC_PATTERN, na=False)]
-    
-df_all = df_all.sort_values(by="Date").reset_index(drop=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 🎯 Filters
@@ -103,7 +101,7 @@ odd_a_sel = range_filter("💰 Odd_A (Away win)", oa_min, oa_max, step=step_odds
 
 # Percentual de teste
 test_size = st.sidebar.slider("📐 Percentage for Test (%)", 5, 50, 10, step=5) / 100.0
-split_mode = st.sidebar.radio("🔀 Data Division", ["Radom", "Chronological"], horizontal=True)
+split_mode = st.sidebar.radio("🔀 Data Division", ["Random", "Chronological"], horizontal=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Apply filters
@@ -114,7 +112,6 @@ filtered_df = df_all[
     (df_all["Diff_Power"] >= diff_power_sel[0]) & (df_all["Diff_Power"] <= diff_power_sel[1]) &
     (df_all["Odd_H"] >= odd_h_sel[0]) & (df_all["Odd_H"] <= odd_h_sel[1]) &
     (df_all["Odd_A"] >= odd_a_sel[0]) & (df_all["Odd_A"] <= odd_a_sel[1])
-
 ].copy()
 
 if filtered_df.empty:
@@ -124,13 +121,17 @@ if filtered_df.empty:
 # ──────────────────────────────────────────────────────────────────────────────
 # Split train/test
 # ──────────────────────────────────────────────────────────────────────────────
-if split_mode == "Aleatória":
-    train_df = filtered_df.sample(frac=1-test_size, random_state=42)
-    test_df = filtered_df.drop(train_df.index)
-else:  # Cronológica
-    cutoff = int(len(filtered_df) * (1-test_size))
-    train_df = filtered_df.iloc[:cutoff]
-    test_df = filtered_df.iloc[cutoff:]
+if split_mode == "Random":
+    shuffled = filtered_df.sample(frac=1, random_state=42).reset_index(drop=True)
+    cutoff = int(len(shuffled) * (1-test_size))
+    train_df = shuffled.iloc[:cutoff]
+    test_df = shuffled.iloc[cutoff:]
+else:  # Chronological
+    ordered = filtered_df.sort_values(by="Date").reset_index(drop=True)
+    cutoff = int(len(ordered) * (1-test_size))
+    train_df = ordered.iloc[:cutoff]
+    test_df = ordered.iloc[cutoff:]
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Profit Calculation
