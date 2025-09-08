@@ -3,4 +3,8 @@ pandas
 streamlit-aggrid
 matplotlib
 plotly
+numpy
+xgboost
+scikit-learn
+
 
