@@ -107,15 +107,13 @@ games_today['Sample_Size'] = games_today.apply(lambda r: get_sample_size(history
 # ---------------- Bet Decision ----------------
 def choose_bet(row):
     ev_home, ev_away = row['EV_Home'], row['EV_Away']
-    p_home, p_away = row['p_home'], row['p_away']
-    sample = row['Sample_Size']
 
     if ev_home > 0 and ev_home >= ev_away:
-        return f"Back Home (EV={ev_home:.1%}, p={p_home:.1%}, n={sample})"
+        return f"Back Home (EV={ev_home:.1%})"
     elif ev_away > 0 and ev_away > ev_home:
-        return f"Back Away (EV={ev_away:.1%}, p={p_away:.1%}, n={sample})"
+        return f"Back Away (EV={ev_away:.1%})"
     else:
-        return f"No Bet (n={sample})"
+        return "No Bet"
 
 games_today['Bet_Indicator'] = games_today.apply(choose_bet, axis=1)
 
@@ -140,3 +138,13 @@ styler = (
 )
 
 st.dataframe(styler, use_container_width=True, height=1000)
+
+# ---------------- Save Results ----------------
+output_folder = os.path.join("GamesOfDay", "GamesDay", "BetIndicator")
+os.makedirs(output_folder, exist_ok=True)
+
+today_str = pd.Timestamp.today().strftime("%Y-%m-%d")
+output_file = os.path.join(output_folder, f"Recommendations_{today_str}.csv")
+games_today[cols_to_show].to_csv(output_file, index=False)
+
+st.success(f"✅ Recomendações salvas em: {output_file}")
