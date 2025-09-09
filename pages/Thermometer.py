@@ -4,30 +4,32 @@ import numpy as np
 import os
 
 # ---------------- Page Config ----------------
+# Define o título da aba e o layout da página
 st.set_page_config(page_title="Today's Picks - Momentum Thermometer", layout="wide")
 st.title("Today's Picks - Momentum Thermometer")
 
 # ---------------- Legend ----------------
+# Explicação das regras que serão usadas nas recomendações
 st.markdown("""
-Recommendation Rules (based on M_Diff and Bands):
+### Recommendation Rules (based on M_Diff and Bands):
 
 - Strong edges -> Back side (Home/Away)
-- Moderate edges with both teams Balanced -> 1X (Home/Draw) or X2 (Away/Draw)
-- Avoid when signals are weak or conflicting
+- Moderate edges -> 1X (Home/Draw) ou X2 (Away/Draw)  
+   (duas lógicas: ambos Balanced **ou** Balanced vs Bottom20%)
+- Avoid -> quando os sinais são fracos ou conflitantes
 """)
 
 # ---------------- Configs ----------------
+# Diretório onde ficam os CSVs e parâmetros de análise
 GAMES_FOLDER = "GamesDay"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa"]
 
-# Similarity windows used for historical estimation
-M_DIFF_MARGIN = 0.30
-POWER_MARGIN = 10
-
-# Threshold used to decide Dominant side by individual strength
-DOMINANT_THRESHOLD = 0.90
+M_DIFF_MARGIN = 0.30    # tolerância para encontrar jogos semelhantes no histórico
+POWER_MARGIN = 10       # tolerância para Diff_Power
+DOMINANT_THRESHOLD = 0.90  # limite para definir força dominante
 
 # ---------------- Color Helpers ----------------
+# Funções para colorir a tabela no Streamlit (visualização)
 def color_diff_power(val):
     if pd.isna(val): 
         return ''
@@ -82,6 +84,7 @@ def color_auto_rec(val):
     return m.get(val, '')
 
 # ---------------- Core Functions ----------------
+# Carrega todos os CSVs (histórico)
 def load_all_games(folder):
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     if not files: 
@@ -95,6 +98,7 @@ def load_all_games(folder):
             st.error(f"Error loading {file}: {e}")
     return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
 
+# Carrega apenas o último CSV (jogos do dia)
 def load_last_csv(folder):
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     if not files: 
@@ -102,12 +106,14 @@ def load_last_csv(folder):
     latest_file = max(files)
     return pd.read_csv(os.path.join(folder, latest_file))
 
+# Remove ligas indesejadas (copas, amistosos etc.)
 def filter_leagues(df):
     if df.empty or 'League' not in df.columns:
         return df
     pattern = '|'.join(EXCLUDED_LEAGUE_KEYWORDS)
     return df[~df['League'].str.lower().str.contains(pattern, na=False)].copy()
 
+# Prepara histórico: apenas jogos finalizados com gols
 def prepare_history(df):
     required = ['Goals_H_FT', 'Goals_A_FT', 'M_H', 'M_A', 'Diff_Power', 'League']
     for col in required:
@@ -116,7 +122,7 @@ def prepare_history(df):
             return pd.DataFrame()
     return df.dropna(subset=['Goals_H_FT', 'Goals_A_FT'])
 
-# League variation classification (Low/Medium/High)
+# Classifica ligas como Low/Medium/High variation
 def classify_leagues_variation(history_df):
     agg = (
         history_df.groupby('League')
@@ -136,7 +142,7 @@ def classify_leagues_variation(history_df):
     agg['League_Classification'] = agg['Variation_Total'].apply(label)
     return agg[['League','League_Classification','Variation_Total','Hist_Games']]
 
-# Per-league P20/P80 for Diff_M, M_H and M_A
+# Calcula bandas (P20/P80) para M_Diff, M_H e M_A por liga
 def compute_league_bands(history_df):
     hist = history_df.copy()
     hist['M_Diff'] = hist['M_H'] - hist['M_A']
@@ -165,6 +171,7 @@ def compute_league_bands(history_df):
     out = diff_q.merge(home_q, on='League', how='inner').merge(away_q, on='League', how='inner')
     return out
 
+# Define se algum time é dominante
 def dominant_side(row, threshold=DOMINANT_THRESHOLD):
     m_h, m_a = row['M_H'], row['M_A']
     if (m_h >= threshold) and (m_a <= -threshold):
@@ -181,17 +188,12 @@ def dominant_side(row, threshold=DOMINANT_THRESHOLD):
         return "Away weak"
     return "Mixed / Neutral"
 
+# ---------------- Auto Recommendation ----------------
+# Agora cobre duas lógicas para 1X/X2: ambos Balanced OU Balanced vs Bottom20%
 def auto_recommendation(row,
                         diff_mid_lo=0.20, diff_mid_hi=0.80,
                         diff_mid_hi_highvar=0.75, power_gate=1, power_gate_highvar=5):
-    """
-    Decide between:
-      - Back Home
-      - Back Away
-      - 1X (Home/Draw)
-      - X2 (Away/Draw)
-      - Avoid
-    """
+
     band_home = row.get('Home_Band')
     band_away = row.get('Away_Band')
     dominant  = row.get('Dominant')
@@ -199,7 +201,7 @@ def auto_recommendation(row,
     diff_pow  = row.get('Diff_Power')
     league_cls= row.get('League_Classification', 'Medium Variation')
 
-    # 1) Strong edges
+    # 1) Strong edges -> Back direto
     if band_home == 'Top 20%' and band_away == 'Bottom 20%':
         return '✅ Back Home'
     if band_home == 'Bottom 20%' and band_away == 'Top 20%':
@@ -212,9 +214,14 @@ def auto_recommendation(row,
         if diff_m is not None and diff_m <= -0.90:
             return '✅ Back Away'
 
-    # 2) Conservative edges (both Balanced)
+    # 2) Conservative edges (1X ou X2)
     both_balanced = (band_home == 'Balanced') and (band_away == 'Balanced')
-    if both_balanced and (diff_m is not None) and (diff_pow is not None):
+    home_balanced_vs_away_bottom = (band_home == 'Balanced') and (band_away == 'Bottom 20%')
+    away_balanced_vs_home_bottom = (band_away == 'Balanced') and (band_home == 'Bottom 20%')
+
+    if (both_balanced or home_balanced_vs_away_bottom or away_balanced_vs_home_bottom) \
+       and (diff_m is not None) and (diff_pow is not None):
+
         if league_cls == 'High Variation':
             if (diff_m >= 0.45 and diff_m < diff_mid_hi_highvar and diff_pow >= power_gate_highvar):
                 return '🟦 1X (Home/Draw)'
@@ -226,126 +233,5 @@ def auto_recommendation(row,
             if (diff_m <= -diff_mid_lo and diff_m > -diff_mid_hi and diff_pow <= -power_gate):
                 return '🟪 X2 (Away/Draw)'
 
+    # 3) Caso nenhum critério seja atendido
     return '❌ Avoid'
-
-def event_side_for_winprob(auto_rec):
-    if pd.isna(auto_rec): return None
-    s = str(auto_rec)
-    if 'Back Home' in s: return 'HOME'
-    if 'Back Away' in s: return 'AWAY'
-    if '1X' in s:       return '1X'
-    if 'X2' in s:       return 'X2'
-    return None
-
-def win_prob_for_recommendation(history, row,
-                                m_diff_margin=M_DIFF_MARGIN,
-                                power_margin=POWER_MARGIN):
-    m_h, m_a = row['M_H'], row['M_A']
-    diff_m   = m_h - m_a
-    diff_pow = row['Diff_Power']
-
-    hist = history.copy()
-    hist['M_Diff'] = hist['M_H'] - hist['M_A']
-
-    mask = (
-        hist['M_Diff'].between(diff_m - m_diff_margin, diff_m + m_diff_margin) &
-        hist['Diff_Power'].between(diff_pow - power_margin, diff_pow + power_margin)
-    )
-    sample = hist[mask]
-    n = len(sample)
-    if n == 0:
-        return 0, None
-
-    target = event_side_for_winprob(row['Auto_Recommendation'])
-
-    if target == 'HOME':
-        p = (sample['Goals_H_FT'] > sample['Goals_A_FT']).mean()
-    elif target == 'AWAY':
-        p = (sample['Goals_A_FT'] > sample['Goals_H_FT']).mean()
-    elif target == '1X':
-        p = ((sample['Goals_H_FT'] > sample['Goals_A_FT']) | (sample['Goals_H_FT'] == sample['Goals_A_FT'])).mean()
-    elif target == 'X2':
-        p = ((sample['Goals_A_FT'] > sample['Goals_H_FT']) | (sample['Goals_H_FT'] == sample['Goals_A_FT'])).mean()
-    else:
-        # Caso seja "Avoid": calcular taxa de vitórias do favorito (Home ou Away)
-        p_home = (sample['Goals_H_FT'] > sample['Goals_A_FT']).mean()
-        p_away = (sample['Goals_A_FT'] > sample['Goals_H_FT']).mean()
-        # pega o maior dos dois, só para indicar tendência histórica
-        p = max(p_home, p_away)
-
-
-    return n, (round(float(p)*100, 1) if p is not None else None)
-
-# ---------------- Load Data ----------------
-all_games = filter_leagues(load_all_games(GAMES_FOLDER))
-history = prepare_history(all_games)
-if history.empty:
-    st.warning("No valid historical data found.")
-    st.stop()
-
-games_today = filter_leagues(load_last_csv(GAMES_FOLDER))
-if 'Goals_H_FT' in games_today.columns:
-    games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
-
-# ---------------- Derived Metrics ----------------
-league_class = classify_leagues_variation(history)
-league_bands = compute_league_bands(history)
-
-games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
-games_today = games_today.merge(league_class, on='League', how='left')
-games_today = games_today.merge(league_bands, on='League', how='left')
-
-games_today['Home_Band'] = np.where(
-    games_today['M_H'] <= games_today['Home_P20'], 'Bottom 20%',
-    np.where(games_today['M_H'] >= games_today['Home_P80'], 'Top 20%', 'Balanced')
-)
-games_today['Away_Band'] = np.where(
-    games_today['M_A'] <= games_today['Away_P20'], 'Bottom 20%',
-    np.where(games_today['M_A'] >= games_today['Away_P80'], 'Top 20%', 'Balanced')
-)
-
-games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
-games_today['Auto_Recommendation'] = games_today.apply(lambda r: auto_recommendation(r), axis=1)
-
-ga_wp = games_today.apply(lambda r: win_prob_for_recommendation(history, r), axis=1)
-games_today['Games_Analyzed']  = [x[0] for x in ga_wp]
-games_today['Win_Probability'] = [x[1] for x in ga_wp]
-
-games_today = games_today.sort_values(
-    by=['Win_Probability'],
-    ascending=False,
-    na_position='last'
-).reset_index(drop=True)
-
-# ---------------- Display Table ----------------
-cols_to_show = [
-    'Date','Time','League','League_Classification',
-    'Home','Away','Odd_H','Odd_D','Odd_A',
-    'M_H','M_A','Diff_Power',
-    'Home_Band','Away_Band','Dominant','Auto_Recommendation',
-    'Games_Analyzed','Win_Probability'
-]
-
-missing_cols = [c for c in cols_to_show if c not in games_today.columns]
-if missing_cols:
-    st.warning(f"Some expected columns are missing in today's data: {missing_cols}")
-
-display_cols = [c for c in cols_to_show if c in games_today.columns]
-
-styler = (
-    games_today[display_cols]
-    .style
-    .applymap(color_diff_power, subset=['Diff_Power'])
-    .applymap(color_probability, subset=['Win_Probability'])
-    .applymap(color_classification, subset=['League_Classification'])
-    .applymap(color_band, subset=['Home_Band','Away_Band'])
-    .applymap(color_auto_rec, subset=['Auto_Recommendation'])
-    .format({
-        'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
-        'M_H': '{:.2f}', 'M_A': '{:.2f}',
-        'Diff_Power': '{:.2f}',
-        'Win_Probability': '{:.1f}%', 'Games_Analyzed': '{:,.0f}'
-    }, na_rep='—')
-)
-
-st.dataframe(styler, use_container_width=True, height=1000)
