@@ -12,9 +12,9 @@ st.markdown("""
 ### Recommendation Rules (based on M_Diff and Bands):
 
 1. Strong edges -> Back side (Home/Away)  
-2. Moderate edges -> 1X (Home/Draw) ou X2 (Away/Draw) quando ambos Balanced (com thresholds)  
-3. Caso não se encaixe em nada acima -> 1X se Home Balanced vs Away Bottom20%, ou X2 se Away Balanced vs Home Bottom20%  
-4. Caso contrário -> Avoid
+2. Moderate edges -> 1X (Home/Draw) or X2 (Away/Draw) when both are Balanced (with thresholds)  
+3. If none of the above -> 1X if Home Balanced vs Away Bottom20%, or X2 if Away Balanced vs Home Bottom20%  
+4. Otherwise -> Avoid
 """)
 
 # ---------------- Configs ----------------
@@ -80,12 +80,6 @@ def load_all_games(folder):
         except Exception as e:
             st.error(f"Error loading {file}: {e}")
     return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
-
-def load_last_csv(folder):
-    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
-    if not files: return pd.DataFrame()
-    latest_file = max(files)
-    return pd.read_csv(os.path.join(folder, latest_file))
 
 def filter_leagues(df):
     if df.empty or 'League' not in df.columns:
@@ -170,7 +164,7 @@ def auto_recommendation(row,
     diff_pow  = row.get('Diff_Power')
     league_cls= row.get('League_Classification', 'Medium Variation')
 
-    # 1) Strong edges -> Back direto
+    # 1) Strong edges -> Direct Back
     if band_home == 'Top 20%' and band_away == 'Bottom 20%':
         return '✅ Back Home'
     if band_home == 'Bottom 20%' and band_away == 'Top 20%':
@@ -183,7 +177,7 @@ def auto_recommendation(row,
         if diff_m is not None and diff_m <= -0.90:
             return '✅ Back Away'
 
-    # 2) Ambos Balanced (com thresholds)
+    # 2) Both Balanced (with thresholds)
     if (band_home == 'Balanced') and (band_away == 'Balanced') and (diff_m is not None) and (diff_pow is not None):
         if league_cls == 'High Variation':
             if (diff_m >= 0.45 and diff_m < diff_mid_hi_highvar and diff_pow >= power_gate_highvar):
@@ -196,13 +190,13 @@ def auto_recommendation(row,
             if (diff_m <= -diff_mid_lo and diff_m > -diff_mid_hi and diff_pow <= -power_gate):
                 return '🟪 X2 (Away/Draw)'
 
-    # 3) Balanced vs Bottom20% (só entra se não ativou nada acima)
+    # 3) Balanced vs Bottom20% (only if nothing else triggered)
     if (band_home == 'Balanced') and (band_away == 'Bottom 20%'):
         return '🟦 1X (Home/Draw)'
     if (band_away == 'Balanced') and (band_home == 'Bottom 20%'):
         return '🟪 X2 (Away/Draw)'
 
-    # 4) Caso nenhum critério seja atendido
+    # 4) Fallback
     return '❌ Avoid'
 
 # ---------------- Win Probability Helpers ----------------
@@ -251,18 +245,30 @@ def win_prob_for_recommendation(history, row,
 
     return n, (round(float(p)*100, 1) if p is not None else None)
 
-# ---------------- Load Data ----------------
+# ---------------- Select CSV (Latest or Previous) ----------------
+files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
+files = sorted(files)
+
+if not files:
+    st.warning("No CSV files found in GamesDay folder.")
+    st.stop()
+
+options = files[-2:] if len(files) >= 2 else files
+selected_file = st.selectbox("Select matchday file:", options, index=len(options)-1)
+
+games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
+games_today = filter_leagues(games_today)
+
+if 'Goals_H_FT' in games_today.columns:
+    games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
+
+# ---------------- Derived Metrics ----------------
 all_games = filter_leagues(load_all_games(GAMES_FOLDER))
 history = prepare_history(all_games)
 if history.empty:
     st.warning("No valid historical data found.")
     st.stop()
 
-games_today = filter_leagues(load_last_csv(GAMES_FOLDER))
-if 'Goals_H_FT' in games_today.columns:
-    games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
-
-# ---------------- Derived Metrics ----------------
 league_class = classify_leagues_variation(history)
 league_bands = compute_league_bands(history)
 
