@@ -257,6 +257,7 @@ def win_prob_for_recommendation(history, row,
         return 0, None
 
     target = event_side_for_winprob(row['Auto_Recommendation'])
+
     if target == 'HOME':
         p = (sample['Goals_H_FT'] > sample['Goals_A_FT']).mean()
     elif target == 'AWAY':
@@ -266,7 +267,12 @@ def win_prob_for_recommendation(history, row,
     elif target == 'X2':
         p = ((sample['Goals_A_FT'] > sample['Goals_H_FT']) | (sample['Goals_H_FT'] == sample['Goals_A_FT'])).mean()
     else:
-        p = None
+        # Caso seja "Avoid": calcular taxa de vitórias do favorito (Home ou Away)
+        p_home = (sample['Goals_H_FT'] > sample['Goals_A_FT']).mean()
+        p_away = (sample['Goals_A_FT'] > sample['Goals_H_FT']).mean()
+        # pega o maior dos dois, só para indicar tendência histórica
+        p = max(p_home, p_away)
+
 
     return n, (round(float(p)*100, 1) if p is not None else None)
 
