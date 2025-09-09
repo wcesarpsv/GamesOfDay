@@ -18,7 +18,7 @@ Recommendation Rules (based on M_Diff and Bands):
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa"]
 
 # Similarity windows used for historical estimation
 M_DIFF_MARGIN = 0.30
