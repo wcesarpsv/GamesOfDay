@@ -6,8 +6,8 @@ from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 
 # ---------------- Page Config ----------------
-st.set_page_config(page_title="Bet Indicator v2 (XGBoost)", layout="wide")
-st.title("📊 AI-Powered Bet Indicator – XGBoost (v2)")
+st.set_page_config(page_title="Bet Indicator v2.1 (XGBoost)", layout="wide")
+st.title("📊 AI-Powered Bet Indicator – XGBoost (v2.1)")
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
@@ -41,6 +41,7 @@ def filter_leagues(df):
     return df[~df['League'].str.lower().str.contains(pattern, na=False)].copy()
 
 # ---------------- Load Data ----------------
+st.info("📂 Carregando dados históricos...")
 all_games = filter_leagues(load_all_games(GAMES_FOLDER))
 if all_games.empty:
     st.warning("No valid historical data found.")
@@ -60,6 +61,7 @@ if games_today.empty:
     st.stop()
 
 # ---------------- League Stats ----------------
+st.info("📊 Calculando estatísticas das ligas...")
 league_stats = (
     history.groupby("League")
     .agg(
@@ -88,35 +90,41 @@ X_leagues = pd.get_dummies(history['League'], prefix="League")
 X = pd.concat([X_base, X_leagues], axis=1)
 
 # ---------------- Train Models ----------------
-def train_model(target):
+st.info("🚀 Treinando modelos... isso pode levar alguns segundos")
+progress = st.progress(0)
+
+def train_model(target, step):
     y = history[target]
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, shuffle=False)
     model = XGBClassifier(use_label_encoder=False, eval_metric="logloss")
     model.fit(X_train, y_train)
+    progress.progress(step)
     return model, X.columns
 
-model_home, feature_names = train_model("BetHomeWin")
-model_away, _ = train_model("BetAwayWin")
-model_draw, _ = train_model("BetDrawWin")
+model_home, feature_names = train_model("BetHomeWin", 33)
+model_away, _ = train_model("BetAwayWin", 66)
+model_draw, _ = train_model("BetDrawWin", 100)
 
 # ---------------- Predict Today's Games ----------------
-X_today_base = games_today[base_features]
-X_today_leagues = pd.get_dummies(games_today['League'], prefix="League")
-X_today = pd.concat([X_today_base, X_today_leagues], axis=1)
+st.info("🔮 Gerando previsões para os jogos do dia...")
+with st.spinner("Calculando probabilidades e EV..."):
+    X_today_base = games_today[base_features]
+    X_today_leagues = pd.get_dummies(games_today['League'], prefix="League")
+    X_today = pd.concat([X_today_base, X_today_leagues], axis=1)
 
-# Garantir que colunas batem com treino
-for col in feature_names:
-    if col not in X_today.columns:
-        X_today[col] = 0
-X_today = X_today[feature_names]
+    # Garantir que colunas batem com treino
+    for col in feature_names:
+        if col not in X_today.columns:
+            X_today[col] = 0
+    X_today = X_today[feature_names]
 
-games_today['p_home'] = model_home.predict_proba(X_today)[:,1]
-games_today['p_away'] = model_away.predict_proba(X_today)[:,1]
-games_today['p_draw'] = model_draw.predict_proba(X_today)[:,1]
+    games_today['p_home'] = model_home.predict_proba(X_today)[:,1]
+    games_today['p_away'] = model_away.predict_proba(X_today)[:,1]
+    games_today['p_draw'] = model_draw.predict_proba(X_today)[:,1]
 
-games_today['EV_Home'] = (games_today['p_home'] * games_today['Odd_H']) - 1
-games_today['EV_Away'] = (games_today['p_away'] * games_today['Odd_A']) - 1
-games_today['EV_Draw'] = (games_today['p_draw'] * games_today['Odd_D']) - 1
+    games_today['EV_Home'] = (games_today['p_home'] * games_today['Odd_H']) - 1
+    games_today['EV_Away'] = (games_today['p_away'] * games_today['Odd_A']) - 1
+    games_today['EV_Draw'] = (games_today['p_draw'] * games_today['Odd_D']) - 1
 
 # ---------------- Bet Decision ----------------
 def choose_bet(row):
