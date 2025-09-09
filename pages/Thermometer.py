@@ -14,7 +14,8 @@ st.markdown("""
 1. Strong edges -> Back side (Home/Away)  
 2. Moderate edges -> 1X (Home/Draw) or X2 (Away/Draw) when both are Balanced (with thresholds)  
 3. If none of the above -> 1X if Home Balanced vs Away Bottom20%, or X2 if Away Balanced vs Home Bottom20%  
-4. Otherwise -> Avoid
+4. If none of the above -> 1X if Home Top20% vs Away Balanced, or X2 if Away Top20% vs Home Balanced  
+5. Otherwise -> Avoid
 """)
 
 # ---------------- Configs ----------------
@@ -190,13 +191,19 @@ def auto_recommendation(row,
             if (diff_m <= -diff_mid_lo and diff_m > -diff_mid_hi and diff_pow <= -power_gate):
                 return '🟪 X2 (Away/Draw)'
 
-    # 3) Balanced vs Bottom20% (only if nothing else triggered)
+    # 3) Balanced vs Bottom20%
     if (band_home == 'Balanced') and (band_away == 'Bottom 20%'):
         return '🟦 1X (Home/Draw)'
     if (band_away == 'Balanced') and (band_home == 'Bottom 20%'):
         return '🟪 X2 (Away/Draw)'
 
-    # 4) Fallback
+    # 4) Top20% vs Balanced
+    if (band_home == 'Top 20%') and (band_away == 'Balanced'):
+        return '🟦 1X (Home/Draw)'
+    if (band_away == 'Top 20%') and (band_home == 'Balanced'):
+        return '🟪 X2 (Away/Draw)'
+
+    # 5) Fallback
     return '❌ Avoid'
 
 # ---------------- Win Probability Helpers ----------------
