@@ -6,8 +6,8 @@ from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 
 # ---------------- Page Config ----------------
-st.set_page_config(page_title="Bet Indicator (XGBoost)", layout="wide")
-st.title("📊 AI-Powered Bet Indicator – XGBoost")
+st.set_page_config(page_title="Bet Indicator v2 (XGBoost)", layout="wide")
+st.title("📊 AI-Powered Bet Indicator – XGBoost (v2)")
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
@@ -46,7 +46,6 @@ if all_games.empty:
     st.warning("No valid historical data found.")
     st.stop()
 
-# precisa de gols para treino
 history = all_games.dropna(subset=['Goals_H_FT','Goals_A_FT']).copy()
 if history.empty:
     st.warning("No valid historical results found.")
@@ -60,58 +59,75 @@ if games_today.empty:
     st.warning("No valid games today.")
     st.stop()
 
-# ---------------- Prepare Data ----------------
+# ---------------- League Stats ----------------
+league_stats = (
+    history.groupby("League")
+    .agg(
+        Games=("Goals_H_FT", "count"),
+        DrawRate=("Goals_H_FT", lambda x: (x == history.loc[x.index, "Goals_A_FT"]).mean()),
+        HomeWinRate=("Goals_H_FT", lambda x: (x > history.loc[x.index, "Goals_A_FT"]).mean()),
+        AwayWinRate=("Goals_H_FT", lambda x: (x < history.loc[x.index, "Goals_A_FT"]).mean()),
+    )
+    .reset_index()
+)
+
+history = history.merge(league_stats[["League","DrawRate","HomeWinRate","AwayWinRate"]], on="League", how="left")
+games_today = games_today.merge(league_stats[["League","DrawRate","HomeWinRate","AwayWinRate"]], on="League", how="left")
+
+# ---------------- Targets ----------------
 history['BetHomeWin'] = (history['Goals_H_FT'] > history['Goals_A_FT']).astype(int)
 history['BetAwayWin'] = (history['Goals_A_FT'] > history['Goals_H_FT']).astype(int)
+history['BetDrawWin'] = (history['Goals_H_FT'] == history['Goals_A_FT']).astype(int)
 
-features = ['Odd_H','Odd_A','Odd_D','M_H','M_A','Diff_Power']
-X = history[features]
+# ---------------- Features ----------------
+base_features = ['Odd_H','Odd_A','Odd_D','M_H','M_A','Diff_Power','DrawRate','HomeWinRate','AwayWinRate']
+X_base = history[base_features]
+
+# One-hot leagues
+X_leagues = pd.get_dummies(history['League'], prefix="League")
+X = pd.concat([X_base, X_leagues], axis=1)
 
 # ---------------- Train Models ----------------
-# Home model
-y_home = history['BetHomeWin']
-X_train, X_val, y_train, y_val = train_test_split(X, y_home, test_size=0.2, shuffle=False)
-model_home = XGBClassifier(use_label_encoder=False, eval_metric="logloss")
-model_home.fit(X_train, y_train)
+def train_model(target):
+    y = history[target]
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, shuffle=False)
+    model = XGBClassifier(use_label_encoder=False, eval_metric="logloss")
+    model.fit(X_train, y_train)
+    return model, X.columns
 
-# Away model
-y_away = history['BetAwayWin']
-X_train, X_val, y_train, y_val = train_test_split(X, y_away, test_size=0.2, shuffle=False)
-model_away = XGBClassifier(use_label_encoder=False, eval_metric="logloss")
-model_away.fit(X_train, y_train)
+model_home, feature_names = train_model("BetHomeWin")
+model_away, _ = train_model("BetAwayWin")
+model_draw, _ = train_model("BetDrawWin")
 
 # ---------------- Predict Today's Games ----------------
-X_today = games_today[features].copy()
+X_today_base = games_today[base_features]
+X_today_leagues = pd.get_dummies(games_today['League'], prefix="League")
+X_today = pd.concat([X_today_base, X_today_leagues], axis=1)
+
+# Garantir que colunas batem com treino
+for col in feature_names:
+    if col not in X_today.columns:
+        X_today[col] = 0
+X_today = X_today[feature_names]
 
 games_today['p_home'] = model_home.predict_proba(X_today)[:,1]
 games_today['p_away'] = model_away.predict_proba(X_today)[:,1]
+games_today['p_draw'] = model_draw.predict_proba(X_today)[:,1]
 
 games_today['EV_Home'] = (games_today['p_home'] * games_today['Odd_H']) - 1
 games_today['EV_Away'] = (games_today['p_away'] * games_today['Odd_A']) - 1
-
-# ---------------- Historical sample size ----------------
-def get_sample_size(df_hist, row, margin_odd=0.15, margin_power=5):
-    """Conta quantos jogos históricos são semelhantes em Odds e Diff_Power"""
-    diff_pow = row['Diff_Power']
-    odd_h, odd_a = row['Odd_H'], row['Odd_A']
-
-    mask = (
-        (df_hist['Odd_H'].between(odd_h*(1-margin_odd), odd_h*(1+margin_odd))) &
-        (df_hist['Odd_A'].between(odd_a*(1-margin_odd), odd_a*(1+margin_odd))) &
-        (df_hist['Diff_Power'].between(diff_pow-margin_power, diff_pow+margin_power))
-    )
-    return mask.sum()
-
-games_today['Sample_Size'] = games_today.apply(lambda r: get_sample_size(history, r), axis=1)
+games_today['EV_Draw'] = (games_today['p_draw'] * games_today['Odd_D']) - 1
 
 # ---------------- Bet Decision ----------------
 def choose_bet(row):
-    ev_home, ev_away = row['EV_Home'], row['EV_Away']
-
-    if ev_home > 0 and ev_home >= ev_away:
-        return f"Back Home (EV={ev_home:.1%})"
-    elif ev_away > 0 and ev_away > ev_home:
-        return f"Back Away (EV={ev_away:.1%})"
+    evs = {
+        "Home": row['EV_Home'],
+        "Away": row['EV_Away'],
+        "Draw": row['EV_Draw']
+    }
+    best = max(evs, key=evs.get)
+    if evs[best] > 0:
+        return f"Back {best} (EV={evs[best]:.1%})"
     else:
         return "No Bet"
 
@@ -122,8 +138,17 @@ cols_to_show = [
     'Date','Time','League','Home','Away',
     'Odd_H','Odd_D','Odd_A',
     'Diff_Power','M_H','M_A',
-    'p_home','p_away','Sample_Size','Bet_Indicator'
+    'p_home','p_draw','p_away',
+    'EV_Home','EV_Draw','EV_Away','Bet_Indicator'
 ]
+
+def color_bet(val):
+    if pd.isna(val): return ''
+    if "Home" in str(val): return 'background-color: rgba(0,128,255,0.2)'  # Azul
+    if "Away" in str(val): return 'background-color: rgba(128,0,255,0.2)'  # Roxo
+    if "Draw" in str(val): return 'background-color: rgba(255,215,0,0.3)'  # Amarelo
+    if "No Bet" in str(val): return 'background-color: rgba(200,200,200,0.2)'  # Cinza
+    return ''
 
 styler = (
     games_today[cols_to_show]
@@ -131,10 +156,10 @@ styler = (
     .format({
         'Odd_H':'{:.2f}','Odd_D':'{:.2f}','Odd_A':'{:.2f}',
         'M_H':'{:.2f}','M_A':'{:.2f}','Diff_Power':'{:.2f}',
-        'p_home':'{:.1%}','p_away':'{:.1%}'
+        'p_home':'{:.1%}','p_draw':'{:.1%}','p_away':'{:.1%}',
+        'EV_Home':'{:.1%}','EV_Draw':'{:.1%}','EV_Away':'{:.1%}'
     }, na_rep='—')
-    .applymap(lambda v: 'background-color: rgba(0,200,0,0.2)' if isinstance(v,str) and "Back" in v else '')
-    .applymap(lambda v: 'background-color: rgba(255,200,200,0.3)' if isinstance(v,str) and "No Bet" in v else '')
+    .applymap(color_bet, subset=['Bet_Indicator'])
 )
 
 st.dataframe(styler, use_container_width=True, height=1000)
