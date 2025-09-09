@@ -173,7 +173,7 @@ styler = (
 st.dataframe(styler, use_container_width=True, height=1000)
 
 # ---------------- Save Results ----------------
-output_folder = os.path.join("GamesOfDay", "GamesDay", "BetIndicator")
+output_folder = os.path.join("GamesDay", "BetIndicator")
 os.makedirs(output_folder, exist_ok=True)
 
 today_str = pd.Timestamp.today().strftime("%Y-%m-%d")
