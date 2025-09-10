@@ -41,7 +41,7 @@ def filter_leagues(df):
     return df[~df['League'].str.lower().str.contains(pattern, na=False)].copy()
 
 # ---------------- Load Data ----------------
-st.info("📂 Carregando dados históricos...")
+st.info("📂 Loading historical data...")
 all_games = filter_leagues(load_all_games(GAMES_FOLDER))
 if all_games.empty:
     st.warning("No valid historical data found.")
@@ -61,7 +61,7 @@ if games_today.empty:
     st.stop()
 
 # ---------------- League Stats ----------------
-st.info("📊 Calculando estatísticas das ligas...")
+st.info("📊 Calculating league statistics...")
 league_stats = (
     history.groupby("League")
     .agg(
@@ -90,7 +90,7 @@ X_leagues = pd.get_dummies(history['League'], prefix="League")
 X = pd.concat([X_base, X_leagues], axis=1)
 
 # ---------------- Train Models ----------------
-st.info("🚀 Treinando modelos... isso pode levar alguns segundos")
+st.info("🚀 Training models... this may take a few seconds")
 progress = st.progress(0)
 
 def train_model(target, step):
@@ -106,13 +106,13 @@ model_away, _ = train_model("BetAwayWin", 66)
 model_draw, _ = train_model("BetDrawWin", 100)
 
 # ---------------- Predict Today's Games ----------------
-st.info("🔮 Gerando previsões para os jogos do dia...")
-with st.spinner("Calculando probabilidades e EV..."):
+st.info("🔮 Generating predictions for today's matches...")
+with st.spinner("Calculating probabilities and EV..."):
     X_today_base = games_today[base_features]
     X_today_leagues = pd.get_dummies(games_today['League'], prefix="League")
     X_today = pd.concat([X_today_base, X_today_leagues], axis=1)
 
-    # Garantir que colunas batem com treino
+    # Align columns with training
     for col in feature_names:
         if col not in X_today.columns:
             X_today[col] = 0
@@ -152,10 +152,10 @@ cols_to_show = [
 
 def color_bet(val):
     if pd.isna(val): return ''
-    if "Home" in str(val): return 'background-color: rgba(0,128,255,0.2)'  # Azul
-    if "Away" in str(val): return 'background-color: rgba(128,0,255,0.2)'  # Roxo
-    if "Draw" in str(val): return 'background-color: rgba(255,215,0,0.3)'  # Amarelo
-    if "No Bet" in str(val): return 'background-color: rgba(200,200,200,0.2)'  # Cinza
+    if "Home" in str(val): return 'background-color: rgba(0,128,255,0.2)'  # Blue
+    if "Away" in str(val): return 'background-color: rgba(128,0,255,0.2)'  # Purple
+    if "Draw" in str(val): return 'background-color: rgba(255,215,0,0.3)'  # Yellow
+    if "No Bet" in str(val): return 'background-color: rgba(200,200,200,0.2)'  # Gray
     return ''
 
 styler = (
@@ -180,4 +180,4 @@ today_str = pd.Timestamp.today().strftime("%Y-%m-%d")
 output_file = os.path.join(output_folder, f"Recommendations_{today_str}.csv")
 games_today[cols_to_show].to_csv(output_file, index=False)
 
-st.success(f"✅ Recomendações salvas em: {output_file}")
+st.success(f"✅ Recommendations saved at: {output_file}")
