@@ -6,12 +6,21 @@ from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 
 # ---------------- Page Config ----------------
-st.set_page_config(page_title="Bet Indicator v2.1 (XGBoost)", layout="wide")
-st.title("📊 AI-Powered Bet Indicator – XGBoost (v2.1)")
+st.set_page_config(page_title="Bet Indicator v2.2 (XGBoost)", layout="wide")
+st.title("📊 AI-Powered Bet Indicator – XGBoost (v2.2)")
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
+MODELS_FOLDER = "Models"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa"]
+
+os.makedirs(MODELS_FOLDER, exist_ok=True)
+
+# ---------------- User Option ----------------
+train_option = st.sidebar.selectbox(
+    "Choose model mode:",
+    ["Use saved models (fast)", "Train new models (slow)"]
+)
 
 # ---------------- Helpers ----------------
 def load_all_games(folder):
@@ -89,21 +98,43 @@ X_base = history[base_features]
 X_leagues = pd.get_dummies(history['League'], prefix="League")
 X = pd.concat([X_base, X_leagues], axis=1)
 
-# ---------------- Train Models ----------------
-st.info("🚀 Training models... this may take a few seconds")
-progress = st.progress(0)
+# ---------------- Train or Load Models ----------------
+models = {}
+feature_names = None
 
-def train_model(target, step):
+def train_and_save(target, filename, step):
     y = history[target]
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, shuffle=False)
     model = XGBClassifier(use_label_encoder=False, eval_metric="logloss")
     model.fit(X_train, y_train)
+    model.save_model(os.path.join(MODELS_FOLDER, filename))
     progress.progress(step)
     return model, X.columns
 
-model_home, feature_names = train_model("BetHomeWin", 33)
-model_away, _ = train_model("BetAwayWin", 66)
-model_draw, _ = train_model("BetDrawWin", 100)
+def load_model(filename):
+    model = XGBClassifier()
+    model.load_model(os.path.join(MODELS_FOLDER, filename))
+    return model
+
+if train_option == "Train new models (slow)":
+    st.info("🚀 Training models... this may take a while")
+    progress = st.progress(0)
+    model_home, feature_names = train_and_save("BetHomeWin", "home.json", 33)
+    model_away, _ = train_and_save("BetAwayWin", "away.json", 66)
+    model_draw, _ = train_and_save("BetDrawWin", "draw.json", 100)
+else:
+    try:
+        model_home = load_model("home.json")
+        model_away = load_model("away.json")
+        model_draw = load_model("draw.json")
+        feature_names = X.columns
+        st.success("✅ Loaded saved models successfully.")
+    except Exception as e:
+        st.warning("⚠️ Saved models not found. Training new ones...")
+        progress = st.progress(0)
+        model_home, feature_names = train_and_save("BetHomeWin", "home.json", 33)
+        model_away, _ = train_and_save("BetAwayWin", "away.json", 66)
+        model_draw, _ = train_and_save("BetDrawWin", "draw.json", 100)
 
 # ---------------- Predict Today's Games ----------------
 st.info("🔮 Generating predictions for today's matches...")
