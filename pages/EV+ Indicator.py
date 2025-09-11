@@ -6,8 +6,8 @@ from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 
 # ---------------- Page Config ----------------
-st.set_page_config(page_title="Bet Indicator v2.2 (XGBoost)", layout="wide")
-st.title("📊 AI-Powered Bet Indicator – XGBoost (v2.2)")
+st.set_page_config(page_title="Bet Indicator v3.0 (XGBoost Multi-class)", layout="wide")
+st.title("📊 AI-Powered Bet Indicator – XGBoost (Multi-class)")
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
@@ -19,7 +19,7 @@ os.makedirs(MODELS_FOLDER, exist_ok=True)
 # ---------------- User Option ----------------
 train_option = st.sidebar.selectbox(
     "Choose model mode:",
-    ["Use saved models (fast)", "Train new models (slow)"]
+    ["Use saved model (fast)", "Train new model (slow)"]
 )
 
 # ---------------- Helpers ----------------
@@ -82,10 +82,13 @@ league_stats = (
     .reset_index()
 )
 
-# ---------------- Targets ----------------
-history['BetHomeWin'] = (history['Goals_H_FT'] > history['Goals_A_FT']).astype(int)
-history['BetAwayWin'] = (history['Goals_A_FT'] > history['Goals_H_FT']).astype(int)
-history['BetDrawWin'] = (history['Goals_H_FT'] == history['Goals_A_FT']).astype(int)
+# ---------------- Target multiclasses ----------------
+# 0 = Home win, 1 = Draw, 2 = Away win
+history['Target'] = history.apply(
+    lambda row: 0 if row['Goals_H_FT'] > row['Goals_A_FT']
+    else (1 if row['Goals_H_FT'] == row['Goals_A_FT'] else 2),
+    axis=1
+)
 
 # Adiciona estatísticas
 history = history.merge(league_stats[["League","DrawRate","HomeWinRate","AwayWinRate"]], on="League", how="left")
@@ -106,43 +109,37 @@ for col in all_league_dummies:
 X = pd.concat([X_base, X_leagues], axis=1)
 feature_names = X.columns.tolist()
 
-# ---------------- Train or Load Models ----------------
-def train_and_save(target, filename, step):
-    y = history[target]
+# ---------------- Train or Load Model ----------------
+def train_and_save_multi(filename="multi.json"):
+    y = history['Target']
     X_train, X_val, y_train, y_val = train_test_split(
-        X, y, test_size=0.2, shuffle=True, random_state=42, stratify=y
+        X, y, test_size=0.2, shuffle=True, stratify=y, random_state=42
     )
-    model = XGBClassifier(use_label_encoder=False, eval_metric="logloss", random_state=42)
+    model = XGBClassifier(
+        objective="multi:softprob",
+        num_class=3,
+        eval_metric="mlogloss",
+        random_state=42
+    )
     model.fit(X_train, y_train)
     model.save_model(os.path.join(MODELS_FOLDER, filename))
-    if progress:
-        progress.progress(step)
     return model
 
-def load_model(filename):
+def load_multi_model(filename="multi.json"):
     model = XGBClassifier()
     model.load_model(os.path.join(MODELS_FOLDER, filename))
     return model
 
-progress = None
-if train_option == "Train new models (slow)":
-    st.info("🚀 Training models... this may take a while")
-    progress = st.progress(0)
-    model_home = train_and_save("BetHomeWin", "home.json", 33)
-    model_away = train_and_save("BetAwayWin", "away.json", 66)
-    model_draw = train_and_save("BetDrawWin", "draw.json", 100)
+if train_option == "Train new model (slow)":
+    st.info("🚀 Training multi-class model... this may take a while")
+    model_multi = train_and_save_multi()
 else:
     try:
-        model_home = load_model("home.json")
-        model_away = load_model("away.json")
-        model_draw = load_model("draw.json")
-        st.success("✅ Loaded saved models successfully.")
+        model_multi = load_multi_model()
+        st.success("✅ Loaded saved model successfully.")
     except Exception as e:
-        st.warning(f"⚠️ Saved models not found: {e}. Training new ones...")
-        progress = st.progress(0)
-        model_home = train_and_save("BetHomeWin", "home.json", 33)
-        model_away = train_and_save("BetAwayWin", "away.json", 66)
-        model_draw = train_and_save("BetDrawWin", "draw.json", 100)
+        st.warning(f"⚠️ Saved model not found: {e}. Training a new one...")
+        model_multi = train_and_save_multi()
 
 # ---------------- Predict Today's Games ----------------
 st.info("🔮 Generating predictions for today's matches...")
@@ -156,20 +153,22 @@ with st.spinner("Calculating probabilities and EV..."):
     X_today = pd.concat([X_today_base, X_today_leagues], axis=1)
     X_today = X_today.reindex(columns=feature_names, fill_value=0)
 
-    games_today['p_home'] = model_home.predict_proba(X_today)[:, 1]
-    games_today['p_away'] = model_away.predict_proba(X_today)[:, 1]
-    games_today['p_draw'] = model_draw.predict_proba(X_today)[:, 1]
+    probs = model_multi.predict_proba(X_today)
 
-    games_today['EV_Home'] = (games_today['p_home'] * games_today['Odd_H']).round(4) - 1
-    games_today['EV_Away'] = (games_today['p_away'] * games_today['Odd_A']).round(4) - 1
-    games_today['EV_Draw'] = (games_today['p_draw'] * games_today['Odd_D']).round(4) - 1
+    games_today['p_home'] = probs[:,0]
+    games_today['p_draw'] = probs[:,1]
+    games_today['p_away'] = probs[:,2]
+
+    games_today['EV_Home'] = (games_today['p_home'] * games_today['Odd_H']) - 1
+    games_today['EV_Draw'] = (games_today['p_draw'] * games_today['Odd_D']) - 1
+    games_today['EV_Away'] = (games_today['p_away'] * games_today['Odd_A']) - 1
 
 # ---------------- Bet Decision ----------------
 def choose_bet(row):
     evs = {
         "Home": row['EV_Home'],
-        "Away": row['EV_Away'],
-        "Draw": row['EV_Draw']
+        "Draw": row['EV_Draw'],
+        "Away": row['EV_Away']
     }
     best = max(evs, key=evs.get)
     if evs[best] > 0:
