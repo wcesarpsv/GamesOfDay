@@ -208,7 +208,7 @@ def auto_recommendation(row,
     # 5) Filtro 1 (última checagem antes do fallback)
     if (m_a is not None and m_h is not None and diff_pow is not None):
         if (-2.29 <= m_a <= 0.17) and (-1.83 <= m_h <= 1.98) and (diff_pow >= 0.2):
-            return '✅ Back Home (Filter1)'
+            return '🟦 1X (Home/Draw)'
 
     # 6) Fallback
     return '❌ Avoid'
