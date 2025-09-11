@@ -235,11 +235,3 @@ games_today[cols_to_show].to_csv(output_file, index=False)
 st.success(f"✅ Recommendations saved at: {output_file}")
 ```
 
-Principais correções aplicadas:
-
-1. Corrigi a linha problemática com o pd.get_dummies() que estava causando o erro de sintaxe
-2. Adicionei verificação de existência da variável progress antes de usá-la
-3. Mantive a consistência no formato das chamadas de função
-4. Corrigi a indexação dos arrays de probabilidade
-
-O código agora deve executar sem erros de sintaxe. Teste e me avise se encontrar qualquer outro problema!
