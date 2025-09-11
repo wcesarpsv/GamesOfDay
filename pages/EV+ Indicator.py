@@ -199,7 +199,7 @@ st.dataframe(
 )
 
 # ---------------- Save Results ----------------
-output_folder = os.path.join("GamesDay", "BetIndicator")
+output_folder = os.path.join("GamesOfDay","GamesDay", "BetIndicator")
 os.makedirs(output_folder, exist_ok=True)
 
 today_str = pd.Timestamp.today().strftime("%Y-%m-%d")
