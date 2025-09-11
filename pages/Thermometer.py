@@ -164,6 +164,8 @@ def auto_recommendation(row,
     diff_m    = row.get('M_Diff')
     diff_pow  = row.get('Diff_Power')
     league_cls= row.get('League_Classification', 'Medium Variation')
+    m_a       = row.get('M_A')
+    m_h       = row.get('M_H')
 
     # 1) Strong edges -> Direct Back
     if band_home == 'Top 20%' and band_away == 'Bottom 20%':
@@ -203,8 +205,14 @@ def auto_recommendation(row,
     if (band_away == 'Top 20%') and (band_home == 'Balanced'):
         return '🟪 X2 (Away/Draw)'
 
-    # 5) Fallback
+    # 5) Filtro 1 (última checagem antes do fallback)
+    if (m_a is not None and m_h is not None and diff_pow is not None):
+        if (-2.29 <= m_a <= 0.17) and (-1.83 <= m_h <= 1.98) and (diff_pow >= 0.2):
+            return '✅ Back Home (Filter1)'
+
+    # 6) Fallback
     return '❌ Avoid'
+
 
 # ---------------- Win Probability Helpers ----------------
 def event_side_for_winprob(auto_rec):
