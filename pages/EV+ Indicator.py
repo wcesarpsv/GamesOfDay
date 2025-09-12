@@ -174,7 +174,12 @@ def choose_bet(row):
     }
     best = max(evs, key=evs.get)
     if evs[best] > 0:
-        return f"Back {best} (EV={evs[best]:.1%})"
+        if best == "Home":
+            return "🟢 Back Home"
+        elif best == "Away":
+            return "🟠 Back Away"
+        else:
+            return "⚪ Back Draw"
     else:
         return "No Bet"
 
@@ -190,15 +195,12 @@ cols_to_show = [
 ]
 
 def highlight_bet(val):
-    if isinstance(val, str):
-        if "Home" in val:
-            return 'background-color: lightblue; color: black;'
-        elif "Away" in val:
-            return 'background-color: lightgreen; color: black;'
-        elif "Draw" in val:
-            return 'background-color: khaki; color: black;'
-        elif "No Bet" in val:
-            return 'background-color: lightcoral; color: white;'
+    if val == "🟢 Back Home":
+        return 'background-color: rgba(0, 200, 0, 0.14)'
+    elif val == "🟠 Back Away":
+        return 'background-color: rgba(255, 215, 0, 0.14)'
+    elif val == "⚪ Back Draw":
+        return 'background-color: rgba(200, 200, 200, 0.14)'
     return ''
 
 styled_df = (
@@ -213,18 +215,6 @@ styled_df = (
 )
 
 st.dataframe(styled_df, use_container_width=True, height=1000)
-
-
-st.dataframe(
-    games_today[cols_to_show]
-    .style.format({
-        'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
-        'M_H': '{:.2f}', 'M_A': '{:.2f}', 'Diff_Power': '{:.2f}',
-        'p_home': '{:.1%}', 'p_draw': '{:.1%}', 'p_away': '{:.1%}',
-        'EV_Home': '{:.1%}', 'EV_Draw': '{:.1%}', 'EV_Away': '{:.1%}'
-    }, na_rep='—'),
-    use_container_width=True, height=1000
-)
 
 # ---------------- Save Results ----------------
 output_folder = os.path.join("GamesOfDay","GamesDay", "BetIndicator")
