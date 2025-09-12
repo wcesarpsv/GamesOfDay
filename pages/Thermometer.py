@@ -244,6 +244,11 @@ def win_prob_for_recommendation(history, row,
     )
     sample = hist[mask]
     n = len(sample)
+
+    # ❌ Caso seja "Avoid", retorna só o nº de jogos analisados, sem Win_Probability
+    if row.get('Auto_Recommendation') == '❌ Avoid':
+        return n, None
+
     if n == 0:
         return 0, None
 
@@ -265,6 +270,7 @@ def win_prob_for_recommendation(history, row,
         p = max(p_home, p_away)
 
     return n, (round(float(p)*100, 1) if p is not None else None)
+
 
 # ---------------- Select CSV (Latest or Previous) ----------------
 files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
