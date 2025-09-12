@@ -11,7 +11,7 @@ st.title("Today's Picks - Momentum Thermometer")
 st.markdown("""
 ### Recommendation Rules (Momentum Thermometer):
 
-1. Strong edges -> 🟢 Back Home / 🔵 Back Away  
+1. Strong edges -> 🟢 Back Home / 🟠 Back Away  
 2. Moderate edges -> 1X (Home/Draw) or X2 (Away/Draw) when both are Balanced (with thresholds)  
 3. If none of the above -> 1X if Home Balanced vs Away Bottom20%, or X2 if Away Balanced vs Home Bottom20%  
 4. If none of the above -> 1X if Home Top20% vs Away Balanced, or X2 if Away Top20% vs Home Balanced  
