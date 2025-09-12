@@ -63,7 +63,7 @@ def color_auto_rec(val):
     if pd.isna(val): return ''
     m = {
         "🟢 Back Home": 'background-color: rgba(0, 200, 0, 0.14)',
-        "🔵 Back Away": 'background-color: rgba(0, 128, 255, 0.14)',
+        "🟠 Back Away": 'background-color: rgba(255, 140, 0, 0.14)',
         "⚪ Back Draw": 'background-color: rgba(200, 200, 200, 0.14)',
         "🟦 1X (Home/Draw)": 'background-color: rgba(0, 128, 255, 0.12)',
         "🟪 X2 (Away/Draw)": 'background-color: rgba(128, 0, 255, 0.12)',
