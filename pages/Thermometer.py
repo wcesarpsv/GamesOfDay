@@ -174,7 +174,7 @@ def auto_recommendation(row,
     if band_home == 'Top 20%' and band_away == 'Bottom 20%':
         return '🟢 Back Home'
     if band_home == 'Bottom 20%' and band_away == 'Top 20%':
-        return '🔵 Back Away'
+        return '🟠 Back Away'
 
     if dominant in ['Both extremes (Home↑ & Away↓)', 'Home strong'] and band_away != 'Top 20%':
         if diff_m is not None and diff_m >= 0.90:
