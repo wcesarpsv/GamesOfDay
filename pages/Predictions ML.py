@@ -102,7 +102,7 @@ cols_to_show = [
 
 # Funções de gradiente
 def color_prob(val, color):
-    alpha = int(val * 255)  # intensidade de 0 a 255
+    alpha = int((1 - val) * 255)  # intensidade de 0 a 255
     return f'background-color: rgba({color}, {alpha/255:.2f})'
 
 def style_probs(val, col):
