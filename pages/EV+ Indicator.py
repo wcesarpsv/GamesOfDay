@@ -189,6 +189,32 @@ cols_to_show = [
     'EV_Home', 'EV_Draw', 'EV_Away', 'Bet_Indicator'
 ]
 
+def highlight_bet(val):
+    if isinstance(val, str):
+        if "Home" in val:
+            return 'background-color: lightblue; color: black;'
+        elif "Away" in val:
+            return 'background-color: lightgreen; color: black;'
+        elif "Draw" in val:
+            return 'background-color: khaki; color: black;'
+        elif "No Bet" in val:
+            return 'background-color: lightcoral; color: white;'
+    return ''
+
+styled_df = (
+    games_today[cols_to_show]
+    .style.format({
+        'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
+        'M_H': '{:.2f}', 'M_A': '{:.2f}', 'Diff_Power': '{:.2f}',
+        'p_home': '{:.1%}', 'p_draw': '{:.1%}', 'p_away': '{:.1%}',
+        'EV_Home': '{:.1%}', 'EV_Draw': '{:.1%}', 'EV_Away': '{:.1%}'
+    }, na_rep='—')
+    .applymap(highlight_bet, subset=['Bet_Indicator'])
+)
+
+st.dataframe(styled_df, use_container_width=True, height=1000)
+
+
 st.dataframe(
     games_today[cols_to_show]
     .style.format({
