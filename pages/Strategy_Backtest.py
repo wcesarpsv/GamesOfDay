@@ -206,6 +206,107 @@ if "M_HT_A" in extra_filters and not df_filtered.empty:
     df_filtered = df_filtered[(df_filtered["M_HT_A"] >= mht_a_sel[0]) & (df_filtered["M_HT_A"] <= mht_a_sel[1])]
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Agora você segue com a parte de cálculo do Profit / métricas / gráficos
-# usando df_filtered (já filtrado dinamicamente).
+# Profit Calculation + Results
 # ──────────────────────────────────────────────────────────────────────────────
+def calculate_profit(row):
+    h, a = row["Goals_H_FT"], row["Goals_A_FT"]
+    if bet_on == "Home":
+        return (row["Odd_H"] - 1) if h > a else -1
+    elif bet_on == "Draw":
+        return (row["Odd_D"] - 1) if h == a else -1
+    else:
+        return (row["Odd_A"] - 1) if a > h else -1
+
+if not df_filtered.empty:
+    df_filtered["Bet Result"] = df_filtered.apply(calculate_profit, axis=1)
+    df_filtered["Cumulative Profit"] = df_filtered["Bet Result"].cumsum()
+
+    # 📈 Profit acumulado geral
+    fig = px.line(
+        df_filtered.reset_index(),
+        x=df_filtered.reset_index().index,
+        y="Cumulative Profit",
+        title=f"Cumulative Profit by Bet (1X2 – {bet_on}, Stake=1)",
+        labels={"index": "Bet Number", "Cumulative Profit": "Profit (units)"}
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # 📊 Metrics globais
+    n_matches = len(df_filtered)
+    wins = (df_filtered["Bet Result"] > 0).sum()
+    winrate = wins / n_matches if n_matches else 0.0
+    odd_map = {"Home": "Odd_H", "Draw": "Odd_D", "Away": "Odd_A"}
+    mean_odd = df_filtered[odd_map[bet_on]].mean()
+    total_profit = df_filtered["Bet Result"].sum()
+    roi = total_profit / n_matches if n_matches else 0.0
+
+    st.subheader("📊 Backtest Results (Global)")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Number of Matches", f"{n_matches}")
+    col2.metric("Winrate", f"{winrate:.1%}")
+    col3.metric("Mean Odd", f"{mean_odd:.2f}")
+    col4.metric("ROI", f"{roi:.1%}")
+
+    # 📝 Tabela final
+    st.subheader("📝 Filtered Matches")
+    st.dataframe(df_filtered[[
+        "Date", "League", "Home", "Away",
+        "Odd_H", "Odd_D", "Odd_A",
+        "Diff_Power", "M_H", "M_A",
+        "Diff_HT_P", "M_HT_H", "M_HT_A",
+        "Goals_H_FT", "Goals_A_FT",
+        "Bet Result", "Cumulative Profit"
+    ]], use_container_width=True)
+
+    # 📊 Resumo por Liga
+    league_summary = (
+        df_filtered.groupby("League")
+        .agg(
+            Matches=("League", "size"),
+            Wins=("Bet Result", lambda x: (x > 0).sum()),
+            Total_Profit=("Bet Result", "sum"),
+            Mean_Odd=(odd_map[bet_on], "mean"),
+        )
+        .reset_index()
+    )
+    league_summary["Winrate"] = league_summary["Wins"] / league_summary["Matches"]
+    league_summary["ROI"] = league_summary["Total_Profit"] / league_summary["Matches"]
+
+    leagues_available = sorted(league_summary["League"].unique())
+    selected_leagues = st.sidebar.multiselect("📌 Select leagues", leagues_available, default=leagues_available)
+    league_summary = league_summary[league_summary["League"].isin(selected_leagues)]
+    df_filtered = df_filtered[df_filtered["League"].isin(selected_leagues)]
+
+    # 📈 Profit acumulado por liga
+    plot_data = []
+    for league in selected_leagues:
+        df_league = df_filtered[df_filtered["League"] == league].copy()
+        if df_league.empty:
+            continue
+        df_league = df_league.sort_values("Date")
+        df_league["Cumulative Profit"] = df_league["Bet Result"].cumsum()
+        df_league["Bet Number"] = range(1, len(df_league) + 1)
+        df_league["LeagueName"] = league
+        plot_data.append(df_league)
+
+    if plot_data:
+        df_plot = pd.concat(plot_data)
+        fig = px.line(
+            df_plot,
+            x="Bet Number",
+            y="Cumulative Profit",
+            color="LeagueName",
+            hover_data=["LeagueName", "Bet Number", "Cumulative Profit"],
+            title="Cumulative Profit by League",
+            labels={"Cumulative Profit": "Profit (units)", "Bet Number": "Number of Bets"}
+        )
+        fig.update_layout(legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center"),
+                         height=800)
+        st.plotly_chart(fig, use_container_width=True)
+
+    # 📊 Performance por Liga
+    st.subheader("📊 Performance by League")
+    st.dataframe(league_summary, use_container_width=True)
+
+else:
+    st.warning("⚠️ No matches found with selected filters.")
