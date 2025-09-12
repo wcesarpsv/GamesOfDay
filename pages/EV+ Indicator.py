@@ -2,12 +2,13 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-from xgboost import XGBClassifier
+import pickle
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
 # ---------------- Page Config ----------------
-st.set_page_config(page_title="Bet Indicator v3.0 (XGBoost Multi-class)", layout="wide")
-st.title("📊 AI-Powered Bet Indicator – XGBoost (Multi-class)")
+st.set_page_config(page_title="Bet Indicator v3.0 (Random Forest Multi-class)", layout="wide")
+st.title("📊 AI-Powered Bet Indicator – Random Forest (Multi-class)")
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
@@ -110,36 +111,37 @@ X = pd.concat([X_base, X_leagues], axis=1)
 feature_names = X.columns.tolist()
 
 # ---------------- Train or Load Model ----------------
-def train_and_save_multi(filename="multi.json"):
+def train_and_save_rf(filename="rf_model.pkl"):
     y = history['Target']
     X_train, X_val, y_train, y_val = train_test_split(
         X, y, test_size=0.2, shuffle=True, stratify=y, random_state=42
     )
-    model = XGBClassifier(
-        objective="multi:softprob",
-        num_class=3,
-        eval_metric="mlogloss",
-        random_state=42
+    model = RandomForestClassifier(
+        n_estimators=300,
+        max_depth=None,
+        random_state=42,
+        class_weight="balanced_subsample"
     )
     model.fit(X_train, y_train)
-    model.save_model(os.path.join(MODELS_FOLDER, filename))
+    with open(os.path.join(MODELS_FOLDER, filename), "wb") as f:
+        pickle.dump(model, f)
     return model
 
-def load_multi_model(filename="multi.json"):
-    model = XGBClassifier()
-    model.load_model(os.path.join(MODELS_FOLDER, filename))
+def load_rf_model(filename="rf_model.pkl"):
+    with open(os.path.join(MODELS_FOLDER, filename), "rb") as f:
+        model = pickle.load(f)
     return model
 
 if train_option == "Train new model (slow)":
-    st.info("🚀 Training multi-class model... this may take a while")
-    model_multi = train_and_save_multi()
+    st.info("🚀 Training Random Forest model... this may take a while")
+    model_multi = train_and_save_rf()
 else:
     try:
-        model_multi = load_multi_model()
+        model_multi = load_rf_model()
         st.success("✅ Loaded saved model successfully.")
     except Exception as e:
         st.warning(f"⚠️ Saved model not found: {e}. Training a new one...")
-        model_multi = train_and_save_multi()
+        model_multi = train_and_save_rf()
 
 # ---------------- Predict Today's Games ----------------
 st.info("🔮 Generating predictions for today's matches...")
