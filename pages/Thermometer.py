@@ -9,13 +9,14 @@ st.title("Today's Picks - Momentum Thermometer")
 
 # ---------------- Legend ----------------
 st.markdown("""
-### Recommendation Rules (based on M_Diff and Bands):
+### Recommendation Rules (Momentum Thermometer):
 
-1. Strong edges -> Back side (Home/Away)  
+1. Strong edges -> 🟢 Back Home / 🔵 Back Away  
 2. Moderate edges -> 1X (Home/Draw) or X2 (Away/Draw) when both are Balanced (with thresholds)  
 3. If none of the above -> 1X if Home Balanced vs Away Bottom20%, or X2 if Away Balanced vs Home Bottom20%  
 4. If none of the above -> 1X if Home Top20% vs Away Balanced, or X2 if Away Top20% vs Home Balanced  
-5. Otherwise -> Avoid
+5. **Balanced + Odd_D 2.5–6.0 + M_H (0–1) or M_A (0–0.5) -> ⚪ Back Draw**  
+6. Otherwise -> Avoid
 """)
 
 # ---------------- Configs ----------------
@@ -61,8 +62,9 @@ def color_band(val):
 def color_auto_rec(val):
     if pd.isna(val): return ''
     m = {
-        "✅ Back Home": 'background-color: rgba(0, 200, 0, 0.14)',
-        "✅ Back Away": 'background-color: rgba(0, 200, 0, 0.14)',
+        "🟢 Back Home": 'background-color: rgba(0, 200, 0, 0.14)',
+        "🔵 Back Away": 'background-color: rgba(0, 128, 255, 0.14)',
+        "⚪ Back Draw": 'background-color: rgba(200, 200, 200, 0.14)',
         "🟦 1X (Home/Draw)": 'background-color: rgba(0, 128, 255, 0.12)',
         "🟪 X2 (Away/Draw)": 'background-color: rgba(128, 0, 255, 0.12)',
         "❌ Avoid": 'background-color: rgba(180, 180, 180, 0.10)',
@@ -166,19 +168,20 @@ def auto_recommendation(row,
     league_cls= row.get('League_Classification', 'Medium Variation')
     m_a       = row.get('M_A')
     m_h       = row.get('M_H')
+    odd_d     = row.get('Odd_D')
 
     # 1) Strong edges -> Direct Back
     if band_home == 'Top 20%' and band_away == 'Bottom 20%':
-        return '✅ Back Home'
+        return '🟢 Back Home'
     if band_home == 'Bottom 20%' and band_away == 'Top 20%':
-        return '✅ Back Away'
+        return '🔵 Back Away'
 
     if dominant in ['Both extremes (Home↑ & Away↓)', 'Home strong'] and band_away != 'Top 20%':
         if diff_m is not None and diff_m >= 0.90:
-            return '✅ Back Home'
+            return '🟢 Back Home'
     if dominant in ['Both extremes (Away↑ & Home↓)', 'Away strong'] and band_home != 'Top 20%':
         if diff_m is not None and diff_m <= -0.90:
-            return '✅ Back Away'
+            return '🔵 Back Away'
 
     # 2) Both Balanced (with thresholds)
     if (band_home == 'Balanced') and (band_away == 'Balanced') and (diff_m is not None) and (diff_pow is not None):
@@ -205,10 +208,10 @@ def auto_recommendation(row,
     if (band_away == 'Top 20%') and (band_home == 'Balanced'):
         return '🟪 X2 (Away/Draw)'
 
-    # 5) Filtro 1 (última checagem antes do fallback)
-    if (m_a is not None and m_h is not None and diff_pow is not None):
-        if (-2.29 <= m_a <= 0.17) and (-1.83 <= m_h <= 1.98) and (diff_pow >= 0.2):
-            return '🟦 1X (Home/Draw)'
+    # 5) Novo filtro Draw
+    if (odd_d is not None and 2.5 <= odd_d <= 6.0) and (diff_pow is not None and -10 <= diff_pow <= 10):
+        if (m_h is not None and 0 <= m_h <= 1) or (m_a is not None and 0 <= m_a <= 0.5):
+            return '⚪ Back Draw'
 
     # 6) Fallback
     return '❌ Avoid'
@@ -220,6 +223,7 @@ def event_side_for_winprob(auto_rec):
     s = str(auto_rec)
     if 'Back Home' in s: return 'HOME'
     if 'Back Away' in s: return 'AWAY'
+    if 'Back Draw' in s: return 'DRAW'
     if '1X' in s:       return '1X'
     if 'X2' in s:       return 'X2'
     return None
@@ -249,6 +253,8 @@ def win_prob_for_recommendation(history, row,
         p = (sample['Goals_H_FT'] > sample['Goals_A_FT']).mean()
     elif target == 'AWAY':
         p = (sample['Goals_A_FT'] > sample['Goals_H_FT']).mean()
+    elif target == 'DRAW':
+        p = (sample['Goals_A_FT'] == sample['Goals_H_FT']).mean()
     elif target == '1X':
         p = ((sample['Goals_H_FT'] >= sample['Goals_A_FT'])).mean()
     elif target == 'X2':
