@@ -179,9 +179,9 @@ def auto_recommendation(row,
     if dominant in ['Both extremes (Home↑ & Away↓)', 'Home strong'] and band_away != 'Top 20%':
         if diff_m is not None and diff_m >= 0.90:
             return '🟢 Back Home'
-    if dominant in ['Both extremes (Away↑ & Home↓)', 'Away strong'] and band_home != 'Top 20%':
+    if dominant in ['Both extremes (Away↑ & Home↓)', 'Away strong'] and band_home == 'Balanced':
         if diff_m is not None and diff_m <= -0.90:
-            return '🔵 Back Away'
+            return '🟪 X2 (Away/Draw)'
 
     # 2) Both Balanced (with thresholds)
     if (band_home == 'Balanced') and (band_away == 'Balanced') and (diff_m is not None) and (diff_pow is not None):
