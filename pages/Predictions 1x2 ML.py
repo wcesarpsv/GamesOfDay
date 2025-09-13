@@ -72,7 +72,7 @@ history['Target'] = history.apply(
 )
 
 # ---------------- Features ----------------
-features['Diff_M'] = features['M_H'] - features['M_A']
+history['Diff_M'] = history['M_H'] - history['M_A']
 base_features = ['Odd_H','Odd_A','Odd_D','M_H','M_A','Diff_Power','Diff_M']
 X = history[base_features]
 y = history['Target']
