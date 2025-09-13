@@ -86,6 +86,7 @@ model_multi = RandomForestClassifier(
 model_multi.fit(X, y)
 
 # ---------------- Predict Today's Games ----------------
+games_today['Diff_M'] = games_today['M_H'] - games_today['M_A']
 X_today = games_today[base_features]
 probs = model_multi.predict_proba(X_today)
 
