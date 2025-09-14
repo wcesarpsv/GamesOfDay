@@ -155,6 +155,27 @@ def calc_kelly_row(row, margin_pre=0.1, margin_live=0.2, scale=0.1):
 # ---------------- Apply Kelly to today's games ----------------
 games_today = games_today.join(games_today.apply(calc_kelly_row, axis=1))
 
+# ---------------- Funções de gradiente ----------------
+def color_prob(val, color):
+    alpha = int(val * 255)  # intensidade proporcional à probabilidade
+    return f'background-color: rgba({color}, {alpha/255:.2f})'
+
+def style_probs(val, col):
+    if col == 'p_home':
+        return color_prob(val, "0,200,0")  # verde
+    elif col == 'p_draw':
+        return color_prob(val, "150,150,150")  # cinza
+    elif col == 'p_away':
+        return color_prob(val, "255,140,0")  # laranja
+    return ''
+
+def highlight_stakes(val, col):
+    if col == 'Stake_Pre(%)' and val > 0:
+        return 'background-color: rgba(0,200,0,0.3); font-weight: bold;'
+    if col == 'Stake_Live(%)' and val > 0:
+        return 'background-color: rgba(255,140,0,0.3); font-weight: bold;'
+    return ''
+
 # ---------------- Display ----------------
 cols_final = [
     'Date', 'Time', 'League', 'Home', 'Away',
@@ -165,15 +186,20 @@ cols_final = [
     'Stake_Pre(%)', 'Stake_Live(%)'
 ]
 
-st.dataframe(
-    games_today[cols_final].style.format({
+styled_df = (
+    games_today[cols_final]
+    .style.format({
         'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
-        'M_H': '{:.2f}', 'M_A': '{:.2f}', 'Diff_Power': '{:.2f}', 'Diff_M': '{:.2f}',
         'p_home': '{:.1%}', 'p_draw': '{:.1%}', 'p_away': '{:.1%}',
-        'Best_Prob': '{:.1%}', 'Best_Odds': '{:.2f}',
-        'Odd_Min_Base': '{:.2f}', 'Odd_Min_Pre': '{:.2f}', 'Odd_Min_Live': '{:.2f}',
+        'Odd_Min_Base': '{:.2f}', 'Odd_Min_Live': '{:.2f}',
         'Stake_Pre(%)': '{:.2f}%', 'Stake_Live(%)': '{:.2f}%'
     }, na_rep='—')
-    .set_properties(subset=['Best_Market'], **{'text-align': 'center'})  # 🔥 centraliza
-    , use_container_width=True, height=1000
+    .applymap(lambda v: style_probs(v, 'p_home'), subset=['p_home'])
+    .applymap(lambda v: style_probs(v, 'p_draw'), subset=['p_draw'])
+    .applymap(lambda v: style_probs(v, 'p_away'), subset=['p_away'])
+    .applymap(lambda v: highlight_stakes(v, 'Stake_Pre(%)'), subset=['Stake_Pre(%)'])
+    .applymap(lambda v: highlight_stakes(v, 'Stake_Live(%)'), subset=['Stake_Live(%)'])
+    .set_properties(subset=['Best_Market'], **{'text-align': 'center'})  # centraliza
 )
+
+st.dataframe(styled_df, use_container_width=True, height=1000)
