@@ -120,8 +120,8 @@ def kelly_fraction_pct(prob, odds, scale=0.1):
 
 def calc_kelly_row(row, margin_pre=0.1, margin_live=0.2, scale=0.1):
     # Probabilidades e odds
-    probs = {"H": row['p_home'], "D": row['p_draw'], "A": row['p_away']}
-    odds = {"H": row['Odd_H'], "D": row['Odd_D'], "A": row['Odd_A']}
+    probs = {"Home": row['p_home'], "Draw": row['p_draw'], "Away": row['p_away']}
+    odds = {"Home": row['Odd_H'], "Draw": row['Odd_D'], "Away": row['Odd_A']}
     
     # Mercado com maior probabilidade
     best_market = max(probs, key=probs.get)
