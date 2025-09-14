@@ -2,13 +2,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-import pickle
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
 # ---------------- Page Config ----------------
-st.set_page_config(page_title="Bet Indicator v3.1 (RF – Gradient)", layout="wide")
-st.title("📊 AI-Powered Bet Indicator – Random Forest (Multi-class)")
+st.set_page_config(page_title="Bet Indicator v3.2 (RF + League + Diff_M)", layout="wide")
+st.title("📊 AI-Powered Bet Indicator – Random Forest (League + Diff_M)")
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
@@ -73,9 +72,22 @@ history['Target'] = history.apply(
 
 # ---------------- Features ----------------
 history['Diff_M'] = history['M_H'] - history['M_A']
+games_today['Diff_M'] = games_today['M_H'] - games_today['M_A']
+
 base_features = ['Odd_H','Odd_A','Odd_D','M_H','M_A','Diff_Power','Diff_M']
-X = history[base_features]
+
+# One-hot encode League
+history_leagues = pd.get_dummies(history['League'], prefix="League")
+games_today_leagues = pd.get_dummies(games_today['League'], prefix="League")
+
+# Garantir que os dummies tenham as mesmas colunas
+games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
+
+# Montar features finais
+X = pd.concat([history[base_features], history_leagues], axis=1)
 y = history['Target']
+
+X_today = pd.concat([games_today[base_features], games_today_leagues], axis=1)
 
 # ---------------- Train model ----------------
 model_multi = RandomForestClassifier(
@@ -86,8 +98,6 @@ model_multi = RandomForestClassifier(
 model_multi.fit(X, y)
 
 # ---------------- Predict Today's Games ----------------
-games_today['Diff_M'] = games_today['M_H'] - games_today['M_A']
-X_today = games_today[base_features]
 probs = model_multi.predict_proba(X_today)
 
 games_today['p_home'] = probs[:,0]
@@ -98,13 +108,13 @@ games_today['p_away'] = probs[:,2]
 cols_to_show = [
     'Date', 'Time', 'League', 'Home', 'Away',
     'Odd_H', 'Odd_D', 'Odd_A',
-    'Diff_Power', 'M_H', 'M_A',
+    'Diff_Power', 'M_H', 'M_A', 'Diff_M',
     'p_home', 'p_draw', 'p_away'
 ]
 
 # Funções de gradiente
 def color_prob(val, color):
-    alpha = int((1 - val) * 255)  # intensidade de 0 a 255
+    alpha = int((1 - val) * 255)
     return f'background-color: rgba({color}, {alpha/255:.2f})'
 
 def style_probs(val, col):
@@ -120,7 +130,7 @@ styled_df = (
     games_today[cols_to_show]
     .style.format({
         'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
-        'M_H': '{:.2f}', 'M_A': '{:.2f}', 'Diff_Power': '{:.2f}',
+        'M_H': '{:.2f}', 'M_A': '{:.2f}', 'Diff_Power': '{:.2f}', 'Diff_M': '{:.2f}',
         'p_home': '{:.1%}', 'p_draw': '{:.1%}', 'p_away': '{:.1%}'
     }, na_rep='—')
     .applymap(lambda v: style_probs(v, 'p_home'), subset=['p_home'])
