@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import os
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 
 # ---------------- Page Config ----------------
 st.set_page_config(page_title="Bet Indicator v3.2 (RF + League + Diff_M)", layout="wide")
@@ -85,6 +86,7 @@ games_today_leagues = games_today_leagues.reindex(columns=history_leagues.column
 # Montar features finais
 X = pd.concat([history[base_features], history_leagues], axis=1)
 y = history['Target']
+
 X_today = pd.concat([games_today[base_features], games_today_leagues], axis=1)
 
 # ---------------- Train model ----------------
@@ -101,6 +103,7 @@ model_multi.fit(X, y)
 
 # ---------------- Predict Today's Games ----------------
 probs = model_multi.predict_proba(X_today)
+
 games_today['p_home'] = probs[:,0]
 games_today['p_draw'] = probs[:,1]
 games_today['p_away'] = probs[:,2]
@@ -152,18 +155,18 @@ def calc_kelly_row(row, margin_pre=0.1, margin_live=0.2, scale=0.1):
 # ---------------- Apply Kelly to today's games ----------------
 games_today = games_today.join(games_today.apply(calc_kelly_row, axis=1))
 
-# ---------------- Funções de estilo ----------------
+# ---------------- Funções de gradiente ----------------
 def color_prob(val, color):
-    alpha = int(val * 255)
+    alpha = int(val * 255)  # intensidade proporcional à probabilidade
     return f'background-color: rgba({color}, {alpha/255:.2f})'
 
 def style_probs(val, col):
     if col == 'p_home':
-        return color_prob(val, "0,200,0")
+        return color_prob(val, "0,200,0")  # verde
     elif col == 'p_draw':
-        return color_prob(val, "150,150,150")
+        return color_prob(val, "150,150,150")  # cinza
     elif col == 'p_away':
-        return color_prob(val, "255,140,0")
+        return color_prob(val, "255,140,0")  # laranja
     return ''
 
 def highlight_stakes(val, col):
@@ -172,9 +175,6 @@ def highlight_stakes(val, col):
     if col == 'Stake_Live(%)' and val > 0:
         return 'background-color: rgba(255,140,0,0.3); font-weight: bold;'
     return ''
-
-def center_text(val):
-    return f'<div style="text-align:center">{val}</div>'
 
 # ---------------- Display ----------------
 cols_final = [
@@ -192,14 +192,14 @@ styled_df = (
         'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
         'p_home': '{:.1%}', 'p_draw': '{:.1%}', 'p_away': '{:.1%}',
         'Odd_Min_Base': '{:.2f}', 'Odd_Min_Live': '{:.2f}',
-        'Stake_Pre(%)': '{:.2f}%', 'Stake_Live(%)': '{:.2f}%',
-        'Best_Market': center_text   # centraliza via HTML
-    }, na_rep='—', escape="html")
+        'Stake_Pre(%)': '{:.2f}%', 'Stake_Live(%)': '{:.2f}%'
+    }, na_rep='—')
     .applymap(lambda v: style_probs(v, 'p_home'), subset=['p_home'])
     .applymap(lambda v: style_probs(v, 'p_draw'), subset=['p_draw'])
     .applymap(lambda v: style_probs(v, 'p_away'), subset=['p_away'])
     .applymap(lambda v: highlight_stakes(v, 'Stake_Pre(%)'), subset=['Stake_Pre(%)'])
     .applymap(lambda v: highlight_stakes(v, 'Stake_Live(%)'), subset=['Stake_Live(%)'])
+    .set_properties(subset=['Best_Market'], **{'text-align': 'center'})  # centraliza
 )
 
 st.dataframe(styled_df, use_container_width=True, height=1000)
