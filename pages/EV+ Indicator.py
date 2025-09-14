@@ -161,7 +161,7 @@ cols_final = [
     'Odd_H', 'Odd_D', 'Odd_A',
     'p_home', 'p_draw', 'p_away',
     'Best_Market',
-    'Odd_Min_Base', 
+    'Odd_Min_Base', "Odd_Min_Live",
     'Stake_Pre(%)', 'Stake_Live(%)'
 ]
 
