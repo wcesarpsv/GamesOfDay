@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 
 # ---------------- Page Config ----------------
 st.set_page_config(page_title="Bet Indicator v3.2 (RF + League + Diff_M)", layout="wide")
-st.title("📊 AI-Powered Bet Indicator – Random Forest (League + Diff_M)")
+st.title("📊 AI-Powered Bet Indicator – Random Forest")
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
