@@ -160,8 +160,8 @@ cols_final = [
     'Date', 'Time', 'League', 'Home', 'Away',
     'Odd_H', 'Odd_D', 'Odd_A',
     'p_home', 'p_draw', 'p_away',
-    'Best_Market', 'Best_Prob', 'Best_Odds',
-    'Odd_Min_Base', 'Odd_Min_Pre', 'Odd_Min_Live',
+    'Best_Market',
+    'Odd_Min_Base', 
     'Stake_Pre(%)', 'Stake_Live(%)'
 ]
 
