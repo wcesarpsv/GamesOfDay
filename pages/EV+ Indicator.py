@@ -159,7 +159,6 @@ games_today = games_today.join(games_today.apply(calc_kelly_row, axis=1))
 cols_final = [
     'Date', 'Time', 'League', 'Home', 'Away',
     'Odd_H', 'Odd_D', 'Odd_A',
-    'Diff_Power', 'M_H', 'M_A', 'Diff_M',
     'p_home', 'p_draw', 'p_away',
     'Best_Market', 'Best_Prob', 'Best_Odds',
     'Odd_Min_Base', 'Odd_Min_Pre', 'Odd_Min_Live',
