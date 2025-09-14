@@ -112,7 +112,6 @@ games_today['p_away'] = probs[:,2]
 cols_to_show = [
     'Date', 'Time', 'League', 'Home', 'Away',
     'Odd_H', 'Odd_D', 'Odd_A',
-    'Diff_Power', 'M_H', 'M_A', 'Diff_M',
     'p_home', 'p_draw', 'p_away'
 ]
 
