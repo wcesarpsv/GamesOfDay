@@ -91,7 +91,7 @@ X_today = pd.concat([games_today[base_features], games_today_leagues], axis=1)
 
 # ---------------- Train model ----------------
 model_multi = RandomForestClassifier(
-    n_estimators=500,
+    n_estimators=300,
     min_samples_split=5,
     min_samples_leaf=1,
     max_features='sqrt',
