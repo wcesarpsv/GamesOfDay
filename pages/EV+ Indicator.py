@@ -2,13 +2,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-import pickle
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
 # ---------------- Page Config ----------------
-st.set_page_config(page_title="Bet Indicator v3.0 (Random Forest Multi-class)", layout="wide")
-st.title("📊 AI-Powered Bet Indicator – Random Forest (Multi-class)")
+st.set_page_config(page_title="Bet Indicator v3.2 (RF + League + Diff_M)", layout="wide")
+st.title("📊 AI-Powered Bet Indicator – Random Forest + Kelly")
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
@@ -16,12 +15,6 @@ MODELS_FOLDER = "Models"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa"]
 
 os.makedirs(MODELS_FOLDER, exist_ok=True)
-
-# ---------------- User Option ----------------
-train_option = st.sidebar.selectbox(
-    "Choose model mode:",
-    ["Use saved model (fast)", "Train new model (slow)"]
-)
 
 # ---------------- Helpers ----------------
 def load_all_games(folder):
@@ -70,158 +63,117 @@ if games_today.empty:
     st.warning("No valid games today.")
     st.stop()
 
-# ---------------- League Stats ----------------
-st.info("📊 Calculating league statistics...")
-league_stats = (
-    history.groupby("League")
-    .agg(
-        Games=("Goals_H_FT", "count"),
-        DrawRate=("Goals_H_FT", lambda x: (x == history.loc[x.index, "Goals_A_FT"]).mean()),
-        HomeWinRate=("Goals_H_FT", lambda x: (x > history.loc[x.index, "Goals_A_FT"]).mean()),
-        AwayWinRate=("Goals_H_FT", lambda x: (x < history.loc[x.index, "Goals_A_FT"]).mean()),
-    )
-    .reset_index()
-)
-
 # ---------------- Target multiclasses ----------------
-# 0 = Home win, 1 = Draw, 2 = Away win
 history['Target'] = history.apply(
     lambda row: 0 if row['Goals_H_FT'] > row['Goals_A_FT']
     else (1 if row['Goals_H_FT'] == row['Goals_A_FT'] else 2),
     axis=1
 )
 
-# Adiciona estatísticas
-history = history.merge(league_stats[["League","DrawRate","HomeWinRate","AwayWinRate"]], on="League", how="left")
-games_today = games_today.merge(league_stats[["League","DrawRate","HomeWinRate","AwayWinRate"]], on="League", how="left")
-
 # ---------------- Features ----------------
-all_leagues = pd.concat([history['League'], games_today['League']]).unique()
-all_league_dummies = pd.get_dummies(pd.Series(all_leagues), prefix="League").columns
+history['Diff_M'] = history['M_H'] - history['M_A']
+games_today['Diff_M'] = games_today['M_H'] - games_today['M_A']
 
-base_features = ['Odd_H','Odd_A','Odd_D','M_H','M_A','Diff_Power','DrawRate','HomeWinRate','AwayWinRate']
-X_base = history[base_features]
+base_features = ['Odd_H','Odd_A','Odd_D','M_H','M_A','Diff_Power','Diff_M']
 
-X_leagues = pd.get_dummies(history['League'], prefix="League")
-for col in all_league_dummies:
-    if col not in X_leagues.columns:
-        X_leagues[col] = 0
+# One-hot encode League
+history_leagues = pd.get_dummies(history['League'], prefix="League")
+games_today_leagues = pd.get_dummies(games_today['League'], prefix="League")
 
-X = pd.concat([X_base, X_leagues], axis=1)
-feature_names = X.columns.tolist()
+# Garantir que os dummies tenham as mesmas colunas
+games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
 
-# ---------------- Train or Load Model ----------------
-def train_and_save_rf(filename="rf_model.pkl"):
-    y = history['Target']
-    X_train, X_val, y_train, y_val = train_test_split(
-        X, y, test_size=0.2, shuffle=True, stratify=y, random_state=42
-    )
-    model = RandomForestClassifier(
-        n_estimators=300,
-        max_depth=None,
-        random_state=42,
-        class_weight="balanced_subsample"
-    )
-    model.fit(X_train, y_train)
-    with open(os.path.join(MODELS_FOLDER, filename), "wb") as f:
-        pickle.dump(model, f)
-    return model
+# Montar features finais
+X = pd.concat([history[base_features], history_leagues], axis=1)
+y = history['Target']
 
-def load_rf_model(filename="rf_model.pkl"):
-    with open(os.path.join(MODELS_FOLDER, filename), "rb") as f:
-        model = pickle.load(f)
-    return model
+X_today = pd.concat([games_today[base_features], games_today_leagues], axis=1)
 
-if train_option == "Train new model (slow)":
-    st.info("🚀 Training Random Forest model... this may take a while")
-    model_multi = train_and_save_rf()
-else:
-    try:
-        model_multi = load_rf_model()
-        st.success("✅ Loaded saved model successfully.")
-    except Exception as e:
-        st.warning(f"⚠️ Saved model not found: {e}. Training a new one...")
-        model_multi = train_and_save_rf()
+# ---------------- Train model ----------------
+model_multi = RandomForestClassifier(
+    n_estimators=300,
+    min_samples_split=5,
+    min_samples_leaf=1,
+    max_features='sqrt',
+    max_depth=None,
+    random_state=42,
+    class_weight="balanced_subsample"
+)
+model_multi.fit(X, y)
 
 # ---------------- Predict Today's Games ----------------
-st.info("🔮 Generating predictions for today's matches...")
-with st.spinner("Calculating probabilities and EV..."):
-    X_today_base = games_today[base_features]
-    X_today_leagues = pd.get_dummies(games_today['League'], prefix="League")
-    for col in all_league_dummies:
-        if col not in X_today_leagues.columns:
-            X_today_leagues[col] = 0
+probs = model_multi.predict_proba(X_today)
 
-    X_today = pd.concat([X_today_base, X_today_leagues], axis=1)
-    X_today = X_today.reindex(columns=feature_names, fill_value=0)
+games_today['p_home'] = probs[:,0]
+games_today['p_draw'] = probs[:,1]
+games_today['p_away'] = probs[:,2]
 
-    probs = model_multi.predict_proba(X_today)
+# ---------------- Kelly Criterion Helpers ----------------
+def odd_min(prob):
+    return 1 / prob if prob > 0 else np.inf
 
-    games_today['p_home'] = probs[:,0]
-    games_today['p_draw'] = probs[:,1]
-    games_today['p_away'] = probs[:,2]
+def kelly_fraction_pct(prob, odds, scale=0.1):
+    b = odds - 1
+    q = 1 - prob
+    f_star = (b * prob - q) / b
+    return max(0, f_star * 100 * scale)  # % da banca
 
-    games_today['EV_Home'] = (games_today['p_home'] * games_today['Odd_H']) - 1
-    games_today['EV_Draw'] = (games_today['p_draw'] * games_today['Odd_D']) - 1
-    games_today['EV_Away'] = (games_today['p_away'] * games_today['Odd_A']) - 1
-
-# ---------------- Bet Decision ----------------
-def choose_bet(row):
-    evs = {
-        "Home": row['EV_Home'],
-        "Draw": row['EV_Draw'],
-        "Away": row['EV_Away']
-    }
-    best = max(evs, key=evs.get)
-    if evs[best] > 0:
-        if best == "Home":
-            return "🟢 Back Home"
-        elif best == "Away":
-            return "🟠 Back Away"
-        else:
-            return "⚪ Back Draw"
+def calc_kelly_row(row, margin_pre=0.1, margin_live=0.2, scale=0.1):
+    # Probabilidades e odds
+    probs = {"H": row['p_home'], "D": row['p_draw'], "A": row['p_away']}
+    odds = {"H": row['Odd_H'], "D": row['Odd_D'], "A": row['Odd_A']}
+    
+    # Mercado com maior probabilidade
+    best_market = max(probs, key=probs.get)
+    best_prob = probs[best_market]
+    best_odds = odds[best_market]
+    
+    # Odd mínima base
+    min_odd_base = odd_min(best_prob)
+    min_odd_pre = min_odd_base * (1 + margin_pre)
+    min_odd_live = min_odd_base * (1 + margin_live)
+    
+    # Stake pré ou live (% da banca)
+    if best_odds >= min_odd_pre:
+        stake_pre = kelly_fraction_pct(best_prob, best_odds, scale=scale)
+        stake_live = 0
     else:
-        return "No Bet"
+        stake_pre = 0
+        stake_live = kelly_fraction_pct(best_prob, min_odd_live, scale=scale)
+    
+    return pd.Series({
+        "Best_Market": best_market,
+        "Best_Prob": best_prob,
+        "Best_Odds": best_odds,
+        "Odd_Min_Base": min_odd_base,
+        "Odd_Min_Pre": min_odd_pre,
+        "Odd_Min_Live": min_odd_live,
+        "Stake_Pre(%)": stake_pre,
+        "Stake_Live(%)": stake_live
+    })
 
-games_today['Bet_Indicator'] = games_today.apply(choose_bet, axis=1)
+# ---------------- Apply Kelly to today's games ----------------
+games_today = games_today.join(games_today.apply(calc_kelly_row, axis=1))
 
 # ---------------- Display ----------------
-cols_to_show = [
+cols_final = [
     'Date', 'Time', 'League', 'Home', 'Away',
     'Odd_H', 'Odd_D', 'Odd_A',
-    'Diff_Power', 'M_H', 'M_A',
+    'Diff_Power', 'M_H', 'M_A', 'Diff_M',
     'p_home', 'p_draw', 'p_away',
-    'EV_Home', 'EV_Draw', 'EV_Away', 'Bet_Indicator'
+    'Best_Market', 'Best_Prob', 'Best_Odds',
+    'Odd_Min_Base', 'Odd_Min_Pre', 'Odd_Min_Live',
+    'Stake_Pre(%)', 'Stake_Live(%)'
 ]
 
-def highlight_bet(val):
-    if val == "🟢 Back Home":
-        return 'background-color: rgba(0, 200, 0, 0.14)'
-    elif val == "🟠 Back Away":
-        return 'background-color: rgba(255, 215, 0, 0.14)'
-    elif val == "⚪ Back Draw":
-        return 'background-color: rgba(200, 200, 200, 0.14)'
-    return ''
-
-styled_df = (
-    games_today[cols_to_show]
-    .style.format({
+st.dataframe(
+    games_today[cols_final].style.format({
         'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
-        'M_H': '{:.2f}', 'M_A': '{:.2f}', 'Diff_Power': '{:.2f}',
+        'M_H': '{:.2f}', 'M_A': '{:.2f}', 'Diff_Power': '{:.2f}', 'Diff_M': '{:.2f}',
         'p_home': '{:.1%}', 'p_draw': '{:.1%}', 'p_away': '{:.1%}',
-        'EV_Home': '{:.1%}', 'EV_Draw': '{:.1%}', 'EV_Away': '{:.1%}'
-    }, na_rep='—')
-    .applymap(highlight_bet, subset=['Bet_Indicator'])
+        'Best_Prob': '{:.1%}', 'Best_Odds': '{:.2f}',
+        'Odd_Min_Base': '{:.2f}', 'Odd_Min_Pre': '{:.2f}', 'Odd_Min_Live': '{:.2f}',
+        'Stake_Pre(%)': '{:.2f}%', 'Stake_Live(%)': '{:.2f}%'
+    }, na_rep='—'),
+    use_container_width=True, height=1000
 )
-
-st.dataframe(styled_df, use_container_width=True, height=1000)
-
-# ---------------- Save Results ----------------
-output_folder = os.path.join("GamesOfDay","GamesDay", "BetIndicator")
-os.makedirs(output_folder, exist_ok=True)
-
-today_str = pd.Timestamp.today().strftime("%Y-%m-%d")
-output_file = os.path.join(output_folder, f"Recommendations_{today_str}.csv")
-games_today[cols_to_show].to_csv(output_file, index=False)
-
-st.success(f"✅ Recommendations saved at: {output_file}")
