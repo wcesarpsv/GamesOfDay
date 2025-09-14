@@ -174,6 +174,6 @@ st.dataframe(
         'Odd_Min_Base': '{:.2f}', 'Odd_Min_Pre': '{:.2f}', 'Odd_Min_Live': '{:.2f}',
         'Stake_Pre(%)': '{:.2f}%', 'Stake_Live(%)': '{:.2f}%'
     }, na_rep='—')
-     .set_properties(subset=['Best_Market'], **{'text-align': 'center'}),  # 🔥 centraliza
-    use_container_width=True, height=1000
+    .set_properties(subset=['Best_Market'], **{'text-align': 'center'})  # 🔥 centraliza
+    , use_container_width=True, height=1000
 )
