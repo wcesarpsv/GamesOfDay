@@ -321,7 +321,7 @@ games_today['Games_Analyzed']  = [x[0] for x in ga_wp]
 games_today['Win_Probability'] = [x[1] for x in ga_wp]
 
 games_today = games_today.sort_values(
-    by=['Win_Probability'],
+    by=['Time'],
     ascending=False,
     na_position='last'
 ).reset_index(drop=True)
