@@ -29,94 +29,61 @@ def load_all_games(folder):
 
 def calculate_team_stats(df, view_mode):
     results = []
-
-    # Iterate over all teams
     teams = pd.concat([df["Home"], df["Away"]]).unique()
 
     for team in teams:
         if view_mode == "Home only":
             team_games = df[df["Home"] == team].copy()
-            is_home = True
         elif view_mode == "Away only":
             team_games = df[df["Away"] == team].copy()
-            is_home = False
         else:  # General
             team_games = df[(df["Home"] == team) | (df["Away"] == team)].copy()
-            is_home = None
 
+        # Ignorar times sem jogos válidos
+        team_games = team_games.dropna(subset=["Goals_FT_H", "Goals_FT_A"])
         if team_games.empty:
             continue
 
-        # Only keep rows with goals
-        team_games = team_games.dropna(subset=["Goals_H_FT", "Goals_A_FT"])
-        if team_games.empty:
-            continue
-
+        # --- Estatísticas consolidadas ---
         total_games = len(team_games)
-        wins, roi, streak = 0, 0, ""
-
-        # Track streak (last results)
-        last_results = []
+        wins, roi = 0, 0
+        streak = []
 
         for _, row in team_games.iterrows():
-            home_goals = row["Goals_H_FT"]
-            away_goals = row["Goals_A_FT"]
+            home_goals, away_goals = row["Goals_FT_H"], row["Goals_FT_A"]
 
-            if is_home is True:  # Team at Home
+            if row["Home"] == team:  # Jogos em casa
                 if home_goals > away_goals:
                     wins += 1
                     roi += row["Odd_H"] - 1
-                    last_results.append("W")
+                    streak.append("W")
                 else:
                     roi -= 1
-                    last_results.append("L")
-
-            elif is_home is False:  # Team Away
+                    streak.append("L")
+            elif row["Away"] == team:  # Jogos fora
                 if away_goals > home_goals:
                     wins += 1
                     roi += row["Odd_A"] - 1
-                    last_results.append("W")
+                    streak.append("W")
                 else:
                     roi -= 1
-                    last_results.append("L")
-
-            else:  # General mode
-                if row["Home"] == team:  # Home games
-                    if home_goals > away_goals:
-                        wins += 1
-                        roi += row["Odd_H"] - 1
-                        last_results.append("W")
-                    else:
-                        roi -= 1
-                        last_results.append("L")
-                else:  # Away games
-                    if away_goals > home_goals:
-                        wins += 1
-                        roi += row["Odd_A"] - 1
-                        last_results.append("W")
-                    else:
-                        roi -= 1
-                        last_results.append("L")
+                    streak.append("L")
 
         winrate = wins / total_games if total_games > 0 else 0
+        avg_diff_power = team_games["Diff_Power"].mean()
+        avg_diff_momentum = (team_games["M_H"] - team_games["M_A"]).mean()
 
-        # Average metrics
-        avg_diff_power = team_games["Diff_Power"].mean() if "Diff_Power" in team_games else np.nan
-        avg_diff_momentum = (team_games["M_H"] - team_games["M_A"]).mean() if "M_H" in team_games and "M_A" in team_games else np.nan
-
-        # Build row
         results.append({
             "Team": team,
             "Games": total_games,
             "Winrate (%)": round(winrate * 100, 1),
             "ROI": round(roi, 2),
-            "Avg Diff_Power": round(avg_diff_power, 2) if pd.notnull(avg_diff_power) else None,
-            "Avg Diff_Momentum": round(avg_diff_momentum, 2) if pd.notnull(avg_diff_momentum) else None,
-            "Streak": "".join(last_results[-5:])  # last 5 results
+            "Avg Diff_Power": round(avg_diff_power, 2),
+            "Avg Diff_Momentum": round(avg_diff_momentum, 2),
+            "Streak": "".join(streak[-5:])
         })
 
-    df_stats = pd.DataFrame(results)
-    return df_stats
+    return pd.DataFrame(results)
 
 # ---------------- Load Data ----------------
 df_all = load_all_games(GAMES_FOLDER)
