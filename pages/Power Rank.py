@@ -48,7 +48,7 @@ def calculate_team_stats(df, view_mode):
             continue
 
         # Only keep rows with goals
-        team_games = team_games.dropna(subset=["Goals_FT_H", "Goals_FT_A"])
+        team_games = team_games.dropna(subset=["Goals_H_FT", "Goals_A_FT"])
         if team_games.empty:
             continue
 
@@ -59,8 +59,8 @@ def calculate_team_stats(df, view_mode):
         last_results = []
 
         for _, row in team_games.iterrows():
-            home_goals = row["Goals_FT_H"]
-            away_goals = row["Goals_FT_A"]
+            home_goals = row["Goals_H_FT"]
+            away_goals = row["Goals_A_FT"]
 
             if is_home is True:  # Team at Home
                 if home_goals > away_goals:
