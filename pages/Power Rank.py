@@ -40,17 +40,16 @@ def calculate_team_stats(df, view_mode):
             team_games = df[(df["Home"] == team) | (df["Away"] == team)].copy()
 
         # Ignorar times sem jogos válidos
-        team_games = team_games.dropna(subset=["Goals_FT_H", "Goals_FT_A"])
+        team_games = team_games.dropna(subset=["Goals_H_FT", "Goals_A_FT"])
         if team_games.empty:
             continue
 
-        # --- Estatísticas consolidadas ---
         total_games = len(team_games)
         wins, roi = 0, 0
         streak = []
 
         for _, row in team_games.iterrows():
-            home_goals, away_goals = row["Goals_FT_H"], row["Goals_FT_A"]
+            home_goals, away_goals = row["Goals_H_FT"], row["Goals_A_FT"]
 
             if row["Home"] == team:  # Jogos em casa
                 if home_goals > away_goals:
@@ -60,6 +59,7 @@ def calculate_team_stats(df, view_mode):
                 else:
                     roi -= 1
                     streak.append("L")
+
             elif row["Away"] == team:  # Jogos fora
                 if away_goals > home_goals:
                     wins += 1
@@ -70,16 +70,16 @@ def calculate_team_stats(df, view_mode):
                     streak.append("L")
 
         winrate = wins / total_games if total_games > 0 else 0
-        avg_diff_power = team_games["Diff_Power"].mean()
-        avg_diff_momentum = (team_games["M_H"] - team_games["M_A"]).mean()
+        avg_diff_power = team_games["Diff_Power"].mean() if "Diff_Power" in team_games else np.nan
+        avg_diff_momentum = (team_games["M_H"] - team_games["M_A"]).mean() if "M_H" in team_games and "M_A" in team_games else np.nan
 
         results.append({
             "Team": team,
             "Games": total_games,
             "Winrate (%)": round(winrate * 100, 1),
             "ROI": round(roi, 2),
-            "Avg Diff_Power": round(avg_diff_power, 2),
-            "Avg Diff_Momentum": round(avg_diff_momentum, 2),
+            "Avg Diff_Power": round(avg_diff_power, 2) if pd.notnull(avg_diff_power) else None,
+            "Avg Diff_Momentum": round(avg_diff_momentum, 2) if pd.notnull(avg_diff_momentum) else None,
             "Streak": "".join(streak[-5:])
         })
 
@@ -117,23 +117,21 @@ if period == "Last 30 Days":
     cutoff = datetime.now() - timedelta(days=30)
     df_filtered["Date"] = pd.to_datetime(df_filtered["Date"], errors="coerce")
     df_filtered = df_filtered[df_filtered["Date"] >= cutoff]
+
 elif period == "Last 10 Games":
-    # Will be handled later per team (take last 10 games for each)
-    pass
+    # para cada time, pegar só os últimos 10 jogos
+    teams = pd.concat([df_filtered["Home"], df_filtered["Away"]]).unique()
+    df_last10 = []
+    for team in teams:
+        games_team = df_filtered[(df_filtered["Home"] == team) | (df_filtered["Away"] == team)].copy()
+        games_team["Date"] = pd.to_datetime(games_team["Date"], errors="coerce")
+        games_team = games_team.sort_values("Date").tail(10)
+        df_last10.append(games_team)
+    if df_last10:
+        df_filtered = pd.concat(df_last10, ignore_index=True)
 
 # ---------------- Calculate Stats ----------------
 df_stats = calculate_team_stats(df_filtered, view_mode)
-
-# Handle "Last 10 Games" filter
-if period == "Last 10 Games":
-    stats_last10 = []
-    for team in df_stats["Team"].unique():
-        team_games = df_filtered[(df_filtered["Home"] == team) | (df_filtered["Away"] == team)].copy()
-        team_games = team_games.sort_values("Date").tail(10)
-        if not team_games.empty:
-            stats_last10.append(calculate_team_stats(team_games, view_mode))
-    if stats_last10:
-        df_stats = pd.concat(stats_last10, ignore_index=True)
 
 # ---------------- Rank & Sort ----------------
 df_stats = df_stats.sort_values(order_by, ascending=False).reset_index(drop=True)
