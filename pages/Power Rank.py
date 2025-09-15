@@ -24,11 +24,22 @@ def load_all_games(folder):
             print(f"⚠️ Error reading {file}: {e}")
     if df_list:
         df = pd.concat(df_list, ignore_index=True)
+
+        # 🔹 remover duplicados por jogo (data + times)
+        if all(col in df.columns for col in ["Date", "Home", "Away"]):
+            df = df.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
+
         return df
     return pd.DataFrame()
 
-def calculate_team_stats(df, view_mode):
+def calculate_team_stats(df, view_mode, league):
     results = []
+
+    # 🔹 garantir que o cálculo respeita a liga selecionada
+    df = df[df["League"] == league].copy()
+    if df.empty:
+        return pd.DataFrame()
+
     teams = pd.concat([df["Home"], df["Away"]]).unique()
 
     for team in teams:
@@ -139,7 +150,7 @@ elif period == "Last 10 Games":
         df_filtered = pd.concat(df_last10, ignore_index=True)
 
 # ---------------- Calculate Stats ----------------
-df_stats = calculate_team_stats(df_filtered, view_mode)
+df_stats = calculate_team_stats(df_filtered, view_mode, league)
 
 # ---------------- Rank & Sort ----------------
 df_stats = df_stats.sort_values(order_by, ascending=False).reset_index(drop=True)
