@@ -9,6 +9,7 @@ st.set_page_config(page_title="League Ranking – Performance & Momentum", layou
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
+EXCLUDED_LEAGUE_KEYWORDS = ["copa", "copas", "cup", "uefa"]
 
 # ---------------- Helpers ----------------
 def load_all_games(folder):
@@ -24,34 +25,21 @@ def load_all_games(folder):
             print(f"⚠️ Error reading {file}: {e}")
     if df_list:
         df = pd.concat(df_list, ignore_index=True)
-
-        # 🔹 remover duplicados por jogo (data + times)
         if all(col in df.columns for col in ["Date", "Home", "Away"]):
             df = df.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
-
         return df
     return pd.DataFrame()
 
-def calculate_team_stats(df, view_mode, league):
-    results = []
-
-    # 🔹 garantir que o cálculo respeita a liga selecionada
+# ---------------- Stats Calculations ----------------
+def calculate_general_stats(df, league):
     df = df[df["League"] == league].copy()
-    if df.empty:
-        return pd.DataFrame()
+    df = df.dropna(subset=["Goals_H_FT", "Goals_A_FT"])
+    results = []
 
     teams = pd.concat([df["Home"], df["Away"]]).unique()
 
     for team in teams:
-        if view_mode == "Home only":
-            team_games = df[df["Home"] == team].copy()
-        elif view_mode == "Away only":
-            team_games = df[df["Away"] == team].copy()
-        else:  # General
-            team_games = df[(df["Home"] == team) | (df["Away"] == team)].copy()
-
-        # Valid games only
-        team_games = team_games.dropna(subset=["Goals_H_FT", "Goals_A_FT"])
+        team_games = df[(df["Home"] == team) | (df["Away"] == team)].copy()
         if team_games.empty:
             continue
 
@@ -62,44 +50,86 @@ def calculate_team_stats(df, view_mode, league):
         for _, row in team_games.iterrows():
             home_goals, away_goals = row["Goals_H_FT"], row["Goals_A_FT"]
 
-            if row["Home"] == team:  # Home games
-                if home_goals > away_goals:
-                    wins += 1
-                    streak.append("W")
-                elif home_goals == away_goals:
-                    draws += 1
-                    streak.append("D")
-                else:
-                    losses += 1
-                    streak.append("L")
+            if row["Home"] == team:
+                if home_goals > away_goals: wins, streak = wins+1, streak+["W"]
+                elif home_goals == away_goals: draws, streak = draws+1, streak+["D"]
+                else: losses, streak = losses+1, streak+["L"]
 
-            elif row["Away"] == team:  # Away games
-                if away_goals > home_goals:
-                    wins += 1
-                    streak.append("W")
-                elif away_goals == home_goals:
-                    draws += 1
-                    streak.append("D")
-                else:
-                    losses += 1
-                    streak.append("L")
+            elif row["Away"] == team:
+                if away_goals > home_goals: wins, streak = wins+1, streak+["W"]
+                elif away_goals == home_goals: draws, streak = draws+1, streak+["D"]
+                else: losses, streak = losses+1, streak+["L"]
 
-        # Rates
-        winrate = (wins / total_games) * 100 if total_games > 0 else 0
-        drawrate = (draws / total_games) * 100 if total_games > 0 else 0
-        lossrate = (losses / total_games) * 100 if total_games > 0 else 0
-
-        avg_diff_power = team_games["Diff_Power"].mean() if "Diff_Power" in team_games else np.nan
-        avg_diff_momentum = (team_games["M_H"] - team_games["M_A"]).mean() if "M_H" in team_games and "M_A" in team_games else np.nan
+        winrate = round((wins / total_games) * 100, 1)
+        drawrate = round((draws / total_games) * 100, 1)
+        lossrate = round((losses / total_games) * 100, 1)
 
         results.append({
             "Team": team,
             "Games": total_games,
-            "Winrate (%)": round(winrate, 1),
-            "Drawrate (%)": round(drawrate, 1),
-            "Lossrate (%)": round(lossrate, 1),
-            "Avg Diff_Power": round(avg_diff_power, 2) if pd.notnull(avg_diff_power) else None,
-            "Avg Diff_Momentum": round(avg_diff_momentum, 2) if pd.notnull(avg_diff_momentum) else None,
+            "Winrate (%)": winrate,
+            "Drawrate (%)": drawrate,
+            "Lossrate (%)": lossrate,
+            "Avg Diff_Power": round(team_games["Diff_Power"].mean(), 2) if "Diff_Power" in team_games else None,
+            "Avg Diff_Momentum": round((team_games["M_H"] - team_games["M_A"]).mean(), 2) if "M_H" in team_games and "M_A" in team_games else None,
+            "Streak": "".join(streak[-5:])
+        })
+
+    return pd.DataFrame(results)
+
+def calculate_home_stats(df, league):
+    df = df[(df["League"] == league) & (df["Home"].notna())].copy()
+    df = df.dropna(subset=["Goals_H_FT", "Goals_A_FT"])
+    results = []
+
+    for team in df["Home"].unique():
+        team_games = df[df["Home"] == team].copy()
+        if team_games.empty: continue
+
+        total_games = len(team_games)
+        wins = sum(team_games["Goals_H_FT"] > team_games["Goals_A_FT"])
+        draws = sum(team_games["Goals_H_FT"] == team_games["Goals_A_FT"])
+        losses = sum(team_games["Goals_H_FT"] < team_games["Goals_A_FT"])
+
+        streak = ["W" if h>a else "D" if h==a else "L" for h,a in zip(team_games["Goals_H_FT"], team_games["Goals_A_FT"])]
+
+        results.append({
+            "Team": team,
+            "Games": total_games,
+            "Winrate (%)": round((wins/total_games)*100,1),
+            "Drawrate (%)": round((draws/total_games)*100,1),
+            "Lossrate (%)": round((losses/total_games)*100,1),
+            "Avg Diff_Power": round(team_games["Diff_Power"].mean(), 2) if "Diff_Power" in team_games else None,
+            "Avg Diff_Momentum": round((team_games["M_H"] - team_games["M_A"]).mean(), 2) if "M_H" in team_games and "M_A" in team_games else None,
+            "Streak": "".join(streak[-5:])
+        })
+
+    return pd.DataFrame(results)
+
+def calculate_away_stats(df, league):
+    df = df[(df["League"] == league) & (df["Away"].notna())].copy()
+    df = df.dropna(subset=["Goals_H_FT", "Goals_A_FT"])
+    results = []
+
+    for team in df["Away"].unique():
+        team_games = df[df["Away"] == team].copy()
+        if team_games.empty: continue
+
+        total_games = len(team_games)
+        wins = sum(team_games["Goals_A_FT"] > team_games["Goals_H_FT"])
+        draws = sum(team_games["Goals_A_FT"] == team_games["Goals_H_FT"])
+        losses = sum(team_games["Goals_A_FT"] < team_games["Goals_H_FT"])
+
+        streak = ["W" if a>h else "D" if a==h else "L" for h,a in zip(team_games["Goals_H_FT"], team_games["Goals_A_FT"])]
+
+        results.append({
+            "Team": team,
+            "Games": total_games,
+            "Winrate (%)": round((wins/total_games)*100,1),
+            "Drawrate (%)": round((draws/total_games)*100,1),
+            "Lossrate (%)": round((losses/total_games)*100,1),
+            "Avg Diff_Power": round(team_games["Diff_Power"].mean(), 2) if "Diff_Power" in team_games else None,
+            "Avg Diff_Momentum": round((team_games["M_H"] - team_games["M_A"]).mean(), 2) if "M_H" in team_games and "M_A" in team_games else None,
             "Streak": "".join(streak[-5:])
         })
 
@@ -115,7 +145,11 @@ if df_all.empty:
 # ---------------- Sidebar Filters ----------------
 st.sidebar.header("⚙️ Filters")
 
-league = st.sidebar.selectbox("Select League", sorted(df_all["League"].unique()))
+# filtrar ligas indesejadas
+all_leagues = sorted(df_all["League"].unique())
+leagues = [l for l in all_leagues if not any(bad.lower() in str(l).lower() for bad in EXCLUDED_LEAGUE_KEYWORDS)]
+
+league = st.sidebar.selectbox("Select League", leagues)
 period = st.sidebar.selectbox("Select Period", ["Last 10 Games", "Last 30 Days", "Full Season"])
 order_by = st.sidebar.selectbox("Order by", ["Winrate (%)", "Drawrate (%)", "Lossrate (%)", "Avg Diff_Power", "Avg Diff_Momentum"])
 
@@ -150,7 +184,12 @@ elif period == "Last 10 Games":
         df_filtered = pd.concat(df_last10, ignore_index=True)
 
 # ---------------- Calculate Stats ----------------
-df_stats = calculate_team_stats(df_filtered, view_mode, league)
+if view_mode == "General":
+    df_stats = calculate_general_stats(df_filtered, league)
+elif view_mode == "Home only":
+    df_stats = calculate_home_stats(df_filtered, league)
+else:
+    df_stats = calculate_away_stats(df_filtered, league)
 
 # ---------------- Rank & Sort ----------------
 df_stats = df_stats.sort_values(order_by, ascending=False).reset_index(drop=True)
@@ -167,4 +206,5 @@ st.markdown("""
 - **Diff_Power** = historical team strength  
 - **Diff_Momentum** = recent trend (M_H – M_A)  
 - **Winrate / Drawrate / Lossrate** = percentage based on valid games played  
+- **Excluding cups/UEFA competitions** from league filter  
 """)
