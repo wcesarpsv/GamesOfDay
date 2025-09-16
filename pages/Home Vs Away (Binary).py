@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import os
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
 
 # ---------------- Page Config ----------------
 st.set_page_config(page_title="Bet Indicator – Home vs Away", layout="wide")
@@ -63,7 +65,7 @@ if games_today.empty:
     st.stop()
 
 # ---------------- Target binary (Home=0, Away=1) ----------------
-history = history[history['Goals_H_FT'] != history['Goals_A_FT']]  # remove empates
+history = history[history['Goals_H_FT'] != history['Goals_A_FT']]  # remove draws
 history['Target'] = history.apply(
     lambda row: 0 if row['Goals_H_FT'] > row['Goals_A_FT'] else 1,
     axis=1
@@ -78,17 +80,18 @@ base_features = ['Odd_H','Odd_D','Odd_A','M_H','M_A','Diff_Power','Diff_M']
 # One-hot encode League
 history_leagues = pd.get_dummies(history['League'], prefix="League")
 games_today_leagues = pd.get_dummies(games_today['League'], prefix="League")
-
-# Garantir que os dummies tenham as mesmas colunas
 games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
 
 # Montar features finais
 X = pd.concat([history[base_features], history_leagues], axis=1)
 y = history['Target']
-
 X_today = pd.concat([games_today[base_features], games_today_leagues], axis=1)
 
-# ---------------- Train model ----------------
+# ---------------- Train & Evaluate ----------------
+X_train, X_val, y_train, y_val = train_test_split(
+    X, y, test_size=0.3, random_state=42, stratify=y
+)
+
 model_bin = RandomForestClassifier(
     n_estimators=300,
     min_samples_split=5,
@@ -98,13 +101,35 @@ model_bin = RandomForestClassifier(
     random_state=42,
     class_weight="balanced_subsample"
 )
-model_bin.fit(X, y)
+model_bin.fit(X_train, y_train)
+
+# Validation
+preds = model_bin.predict(X_val)
+probs = model_bin.predict_proba(X_val)
+
+acc = accuracy_score(y_val, preds)
+ll = log_loss(y_val, probs)
+bs = brier_score_loss(y_val, probs[:,1])
+
+winrate_home = (preds[y_val==0] == 0).mean()
+winrate_away = (preds[y_val==1] == 1).mean()
+
+# Show stats
+st.markdown("### 📊 Model Statistics (Validation)")
+df_stats = pd.DataFrame([{
+    "Model": "Home vs Away (Binary)",
+    "Accuracy": f"{acc:.3f}",
+    "LogLoss": f"{ll:.3f}",
+    "Brier": f"{bs:.3f}",
+    "Winrate_Home": f"{winrate_home:.2%}",
+    "Winrate_Away": f"{winrate_away:.2%}"
+}])
+st.dataframe(df_stats, use_container_width=True)
 
 # ---------------- Predict Today's Games ----------------
-probs = model_bin.predict_proba(X_today)
-
-games_today['p_home'] = probs[:,0]
-games_today['p_away'] = probs[:,1]
+probs_today = model_bin.predict_proba(X_today)
+games_today['p_home'] = probs_today[:,0]
+games_today['p_away'] = probs_today[:,1]
 
 # ---------------- Display ----------------
 cols_to_show = [
@@ -113,27 +138,26 @@ cols_to_show = [
     'p_home', 'p_away'
 ]
 
-# Funções de gradiente
 def color_prob(val, color):
     alpha = int((1 - val) * 255)
     return f'background-color: rgba({color}, {alpha/255:.2f})'
 
 def style_probs(val, col):
     if col == 'p_home':
-        return color_prob(val, "0,200,0")  # verde
+        return color_prob(val, "0,200,0")  # green
     elif col == 'p_away':
-        return color_prob(val, "255,140,0")  # laranja
+        return color_prob(val, "255,140,0")  # orange
     return ''
 
 styled_df = (
     games_today[cols_to_show]
     .style.format({
         'Odd_H': '{:.2f}', 'Odd_A': '{:.2f}',
-        'M_H': '{:.2f}', 'M_A': '{:.2f}', 'Diff_Power': '{:.2f}', 'Diff_M': '{:.2f}',
         'p_home': '{:.1%}', 'p_away': '{:.1%}'
     }, na_rep='—')
     .applymap(lambda v: style_probs(v, 'p_home'), subset=['p_home'])
     .applymap(lambda v: style_probs(v, 'p_away'), subset=['p_away'])
 )
 
+st.markdown("### 📌 Predictions for Selected Games")
 st.dataframe(styled_df, use_container_width=True, height=1000)
