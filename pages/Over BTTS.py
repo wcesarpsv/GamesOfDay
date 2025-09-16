@@ -42,10 +42,15 @@ if all_games.empty:
     st.warning("No valid historical data found.")
     st.stop()
 
-history = all_games.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
-if history.empty:
-    st.warning("No valid historical results found.")
+if 'Goals_H_FT' in all_games.columns and 'Goals_A_FT' in all_games.columns:
+    history = all_games.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
+    if history.empty:
+        st.warning("No valid historical results found.")
+        st.stop()
+else:
+    st.error("⚠️ O arquivo selecionado não contém colunas de gols ('Goals_H_FT', 'Goals_A_FT').")
     st.stop()
+
 
 games_today = filter_leagues(all_games.copy())
 if 'Goals_H_FT' in games_today.columns:
