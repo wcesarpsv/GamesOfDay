@@ -98,7 +98,7 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
         except Exception:
             continue
 
-        required = {"Goals_H_FT","Goals_A_FT","Diff_Power","Odd_H","Odd_D","Odd_A","Date","M_H","M_A"}
+        required = {"Goals_H_FT","Goals_A_FT","Diff_Power","OU_Total","Odd_H","Odd_D","Odd_A","Date","M_H","M_A"}
         if not required.issubset(df.columns):
             continue
 
@@ -252,7 +252,7 @@ if not df_filtered.empty:
     st.dataframe(df_filtered[[
         "Date", "League", "Home", "Away",
         "Odd_H", "Odd_D", "Odd_A",
-        "Diff_Power","OU_TOTAL", "M_H", "M_A",
+        "Diff_Power","OU_Total", "M_H", "M_A",
         "Diff_HT_P", "M_HT_H", "M_HT_A",
         "Goals_H_FT", "Goals_A_FT",
         "Bet Result", "Cumulative Profit"
