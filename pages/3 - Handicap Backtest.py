@@ -275,8 +275,8 @@ if not filtered_df.empty:
     st.subheader("📝 Filtered Matches")
     st.dataframe(filtered_df[[
         "Date","League","Home","Away",
-        "Asian_Line","Asian_Line_Away",
-        "AH_clean_home","AH_clean_for_side",
+        "Asian_Line_Away",
+        "Asian_Line_Home",
         "Diff_Power","M_H","M_A","Diff_HT_P",
         "Odd_H_Asi","Odd_A_Asi",
         "Goals_H_FT","Goals_A_FT",
