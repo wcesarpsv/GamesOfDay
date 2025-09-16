@@ -89,7 +89,7 @@ X_today = pd.concat([games_today[base_features], games_today_leagues], axis=1)
 
 # ---------------- Train & Evaluate ----------------
 X_train, X_val, y_train, y_val = train_test_split(
-    X, y, test_size=0.3, random_state=42, stratify=y
+    X, y, test_size=0.2, random_state=42, stratify=y
 )
 
 model_bin = RandomForestClassifier(
