@@ -12,7 +12,7 @@ st.title("📊 Bet Indicator – Random Forest + OU/BTTS")
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc","sudamericana"]
 
 # ---------------- Helpers ----------------
 def load_all_games(folder):
