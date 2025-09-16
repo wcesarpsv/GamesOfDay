@@ -40,12 +40,12 @@ def load_last_or_penultimate_csv(folder):
     # Selecionar último ou penúltimo via Streamlit
     option = st.radio(
         "📂 Escolha o arquivo para carregar:",
-        options=["Último CSV", "Penúltimo CSV"],
+        options=["Today Matches", "Yesterday Matches"],
         index=0,  # padrão = último
         horizontal=True
     )
 
-    if option == "Último CSV":
+    if option == "Today Matches":
         selected_file = files[-1]
     else:
         if len(files) >= 2:
