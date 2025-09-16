@@ -122,6 +122,14 @@ if not all_dfs:
     st.stop()
 
 df_all = pd.concat(all_dfs, ignore_index=True)
+
+# 🔑 Remove duplicados com base em Date, Home, Away (mantém o primeiro)
+df_all = df_all.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
+
+if _EXC_PATTERN and "League" in df_all.columns:
+    df_all = df_all[~df_all["League"].astype(str).str.contains(_EXC_PATTERN, na=False)]
+
+df_all = df_all.sort_values(by="Date").reset_index(drop=True)
 if _EXC_PATTERN and "League" in df_all.columns:
     df_all = df_all[~df_all["League"].astype(str).str.contains(_EXC_PATTERN, na=False)]
 
