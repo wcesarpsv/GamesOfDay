@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import os
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, log_loss, brier_score_loss, classification_report
+from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
 from sklearn.model_selection import train_test_split
 
 # ---------------- Page Config ----------------
@@ -97,13 +97,20 @@ def train_and_evaluate_rf(X, y, name, show_class_report=False):
 
     acc = accuracy_score(y_val, preds)
     ll = log_loss(y_val, probs)
-    bs = brier_score_loss(y_val, probs[:,1]) if probs.shape[1] == 2 else "—"
+
+    if probs.shape[1] == 2:
+        bs = brier_score_loss(y_val, probs[:,1])
+        bs = f"{bs:.3f}"
+    else:
+        y_onehot = pd.get_dummies(y_val).values
+        bs_raw = np.mean(np.sum((probs - y_onehot) ** 2, axis=1))
+        bs = f"{bs_raw:.3f} (multi)"
 
     metrics = {
         "Model": name,
         "Accuracy": f"{acc:.3f}",
         "LogLoss": f"{ll:.3f}",
-        "Brier": f"{bs:.3f}" if bs != "—" else "—"
+        "Brier": bs
     }
 
     if show_class_report:
