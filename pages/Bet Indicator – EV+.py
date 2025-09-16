@@ -12,7 +12,7 @@ st.title("📊 AI-Powered Bet Indicator – Random Forest + Kelly")
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
 MODELS_FOLDER = "Models"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa","afc"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa","afc","sudamericana"]
 
 os.makedirs(MODELS_FOLDER, exist_ok=True)
 
