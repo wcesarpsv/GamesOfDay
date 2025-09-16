@@ -4,9 +4,10 @@ import numpy as np
 import os
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
+from sklearn.model_selection import train_test_split
 
 # ---------------- Page Config ----------------
-st.set_page_config(page_title="Bet Indicator v1.1 (RF + OU + BTTS)", layout="wide")
+st.set_page_config(page_title="Bet Indicator v1.2 (RF + OU + BTTS)", layout="wide")
 st.title("📊 AI-Powered Bet Indicator – Random Forest + OU/BTTS")
 
 # ---------------- Configs ----------------
@@ -15,7 +16,7 @@ EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc"]
 
 # ---------------- Helpers ----------------
 def load_all_games(folder):
-    """Carrega todos os CSVs para montar histórico (com gols)."""
+    """Load all CSVs to build historical dataset (with goals)."""
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     if not files:
         return pd.DataFrame()
@@ -25,11 +26,11 @@ def load_all_games(folder):
             df = pd.read_csv(os.path.join(folder, file))
             df_list.append(df)
         except Exception as e:
-            st.error(f"Erro ao carregar {file}: {e}")
+            st.error(f"Error loading {file}: {e}")
     return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
 
 def load_last_two_csvs(folder):
-    """Carrega só o último ou penúltimo CSV (jogos do dia/ontem)."""
+    """Load only last or second last CSV (today/yesterday)."""
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     if not files:
         return pd.DataFrame()
@@ -37,7 +38,7 @@ def load_last_two_csvs(folder):
     options = [files[-1]]
     if len(files) >= 2:
         options.insert(0, files[-2])
-    selected_file = st.selectbox("📂 Escolha o arquivo (Hoje/ Ontem):", options=options, index=len(options)-1)
+    selected_file = st.selectbox("📂 Select file (Today / Yesterday):", options=options, index=len(options)-1)
     return pd.read_csv(os.path.join(folder, selected_file))
 
 def filter_leagues(df):
@@ -47,23 +48,23 @@ def filter_leagues(df):
     return df[~df['League'].str.lower().str.contains(pattern, na=False)].copy()
 
 # ---------------- Load Data ----------------
-st.info("📂 Carregando dados...")
+st.info("📂 Loading data...")
 
-# Histórico: todos os CSVs (só com jogos já finalizados)
+# Historical dataset
 all_games = filter_leagues(load_all_games(GAMES_FOLDER))
 history = all_games.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
 
 if history.empty:
-    st.error("⚠️ Nenhum histórico com gols encontrado em GamesDay.")
+    st.error("⚠️ No historical data with goals found in GamesDay.")
     st.stop()
 
-# Jogos do dia: último ou penúltimo CSV (mesmo sem gols)
+# Games of today/yesterday
 games_today = filter_leagues(load_last_two_csvs(GAMES_FOLDER))
 if games_today.empty:
-    st.error("⚠️ Nenhum jogo encontrado no arquivo selecionado.")
+    st.error("⚠️ No games found in the selected file.")
     st.stop()
 
-# ---------------- Targets (só para treino) ----------------
+# ---------------- Targets ----------------
 # 1X2
 history['Target'] = history.apply(
     lambda row: 0 if row['Goals_H_FT'] > row['Goals_A_FT']
@@ -98,12 +99,17 @@ history_leagues = pd.get_dummies(history['League'], prefix="League")
 games_today_leagues = pd.get_dummies(games_today['League'], prefix="League")
 games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
 
-# Montar features finais
+# Final feature sets
 X = pd.concat([history[base_features], history_leagues], axis=1)
 X_today = pd.concat([games_today[base_features], games_today_leagues], axis=1)
 
-# ---------------- Train models ----------------
-def train_rf(X, y):
+# ---------------- Train & Evaluate ----------------
+def train_and_evaluate_rf(X, y, name):
+    """Train RF model with train/validation split and return metrics + trained model."""
+    X_train, X_val, y_train, y_val = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+
     model = RandomForestClassifier(
         n_estimators=300,
         min_samples_split=5,
@@ -112,47 +118,41 @@ def train_rf(X, y):
         random_state=42,
         class_weight="balanced_subsample"
     )
-    model.fit(X, y)
-    return model
+    model.fit(X_train, y_train)
 
-# 1X2
-y = history['Target']
-model_multi = train_rf(X, y)
+    preds = model.predict(X_val)
+    probs = model.predict_proba(X_val)
 
-# Over/Under
-y_ou = history['Target_OU25']
-model_ou = train_rf(X, y_ou)
+    acc = accuracy_score(y_val, preds)
+    ll = log_loss(y_val, probs)
+    bs = brier_score_loss(y_val, probs[:,1]) if probs.shape[1] == 2 else "—"
 
-# BTTS
-y_btts = history['Target_BTTS']
-model_btts = train_rf(X, y_btts)
-
-# ---------------- Evaluation ----------------
-def evaluate_model(model, X, y, name):
-    preds = model.predict(X)
-    probs = model.predict_proba(X)
-    acc = accuracy_score(y, preds)
-    ll = log_loss(y, probs)
-    bs = brier_score_loss(y, probs[:,1]) if probs.shape[1] == 2 else "—"
     return {
-        "Modelo": name,
-        "Acurácia": f"{acc:.3f}",
+        "Model": name,
+        "Accuracy": f"{acc:.3f}",
         "LogLoss": f"{ll:.3f}",
         "Brier": f"{bs:.3f}" if bs != "—" else "—"
-    }
+    }, model
 
+# Train/evaluate each model
 stats = []
-stats.append(evaluate_model(model_multi, X, y, "1X2"))
-stats.append(evaluate_model(model_ou, X, y_ou, "Over/Under 2.5"))
-stats.append(evaluate_model(model_btts, X, y_btts, "BTTS"))
+
+res, model_multi = train_and_evaluate_rf(X, history['Target'], "1X2")
+stats.append(res)
+
+res, model_ou = train_and_evaluate_rf(X, history['Target_OU25'], "Over/Under 2.5")
+stats.append(res)
+
+res, model_btts = train_and_evaluate_rf(X, history['Target_BTTS'], "BTTS")
+stats.append(res)
 
 df_stats = pd.DataFrame(stats)
 
-# Exibir estatísticas
-st.markdown("### 📊 Estatísticas do Modelo (Treino)")
+# Display stats
+st.markdown("### 📊 Model Statistics (Validation)")
 st.dataframe(df_stats, use_container_width=True)
 
-# ---------------- Predict ----------------
+# ---------------- Predict Today's Games ----------------
 # 1X2
 probs = model_multi.predict_proba(X_today)
 games_today['p_home'] = probs[:, 0]
@@ -176,19 +176,19 @@ def color_prob(val, color):
 
 def style_probs(val, col):
     if col == 'p_home':
-        return color_prob(val, "0,200,0")      # verde
+        return color_prob(val, "0,200,0")      # green
     elif col == 'p_draw':
-        return color_prob(val, "150,150,150")  # cinza
+        return color_prob(val, "150,150,150")  # gray
     elif col == 'p_away':
-        return color_prob(val, "255,140,0")    # laranja
+        return color_prob(val, "255,140,0")    # orange
     elif col == 'p_over25':
-        return color_prob(val, "0,100,255")    # azul
+        return color_prob(val, "0,100,255")    # blue
     elif col == 'p_under25':
-        return color_prob(val, "128,0,128")    # roxo
+        return color_prob(val, "128,0,128")    # purple
     elif col == 'p_btts_yes':
-        return color_prob(val, "0,200,200")    # ciano
+        return color_prob(val, "0,200,200")    # cyan
     elif col == 'p_btts_no':
-        return color_prob(val, "200,0,0")      # vermelho
+        return color_prob(val, "200,0,0")      # red
     return ''
 
 # ---------------- Display ----------------
@@ -217,5 +217,5 @@ styled_df = (
     .applymap(lambda v: style_probs(v, 'p_btts_no'), subset=['p_btts_no'])
 )
 
-st.markdown("### 📌 Probabilidades dos Jogos Selecionados")
+st.markdown("### 📌 Predictions for Selected Games")
 st.dataframe(styled_df, use_container_width=True, height=1000)
