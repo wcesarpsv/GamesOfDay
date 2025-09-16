@@ -3,29 +3,31 @@ import pandas as pd
 import numpy as np
 import os
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
 
 # ---------------- Page Config ----------------
-st.set_page_config(page_title="Bet Indicator v3.3 (RF + League + OU + BTTS)", layout="wide")
-st.title("📊 AI-Powered Bet Indicator – Random Forest + Kelly + OU/BTTS")
+st.set_page_config(page_title="Bet Indicator v3.4 (RF + OU + BTTS)", layout="wide")
+st.title("📊 AI-Powered Bet Indicator – Random Forest + OU/BTTS")
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
-MODELS_FOLDER = "Models"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc"]
 
-os.makedirs(MODELS_FOLDER, exist_ok=True)
-
 # ---------------- Helpers ----------------
-def load_selected_csv(folder):
+def load_last_two_csvs(folder):
+    """Carrega apenas o último e o penúltimo CSV (hoje e ontem)."""
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     if not files:
-        return pd.DataFrame()
+        return None
+    
     files = sorted(files)
+    options = [files[-1]]
+    if len(files) >= 2:
+        options.insert(0, files[-2])  # ontem primeiro, hoje depois
+
     selected_file = st.selectbox(
-        "📂 Escolha o arquivo para carregar:",
-        options=files,
-        index=len(files) - 1  # último como padrão
+        "📂 Escolha o arquivo:",
+        options=options,
+        index=len(options) - 1  # padrão = hoje
     )
     return pd.read_csv(os.path.join(folder, selected_file))
 
@@ -36,29 +38,23 @@ def filter_leagues(df):
     return df[~df['League'].str.lower().str.contains(pattern, na=False)].copy()
 
 # ---------------- Load Data ----------------
-st.info("📂 Loading historical data...")
-all_games = filter_leagues(load_selected_csv(GAMES_FOLDER))
-if all_games.empty:
-    st.warning("No valid historical data found.")
+st.info("📂 Carregando dados...")
+all_games = load_last_two_csvs(GAMES_FOLDER)
+if all_games is None or all_games.empty:
+    st.error("Nenhum CSV válido encontrado.")
     st.stop()
 
+all_games = filter_leagues(all_games)
+
+# histórico só se tiver gols preenchidos
 if 'Goals_H_FT' in all_games.columns and 'Goals_A_FT' in all_games.columns:
     history = all_games.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
-    if history.empty:
-        st.warning("No valid historical results found.")
-        st.stop()
 else:
-    st.error("⚠️ O arquivo selecionado não contém colunas de gols ('Goals_H_FT', 'Goals_A_FT').")
+    st.error("⚠️ O arquivo selecionado não contém resultados (colunas de gols). Selecione outro.")
     st.stop()
 
-
-games_today = filter_leagues(all_games.copy())
-if 'Goals_H_FT' in games_today.columns:
-    games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
-
-if games_today.empty:
-    st.warning("No valid games today.")
-    st.stop()
+# jogos do arquivo selecionado (previsão SEM usar gols)
+games_today = all_games.copy()
 
 # ---------------- Targets ----------------
 # 1X2
@@ -84,9 +80,11 @@ history['Target_BTTS'] = history.apply(
 history['Diff_M'] = history['M_H'] - history['M_A']
 games_today['Diff_M'] = games_today['M_H'] - games_today['M_A']
 
-base_features = ['Odd_H', 'Odd_A', 'Odd_D',
-                 'M_H', 'M_A', 'Diff_Power', 'Diff_M',
-                 'Diff_HT_P', 'OU_Total']
+base_features = [
+    'Odd_H', 'Odd_A', 'Odd_D',
+    'M_H', 'M_A', 'Diff_Power', 'Diff_M',
+    'Diff_HT_P', 'OU_Total'
+]
 
 # One-hot encode League
 history_leagues = pd.get_dummies(history['League'], prefix="League")
@@ -139,44 +137,6 @@ probs_btts = model_btts.predict_proba(X_today)
 games_today['p_btts_yes'] = probs_btts[:, 1]
 games_today['p_btts_no'] = probs_btts[:, 0]
 
-# ---------------- Kelly Criterion Helpers ----------------
-def odd_min(prob):
-    return 1 / prob if prob > 0 else np.inf
-
-def kelly_fraction_pct(prob, odds, scale=0.1):
-    b = odds - 1
-    q = 1 - prob
-    f_star = (b * prob - q) / b
-    return max(0, f_star * 100 * scale)
-
-def calc_kelly_row(row, margin_pre=0.1, margin_live=0.2, scale=0.1):
-    probs = {"Home": row['p_home'], "Draw": row['p_draw'], "Away": row['p_away']}
-    odds = {"Home": row['Odd_H'], "Draw": row['Odd_D'], "Away": row['Odd_A']}
-    best_market = max(probs, key=probs.get)
-    best_prob = probs[best_market]
-    best_odds = odds[best_market]
-    min_odd_base = odd_min(best_prob)
-    min_odd_pre = min_odd_base * (1 + margin_pre)
-    min_odd_live = min_odd_base * (1 + margin_live)
-    if best_odds >= min_odd_pre:
-        stake_pre = kelly_fraction_pct(best_prob, best_odds, scale=scale)
-        stake_live = 0
-    else:
-        stake_pre = 0
-        stake_live = kelly_fraction_pct(best_prob, min_odd_live, scale=scale)
-    return pd.Series({
-        "Best_Market": best_market,
-        "Best_Prob": best_prob,
-        "Best_Odds": best_odds,
-        "Odd_Min_Base": min_odd_base,
-        "Odd_Min_Pre": min_odd_pre,
-        "Odd_Min_Live": min_odd_live,
-        "Stake_Pre(%)": stake_pre,
-        "Stake_Live(%)": stake_live
-    })
-
-games_today = games_today.join(games_today.apply(calc_kelly_row, axis=1))
-
 # ---------------- Styling ----------------
 def color_prob(val, color):
     alpha = int(val * 255)
@@ -199,23 +159,13 @@ def style_probs(val, col):
         return color_prob(val, "200,0,0")      # vermelho
     return ''
 
-def highlight_stakes(val, col):
-    if col == 'Stake_Pre(%)' and val > 0:
-        return 'background-color: rgba(0,200,0,0.3); font-weight: bold;'
-    if col == 'Stake_Live(%)' and val > 0:
-        return 'background-color: rgba(255,140,0,0.3); font-weight: bold;'
-    return ''
-
 # ---------------- Display ----------------
 cols_final = [
     'Date', 'Time', 'League', 'Home', 'Away',
     'Odd_H', 'Odd_D', 'Odd_A',
     'p_home', 'p_draw', 'p_away',
     'p_over25', 'p_under25',
-    'p_btts_yes', 'p_btts_no',
-    'Best_Market',
-    'Odd_Min_Base', "Odd_Min_Live",
-    'Stake_Pre(%)', 'Stake_Live(%)'
+    'p_btts_yes', 'p_btts_no'
 ]
 
 styled_df = (
@@ -225,23 +175,14 @@ styled_df = (
         'p_home': '{:.1%}', 'p_draw': '{:.1%}', 'p_away': '{:.1%}',
         'p_over25': '{:.1%}', 'p_under25': '{:.1%}',
         'p_btts_yes': '{:.1%}', 'p_btts_no': '{:.1%}',
-        'Odd_Min_Base': '{:.2f}', 'Odd_Min_Live': '{:.2f}',
-        'Stake_Pre(%)': '{:.2f}%', 'Stake_Live(%)': '{:.2f}%'
     }, na_rep='—')
-    # 1X2
     .applymap(lambda v: style_probs(v, 'p_home'), subset=['p_home'])
     .applymap(lambda v: style_probs(v, 'p_draw'), subset=['p_draw'])
     .applymap(lambda v: style_probs(v, 'p_away'), subset=['p_away'])
-    # OU
     .applymap(lambda v: style_probs(v, 'p_over25'), subset=['p_over25'])
     .applymap(lambda v: style_probs(v, 'p_under25'), subset=['p_under25'])
-    # BTTS
     .applymap(lambda v: style_probs(v, 'p_btts_yes'), subset=['p_btts_yes'])
     .applymap(lambda v: style_probs(v, 'p_btts_no'), subset=['p_btts_no'])
-    # Stakes
-    .applymap(lambda v: highlight_stakes(v, 'Stake_Pre(%)'), subset=['Stake_Pre(%)'])
-    .applymap(lambda v: highlight_stakes(v, 'Stake_Live(%)'), subset=['Stake_Live(%)'])
-    .set_properties(subset=['Best_Market'], **{'text-align': 'center'})
 )
 
 st.dataframe(styled_df, use_container_width=True, height=1000)
