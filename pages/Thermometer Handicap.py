@@ -21,7 +21,7 @@ st.markdown("""
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa","AFC"]
 
 M_DIFF_MARGIN = 0.30
 POWER_MARGIN = 10
