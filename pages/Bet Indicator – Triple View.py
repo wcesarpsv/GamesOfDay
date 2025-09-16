@@ -85,7 +85,7 @@ X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], a
 # ---------------- Train & Evaluate ----------------
 def train_and_evaluate_rf(X, y, name, show_class_report=False):
     X_train, X_val, y_train, y_val = train_test_split(
-        X, y, test_size=0.3, random_state=42, stratify=y
+        X, y, test_size=0.2, random_state=42, stratify=y
     )
     model = RandomForestClassifier(n_estimators=300, random_state=42, class_weight="balanced_subsample")
     model.fit(X_train, y_train)
