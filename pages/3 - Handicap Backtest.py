@@ -166,7 +166,7 @@ for file in sorted(os.listdir(GAMES_FOLDER)):
     df["Asian_Line_Away"] = df["AH_components_away"].apply(canonical)
     df["AH_components_home"] = df["AH_components_away"].apply(lambda lst: [-x for x in lst])
     df = df[df["AH_components_home"].map(len) > 0].copy()
-    df["AH_clean_home"] = df["AH_components_home"].apply(lambda lst: sum(lst)/len(lst))
+    df["Asian_Line_Home"] = df["AH_components_home"].apply(lambda lst: sum(lst)/len(lst))
     df["Odd_H_Asi"] = pd.to_numeric(df["Odd_H_Asi"], errors="coerce")
     df["Odd_A_Asi"] = pd.to_numeric(df["Odd_A_Asi"], errors="coerce")
     df = df.dropna(subset=["Odd_H_Asi","Odd_A_Asi","Goals_H_FT","Goals_A_FT"])
@@ -210,7 +210,7 @@ ma_sel = range_filter_hybrid("📊 M_A", float(df_all["M_A"].min()), float(df_al
 dp_sel = range_filter_hybrid("📊 Diff_Power", float(df_all["Diff_Power"].min()), float(df_all["Diff_Power"].max()), 0.01, "diff_power")
 
 # ⚖️ AH (side)
-df_all["AH_clean_for_side"] = df_all["AH_clean_home"] if bet_on=="Home" else -df_all["AH_clean_home"]
+df_all["AH_clean_for_side"] = df_all["Asian_Line_Home"] if bet_on=="Home" else -df_all["Asian_Line_Home"]
 ah_sel = range_filter_hybrid("⚖️ Asian Handicap (side line)", float(df_all["AH_clean_for_side"].min()), float(df_all["AH_clean_for_side"].max()), 0.25, "ah_for_side")
 
 # ➕ Extras
@@ -275,8 +275,8 @@ if not filtered_df.empty:
     st.subheader("📝 Filtered Matches")
     st.dataframe(filtered_df[[
         "Date","League","Home","Away",
-        "Asian_Line_Away","AH_clean_for_side",
-        "AH_clean_home",
+        "Asian_Line_Home",
+        "Asian_Line_Away",        
         "Diff_Power","M_H","M_A","Diff_HT_P",
         "Odd_H_Asi","Odd_A_Asi",
         "Goals_H_FT","Goals_A_FT",
