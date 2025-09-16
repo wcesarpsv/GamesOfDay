@@ -197,4 +197,28 @@ def highlight_stakes(val, col):
 
 # ---------------- Display ----------------
 cols_final = [
-    'Date', 'Time', 'League', 'Home
+    'Date', 'Time', 'League', 'Home', 'Away',
+    'Odd_H', 'Odd_D', 'Odd_A',
+    'p_home', 'p_draw', 'p_away',
+    'Best_Market',
+    'Odd_Min_Base', "Odd_Min_Live",
+    'Stake_Pre(%)', 'Stake_Live(%)'
+]
+
+styled_df = (
+    games_today[cols_final]
+    .style.format({
+        'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
+        'p_home': '{:.1%}', 'p_draw': '{:.1%}', 'p_away': '{:.1%}',
+        'Odd_Min_Base': '{:.2f}', 'Odd_Min_Live': '{:.2f}',
+        'Stake_Pre(%)': '{:.2f}%', 'Stake_Live(%)': '{:.2f}%'
+    }, na_rep='—')
+    .applymap(lambda v: style_probs(v, 'p_home'), subset=['p_home'])
+    .applymap(lambda v: style_probs(v, 'p_draw'), subset=['p_draw'])
+    .applymap(lambda v: style_probs(v, 'p_away'), subset=['p_away'])
+    .applymap(lambda v: highlight_stakes(v, 'Stake_Pre(%)'), subset=['Stake_Pre(%)'])
+    .applymap(lambda v: highlight_stakes(v, 'Stake_Live(%)'), subset=['Stake_Live(%)'])
+    .set_properties(subset=['Best_Market'], **{'text-align': 'center'})  # centraliza
+)
+
+st.dataframe(styled_df, use_container_width=True, height=1000)
