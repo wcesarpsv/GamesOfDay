@@ -12,28 +12,21 @@ st.title("📊 Bet Indicator – Random Forest + OU/BTTS")
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
-FULLBASE_FOLDER = "FullBaseSite"
-FULLBASE_FILE = "FullBaseSite.csv"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc"]
 
 # ---------------- Helpers ----------------
-def load_fullbase(folder, filename):
-    path = os.path.join(folder, filename)
-    if not os.path.exists(path):
-        st.error(f"⚠️ Historical base not found: {path}")
-        return pd.DataFrame()
-    return pd.read_csv(path)
-
-def load_last_two_csvs(folder):
+def load_all_games(folder):
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     if not files:
         return pd.DataFrame()
-    files = sorted(files)
-    options = [files[-1]]
-    if len(files) >= 2:
-        options.insert(0, files[-2])
-    selected_file = options[-1]  # default = last file
-    return pd.read_csv(os.path.join(folder, selected_file))
+    return pd.concat([pd.read_csv(os.path.join(folder, f)) for f in files], ignore_index=True)
+
+def load_last_csv(folder):
+    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
+    if not files:
+        return pd.DataFrame()
+    latest_file = max(files)
+    return pd.read_csv(os.path.join(folder, latest_file))
 
 def filter_leagues(df):
     if df.empty or 'League' not in df.columns:
@@ -44,17 +37,19 @@ def filter_leagues(df):
 # ---------------- Load Data ----------------
 st.info("📂 Loading data...")
 
-history = load_fullbase(FULLBASE_FOLDER, FULLBASE_FILE)
-history = filter_leagues(history)
+history = filter_leagues(load_all_games(GAMES_FOLDER))
 history = history.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
 
 if history.empty:
-    st.error("⚠️ No historical data found in FullBaseSite.")
+    st.error("⚠️ No valid historical data found in GamesDay.")
     st.stop()
 
-games_today = filter_leagues(load_last_two_csvs(GAMES_FOLDER))
+games_today = filter_leagues(load_last_csv(GAMES_FOLDER))
+if 'Goals_H_FT' in games_today.columns:
+    games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
+
 if games_today.empty:
-    st.error("⚠️ No games found in GamesDay.")
+    st.error("⚠️ No valid games today.")
     st.stop()
 
 # ---------------- Targets ----------------
@@ -73,10 +68,12 @@ games_today['Diff_M'] = games_today['M_H'] - games_today['M_A']
 features_1x2 = ["Odd_H","Odd_D","Odd_A","Diff_Power","M_H","M_A","Diff_M","Diff_HT_P","M_HT_H","M_HT_A"]
 features_ou_btts = ["Odd_H","Odd_D","Odd_A","Diff_Power","M_H","M_A","Diff_M","Diff_HT_P","OU_Total"]
 
+# One-hot encode leagues
 history_leagues = pd.get_dummies(history['League'], prefix="League")
 games_today_leagues = pd.get_dummies(games_today['League'], prefix="League")
 games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
 
+# Final datasets
 X_1x2 = pd.concat([history[features_1x2], history_leagues], axis=1)
 X_ou = pd.concat([history[features_ou_btts], history_leagues], axis=1)
 X_btts = pd.concat([history[features_ou_btts], history_leagues], axis=1)
@@ -90,7 +87,7 @@ def train_and_evaluate_rf(X, y, name, show_class_report=False):
     X_train, X_val, y_train, y_val = train_test_split(
         X, y, test_size=0.3, random_state=42, stratify=y
     )
-    model = RandomForestClassifier(n_estimators=300, random_state=42)
+    model = RandomForestClassifier(n_estimators=300, random_state=42, class_weight="balanced_subsample")
     model.fit(X_train, y_train)
     preds = model.predict(X_val)
     probs = model.predict_proba(X_val)
@@ -179,5 +176,5 @@ styled_df = (
     .applymap(lambda v: style_probs(v, 'p_btts_no'), subset=['p_btts_no'])
 )
 
-st.markdown("### 📌 Predictions for Selected Games")
+st.markdown("### 📌 Predictions for Today's Games")
 st.dataframe(styled_df, use_container_width=True, height=1000)
