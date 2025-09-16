@@ -46,15 +46,19 @@ if all_games is None or all_games.empty:
 
 all_games = filter_leagues(all_games)
 
-# histórico só se tiver gols preenchidos
-if 'Goals_H_FT' in all_games.columns and 'Goals_A_FT' in all_games.columns:
-    history = all_games.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
+
+# Histórico: deve vir de uma base consolidada (com gols)
+history_file = os.path.join(GAMES_FOLDER, "FullBase_NowGoal_Total.csv")  # exemplo
+if os.path.exists(history_file):
+    history = pd.read_csv(history_file)
+    history = history.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
 else:
-    st.error("⚠️ O arquivo selecionado não contém resultados (colunas de gols). Selecione outro.")
+    st.error("⚠️ Arquivo histórico com gols não encontrado. Adicione 'FullBase_NowGoal_Total.csv'.")
     st.stop()
 
-# jogos do arquivo selecionado (previsão SEM usar gols)
+# Arquivo de hoje/ontem (SEM usar gols para previsão)
 games_today = all_games.copy()
+
 
 # ---------------- Targets ----------------
 # 1X2
