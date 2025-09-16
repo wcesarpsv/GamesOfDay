@@ -5,7 +5,7 @@ import os
 from sklearn.ensemble import RandomForestClassifier
 
 # ---------------- Page Config ----------------
-st.set_page_config(page_title="Bet Indicator v3.4 (RF + OU + BTTS)", layout="wide")
+st.set_page_config(page_title="Bet Indicator v3.5 (RF + OU + BTTS)", layout="wide")
 st.title("📊 AI-Powered Bet Indicator – Random Forest + OU/BTTS")
 
 # ---------------- Configs ----------------
@@ -13,22 +13,30 @@ GAMES_FOLDER = "GamesDay"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc"]
 
 # ---------------- Helpers ----------------
-def load_last_two_csvs(folder):
-    """Carrega apenas o último e o penúltimo CSV (hoje e ontem)."""
+def load_all_games(folder):
+    """Carrega todos os CSVs para montar histórico (com gols)."""
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     if not files:
-        return None
-    
+        return pd.DataFrame()
+    df_list = []
+    for file in files:
+        try:
+            df = pd.read_csv(os.path.join(folder, file))
+            df_list.append(df)
+        except Exception as e:
+            st.error(f"Erro ao carregar {file}: {e}")
+    return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
+
+def load_last_two_csvs(folder):
+    """Carrega só o último ou penúltimo CSV (jogos do dia/ontem)."""
+    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
+    if not files:
+        return pd.DataFrame()
     files = sorted(files)
     options = [files[-1]]
     if len(files) >= 2:
-        options.insert(0, files[-2])  # ontem primeiro, hoje depois
-
-    selected_file = st.selectbox(
-        "📂 Escolha o arquivo:",
-        options=options,
-        index=len(options) - 1  # padrão = hoje
-    )
+        options.insert(0, files[-2])
+    selected_file = st.selectbox("📂 Escolha o arquivo (Hoje/ Ontem):", options=options, index=len(options)-1)
     return pd.read_csv(os.path.join(folder, selected_file))
 
 def filter_leagues(df):
@@ -39,28 +47,22 @@ def filter_leagues(df):
 
 # ---------------- Load Data ----------------
 st.info("📂 Carregando dados...")
-all_games = load_last_two_csvs(GAMES_FOLDER)
-if all_games is None or all_games.empty:
-    st.error("Nenhum CSV válido encontrado.")
+
+# Histórico: todos os CSVs (só com jogos já finalizados)
+all_games = filter_leagues(load_all_games(GAMES_FOLDER))
+history = all_games.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
+
+if history.empty:
+    st.error("⚠️ Nenhum histórico com gols encontrado em GamesDay.")
     st.stop()
 
-all_games = filter_leagues(all_games)
-
-
-# Histórico: deve vir de uma base consolidada (com gols)
-history_file = os.path.join(GAMES_FOLDER)  # exemplo
-if os.path.exists(history_file):
-    history = pd.read_csv(history_file)
-    history = history.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
-else:
-    st.error("⚠️ Arquivo histórico com gols não encontrado. Adicione 'FullBase_NowGoal_Total.csv'.")
+# Jogos do dia: último ou penúltimo CSV (mesmo sem gols)
+games_today = filter_leagues(load_last_two_csvs(GAMES_FOLDER))
+if games_today.empty:
+    st.error("⚠️ Nenhum jogo encontrado no arquivo selecionado.")
     st.stop()
 
-# Arquivo de hoje/ontem (SEM usar gols para previsão)
-games_today = all_games.copy()
-
-
-# ---------------- Targets ----------------
+# ---------------- Targets (só para treino) ----------------
 # 1X2
 history['Target'] = history.apply(
     lambda row: 0 if row['Goals_H_FT'] > row['Goals_A_FT']
