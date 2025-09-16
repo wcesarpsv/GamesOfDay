@@ -4,6 +4,7 @@ import numpy as np
 import os
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, log_loss
 
 # ---------------- Page Config ----------------
 st.set_page_config(page_title="Bet Indicator v3.2 (RF + League + Diff_M)", layout="wide")
@@ -89,7 +90,11 @@ y = history['Target']
 
 X_today = pd.concat([games_today[base_features], games_today_leagues], axis=1)
 
-# ---------------- Train model ----------------
+# ---------------- Train & Evaluate ----------------
+X_train, X_val, y_train, y_val = train_test_split(
+    X, y, test_size=0.3, random_state=42, stratify=y
+)
+
 model_multi = RandomForestClassifier(
     n_estimators=300,
     min_samples_split=5,
@@ -99,11 +104,39 @@ model_multi = RandomForestClassifier(
     random_state=42,
     class_weight="balanced_subsample"
 )
-model_multi.fit(X, y)
+model_multi.fit(X_train, y_train)
+
+preds = model_multi.predict(X_val)
+probs_val = model_multi.predict_proba(X_val)
+
+# Metrics
+acc = accuracy_score(y_val, preds)
+ll = log_loss(y_val, probs_val)
+
+# Brier multiclasse
+y_onehot = pd.get_dummies(y_val).values
+brier_multi = np.mean(np.sum((probs_val - y_onehot) ** 2, axis=1))
+
+# Winrates por classe
+winrate_home = (preds[y_val==0] == 0).mean()
+winrate_draw = (preds[y_val==1] == 1).mean()
+winrate_away = (preds[y_val==2] == 2).mean()
+
+df_stats = pd.DataFrame([{
+    "Model": "1X2",
+    "Accuracy": f"{acc:.3f}",
+    "LogLoss": f"{ll:.3f}",
+    "Brier": f"{brier_multi:.3f} (multi)",
+    "Winrate_Home": f"{winrate_home:.2%}",
+    "Winrate_Draw": f"{winrate_draw:.2%}",
+    "Winrate_Away": f"{winrate_away:.2%}"
+}])
+
+st.markdown("### 📊 Model Statistics (Validation)")
+st.dataframe(df_stats, use_container_width=True)
 
 # ---------------- Predict Today's Games ----------------
 probs = model_multi.predict_proba(X_today)
-
 games_today['p_home'] = probs[:,0]
 games_today['p_draw'] = probs[:,1]
 games_today['p_away'] = probs[:,2]
@@ -133,7 +166,6 @@ styled_df = (
     games_today[cols_to_show]
     .style.format({
         'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
-        'M_H': '{:.2f}', 'M_A': '{:.2f}', 'Diff_Power': '{:.2f}', 'Diff_M': '{:.2f}',
         'p_home': '{:.1%}', 'p_draw': '{:.1%}', 'p_away': '{:.1%}'
     }, na_rep='—')
     .applymap(lambda v: style_probs(v, 'p_home'), subset=['p_home'])
@@ -141,4 +173,5 @@ styled_df = (
     .applymap(lambda v: style_probs(v, 'p_away'), subset=['p_away'])
 )
 
+st.markdown("### 📌 Predictions for Today's Games")
 st.dataframe(styled_df, use_container_width=True, height=1000)
