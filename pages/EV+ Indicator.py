@@ -30,12 +30,31 @@ def load_all_games(folder):
             st.error(f"Error loading {file}: {e}")
     return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
 
-def load_last_csv(folder):
+def load_last_or_penultimate_csv(folder):
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
-    if not files: 
+    if not files:
         return pd.DataFrame()
-    latest_file = max(files)
-    return pd.read_csv(os.path.join(folder, latest_file))
+
+    files = sorted(files)  # ordena pela data no nome (ou ordem alfabética)
+    
+    # Selecionar último ou penúltimo via Streamlit
+    option = st.radio(
+        "📂 Escolha o arquivo para carregar:",
+        options=["Último CSV", "Penúltimo CSV"],
+        index=0,  # padrão = último
+        horizontal=True
+    )
+
+    if option == "Último CSV":
+        selected_file = files[-1]
+    else:
+        if len(files) >= 2:
+            selected_file = files[-2]
+        else:
+            st.warning("⚠️ Só existe um arquivo disponível, carregando o último.")
+            selected_file = files[-1]
+
+    return pd.read_csv(os.path.join(folder, selected_file))
 
 def filter_leagues(df):
     if df.empty or 'League' not in df.columns:
@@ -55,7 +74,7 @@ if history.empty:
     st.warning("No valid historical results found.")
     st.stop()
 
-games_today = filter_leagues(load_last_csv(GAMES_FOLDER))
+games_today = filter_leagues(load_last_or_penultimate_csv(GAMES_FOLDER))
 if 'Goals_H_FT' in games_today.columns:
     games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
 
