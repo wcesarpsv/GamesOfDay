@@ -64,8 +64,6 @@ if not all_dfs:
 
 df_all = pd.concat(all_dfs, ignore_index=True)
 
-df_all = pd.concat(all_dfs, ignore_index=True)
-
 # 🔑 Remove duplicados com base em Date, Home, Away (mantém o primeiro)
 df_all = df_all.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
 
