@@ -3,9 +3,10 @@ import pandas as pd
 import numpy as np
 import os
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
 
 # ---------------- Page Config ----------------
-st.set_page_config(page_title="Bet Indicator v3.5 (RF + OU + BTTS)", layout="wide")
+st.set_page_config(page_title="Bet Indicator v1.1 (RF + OU + BTTS)", layout="wide")
 st.title("📊 AI-Powered Bet Indicator – Random Forest + OU/BTTS")
 
 # ---------------- Configs ----------------
@@ -126,6 +127,31 @@ model_ou = train_rf(X, y_ou)
 y_btts = history['Target_BTTS']
 model_btts = train_rf(X, y_btts)
 
+# ---------------- Evaluation ----------------
+def evaluate_model(model, X, y, name):
+    preds = model.predict(X)
+    probs = model.predict_proba(X)
+    acc = accuracy_score(y, preds)
+    ll = log_loss(y, probs)
+    bs = brier_score_loss(y, probs[:,1]) if probs.shape[1] == 2 else "—"
+    return {
+        "Modelo": name,
+        "Acurácia": f"{acc:.3f}",
+        "LogLoss": f"{ll:.3f}",
+        "Brier": f"{bs:.3f}" if bs != "—" else "—"
+    }
+
+stats = []
+stats.append(evaluate_model(model_multi, X, y, "1X2"))
+stats.append(evaluate_model(model_ou, X, y_ou, "Over/Under 2.5"))
+stats.append(evaluate_model(model_btts, X, y_btts, "BTTS"))
+
+df_stats = pd.DataFrame(stats)
+
+# Exibir estatísticas
+st.markdown("### 📊 Estatísticas do Modelo (Treino)")
+st.dataframe(df_stats, use_container_width=True)
+
 # ---------------- Predict ----------------
 # 1X2
 probs = model_multi.predict_proba(X_today)
@@ -191,4 +217,5 @@ styled_df = (
     .applymap(lambda v: style_probs(v, 'p_btts_no'), subset=['p_btts_no'])
 )
 
+st.markdown("### 📌 Probabilidades dos Jogos Selecionados")
 st.dataframe(styled_df, use_container_width=True, height=1000)
