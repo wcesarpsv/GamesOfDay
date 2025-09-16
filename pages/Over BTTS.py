@@ -3,30 +3,26 @@ import pandas as pd
 import numpy as np
 import os
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, log_loss, brier_score_loss, classification_report, confusion_matrix
+from sklearn.metrics import accuracy_score, log_loss, brier_score_loss, classification_report
 from sklearn.model_selection import train_test_split
 
 # ---------------- Page Config ----------------
-st.set_page_config(page_title="Bet Indicator v1.3 (RF + OU + BTTS)", layout="wide")
-st.title("📊 AI-Powered Bet Indicator – Random Forest + OU/BTTS")
+st.set_page_config(page_title="Bet Indicator v1.4 (RF + OU + BTTS)", layout="wide")
+st.title("📊 Bet Indicator – Random Forest + OU/BTTS")
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
+FULLBASE_FOLDER = "FullBaseSite"
+FULLBASE_FILE = "FullBaseSite.csv"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc"]
 
 # ---------------- Helpers ----------------
-def load_all_games(folder):
-    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
-    if not files:
+def load_fullbase(folder, filename):
+    path = os.path.join(folder, filename)
+    if not os.path.exists(path):
+        st.error(f"⚠️ Historical base not found: {path}")
         return pd.DataFrame()
-    df_list = []
-    for file in files:
-        try:
-            df = pd.read_csv(os.path.join(folder, file))
-            df_list.append(df)
-        except Exception as e:
-            st.error(f"Error loading {file}: {e}")
-    return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
+    return pd.read_csv(path)
 
 def load_last_two_csvs(folder):
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
@@ -36,7 +32,7 @@ def load_last_two_csvs(folder):
     options = [files[-1]]
     if len(files) >= 2:
         options.insert(0, files[-2])
-    selected_file = st.selectbox("📂 Select file (Today / Yesterday):", options=options, index=len(options)-1)
+    selected_file = options[-1]  # default = last file
     return pd.read_csv(os.path.join(folder, selected_file))
 
 def filter_leagues(df):
@@ -48,16 +44,17 @@ def filter_leagues(df):
 # ---------------- Load Data ----------------
 st.info("📂 Loading data...")
 
-all_games = filter_leagues(load_all_games(GAMES_FOLDER))
-history = all_games.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
+history = load_fullbase(FULLBASE_FOLDER, FULLBASE_FILE)
+history = filter_leagues(history)
+history = history.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
 
 if history.empty:
-    st.error("⚠️ No historical data with goals found in GamesDay.")
+    st.error("⚠️ No historical data found in FullBaseSite.")
     st.stop()
 
 games_today = filter_leagues(load_last_two_csvs(GAMES_FOLDER))
 if games_today.empty:
-    st.error("⚠️ No games found in the selected file.")
+    st.error("⚠️ No games found in GamesDay.")
     st.stop()
 
 # ---------------- Targets ----------------
@@ -66,31 +63,20 @@ history['Target'] = history.apply(
     else (1 if row['Goals_H_FT'] == row['Goals_A_FT'] else 2),
     axis=1
 )
-
-history['Target_OU25'] = history.apply(
-    lambda row: 1 if (row['Goals_H_FT'] + row['Goals_A_FT']) > 2.5 else 0,
-    axis=1
-)
-
-history['Target_BTTS'] = history.apply(
-    lambda row: 1 if (row['Goals_H_FT'] > 0 and row['Goals_A_FT'] > 0) else 0,
-    axis=1
-)
+history['Target_OU25'] = (history['Goals_H_FT'] + history['Goals_A_FT'] > 2.5).astype(int)
+history['Target_BTTS'] = ((history['Goals_H_FT'] > 0) & (history['Goals_A_FT'] > 0)).astype(int)
 
 # ---------------- Features ----------------
 history['Diff_M'] = history['M_H'] - history['M_A']
 games_today['Diff_M'] = games_today['M_H'] - games_today['M_A']
 
-# Feature sets
 features_1x2 = ["Odd_H","Odd_D","Odd_A","Diff_Power","M_H","M_A","Diff_M","Diff_HT_P","M_HT_H","M_HT_A"]
 features_ou_btts = ["Odd_H","Odd_D","Odd_A","Diff_Power","M_H","M_A","Diff_M","Diff_HT_P","OU_Total"]
 
-# One-hot encode leagues
 history_leagues = pd.get_dummies(history['League'], prefix="League")
 games_today_leagues = pd.get_dummies(games_today['League'], prefix="League")
 games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
 
-# Final datasets
 X_1x2 = pd.concat([history[features_1x2], history_leagues], axis=1)
 X_ou = pd.concat([history[features_ou_btts], history_leagues], axis=1)
 X_btts = pd.concat([history[features_ou_btts], history_leagues], axis=1)
@@ -104,11 +90,7 @@ def train_and_evaluate_rf(X, y, name, show_class_report=False):
     X_train, X_val, y_train, y_val = train_test_split(
         X, y, test_size=0.3, random_state=42, stratify=y
     )
-    model = RandomForestClassifier(
-        n_estimators=300,
-        random_state=42,
-        class_weight="balanced_subsample"
-    )
+    model = RandomForestClassifier(n_estimators=300, random_state=42)
     model.fit(X_train, y_train)
     preds = model.predict(X_val)
     probs = model.predict_proba(X_val)
@@ -125,46 +107,29 @@ def train_and_evaluate_rf(X, y, name, show_class_report=False):
     }
 
     if show_class_report:
-        report = classification_report(y_val, preds, target_names=["Home","Draw","Away"], output_dict=True)
-        winrates = {
+        metrics.update({
             "Winrate_Home": f"{(preds[y_val==0]==0).mean():.2%}",
             "Winrate_Draw": f"{(preds[y_val==1]==1).mean():.2%}",
             "Winrate_Away": f"{(preds[y_val==2]==2).mean():.2%}"
-        }
-        metrics.update(winrates)
+        })
     return metrics, model
 
-# Train models
 stats = []
-
 res, model_multi = train_and_evaluate_rf(X_1x2, history['Target'], "1X2", show_class_report=True)
 stats.append(res)
-
 res, model_ou = train_and_evaluate_rf(X_ou, history['Target_OU25'], "Over/Under 2.5")
 stats.append(res)
-
 res, model_btts = train_and_evaluate_rf(X_btts, history['Target_BTTS'], "BTTS")
 stats.append(res)
 
 df_stats = pd.DataFrame(stats)
-
-# Display stats
 st.markdown("### 📊 Model Statistics (Validation)")
 st.dataframe(df_stats, use_container_width=True)
 
 # ---------------- Predictions ----------------
-probs = model_multi.predict_proba(X_today_1x2)
-games_today['p_home'] = probs[:,0]
-games_today['p_draw'] = probs[:,1]
-games_today['p_away'] = probs[:,2]
-
-probs_ou = model_ou.predict_proba(X_today_ou)
-games_today['p_over25'] = probs_ou[:,1]
-games_today['p_under25'] = probs_ou[:,0]
-
-probs_btts = model_btts.predict_proba(X_today_btts)
-games_today['p_btts_yes'] = probs_btts[:,1]
-games_today['p_btts_no'] = probs_btts[:,0]
+games_today['p_home'], games_today['p_draw'], games_today['p_away'] = model_multi.predict_proba(X_today_1x2).T
+games_today['p_over25'], games_today['p_under25'] = model_ou.predict_proba(X_today_ou).T
+games_today['p_btts_yes'], games_today['p_btts_no'] = model_btts.predict_proba(X_today_btts).T
 
 # ---------------- Styling ----------------
 def color_prob(val, color):
@@ -183,20 +148,20 @@ def style_probs(val, col):
 
 # ---------------- Display ----------------
 cols_final = [
-    'Date', 'Time', 'League', 'Home', 'Away',
-    'Odd_H', 'Odd_D', 'Odd_A',
-    'p_home', 'p_draw', 'p_away',
-    'p_over25', 'p_under25',
-    'p_btts_yes', 'p_btts_no'
+    'Date','Time','League','Home','Away',
+    'Odd_H','Odd_D','Odd_A',
+    'p_home','p_draw','p_away',
+    'p_over25','p_under25',
+    'p_btts_yes','p_btts_no'
 ]
 
 styled_df = (
     games_today[cols_final]
     .style.format({
-        'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
-        'p_home': '{:.1%}', 'p_draw': '{:.1%}', 'p_away': '{:.1%}',
-        'p_over25': '{:.1%}', 'p_under25': '{:.1%}',
-        'p_btts_yes': '{:.1%}', 'p_btts_no': '{:.1%}',
+        'Odd_H': '{:.2f}','Odd_D': '{:.2f}','Odd_A': '{:.2f}',
+        'p_home': '{:.1%}','p_draw': '{:.1%}','p_away': '{:.1%}',
+        'p_over25': '{:.1%}','p_under25': '{:.1%}',
+        'p_btts_yes': '{:.1%}','p_btts_no': '{:.1%}',
     }, na_rep='—')
     .applymap(lambda v: style_probs(v, 'p_home'), subset=['p_home'])
     .applymap(lambda v: style_probs(v, 'p_draw'), subset=['p_draw'])
