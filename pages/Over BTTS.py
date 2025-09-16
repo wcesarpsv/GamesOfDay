@@ -48,7 +48,7 @@ all_games = filter_leagues(all_games)
 
 
 # Histórico: deve vir de uma base consolidada (com gols)
-history_file = os.path.join(GAMES_FOLDER, "FullBase_NowGoal_Total.csv")  # exemplo
+history_file = os.path.join(GAMES_FOLDER)  # exemplo
 if os.path.exists(history_file):
     history = pd.read_csv(history_file)
     history = history.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
