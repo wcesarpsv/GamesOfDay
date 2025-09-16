@@ -90,6 +90,7 @@ games_today['Diff_M'] = games_today['M_H'] - games_today['M_A']
 
 base_features = [
     'Odd_H', 'Odd_A', 'Odd_D',
+    'M_HT_H','M_HT_A',
     'M_H', 'M_A', 'Diff_Power', 'Diff_M',
     'Diff_HT_P', 'OU_Total'
 ]
