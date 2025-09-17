@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import os
 import pickle
+import joblib
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
@@ -16,6 +17,10 @@ st.title("📊 Bet Indicator – Combined Markets (1X2 + OU + BTTS)")
 GAMES_FOLDER = "GamesDay"
 MODELS_FOLDER = "Models"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa"]
+os.makedirs(MODELS_FOLDER, exist_ok=True)
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
 os.makedirs(MODELS_FOLDER, exist_ok=True)
 
 # ---------------- Sidebar ----------------
@@ -46,16 +51,17 @@ def filter_leagues(df):
     return df[~df['League'].str.lower().str.contains(pattern, na=False)].copy()
 
 def save_model(model, filename):
-    os.makedirs(MODELS_FOLDER, exist_ok=True)  # garante que a pasta existe
-    filepath = os.path.join(MODELS_FOLDER, filename)
-    with open(filepath, "wb") as f:
-        pickle.dump(model, f)
+    """Save trained model to /Models folder"""
+    path = os.path.join(MODELS_FOLDER, filename)
+    with open(path, "wb") as f:
+        joblib.dump(model, f)
 
 def load_model(filename):
-    filepath = os.path.join(MODELS_FOLDER, filename)
-    if os.path.exists(filepath):
-        with open(filepath, "rb") as f:
-            return pickle.load(f)
+    """Load trained model from /Models folder"""
+    path = os.path.join(MODELS_FOLDER, filename)
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            return joblib.load(f)
     return None
 
 # ---------------- Load Data ----------------
