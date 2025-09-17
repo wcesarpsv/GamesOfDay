@@ -2,17 +2,24 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
+import pickle
 from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
 from sklearn.model_selection import train_test_split
 
 # ---------------- Page Config ----------------
-st.set_page_config(page_title="Bet Indicator v1.4 (RF + OU + BTTS)", layout="wide")
-st.title("📊 Bet Indicator – Random Forest + OU/BTTS")
+st.set_page_config(page_title="Bet Indicator – Combined Markets", layout="wide")
+st.title("📊 Bet Indicator – Combined Markets (1X2 + OU + BTTS)")
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc","sudamericana",'copa']
+MODELS_FOLDER = "Models"
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa"]
+os.makedirs(MODELS_FOLDER, exist_ok=True)
+
+# ---------------- Sidebar ----------------
+retrain = st.sidebar.checkbox("🔄 Retrain models", value=False)
 
 # ---------------- Helpers ----------------
 def load_all_games(folder):
@@ -21,12 +28,16 @@ def load_all_games(folder):
         return pd.DataFrame()
     return pd.concat([pd.read_csv(os.path.join(folder, f)) for f in files], ignore_index=True)
 
-def load_last_csv(folder):
+def load_last_two_csvs(folder):
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     if not files:
         return pd.DataFrame()
-    latest_file = max(files)
-    return pd.read_csv(os.path.join(folder, latest_file))
+    files = sorted(files)
+    options = {"Today": files[-1]}
+    if len(files) >= 2:
+        options["Yesterday"] = files[-2]
+    selected = st.selectbox("📂 Select matches file:", list(options.keys()))
+    return pd.read_csv(os.path.join(folder, options[selected]))
 
 def filter_leagues(df):
     if df.empty or 'League' not in df.columns:
@@ -34,9 +45,19 @@ def filter_leagues(df):
     pattern = '|'.join(EXCLUDED_LEAGUE_KEYWORDS)
     return df[~df['League'].str.lower().str.contains(pattern, na=False)].copy()
 
+def save_model(model, filename):
+    with open(os.path.join(MODELS_FOLDER, filename), "wb") as f:
+        pickle.dump(model, f)
+
+def load_model(filename):
+    filepath = os.path.join(MODELS_FOLDER, filename)
+    if os.path.exists(filepath):
+        with open(filepath, "rb") as f:
+            return pickle.load(f)
+    return None
+
 # ---------------- Load Data ----------------
 st.info("📂 Loading data...")
-
 history = filter_leagues(load_all_games(GAMES_FOLDER))
 history = history.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
 
@@ -44,12 +65,11 @@ if history.empty:
     st.error("⚠️ No valid historical data found in GamesDay.")
     st.stop()
 
-games_today = filter_leagues(load_last_csv(GAMES_FOLDER))
+games_today = filter_leagues(load_last_two_csvs(GAMES_FOLDER))
 if 'Goals_H_FT' in games_today.columns:
     games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
-
 if games_today.empty:
-    st.error("⚠️ No valid games today.")
+    st.error("⚠️ No valid games found in the selected file.")
     st.stop()
 
 # ---------------- Targets ----------------
@@ -82,48 +102,79 @@ X_today_1x2 = pd.concat([games_today[features_1x2], games_today_leagues], axis=1
 X_today_ou = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
 X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
 
-# ---------------- Train & Evaluate ----------------
-def train_and_evaluate_rf(X, y, name, show_class_report=False):
-    X_train, X_val, y_train, y_val = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-    model = RandomForestClassifier(n_estimators=300, random_state=42, class_weight="balanced_subsample")
-    model.fit(X_train, y_train)
-    preds = model.predict(X_val)
-    probs = model.predict_proba(X_val)
+# ---------------- ML Selection ----------------
+ml_choice = st.radio("Select ML algorithm:", ["Random Forest", "XGBoost"])
 
-    acc = accuracy_score(y_val, preds)
-    ll = log_loss(y_val, probs)
-
-    if probs.shape[1] == 2:
-        bs = brier_score_loss(y_val, probs[:,1])
-        bs = f"{bs:.3f}"
+def build_model(ml_choice, n_classes):
+    if ml_choice == "Random Forest":
+        return RandomForestClassifier(
+            n_estimators=300,
+            random_state=42,
+            class_weight="balanced_subsample"
+        )
     else:
-        y_onehot = pd.get_dummies(y_val).values
-        bs_raw = np.mean(np.sum((probs - y_onehot) ** 2, axis=1))
-        bs = f"{bs_raw:.3f} (multi)"
+        return XGBClassifier(
+            n_estimators=300,
+            learning_rate=0.05,
+            max_depth=6,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            objective="multi:softprob" if n_classes > 2 else "binary:logistic",
+            eval_metric="mlogloss",
+            use_label_encoder=False,
+            random_state=42
+        )
 
-    metrics = {
-        "Model": name,
-        "Accuracy": f"{acc:.3f}",
-        "LogLoss": f"{ll:.3f}",
-        "Brier": bs
-    }
+# ---------------- Train or Load Models ----------------
+def train_and_evaluate(X, y, name, n_classes, show_class_report=False):
+    model_file = f"{ml_choice.replace(' ','_')}_{name}.pkl"
+    model = load_model(model_file)
 
-    if show_class_report:
-        metrics.update({
-            "Winrate_Home": f"{(preds[y_val==0]==0).mean():.2%}",
-            "Winrate_Draw": f"{(preds[y_val==1]==1).mean():.2%}",
-            "Winrate_Away": f"{(preds[y_val==2]==2).mean():.2%}"
-        })
-    return metrics, model
+    if model is None or retrain:
+        X_train, X_val, y_train, y_val = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
+        model = build_model(ml_choice, n_classes)
+        model.fit(X_train, y_train)
+
+        preds = model.predict(X_val)
+        probs = model.predict_proba(X_val)
+
+        acc = accuracy_score(y_val, preds)
+        ll = log_loss(y_val, probs)
+
+        if probs.shape[1] == 2:
+            bs = brier_score_loss(y_val, probs[:,1])
+            bs = f"{bs:.3f}"
+        else:
+            y_onehot = pd.get_dummies(y_val).values
+            bs_raw = np.mean(np.sum((probs - y_onehot) ** 2, axis=1))
+            bs = f"{bs_raw:.3f} (multi)"
+
+        metrics = {
+            "Model": f"{name} ({ml_choice})",
+            "Accuracy": f"{acc:.3f}",
+            "LogLoss": f"{ll:.3f}",
+            "Brier": bs
+        }
+        if show_class_report:
+            metrics.update({
+                "Winrate_Home": f"{(preds[y_val==0]==0).mean():.2%}",
+                "Winrate_Draw": f"{(preds[y_val==1]==1).mean():.2%}",
+                "Winrate_Away": f"{(preds[y_val==2]==2).mean():.2%}"
+            })
+
+        save_model(model, model_file)
+        return metrics, model
+    else:
+        return {"Model": f"{name} ({ml_choice})", "Accuracy": "—", "LogLoss": "—", "Brier": "—"}, model
 
 stats = []
-res, model_multi = train_and_evaluate_rf(X_1x2, history['Target'], "1X2", show_class_report=True)
+res, model_multi = train_and_evaluate(X_1x2, history['Target'], "1X2", 3, show_class_report=True)
 stats.append(res)
-res, model_ou = train_and_evaluate_rf(X_ou, history['Target_OU25'], "Over/Under 2.5")
+res, model_ou = train_and_evaluate(X_ou, history['Target_OU25'], "Over/Under 2.5", 2)
 stats.append(res)
-res, model_btts = train_and_evaluate_rf(X_btts, history['Target_BTTS'], "BTTS")
+res, model_btts = train_and_evaluate(X_btts, history['Target_BTTS'], "BTTS", 2)
 stats.append(res)
 
 df_stats = pd.DataFrame(stats)
@@ -176,5 +227,5 @@ styled_df = (
     .applymap(lambda v: style_probs(v, 'p_btts_no'), subset=['p_btts_no'])
 )
 
-st.markdown("### 📌 Predictions for Today's Games")
+st.markdown("### 📌 Predictions for Selected Games")
 st.dataframe(styled_df, use_container_width=True, height=1000)
