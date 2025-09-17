@@ -33,7 +33,9 @@ def load_all_games(folder):
             df_list.append(df)
         except Exception as e:
             st.error(f"Error loading {file}: {e}")
-    return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
+    if not df_list:
+        return pd.DataFrame()
+    return pd.concat(df_list, ignore_index=True).drop_duplicates(keep="first")
 
 def filter_leagues(df):
     if df.empty or 'League' not in df.columns:
@@ -102,10 +104,10 @@ history_leagues = pd.get_dummies(history['League'], prefix="League")
 games_today_leagues = pd.get_dummies(games_today['League'], prefix="League")
 games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
 
-# Final features
-X = pd.concat([history[base_features], history_leagues], axis=1)
+# Final features (garantir sem NaN e sem duplicados)
+X = pd.concat([history[base_features], history_leagues], axis=1).fillna(0).drop_duplicates(keep="first")
 y = history['Target']
-X_today = pd.concat([games_today[base_features], games_today_leagues], axis=1)
+X_today = pd.concat([games_today[base_features], games_today_leagues], axis=1).fillna(0).drop_duplicates(keep="first")
 
 # ---------------- Train & Evaluate ----------------
 X_train, X_val, y_train, y_val = train_test_split(
@@ -117,9 +119,10 @@ scaler = StandardScaler()
 X_train_scaled = X_train.copy()
 X_val_scaled = X_val.copy()
 X_today_scaled = X_today.copy()
-X_train_scaled[base_features] = scaler.fit_transform(X_train[base_features])
-X_val_scaled[base_features] = scaler.transform(X_val[base_features])
-X_today_scaled[base_features] = scaler.transform(X_today[base_features])
+
+X_train_scaled[base_features] = scaler.fit_transform(X_train[base_features].fillna(0))
+X_val_scaled[base_features] = scaler.transform(X_val[base_features].fillna(0))
+X_today_scaled[base_features] = scaler.transform(X_today[base_features].fillna(0))
 
 # Train Models
 rf_tuned = RandomForestClassifier(
