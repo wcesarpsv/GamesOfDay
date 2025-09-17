@@ -1,4 +1,4 @@
-# Bet Indicator – Triple View (RF Tuned + XGB Tuned)
+# Bet Indicator – Triple View (RF Tuned + XGB Tuned Comparativo)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -137,15 +137,15 @@ XGB_PARAMS = {
 }
 
 # ---------------- Train & Evaluate ----------------
-def train_and_evaluate(X, y, name, num_classes):
-    filename = f"{ml_model_choice}_{name}.pkl"
+def train_and_evaluate(X, y, name, num_classes, model_type):
+    filename = f"{model_type}_{name}.pkl"
     model = None
 
     if not retrain:
         model = load_model(filename)
 
     if model is None:
-        if "Random Forest" in ml_model_choice:
+        if model_type == "Random Forest (Tuned)":
             model = RandomForestClassifier(random_state=42, class_weight="balanced_subsample", **RF_PARAMS[name])
         else:
             model = XGBClassifier(random_state=42, **XGB_PARAMS[name])
@@ -168,38 +168,49 @@ def train_and_evaluate(X, y, name, num_classes):
 
     if num_classes == 2:
         bs = brier_score_loss(y_val, probs[:, 1])
-        bs = f"{bs:.3f}"
     else:
         y_onehot = pd.get_dummies(y_val).values
-        bs_raw = np.mean(np.sum((probs - y_onehot) ** 2, axis=1))
-        bs = f"{bs_raw:.3f} (multi)"
+        bs = np.mean(np.sum((probs - y_onehot) ** 2, axis=1))
 
     metrics = {
-        "Model": f"{ml_model_choice} - {name}",
+        "Model": model_type,
+        "Market": name,
         "Accuracy": f"{acc:.3f}",
         "LogLoss": f"{ll:.3f}",
-        "Brier": bs,
+        "Brier": f"{bs:.3f}" if num_classes == 2 else f"{bs:.3f} (multi)"
     }
 
     return metrics, model
 
-# Train models
+# ---------------- Run for both models ----------------
 stats = []
-res, model_multi = train_and_evaluate(X_1x2, history["Target"], "1X2", 3)
-stats.append(res)
-res, model_ou = train_and_evaluate(X_ou, history["Target_OU25"], "OU25", 2)
-stats.append(res)
-res, model_btts = train_and_evaluate(X_btts, history["Target_BTTS"], "BTTS", 2)
-stats.append(res)
+trained_models = {}
 
+for model_type in ["Random Forest (Tuned)", "XGBoost (Tuned)"]:
+    res, model_multi = train_and_evaluate(X_1x2, history["Target"], "1X2", 3, model_type)
+    stats.append(res)
+    if model_type == ml_model_choice:
+        trained_models["1X2"] = model_multi
+
+    res, model_ou = train_and_evaluate(X_ou, history["Target_OU25"], "OU25", 2, model_type)
+    stats.append(res)
+    if model_type == ml_model_choice:
+        trained_models["OU25"] = model_ou
+
+    res, model_btts = train_and_evaluate(X_btts, history["Target_BTTS"], "BTTS", 2, model_type)
+    stats.append(res)
+    if model_type == ml_model_choice:
+        trained_models["BTTS"] = model_btts
+
+# Mostrar estatísticas comparativas
 df_stats = pd.DataFrame(stats)
 st.markdown("### 📊 Model Statistics (Validation)")
 st.dataframe(df_stats, use_container_width=True)
 
 # ---------------- Predictions ----------------
-games_today["p_home"], games_today["p_draw"], games_today["p_away"] = model_multi.predict_proba(X_today_1x2).T
-games_today["p_over25"], games_today["p_under25"] = model_ou.predict_proba(X_today_ou).T
-games_today["p_btts_yes"], games_today["p_btts_no"] = model_btts.predict_proba(X_today_btts).T
+games_today["p_home"], games_today["p_draw"], games_today["p_away"] = trained_models["1X2"].predict_proba(X_today_1x2).T
+games_today["p_over25"], games_today["p_under25"] = trained_models["OU25"].predict_proba(X_today_ou).T
+games_today["p_btts_yes"], games_today["p_btts_no"] = trained_models["BTTS"].predict_proba(X_today_btts).T
 
 # ---------------- Styling ----------------
 def color_prob(val, color):
