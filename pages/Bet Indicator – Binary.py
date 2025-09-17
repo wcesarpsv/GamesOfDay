@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
+from datetime import date, timedelta
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
@@ -31,20 +32,13 @@ def load_all_games(folder):
             st.error(f"Error loading {file}: {e}")
     return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
 
-def load_last_csv(folder):
-    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
-    if not files: 
-        return pd.DataFrame()
-    latest_file = max(files)
-    return pd.read_csv(os.path.join(folder, latest_file))
-
 def filter_leagues(df):
     if df.empty or 'League' not in df.columns:
         return df
     pattern = '|'.join(EXCLUDED_LEAGUE_KEYWORDS)
     return df[~df['League'].str.lower().str.contains(pattern, na=False)].copy()
 
-# ---------------- Load Data ----------------
+# ---------------- Load Historical Data ----------------
 st.info("📂 Loading historical data...")
 all_games = filter_leagues(load_all_games(GAMES_FOLDER))
 if all_games.empty:
@@ -56,12 +50,35 @@ if history.empty:
     st.warning("No valid historical results found.")
     st.stop()
 
-games_today = filter_leagues(load_last_csv(GAMES_FOLDER))
+# ---------------- Matchday Selector ----------------
+option = st.radio(
+    "Select Matches",
+    ("Today Matches", "Yesterday Matches"),
+    horizontal=True
+)
+
+files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
+if not files:
+    st.warning("No match files available.")
+    st.stop()
+
+if option == "Today Matches":
+    selected_file = files[-1]  # latest file
+elif option == "Yesterday Matches":
+    if len(files) >= 2:
+        selected_file = files[-2]  # second to last file
+    else:
+        st.warning("No yesterday matches available.")
+        st.stop()
+
+games_today = filter_leagues(pd.read_csv(os.path.join(GAMES_FOLDER, selected_file)))
+
+# Keep only upcoming games (no final scores yet)
 if 'Goals_H_FT' in games_today.columns:
     games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
 
 if games_today.empty:
-    st.warning("No valid games today.")
+    st.warning("No valid matches found for the selected day.")
     st.stop()
 
 # ---------------- Target binary (Home=0, Away=1) ----------------
@@ -82,7 +99,7 @@ history_leagues = pd.get_dummies(history['League'], prefix="League")
 games_today_leagues = pd.get_dummies(games_today['League'], prefix="League")
 games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
 
-# Montar features finais
+# Final features
 X = pd.concat([history[base_features], history_leagues], axis=1)
 y = history['Target']
 X_today = pd.concat([games_today[base_features], games_today_leagues], axis=1)
@@ -126,7 +143,7 @@ df_stats = pd.DataFrame([{
 }])
 st.dataframe(df_stats, use_container_width=True)
 
-# ---------------- Predict Today's Games ----------------
+# ---------------- Predict Selected Games ----------------
 probs_today = model_bin.predict_proba(X_today)
 games_today['p_home'] = probs_today[:,0]
 games_today['p_away'] = probs_today[:,1]
@@ -159,5 +176,5 @@ styled_df = (
     .applymap(lambda v: style_probs(v, 'p_away'), subset=['p_away'])
 )
 
-st.markdown("### 📌 Predictions for Selected Games")
+st.markdown("### 📌 Predictions for Selected Matches")
 st.dataframe(styled_df, use_container_width=True, height=1000)
