@@ -46,7 +46,9 @@ def filter_leagues(df):
     return df[~df['League'].str.lower().str.contains(pattern, na=False)].copy()
 
 def save_model(model, filename):
-    with open(os.path.join(MODELS_FOLDER, filename), "wb") as f:
+    os.makedirs(MODELS_FOLDER, exist_ok=True)  # garante que a pasta existe
+    filepath = os.path.join(MODELS_FOLDER, filename)
+    with open(filepath, "wb") as f:
         pickle.dump(model, f)
 
 def load_model(filename):
