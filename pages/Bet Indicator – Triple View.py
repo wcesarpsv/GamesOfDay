@@ -197,6 +197,25 @@ def train_and_evaluate(X, y, name, num_classes):
         "LogLoss": f"{ll:.3f}",
         "Brier": bs,
     }
+
+    if num_classes == 3:
+        metrics.update({
+            "Winrate_Home": f"{(preds[y_val == 0] == 0).mean():.2%}",
+            "Winrate_Draw": f"{(preds[y_val == 1] == 1).mean():.2%}",
+            "Winrate_Away": f"{(preds[y_val == 2] == 2).mean():.2%}",
+        })
+    elif num_classes == 2:
+        if name == "OverUnder25":
+            metrics.update({
+                "Winrate_Over25": f"{(preds[y_val == 1] == 1).mean():.2%}",
+                "Winrate_Under25": f"{(preds[y_val == 0] == 0).mean():.2%}",
+            })
+        elif name == "BTTS":
+            metrics.update({
+                "Winrate_BTTS_Yes": f"{(preds[y_val == 1] == 1).mean():.2%}",
+                "Winrate_BTTS_No": f"{(preds[y_val == 0] == 0).mean():.2%}",
+            })
+
     return metrics, model
 
 # Train models
