@@ -39,7 +39,7 @@ def load_last_or_penultimate_csv(folder):
     
     # Selecionar último ou penúltimo via Streamlit
     option = st.radio(
-        "📂 Escolha o arquivo para carregar:",
+        "📂 Choose the file to upload:",
         options=["Today Matches", "Yesterday Matches"],
         index=0,  # padrão = último
         horizontal=True
