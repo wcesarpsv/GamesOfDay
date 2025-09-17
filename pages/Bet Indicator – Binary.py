@@ -8,7 +8,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
+from sklearn.metrics import accuracy_score, log_loss, brier_score_loss, classification_report
 
 # ---------------- Page Config ----------------
 st.set_page_config(page_title="Bet Indicator – Home vs Away", layout="wide")
@@ -164,6 +164,7 @@ bs = brier_score_loss(y_val, probs[:,1])
 winrate_home = (preds[y_val==0] == 0).mean()
 winrate_away = (preds[y_val==1] == 1).mean()
 
+# ---------------- Show Stats ----------------
 st.markdown("### 📊 Model Statistics (Validation)")
 df_stats = pd.DataFrame([{
     "Model": model_choice,
@@ -174,6 +175,14 @@ df_stats = pd.DataFrame([{
     "Winrate_Away": f"{winrate_away:.2%}"
 }])
 st.dataframe(df_stats, use_container_width=True)
+
+# ---------------- Classification Report ----------------
+report = classification_report(
+    y_val, preds, target_names=["Home","Away"], output_dict=True
+)
+df_report = pd.DataFrame(report).transpose()
+st.markdown("### 📑 Classification Report (Precision / Recall / F1)")
+st.dataframe(df_report.style.format("{:.2f}"), use_container_width=True)
 
 # ---------------- Predictions for Today ----------------
 if model_choice == "Random Forest (Tuned)":
