@@ -1,9 +1,12 @@
+# 📊 AI-Powered Bet Indicator – Home vs Away (Binary)
 import streamlit as st
 import pandas as pd
 import numpy as np
 import os
 from datetime import date, timedelta
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
 
@@ -109,8 +112,18 @@ X_train, X_val, y_train, y_val = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
 
-model_bin = RandomForestClassifier(
-    n_estimators=300,
+# Escalador para Logistic Regression
+scaler = StandardScaler()
+X_train_scaled = X_train.copy()
+X_val_scaled = X_val.copy()
+X_today_scaled = X_today.copy()
+X_train_scaled[base_features] = scaler.fit_transform(X_train[base_features])
+X_val_scaled[base_features] = scaler.transform(X_val[base_features])
+X_today_scaled[base_features] = scaler.transform(X_today[base_features])
+
+# Train Models
+rf_tuned = RandomForestClassifier(
+    n_estimators=500,
     min_samples_split=5,
     min_samples_leaf=1,
     max_features='sqrt',
@@ -118,12 +131,29 @@ model_bin = RandomForestClassifier(
     random_state=42,
     class_weight="balanced_subsample"
 )
-model_bin.fit(X_train, y_train)
+rf_tuned.fit(X_train, y_train)
 
-# Validation
-preds = model_bin.predict(X_val)
-probs = model_bin.predict_proba(X_val)
+log_reg = LogisticRegression(max_iter=1000)
+log_reg.fit(X_train_scaled, y_train)
 
+# ---------------- Model Choice ----------------
+model_choice = st.sidebar.radio(
+    "Select Model",
+    ("Random Forest (Tuned)", "Ensemble RF+Logistic"),
+    index=0
+)
+
+# ---------------- Validation ----------------
+if model_choice == "Random Forest (Tuned)":
+    preds = rf_tuned.predict(X_val)
+    probs = rf_tuned.predict_proba(X_val)
+elif model_choice == "Ensemble RF+Logistic":
+    probs_rf = rf_tuned.predict_proba(X_val)
+    probs_log = log_reg.predict_proba(X_val_scaled)
+    probs = (0.7 * probs_rf) + (0.3 * probs_log)
+    preds = np.argmax(probs, axis=1)
+
+# Metrics
 acc = accuracy_score(y_val, preds)
 ll = log_loss(y_val, probs)
 bs = brier_score_loss(y_val, probs[:,1])
@@ -131,10 +161,9 @@ bs = brier_score_loss(y_val, probs[:,1])
 winrate_home = (preds[y_val==0] == 0).mean()
 winrate_away = (preds[y_val==1] == 1).mean()
 
-# Show stats
 st.markdown("### 📊 Model Statistics (Validation)")
 df_stats = pd.DataFrame([{
-    "Model": "Home vs Away (Binary)",
+    "Model": model_choice,
     "Accuracy": f"{acc:.3f}",
     "LogLoss": f"{ll:.3f}",
     "Brier": f"{bs:.3f}",
@@ -143,8 +172,14 @@ df_stats = pd.DataFrame([{
 }])
 st.dataframe(df_stats, use_container_width=True)
 
-# ---------------- Predict Selected Games ----------------
-probs_today = model_bin.predict_proba(X_today)
+# ---------------- Predictions for Today ----------------
+if model_choice == "Random Forest (Tuned)":
+    probs_today = rf_tuned.predict_proba(X_today)
+else:
+    probs_rf_today = rf_tuned.predict_proba(X_today)
+    probs_log_today = log_reg.predict_proba(X_today_scaled)
+    probs_today = (0.7 * probs_rf_today) + (0.3 * probs_log_today)
+
 games_today['p_home'] = probs_today[:,0]
 games_today['p_away'] = probs_today[:,1]
 
