@@ -28,16 +28,28 @@ def load_all_games(folder):
         return pd.DataFrame()
     return pd.concat([pd.read_csv(os.path.join(folder, f)) for f in files], ignore_index=True)
 
-def load_last_two_csvs(folder):
-    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
+def load_selected_csvs(folder):
+    files = sorted([f for f in os.listdir(folder) if f.endswith(".csv")])
     if not files:
         return pd.DataFrame()
-    files = sorted(files)
-    options = [files[-1]]
-    if len(files) >= 2:
-        options.insert(0, files[-2])
-    selected_file = st.selectbox("📂 Select file (Today / Yesterday):", options=options, index=0)
-    return pd.read_csv(os.path.join(folder, selected_file))
+    
+    today_file = files[-1]
+    yesterday_file = files[-2] if len(files) >= 2 else None
+
+    st.markdown("### 📂 Select matches to display")
+    col1, col2 = st.columns(2)
+    today_checked = col1.checkbox("Today Matches", value=True)
+    yesterday_checked = col2.checkbox("Yesterday Matches", value=False)
+
+    selected_dfs = []
+    if today_checked:
+        selected_dfs.append(pd.read_csv(os.path.join(folder, today_file)))
+    if yesterday_checked and yesterday_file:
+        selected_dfs.append(pd.read_csv(os.path.join(folder, yesterday_file)))
+
+    if not selected_dfs:
+        return pd.DataFrame()
+    return pd.concat(selected_dfs, ignore_index=True)
 
 def filter_leagues(df):
     if df.empty or "League" not in df.columns:
@@ -67,12 +79,12 @@ if history.empty:
     st.error("⚠️ No valid historical data found in GamesDay.")
     st.stop()
 
-games_today = filter_leagues(load_last_two_csvs(GAMES_FOLDER))
+games_today = filter_leagues(load_selected_csvs(GAMES_FOLDER))
 if "Goals_H_FT" in games_today.columns:
     games_today = games_today[games_today["Goals_H_FT"].isna()].copy()
 
 if games_today.empty:
-    st.error("⚠️ No valid games today.")
+    st.error("⚠️ No valid matches selected.")
     st.stop()
 
 # ---------------- Targets ----------------
@@ -227,5 +239,5 @@ styled_df = (
     .applymap(lambda v: style_probs(v, "p_btts_no"), subset=["p_btts_no"])
 )
 
-st.markdown("### 📌 Predictions for Selected Games")
+st.markdown("### 📌 Predictions for Selected Matches")
 st.dataframe(styled_df, use_container_width=True, height=1000)
