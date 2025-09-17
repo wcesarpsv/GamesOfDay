@@ -1,4 +1,4 @@
-# Bet Indicator – Triple View (RF Tuned + XGB Tuned Comparativo)
+# Bet Indicator – Triple View
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -120,35 +120,46 @@ X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], a
 
 # ---------------- Sidebar Config ----------------
 st.sidebar.header("⚙️ Settings")
-ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest (Tuned)", "XGBoost (Tuned)"])
+ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest", "XGBoost"])
 retrain = st.sidebar.checkbox("Retrain models", value=False)
 
-# ---------------- Tuned Params ----------------
-RF_PARAMS = {
-    "1X2": {'n_estimators': 600, 'max_depth': 14, 'min_samples_split': 10, 'min_samples_leaf': 1, 'max_features': 'sqrt'},
-    "OU25": {'n_estimators': 600, 'max_depth': 5, 'min_samples_split': 9, 'min_samples_leaf': 3, 'max_features': 'sqrt'},
-    "BTTS": {'n_estimators': 400, 'max_depth': 18, 'min_samples_split': 4, 'min_samples_leaf': 5, 'max_features': 'sqrt'},
-}
-
-XGB_PARAMS = {
-    "1X2": {'n_estimators': 219, 'max_depth': 9, 'learning_rate': 0.05, 'subsample': 0.9, 'colsample_bytree': 0.8, 'eval_metric': 'mlogloss', 'use_label_encoder': False},
-    "OU25": {'n_estimators': 488, 'max_depth': 10, 'learning_rate': 0.03, 'subsample': 0.9, 'colsample_bytree': 0.7, 'eval_metric': 'logloss', 'use_label_encoder': False},
-    "BTTS": {'n_estimators': 695, 'max_depth': 6, 'learning_rate': 0.04, 'subsample': 0.8, 'colsample_bytree': 0.8, 'eval_metric': 'logloss', 'use_label_encoder': False},
-}
-
-# ---------------- Train & Evaluate ----------------
-def train_and_evaluate(X, y, name, num_classes, model_type):
-    filename = f"{model_type}_{name}.pkl"
+# ---------------- Train & Evaluate (Tunado) ----------------
+def train_and_evaluate(X, y, name, num_classes):
+    filename = f"{ml_model_choice}_{name}.pkl"
     model = None
 
     if not retrain:
         model = load_model(filename)
 
     if model is None:
-        if model_type == "Random Forest (Tuned)":
-            model = RandomForestClassifier(random_state=42, class_weight="balanced_subsample", **RF_PARAMS[name])
+        if ml_model_choice == "Random Forest":
+            # 🔧 RF Tunado por mercado
+            rf_params = {
+                "1X2": {'n_estimators': 600, 'max_depth': 14, 'min_samples_split': 10,
+                        'min_samples_leaf': 1, 'max_features': 'sqrt'},
+                "OverUnder25": {'n_estimators': 600, 'max_depth': 5, 'min_samples_split': 9,
+                                'min_samples_leaf': 3, 'max_features': 'sqrt'},
+                "BTTS": {'n_estimators': 400, 'max_depth': 18, 'min_samples_split': 4,
+                         'min_samples_leaf': 5, 'max_features': 'sqrt'},
+            }
+            model = RandomForestClassifier(
+                random_state=42, class_weight="balanced_subsample", **rf_params[name]
+            )
+
         else:
-            model = XGBClassifier(random_state=42, **XGB_PARAMS[name])
+            # 🔧 XGB Tunado por mercado
+            xgb_params = {
+                "1X2": {'n_estimators': 219, 'max_depth': 9, 'learning_rate': 0.05,
+                        'subsample': 0.9, 'colsample_bytree': 0.8,
+                        'eval_metric': 'mlogloss', 'use_label_encoder': False},
+                "OverUnder25": {'n_estimators': 488, 'max_depth': 10, 'learning_rate': 0.03,
+                                'subsample': 0.9, 'colsample_bytree': 0.7,
+                                'eval_metric': 'logloss', 'use_label_encoder': False},
+                "BTTS": {'n_estimators': 695, 'max_depth': 6, 'learning_rate': 0.04,
+                         'subsample': 0.8, 'colsample_bytree': 0.8,
+                         'eval_metric': 'logloss', 'use_label_encoder': False},
+            }
+            model = XGBClassifier(random_state=42, **xgb_params[name])
 
         X_train, X_val, y_train, y_val = train_test_split(
             X, y, test_size=0.2, random_state=42, stratify=y
@@ -168,49 +179,44 @@ def train_and_evaluate(X, y, name, num_classes, model_type):
 
     if num_classes == 2:
         bs = brier_score_loss(y_val, probs[:, 1])
+        bs = f"{bs:.3f}"
     else:
         y_onehot = pd.get_dummies(y_val).values
-        bs = np.mean(np.sum((probs - y_onehot) ** 2, axis=1))
+        bs_raw = np.mean(np.sum((probs - y_onehot) ** 2, axis=1))
+        bs = f"{bs_raw:.3f} (multi)"
 
     metrics = {
-        "Model": model_type,
-        "Market": name,
+        "Model": f"{ml_model_choice} - {name}",
         "Accuracy": f"{acc:.3f}",
         "LogLoss": f"{ll:.3f}",
-        "Brier": f"{bs:.3f}" if num_classes == 2 else f"{bs:.3f} (multi)"
+        "Brier": bs,
     }
 
+    if num_classes == 3:
+        metrics.update({
+            "Winrate_Home": f"{(preds[y_val == 0] == 0).mean():.2%}",
+            "Winrate_Draw": f"{(preds[y_val == 1] == 1).mean():.2%}",
+            "Winrate_Away": f"{(preds[y_val == 2] == 2).mean():.2%}",
+        })
     return metrics, model
 
-# ---------------- Run for both models ----------------
+# Train models
 stats = []
-trained_models = {}
+res, model_multi = train_and_evaluate(X_1x2, history["Target"], "1X2", 3)
+stats.append(res)
+res, model_ou = train_and_evaluate(X_ou, history["Target_OU25"], "OverUnder25", 2)
+stats.append(res)
+res, model_btts = train_and_evaluate(X_btts, history["Target_BTTS"], "BTTS", 2)
+stats.append(res)
 
-for model_type in ["Random Forest (Tuned)", "XGBoost (Tuned)"]:
-    res, model_multi = train_and_evaluate(X_1x2, history["Target"], "1X2", 3, model_type)
-    stats.append(res)
-    if model_type == ml_model_choice:
-        trained_models["1X2"] = model_multi
-
-    res, model_ou = train_and_evaluate(X_ou, history["Target_OU25"], "OU25", 2, model_type)
-    stats.append(res)
-    if model_type == ml_model_choice:
-        trained_models["OU25"] = model_ou
-
-    res, model_btts = train_and_evaluate(X_btts, history["Target_BTTS"], "BTTS", 2, model_type)
-    stats.append(res)
-    if model_type == ml_model_choice:
-        trained_models["BTTS"] = model_btts
-
-# Mostrar estatísticas comparativas
 df_stats = pd.DataFrame(stats)
 st.markdown("### 📊 Model Statistics (Validation)")
 st.dataframe(df_stats, use_container_width=True)
 
 # ---------------- Predictions ----------------
-games_today["p_home"], games_today["p_draw"], games_today["p_away"] = trained_models["1X2"].predict_proba(X_today_1x2).T
-games_today["p_over25"], games_today["p_under25"] = trained_models["OU25"].predict_proba(X_today_ou).T
-games_today["p_btts_yes"], games_today["p_btts_no"] = trained_models["BTTS"].predict_proba(X_today_btts).T
+games_today["p_home"], games_today["p_draw"], games_today["p_away"] = model_multi.predict_proba(X_today_1x2).T
+games_today["p_over25"], games_today["p_under25"] = model_ou.predict_proba(X_today_ou).T
+games_today["p_btts_yes"], games_today["p_btts_no"] = model_btts.predict_proba(X_today_btts).T
 
 # ---------------- Styling ----------------
 def color_prob(val, color):
