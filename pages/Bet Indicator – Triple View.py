@@ -1,4 +1,4 @@
-# Bet Indicator – Triple View
+# Bet Indicator – Triple View (RF Tuned + XGB Tuned)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -120,8 +120,21 @@ X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], a
 
 # ---------------- Sidebar Config ----------------
 st.sidebar.header("⚙️ Settings")
-ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest", "XGBoost"])
+ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest (Tuned)", "XGBoost (Tuned)"])
 retrain = st.sidebar.checkbox("Retrain models", value=False)
+
+# ---------------- Tuned Params ----------------
+RF_PARAMS = {
+    "1X2": {'n_estimators': 600, 'max_depth': 14, 'min_samples_split': 10, 'min_samples_leaf': 1, 'max_features': 'sqrt'},
+    "OU25": {'n_estimators': 600, 'max_depth': 5, 'min_samples_split': 9, 'min_samples_leaf': 3, 'max_features': 'sqrt'},
+    "BTTS": {'n_estimators': 400, 'max_depth': 18, 'min_samples_split': 4, 'min_samples_leaf': 5, 'max_features': 'sqrt'},
+}
+
+XGB_PARAMS = {
+    "1X2": {'n_estimators': 219, 'max_depth': 9, 'learning_rate': 0.05, 'subsample': 0.9, 'colsample_bytree': 0.8, 'eval_metric': 'mlogloss', 'use_label_encoder': False},
+    "OU25": {'n_estimators': 488, 'max_depth': 10, 'learning_rate': 0.03, 'subsample': 0.9, 'colsample_bytree': 0.7, 'eval_metric': 'logloss', 'use_label_encoder': False},
+    "BTTS": {'n_estimators': 695, 'max_depth': 6, 'learning_rate': 0.04, 'subsample': 0.8, 'colsample_bytree': 0.8, 'eval_metric': 'logloss', 'use_label_encoder': False},
+}
 
 # ---------------- Train & Evaluate ----------------
 def train_and_evaluate(X, y, name, num_classes):
@@ -132,15 +145,10 @@ def train_and_evaluate(X, y, name, num_classes):
         model = load_model(filename)
 
     if model is None:
-        if ml_model_choice == "Random Forest":
-            model = RandomForestClassifier(n_estimators=300, random_state=42, class_weight="balanced_subsample")
+        if "Random Forest" in ml_model_choice:
+            model = RandomForestClassifier(random_state=42, class_weight="balanced_subsample", **RF_PARAMS[name])
         else:
-            model = XGBClassifier(
-                n_estimators=300,
-                random_state=42,
-                eval_metric="mlogloss",
-                use_label_encoder=False,
-            )
+            model = XGBClassifier(random_state=42, **XGB_PARAMS[name])
 
         X_train, X_val, y_train, y_val = train_test_split(
             X, y, test_size=0.2, random_state=42, stratify=y
@@ -167,25 +175,19 @@ def train_and_evaluate(X, y, name, num_classes):
         bs = f"{bs_raw:.3f} (multi)"
 
     metrics = {
-        "Model": name,
+        "Model": f"{ml_model_choice} - {name}",
         "Accuracy": f"{acc:.3f}",
         "LogLoss": f"{ll:.3f}",
         "Brier": bs,
     }
 
-    if num_classes == 3:
-        metrics.update({
-            "Winrate_Home": f"{(preds[y_val == 0] == 0).mean():.2%}",
-            "Winrate_Draw": f"{(preds[y_val == 1] == 1).mean():.2%}",
-            "Winrate_Away": f"{(preds[y_val == 2] == 2).mean():.2%}",
-        })
     return metrics, model
 
 # Train models
 stats = []
 res, model_multi = train_and_evaluate(X_1x2, history["Target"], "1X2", 3)
 stats.append(res)
-res, model_ou = train_and_evaluate(X_ou, history["Target_OU25"], "OverUnder25", 2)
+res, model_ou = train_and_evaluate(X_ou, history["Target_OU25"], "OU25", 2)
 stats.append(res)
 res, model_btts = train_and_evaluate(X_btts, history["Target_BTTS"], "BTTS", 2)
 stats.append(res)
