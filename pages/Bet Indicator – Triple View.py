@@ -128,10 +128,10 @@ retrain = st.sidebar.checkbox("Retrain models", value=False)
 
 # 👉 Nota explicativa
 st.sidebar.markdown("""
-**ℹ️ Recomendações de uso:**
-- 🔹 *Random Forest*: baseline simples e rápido.  
-- 🔹 *Random Forest Tuned*: indicado para mercado **1X2**.  
-- 🔹 *XGBoost Tuned*: indicado para mercados **Over/Under 2.5** e **BTTS**.  
+**ℹ️ Usage recommendations:**
+- 🔹 *Random Forest*: simple and fast baseline.  
+- 🔹 *Random Forest Tuned*: suitable for market **1X2**.  
+- 🔹 *XGBoost Tuned*: suitable for markets **Over/Under 2.5** e **BTTS**.  
 """)
 
 # ---------------- Train & Evaluate ----------------
