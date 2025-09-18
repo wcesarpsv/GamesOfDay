@@ -35,24 +35,52 @@ def preprocess_df(df):
 
 def load_all_games(folder):
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
-    if not files: return pd.DataFrame()
+    if not files:
+        return pd.DataFrame()
     dfs = [preprocess_df(pd.read_csv(os.path.join(folder, f))) for f in files]
-    return pd.concat(dfs, ignore_index=True)
+    df = pd.concat(dfs, ignore_index=True)
+
+    # Remover duplicados com base nas colunas principais
+    if set(["Date", "Home", "Away", "League"]).issubset(df.columns):
+        df = df.drop_duplicates(subset=["Date", "Home", "Away", "League"], keep="last")
+    else:
+        df = df.drop_duplicates(keep="last")
+
+    return df
+
 
 def load_selected_csvs(folder):
     files = sorted([f for f in os.listdir(folder) if f.endswith(".csv")])
-    if not files: return pd.DataFrame()
+    if not files:
+        return pd.DataFrame()
+    
     today_file = files[-1]
     yesterday_file = files[-2] if len(files) >= 2 else None
+
     st.markdown("### 📂 Select matches to display")
     col1, col2 = st.columns(2)
     today_checked = col1.checkbox("Today Matches", value=True)
     yesterday_checked = col2.checkbox("Yesterday Matches", value=False)
+
     dfs = []
-    if today_checked: dfs.append(preprocess_df(pd.read_csv(os.path.join(folder, today_file))))
-    if yesterday_checked and yesterday_file: dfs.append(preprocess_df(pd.read_csv(os.path.join(folder, yesterday_file))))
-    if not dfs: return pd.DataFrame()
-    return pd.concat(dfs, ignore_index=True)
+    if today_checked:
+        dfs.append(preprocess_df(pd.read_csv(os.path.join(folder, today_file))))
+    if yesterday_checked and yesterday_file:
+        dfs.append(preprocess_df(pd.read_csv(os.path.join(folder, yesterday_file))))
+
+    if not dfs:
+        return pd.DataFrame()
+
+    df = pd.concat(dfs, ignore_index=True)
+
+    # Remover duplicados
+    if set(["Date", "Home", "Away", "League"]).issubset(df.columns):
+        df = df.drop_duplicates(subset=["Date", "Home", "Away", "League"], keep="last")
+    else:
+        df = df.drop_duplicates(keep="last")
+
+    return df
+
 
 def filter_leagues(df):
     if df.empty or "League" not in df.columns: return df
