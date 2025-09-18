@@ -104,8 +104,14 @@ def rolling_stats(sub_df, col, window=5, min_periods=2):
 if "Goals_H_FT" in history.columns:
     history["Custo_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Odd_H"] / history["Goals_H_FT"], 0)
     history["Custo_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Odd_A"] / history["Goals_A_FT"], 0)
-    history["Valor_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Bet Result"] / history["Goals_H_FT"], 0)
-    history["Valor_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Bet Result"] / history["Goals_A_FT"], 0)
+
+    if "Bet Result" in history.columns:
+        history["Valor_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Bet Result"] / history["Goals_H_FT"], 0)
+        history["Valor_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Bet Result"] / history["Goals_A_FT"], 0)
+    else:
+        history["Valor_Gol_H"] = 0
+        history["Valor_Gol_A"] = 0
+
 
 # Jogos do dia (sem resultados → apenas categorias herdadas)
 games_today["Custo_Gol_H"] = 0
