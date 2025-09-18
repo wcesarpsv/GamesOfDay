@@ -318,4 +318,26 @@ styled_df = (
         "p_over25": "{:.1%}","p_under25": "{:.1%}",
         "p_btts_yes": "{:.1%}","p_btts_no": "{:.1%}",
     }, na_rep="—")
-   
+    .applymap(lambda v: style_probs(v, "p_home"), subset=["p_home"])
+    .applymap(lambda v: style_probs(v, "p_draw"), subset=["p_draw"])
+    .applymap(lambda v: style_probs(v, "p_away"), subset=["p_away"])
+    .applymap(lambda v: style_probs(v, "p_over25"), subset=["p_over25"])
+    .applymap(lambda v: style_probs(v, "p_under25"), subset=["p_under25"])
+    .applymap(lambda v: style_probs(v, "p_btts_yes"), subset=["p_btts_yes"])
+    .applymap(lambda v: style_probs(v, "p_btts_no"), subset=["p_btts_no"])
+)
+
+st.markdown("### 📌 Predictions for Selected Matches")
+st.dataframe(styled_df, use_container_width=True, height=1000)
+
+# ---------------- Legend ----------------
+st.markdown("""
+### 🟢⚪🟡🔴 Goal Categories – Legend
+
+- 🟢 **(Baixo Custo, Alto Valor)** → Time eficiente e gols decisivos (perfil ideal).  
+- ⚪ **(Baixo Custo, Baixo Valor)** → Time eficiente, mas gols pouco relevantes.  
+- 🟡 **(Alto Custo, Alto Valor)** → Time ineficiente, mas quando marca, os gols decidem jogos.  
+- 🔴 **(Alto Custo, Baixo Valor)** → Time ineficiente e gols pouco impactantes.  
+- — Sem histórico suficiente para classificar.  
+""")
+
