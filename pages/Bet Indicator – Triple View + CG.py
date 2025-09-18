@@ -1,4 +1,4 @@
-# Bet Indicator – Triple View
+# Bet Indicator – Triple View + Custo/Valor do Gol
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -11,13 +11,12 @@ from sklearn.model_selection import train_test_split
 
 # ---------------- Page Config ----------------
 st.set_page_config(page_title="Bet Indicator – Triple View", layout="wide")
-st.title("📊 Bet Indicator – Triple View (1X2 + OU + BTTS)")
+st.title("📊 Bet Indicator – Triple View (1X2 + OU + BTTS + Goal Categories)")
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa"]
 
-# Ajusta o caminho base para salvar os modelos sempre em /Models
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
 os.makedirs(MODELS_FOLDER, exist_ok=True)
@@ -101,20 +100,23 @@ history["Target_BTTS"] = ((history["Goals_H_FT"] > 0) & (history["Goals_A_FT"] >
 def rolling_stats(sub_df, col, window=5, min_periods=2):
     return sub_df.sort_values("Date")[col].rolling(window=window, min_periods=min_periods).mean()
 
-# Calcular custo e valor do gol (0 se não marcou)
-for df_ in [history, games_today]:
-    if "Goals_H_FT" in df_.columns:  
-        df_["Custo_Gol_H"] = np.where(df_["Goals_H_FT"].fillna(0) > 0, df_["Odd_H"] / df_["Goals_H_FT"].replace(0, np.nan), 0)
-        df_["Custo_Gol_A"] = np.where(df_["Goals_A_FT"].fillna(0) > 0, df_["Odd_A"] / df_["Goals_A_FT"].replace(0, np.nan), 0)
+# Histórico (tem resultados)
+if "Goals_H_FT" in history.columns:
+    history["Custo_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Odd_H"] / history["Goals_H_FT"], 0)
+    history["Custo_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Odd_A"] / history["Goals_A_FT"], 0)
+    history["Valor_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Bet Result"] / history["Goals_H_FT"], 0)
+    history["Valor_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Bet Result"] / history["Goals_A_FT"], 0)
 
-        df_["Valor_Gol_H"] = np.where(df_["Goals_H_FT"].fillna(0) > 0, df_["Bet Result"] / df_["Goals_H_FT"].replace(0, np.nan), 0)
-        df_["Valor_Gol_A"] = np.where(df_["Goals_A_FT"].fillna(0) > 0, df_["Bet Result"] / df_["Goals_A_FT"].replace(0, np.nan), 0)
+# Jogos do dia (sem resultados → apenas categorias herdadas)
+games_today["Custo_Gol_H"] = 0
+games_today["Custo_Gol_A"] = 0
+games_today["Valor_Gol_H"] = 0
+games_today["Valor_Gol_A"] = 0
 
 # Rolling médias no histórico
 history = history.sort_values("Date")
 history["Media_CustoGol_H"] = history.groupby("Home", group_keys=False).apply(lambda x: rolling_stats(x, "Custo_Gol_H")).shift(1)
 history["Media_ValorGol_H"] = history.groupby("Home", group_keys=False).apply(lambda x: rolling_stats(x, "Valor_Gol_H")).shift(1)
-
 history["Media_CustoGol_A"] = history.groupby("Away", group_keys=False).apply(lambda x: rolling_stats(x, "Custo_Gol_A")).shift(1)
 history["Media_ValorGol_A"] = history.groupby("Away", group_keys=False).apply(lambda x: rolling_stats(x, "Valor_Gol_A")).shift(1)
 
@@ -135,7 +137,7 @@ def classify_row(custo, valor, threshold_custo=1.5, threshold_valor=0):
 history["Categoria_Gol_H"] = history.apply(lambda row: classify_row(row["Media_CustoGol_H"], row["Media_ValorGol_H"]), axis=1)
 history["Categoria_Gol_A"] = history.apply(lambda row: classify_row(row["Media_CustoGol_A"], row["Media_ValorGol_A"]), axis=1)
 
-# Propagar para jogos de hoje
+# Propagar categorias para jogos do dia
 def get_last_category(team, side):
     if side == "H":
         row = history[history["Home"] == team].sort_values("Date").tail(1)
@@ -150,10 +152,8 @@ games_today["Categoria_Gol_A"] = games_today["Away"].apply(lambda t: get_last_ca
 # One-hot categorias
 cat_h = pd.get_dummies(history["Categoria_Gol_H"], prefix="Cat_H")
 cat_a = pd.get_dummies(history["Categoria_Gol_A"], prefix="Cat_A")
-
 cat_h_today = pd.get_dummies(games_today["Categoria_Gol_H"], prefix="Cat_H")
 cat_a_today = pd.get_dummies(games_today["Categoria_Gol_A"], prefix="Cat_A")
-
 cat_h_today = cat_h_today.reindex(columns=cat_h.columns, fill_value=0)
 cat_a_today = cat_a_today.reindex(columns=cat_a.columns, fill_value=0)
 
@@ -164,12 +164,10 @@ games_today["Diff_M"] = games_today["M_H"] - games_today["M_A"]
 features_1x2 = ["Odd_H", "Odd_D", "Odd_A", "Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "M_HT_H", "M_HT_A"]
 features_ou_btts = ["Odd_H", "Odd_D", "Odd_A", "Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "OU_Total"]
 
-# One-hot encode leagues
 history_leagues = pd.get_dummies(history["League"], prefix="League")
 games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
 games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
 
-# Final datasets
 X_1x2 = pd.concat([history[features_1x2], history_leagues, cat_h, cat_a], axis=1)
 X_ou = pd.concat([history[features_ou_btts], history_leagues], axis=1)
 X_btts = pd.concat([history[features_ou_btts], history_leagues], axis=1)
@@ -180,10 +178,7 @@ X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], a
 
 # ---------------- Sidebar Config ----------------
 st.sidebar.header("⚙️ Settings")
-ml_model_choice = st.sidebar.selectbox(
-    "Choose ML Model", 
-    ["Random Forest", "Random Forest Tuned", "XGBoost Tuned"]
-)
+ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest", "Random Forest Tuned", "XGBoost Tuned"])
 retrain = st.sidebar.checkbox("Retrain models", value=False)
 
 st.sidebar.markdown("""
@@ -250,12 +245,7 @@ def train_and_evaluate(X, y, name, num_classes):
         bs_raw = np.mean(np.sum((probs - y_onehot) ** 2, axis=1))
         bs = f"{bs_raw:.3f} (multi)"
 
-    metrics = {
-        "Model": f"{ml_model_choice} - {name}",
-        "Accuracy": f"{acc:.3f}",
-        "LogLoss": f"{ll:.3f}",
-        "Brier": bs,
-    }
+    metrics = {"Model": f"{ml_model_choice} - {name}", "Accuracy": f"{acc:.3f}", "LogLoss": f"{ll:.3f}", "Brier": bs}
 
     if num_classes == 3:
         metrics.update({
@@ -277,7 +267,7 @@ def train_and_evaluate(X, y, name, num_classes):
 
     return metrics, model
 
-# Train models
+# ---------------- Train models ----------------
 stats = []
 res, model_multi = train_and_evaluate(X_1x2, history["Target"], "1X2", 3)
 stats.append(res)
@@ -328,25 +318,4 @@ styled_df = (
         "p_over25": "{:.1%}","p_under25": "{:.1%}",
         "p_btts_yes": "{:.1%}","p_btts_no": "{:.1%}",
     }, na_rep="—")
-    .applymap(lambda v: style_probs(v, "p_home"), subset=["p_home"])
-    .applymap(lambda v: style_probs(v, "p_draw"), subset=["p_draw"])
-    .applymap(lambda v: style_probs(v, "p_away"), subset=["p_away"])
-    .applymap(lambda v: style_probs(v, "p_over25"), subset=["p_over25"])
-    .applymap(lambda v: style_probs(v, "p_under25"), subset=["p_under25"])
-    .applymap(lambda v: style_probs(v, "p_btts_yes"), subset=["p_btts_yes"])
-    .applymap(lambda v: style_probs(v, "p_btts_no"), subset=["p_btts_no"])
-)
-
-st.markdown("### 📌 Predictions for Selected Matches")
-st.dataframe(styled_df, use_container_width=True, height=1000)
-
-# ---------------- Legend ----------------
-st.markdown("""
-### 🟢⚪🟡🔴 Goal Categories – Legend
-
-- 🟢 **(Baixo Custo, Alto Valor)** → Time eficiente e gols decisivos (perfil ideal).  
-- ⚪ **(Baixo Custo, Baixo Valor)** → Time eficiente, mas gols pouco relevantes.  
-- 🟡 **(Alto Custo, Alto Valor)** → Time ineficiente, mas quando marca, os gols decidem jogos.  
-- 🔴 **(Alto Custo, Baixo Valor)** → Time ineficiente e gols pouco impactantes.  
-- — Sem histórico suficiente para classificar.  
-""")
+   
