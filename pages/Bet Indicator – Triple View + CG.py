@@ -277,6 +277,44 @@ styled_df=(games_today[cols_final]
 st.markdown("### 📌 Predictions for Selected Matches")
 st.dataframe(styled_df,use_container_width=True,height=1000)
 
+##################### BLOCO 11 – ANÁLISE CATEGORIAS #####################
+st.markdown("## 📊 Análise de Resultados por Categoria de Gol")
+
+def resultado_jogo(row):
+    if row["Goals_H_FT"] > row["Goals_A_FT"]:
+        return "Win_H"
+    elif row["Goals_H_FT"] < row["Goals_A_FT"]:
+        return "Win_A"
+    else:
+        return "Draw"
+
+# Resultado só no histórico (não nos jogos do dia)
+history["Result"] = history.apply(resultado_jogo, axis=1)
+
+# Função para calcular estatísticas
+def stats_por_categoria(df, col_categoria):
+    stats = (
+        df.groupby(col_categoria)["Result"]
+        .value_counts(normalize=True)
+        .unstack(fill_value=0)
+        .reset_index()
+    )
+    stats["Games"] = df.groupby(col_categoria)["Result"].count().values
+    return stats
+
+# Mandantes
+cat_home_stats = stats_por_categoria(history, "Categoria_Gol_H")
+# Visitantes
+cat_away_stats = stats_por_categoria(history, "Categoria_Gol_A")
+
+# Mostrar tabelas no Streamlit
+st.markdown("### 🏠 Times Mandantes")
+st.dataframe(cat_home_stats.style.format("{:.1%}", subset=["Draw","Win_H","Win_A"]))
+
+st.markdown("### 🚗 Times Visitantes")
+st.dataframe(cat_away_stats.style.format("{:.1%}", subset=["Draw","Win_H","Win_A"]))
+
+
 st.markdown("""
 ### 🟢⚪🟡🔴 Goal Categories – Legend
 - 🟢 **(Baixo Custo, Alto Valor)**  
