@@ -151,13 +151,12 @@ retrain = st.sidebar.checkbox("Retrain models", value=False)
 ##################### BLOCO 7 – TREINAR & AVALIAR #####################
 def train_and_evaluate(X, y, name, num_classes):
     filename = f"{ml_model_choice.replace(' ', '')}_{name}.pkl"
-    model = None
     feature_cols = X.columns.tolist()
 
-    if not retrain:
-        model = load_model(filename)
+    # ---------------- carregar modelo ----------------
+    model_bundle = None if retrain else load_model(filename)
 
-    if model is None:
+    if model_bundle is None:
         # Criar modelo novo
         if ml_model_choice == "Random Forest":
             model = RandomForestClassifier(n_estimators=300, random_state=42, class_weight="balanced_subsample")
@@ -187,7 +186,7 @@ def train_and_evaluate(X, y, name, num_classes):
             }
             model = XGBClassifier(random_state=42, **xgb_params[name])
 
-        # Split
+        # Train/Val split
         X_train, X_val, y_train, y_val = train_test_split(
             X, y, test_size=0.2, random_state=42, stratify=y
         )
@@ -195,24 +194,23 @@ def train_and_evaluate(X, y, name, num_classes):
         X_val = X_val.reindex(columns=feature_cols, fill_value=0)
 
         model.fit(X_train, y_train)
-        # Salvar modelo junto com colunas
+
+        # Salvar modelo + features
         save_model((model, feature_cols), filename)
 
     else:
-        # Se carregamos de arquivo, vem como (modelo, colunas)
-        if isinstance(model, tuple):
-            model, feature_cols = model
-        # Se retrain=True, o modelo é novo e feature_cols já vem do X
-        else:
-            feature_cols = X.columns.tolist()
+        # Carregar modelo salvo
+        model, feature_cols = model_bundle
 
+        # Train/Val split
         X_train, X_val, y_train, y_val = train_test_split(
             X, y, test_size=0.2, random_state=42, stratify=y
         )
+        # 🔹 Forçar alinhamento
         X_train = X_train.reindex(columns=feature_cols, fill_value=0)
         X_val = X_val.reindex(columns=feature_cols, fill_value=0)
 
-    # Avaliação
+    # ---------------- avaliação ----------------
     preds = model.predict(X_val)
     probs = model.predict_proba(X_val)
 
@@ -247,10 +245,18 @@ st.dataframe(df_stats,use_container_width=True)
 
 
 ##################### BLOCO 9 – PREDICTIONS #####################
-model_multi,cols1=model_multi; model_ou,cols2=model_ou; model_btts,cols3=model_btts
-games_today["p_home"],games_today["p_draw"],games_today["p_away"]=model_multi.predict_proba(X_today_1x2.reindex(columns=cols1,fill_value=0)).T
-games_today["p_over25"],games_today["p_under25"]=model_ou.predict_proba(X_today_ou.reindex(columns=cols2,fill_value=0)).T
-games_today["p_btts_yes"],games_today["p_btts_no"]=model_btts.predict_proba(X_today_btts.reindex(columns=cols3,fill_value=0)).T
+model_multi, cols1 = model_multi
+model_ou, cols2 = model_ou
+model_btts, cols3 = model_btts
+
+X_today_1x2 = X_today_1x2.reindex(columns=cols1, fill_value=0)
+X_today_ou = X_today_ou.reindex(columns=cols2, fill_value=0)
+X_today_btts = X_today_btts.reindex(columns=cols3, fill_value=0)
+
+games_today["p_home"], games_today["p_draw"], games_today["p_away"] = model_multi.predict_proba(X_today_1x2).T
+games_today["p_over25"], games_today["p_under25"] = model_ou.predict_proba(X_today_ou).T
+games_today["p_btts_yes"], games_today["p_btts_no"] = model_btts.predict_proba(X_today_btts).T
+
 
 
 ##################### BLOCO 10 – DISPLAY #####################
