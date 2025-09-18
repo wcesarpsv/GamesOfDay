@@ -115,7 +115,7 @@ st.write(pd.DataFrame({
 history['Diff_M'] = history['M_H'] - history['M_A']
 games_today['Diff_M'] = games_today['M_H'] - games_today['M_A']
 
-base_features = ['Odd_H','Odd_D','Odd_A','M_HT_H','M_HT_A','M_H','M_A','Diff_Power','Diff_M']
+base_features = ['Odd_H','Odd_D','Odd_A','M_HT_H','M_HT_A','M_H','M_A','Diff_HT_P','Diff_Power','Diff_M']
 
 # One-hot encode League
 history_leagues = pd.get_dummies(history['League'], prefix="League")
