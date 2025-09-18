@@ -199,14 +199,16 @@ def train_and_evaluate(X, y, name, num_classes):
         save_model((model, feature_cols), filename)
 
     else:
-        # Carregar modelo salvo
-        model, feature_cols = model_bundle
+        # 🔹 Modelo carregado pode ser tupla (novo formato) ou apenas o modelo (antigo)
+        if isinstance(model_bundle, tuple):
+            model, feature_cols = model_bundle
+        else:
+            model = model_bundle
+            feature_cols = X.columns.tolist()
 
-        # Train/Val split
         X_train, X_val, y_train, y_val = train_test_split(
             X, y, test_size=0.2, random_state=42, stratify=y
         )
-        # 🔹 Forçar alinhamento
         X_train = X_train.reindex(columns=feature_cols, fill_value=0)
         X_val = X_val.reindex(columns=feature_cols, fill_value=0)
 
@@ -232,6 +234,7 @@ def train_and_evaluate(X, y, name, num_classes):
     }
 
     return metrics, (model, feature_cols)
+
 
 
 ##################### BLOCO 8 – TREINO MODELOS #####################
