@@ -1,4 +1,4 @@
-# 📊 AI-Powered Bet Indicator – Home vs Away (Binary) com SMOTE
+# 📊 AI-Powered Bet Indicator – Home vs Away (Binary) com PesoMomentum e CustoMomentum
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -111,18 +111,42 @@ st.write(pd.DataFrame({
     ]
 }))
 
-# ---------------- Features ----------------
+# ---------------- Calculando Diff_M ----------------
 history['Diff_M'] = history['M_H'] - history['M_A']
 games_today['Diff_M'] = games_today['M_H'] - games_today['M_A']
 
-base_features = ['Odd_H','Odd_D','Odd_A','M_HT_H','M_HT_A','M_H','M_A','Diff_HT_P','Diff_Power','Diff_M']
+# ---------------- Novas Features: PesoMomentum e CustoMomentum ----------------
+def add_momentum_features(df):
+    # PesoMomentum
+    df['PesoMomentum_H'] = abs(df['M_H']) / (abs(df['M_H']) + abs(df['M_A']))
+    df['PesoMomentum_A'] = abs(df['M_A']) / (abs(df['M_H']) + abs(df['M_A']))
 
-# One-hot encode League
+    # CustoMomentum (evita divisão por zero)
+    df['CustoMomentum_H'] = df.apply(
+        lambda x: x['Odd_H'] / abs(x['M_H']) if abs(x['M_H']) > 0 else np.nan, axis=1
+    )
+    df['CustoMomentum_A'] = df.apply(
+        lambda x: x['Odd_A'] / abs(x['M_A']) if abs(x['M_A']) > 0 else np.nan, axis=1
+    )
+    return df
+
+history = add_momentum_features(history)
+games_today = add_momentum_features(games_today)
+
+# ---------------- Atualizando lista de features ----------------
+base_features = [
+    'Odd_H', 'Odd_D', 'Odd_A',
+    'M_H', 'M_A', 'Diff_Power', 'Diff_M',
+    'PesoMomentum_H', 'PesoMomentum_A',
+    'CustoMomentum_H', 'CustoMomentum_A'
+]
+
+# ---------------- One-hot encoding para Ligas ----------------
 history_leagues = pd.get_dummies(history['League'], prefix="League")
 games_today_leagues = pd.get_dummies(games_today['League'], prefix="League")
 games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
 
-# Final features (garantir sem NaN e sem duplicados)
+# Final features sem NaN e sem duplicados
 X = pd.concat([history[base_features], history_leagues], axis=1).fillna(0).drop_duplicates(keep="first")
 y = history['Target']
 X_today = pd.concat([games_today[base_features], games_today_leagues], axis=1).fillna(0).drop_duplicates(keep="first")
@@ -150,7 +174,7 @@ X_train_scaled[base_features] = scaler.fit_transform(X_train_res[base_features].
 X_val_scaled[base_features] = scaler.transform(X_val[base_features].fillna(0))
 X_today_scaled[base_features] = scaler.transform(X_today[base_features].fillna(0))
 
-# Treinar Random Forest balanceado
+# ---------------- Treinar Random Forest balanceado ----------------
 rf_tuned = RandomForestClassifier(
     n_estimators=500,
     min_samples_split=5,
@@ -158,11 +182,11 @@ rf_tuned = RandomForestClassifier(
     max_features='sqrt',
     max_depth=None,
     random_state=42,
-    class_weight="balanced_subsample"  # mantém balanceamento interno
+    class_weight="balanced_subsample"
 )
 rf_tuned.fit(X_train_res, y_train_res)
 
-# Treinar Logistic Regression balanceada
+# ---------------- Treinar Logistic Regression balanceada ----------------
 log_reg = LogisticRegression(
     max_iter=1000,
     class_weight='balanced'
@@ -228,7 +252,8 @@ games_today['p_away'] = probs_today[:,1]
 # ---------------- Display ----------------
 cols_to_show = [
     'Date', 'Time', 'League', 'Home', 'Away',
-    'Odd_H', 'Odd_A',
+    'Odd_H', 'Odd_A', 'PesoMomentum_H', 'PesoMomentum_A',
+    'CustoMomentum_H', 'CustoMomentum_A',
     'p_home', 'p_away'
 ]
 
@@ -238,15 +263,17 @@ def color_prob(val, color):
 
 def style_probs(val, col):
     if col == 'p_home':
-        return color_prob(val, "0,200,0")  # green
+        return color_prob(val, "0,200,0")  # verde
     elif col == 'p_away':
-        return color_prob(val, "255,140,0")  # orange
+        return color_prob(val, "255,140,0")  # laranja
     return ''
 
 styled_df = (
     games_today[cols_to_show]
     .style.format({
         'Odd_H': '{:.2f}', 'Odd_A': '{:.2f}',
+        'PesoMomentum_H': '{:.2f}', 'PesoMomentum_A': '{:.2f}',
+        'CustoMomentum_H': '{:.2f}', 'CustoMomentum_A': '{:.2f}',
         'p_home': '{:.1%}', 'p_away': '{:.1%}'
     }, na_rep='—')
     .applymap(lambda v: style_probs(v, 'p_home'), subset=['p_home'])
