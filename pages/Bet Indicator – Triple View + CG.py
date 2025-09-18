@@ -112,68 +112,98 @@ history["Target_OU25"] = (history["Goals_H_FT"] + history["Goals_A_FT"] > 2.5).a
 history["Target_BTTS"] = ((history["Goals_H_FT"]>0) & (history["Goals_A_FT"]>0)).astype(int)
 
 
-##################### BLOCO 4 – FEATURES EXTRA (CUSTO/VALOR GOL) #####################
+##################### BLOCO 4 – FEATURES EXTRA (CUSTO/VALOR GOL + CATEGORIAS DINÂMICAS) #####################
+
 def rolling_stats(sub_df, col, window=5, min_periods=2):
     return sub_df.sort_values("Date")[col].rolling(window=window, min_periods=min_periods).mean()
 
-# Histórico
-history["Custo_Gol_H"] = np.where(history["Goals_H_FT"]>0, history["Odd_H"]/history["Goals_H_FT"], 0)
-history["Custo_Gol_A"] = np.where(history["Goals_A_FT"]>0, history["Odd_A"]/history["Goals_A_FT"], 0)
-history["Valor_Gol_H"] = np.where(history["Goals_H_FT"]>0, history["Bet Result"]/history["Goals_H_FT"], 0)
-history["Valor_Gol_A"] = np.where(history["Goals_A_FT"]>0, history["Bet Result"]/history["Goals_A_FT"], 0)
+# ====================
+# 1. Calcular custo e valor do gol
+# ====================
+history["Custo_Gol_H"] = np.where(history["Goals_H_FT"] > 0,
+                                  history["Odd_H"] / history["Goals_H_FT"], 0)
+history["Custo_Gol_A"] = np.where(history["Goals_A_FT"] > 0,
+                                  history["Odd_A"] / history["Goals_A_FT"], 0)
 
-games_today["Custo_Gol_H"] = 0; games_today["Custo_Gol_A"] = 0
-games_today["Valor_Gol_H"] = 0; games_today["Valor_Gol_A"] = 0
+history["Valor_Gol_H"] = np.where(history["Goals_H_FT"] > 0,
+                                  history["Bet Result"] / history["Goals_H_FT"], 0)
+history["Valor_Gol_A"] = np.where(history["Goals_A_FT"] > 0,
+                                  history["Bet Result"] / history["Goals_A_FT"], 0)
 
-# Rolling médias
+# Para jogos do dia (não têm resultado ainda → 0)
+games_today["Custo_Gol_H"] = 0
+games_today["Custo_Gol_A"] = 0
+games_today["Valor_Gol_H"] = 0
+games_today["Valor_Gol_A"] = 0
+
+# ====================
+# 2. Médias móveis (últimos 5 jogos, mínimo 2)
+# ====================
 history = history.sort_values("Date")
-history["Media_CustoGol_H"] = history.groupby("Home", group_keys=False).apply(lambda x: rolling_stats(x,"Custo_Gol_H")).shift(1)
-history["Media_ValorGol_H"] = history.groupby("Home", group_keys=False).apply(lambda x: rolling_stats(x,"Valor_Gol_H")).shift(1)
-history["Media_CustoGol_A"] = history.groupby("Away", group_keys=False).apply(lambda x: rolling_stats(x,"Custo_Gol_A")).shift(1)
-history["Media_ValorGol_A"] = history.groupby("Away", group_keys=False).apply(lambda x: rolling_stats(x,"Valor_Gol_A")).shift(1)
 
-# Categorias
-def classify_row(custo, valor, t_c=1.5, t_v=0):
-    if pd.isna(custo) or pd.isna(valor): return "—"
-    if custo<=t_c and valor>t_v: return "🟢"
-    elif custo<=t_c and valor<=t_v: return "⚪"
-    elif custo>t_c and valor>t_v: return "🟡"
-    else: return "🔴"
+history["Media_CustoGol_H"] = history.groupby("Home", group_keys=False).apply(
+    lambda x: rolling_stats(x, "Custo_Gol_H")).shift(1)
 
-history["Categoria_Gol_H"] = history.apply(lambda r: classify_row(r["Media_CustoGol_H"], r["Media_ValorGol_H"]), axis=1)
-history["Categoria_Gol_A"] = history.apply(lambda r: classify_row(r["Media_CustoGol_A"], r["Media_ValorGol_A"]), axis=1)
+history["Media_ValorGol_H"] = history.groupby("Home", group_keys=False).apply(
+    lambda x: rolling_stats(x, "Valor_Gol_H")).shift(1)
 
+history["Media_CustoGol_A"] = history.groupby("Away", group_keys=False).apply(
+    lambda x: rolling_stats(x, "Custo_Gol_A")).shift(1)
+
+history["Media_ValorGol_A"] = history.groupby("Away", group_keys=False).apply(
+    lambda x: rolling_stats(x, "Valor_Gol_A")).shift(1)
+
+# ====================
+# 3. Thresholds dinâmicos (percentis)
+# ====================
+t_c = history[["Media_CustoGol_H", "Media_CustoGol_A"]].stack().quantile(0.6)  # 60% → custo
+t_v = history[["Media_ValorGol_H", "Media_ValorGol_A"]].stack().quantile(0.4)  # 40% → valor
+
+st.sidebar.markdown(f"### 🔎 Thresholds dinâmicos (percentis)\n- Custo (p60): {t_c:.2f}\n- Valor (p40): {t_v:.2f}")
+
+# ====================
+# 4. Classificação das categorias
+# ====================
+def classify_row_dynamic(custo, valor, t_c, t_v):
+    if pd.isna(custo) or pd.isna(valor):
+        return "—"
+    if custo <= t_c and valor > t_v:
+        return "🟢"  # Baixo Custo, Alto Valor
+    elif custo <= t_c and valor <= t_v:
+        return "⚪"  # Baixo Custo, Baixo Valor
+    elif custo > t_c and valor > t_v:
+        return "🟡"  # Alto Custo, Alto Valor
+    else:
+        return "🔴"  # Alto Custo, Baixo Valor
+
+# Aplicar no histórico
+history["Categoria_Gol_H"] = history.apply(
+    lambda r: classify_row_dynamic(r["Media_CustoGol_H"], r["Media_ValorGol_H"], t_c, t_v), axis=1
+)
+history["Categoria_Gol_A"] = history.apply(
+    lambda r: classify_row_dynamic(r["Media_CustoGol_A"], r["Media_ValorGol_A"], t_c, t_v), axis=1
+)
+
+# ====================
+# 5. Categorias para jogos do dia (última observação histórica de cada time)
+# ====================
 def get_last_category(team, side):
-    df = history[history["Home"]==team] if side=="H" else history[history["Away"]==team]
+    df = history[history["Home"] == team] if side == "H" else history[history["Away"] == team]
     row = df.sort_values("Date").tail(1)
     return row[f"Categoria_Gol_{side}"].iloc[0] if not row.empty else "—"
 
-games_today["Categoria_Gol_H"] = games_today["Home"].apply(lambda t: get_last_category(t,"H"))
-games_today["Categoria_Gol_A"] = games_today["Away"].apply(lambda t: get_last_category(t,"A"))
+games_today["Categoria_Gol_H"] = games_today["Home"].apply(lambda t: get_last_category(t, "H"))
+games_today["Categoria_Gol_A"] = games_today["Away"].apply(lambda t: get_last_category(t, "A"))
 
+# ====================
+# 6. One-hot encoding para categorias
+# ====================
 cat_h = pd.get_dummies(history["Categoria_Gol_H"], prefix="Cat_H")
 cat_a = pd.get_dummies(history["Categoria_Gol_A"], prefix="Cat_A")
+
 cat_h_today = pd.get_dummies(games_today["Categoria_Gol_H"], prefix="Cat_H").reindex(columns=cat_h.columns, fill_value=0)
 cat_a_today = pd.get_dummies(games_today["Categoria_Gol_A"], prefix="Cat_A").reindex(columns=cat_a.columns, fill_value=0)
 
-
-##################### BLOCO 5 – FEATURES BASE #####################
-history["Diff_M"] = history["M_H"] - history["M_A"]
-games_today["Diff_M"] = games_today["M_H"] - games_today["M_A"]
-
-features_1x2 = ["Odd_H","Odd_D","Odd_A","Diff_Power","M_H","M_A","Diff_M","Diff_HT_P","M_HT_H","M_HT_A"]
-features_ou_btts = ["Odd_H","Odd_D","Odd_A","Diff_Power","M_H","M_A","Diff_M","Diff_HT_P","OU_Total"]
-
-history_leagues = pd.get_dummies(history["League"], prefix="League")
-games_today_leagues = pd.get_dummies(games_today["League"], prefix="League").reindex(columns=history_leagues.columns, fill_value=0)
-
-X_1x2 = pd.concat([history[features_1x2], history_leagues, cat_h, cat_a], axis=1)
-X_ou = pd.concat([history[features_ou_btts], history_leagues], axis=1)
-X_btts = pd.concat([history[features_ou_btts], history_leagues], axis=1)
-
-X_today_1x2 = pd.concat([games_today[features_1x2], games_today_leagues, cat_h_today, cat_a_today], axis=1).reindex(columns=X_1x2.columns, fill_value=0)
-X_today_ou = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1).reindex(columns=X_ou.columns, fill_value=0)
-X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1).reindex(columns=X_btts.columns, fill_value=0)
 
 
 ##################### BLOCO 6 – SIDEBAR #####################
