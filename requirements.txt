@@ -6,5 +6,7 @@ plotly
 numpy
 xgboost
 scikit-learn
+imblearn
+
 
 
