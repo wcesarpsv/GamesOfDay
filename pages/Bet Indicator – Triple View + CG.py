@@ -204,6 +204,56 @@ cat_a = pd.get_dummies(history["Categoria_Gol_A"], prefix="Cat_A")
 cat_h_today = pd.get_dummies(games_today["Categoria_Gol_H"], prefix="Cat_H").reindex(columns=cat_h.columns, fill_value=0)
 cat_a_today = pd.get_dummies(games_today["Categoria_Gol_A"], prefix="Cat_A").reindex(columns=cat_a.columns, fill_value=0)
 
+##################### BLOCO 5 – FEATURES BASE #####################
+
+# ⚠️ Garantir que BLOCO 4 já rodou antes deste
+if "cat_h" not in locals() or "cat_a" not in locals():
+    st.error("❌ As categorias de gol (BLOCO 4) não foram calculadas antes do BLOCO 5.")
+    st.stop()
+
+# ---------------- Diferenças de métricas ----------------
+history["Diff_M"] = history["M_H"] - history["M_A"]
+games_today["Diff_M"] = games_today["M_H"] - games_today["M_A"]
+
+# ---------------- Conjuntos de features ----------------
+features_1x2 = [
+    "Odd_H", "Odd_D", "Odd_A",
+    "Diff_Power", "M_H", "M_A", "Diff_M",
+    "Diff_HT_P", "M_HT_H", "M_HT_A"
+]
+
+features_ou_btts = [
+    "Odd_H", "Odd_D", "Odd_A",
+    "Diff_Power", "M_H", "M_A", "Diff_M",
+    "Diff_HT_P", "OU_Total"
+]
+
+# ---------------- One-hot encode das ligas ----------------
+history_leagues = pd.get_dummies(history["League"], prefix="League")
+games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
+games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
+
+# ---------------- Montagem final dos datasets ----------------
+# 1X2 usa categorias de gol
+X_1x2 = pd.concat([history[features_1x2], history_leagues, cat_h, cat_a], axis=1)
+
+# Over/Under 2.5
+X_ou = pd.concat([history[features_ou_btts], history_leagues], axis=1)
+
+# BTTS
+X_btts = pd.concat([history[features_ou_btts], history_leagues], axis=1)
+
+# ---------------- Jogos do dia ----------------
+X_today_1x2 = pd.concat([games_today[features_1x2], games_today_leagues, cat_h_today, cat_a_today], axis=1)
+X_today_1x2 = X_today_1x2.reindex(columns=X_1x2.columns, fill_value=0)
+
+X_today_ou = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
+X_today_ou = X_today_ou.reindex(columns=X_ou.columns, fill_value=0)
+
+X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
+X_today_btts = X_today_btts.reindex(columns=X_btts.columns, fill_value=0)
+
+
 
 ##################### BLOCO 6 – SIDEBAR #####################
 st.sidebar.header("⚙️ Settings")
