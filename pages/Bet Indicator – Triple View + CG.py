@@ -21,91 +21,76 @@ os.makedirs(MODELS_FOLDER, exist_ok=True)
 
 
 ##################### BLOCO 2 – HELPERS #####################
-def preprocess_df(df):
-    df = df.copy()
-    if "Goals_H_FT_x" in df.columns:
-        df = df.rename(columns={"Goals_H_FT_x": "Goals_H_FT", "Goals_A_FT_x": "Goals_A_FT"})
-    elif "Goals_H_FT_y" in df.columns:
-        df = df.rename(columns={"Goals_H_FT_y": "Goals_H_FT", "Goals_A_FT_y": "Goals_A_FT"})
-    if "Bet Result" not in df.columns:
-        df["Bet Result"] = 0
-    return df
+# Add this constant at the top of the helpers section
+MODEL_VERSION = "v2"  # Change this when you update the model structure
 
-def load_all_games(folder):
-    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
-    if not files: 
-        return pd.DataFrame()
-    
-    dfs = []
-    for f in files:
-        try:
-            df = pd.read_csv(os.path.join(folder, f))
-            dfs.append(preprocess_df(df))
-        except Exception as e:
-            st.warning(f"Error loading {f}: {e}")
-    
-    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
-
-def load_selected_csvs(folder):
-    files = sorted([f for f in os.listdir(folder) if f.endswith(".csv")])
-    if not files: 
-        return pd.DataFrame()
-    
-    today_file = files[-1]
-    yesterday_file = files[-2] if len(files) >= 2 else None
-    
-    st.markdown("### 📂 Select matches to display")
-    col1, col2 = st.columns(2)
-    today_checked = col1.checkbox("Today Matches", value=True)
-    yesterday_checked = col2.checkbox("Yesterday Matches", value=False)
-    
-    dfs = []
-    if today_checked: 
-        try:
-            dfs.append(preprocess_df(pd.read_csv(os.path.join(folder, today_file))))
-        except Exception as e:
-            st.error(f"Error loading today's file {today_file}: {e}")
-    
-    if yesterday_checked and yesterday_file: 
-        try:
-            dfs.append(preprocess_df(pd.read_csv(os.path.join(folder, yesterday_file))))
-        except Exception as e:
-            st.error(f"Error loading yesterday's file {yesterday_file}: {e}")
-    
-    if not dfs: 
-        return pd.DataFrame()
-    
-    return pd.concat(dfs, ignore_index=True)
-
-def filter_leagues(df):
-    if df.empty or "League" not in df.columns: 
-        return df
-    pattern = "|".join(EXCLUDED_LEAGUE_KEYWORDS)
-    return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
+def get_model_filename(base_name, ml_model_choice):
+    """Generate version-specific model filename"""
+    return f"{ml_model_choice.replace(' ', '')}_{base_name}_{MODEL_VERSION}.pkl"
 
 def save_model(model, feature_cols, filename):
+    # Add version info and metadata
+    model_data = {
+        'version': MODEL_VERSION,
+        'timestamp': pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'model': model,
+        'feature_cols': feature_cols,
+        'model_type': type(model).__name__
+    }
     with open(os.path.join(MODELS_FOLDER, filename), "wb") as f: 
-        joblib.dump((model, feature_cols), f)
+        joblib.dump(model_data, f)
 
 def load_model(filename):
     path = os.path.join(MODELS_FOLDER, filename)
-    if os.path.exists(path):
-        with open(path, "rb") as f: 
-            return joblib.load(f)
-    return None
-
-def safe_get_dummies(df, column, prefix, reference_columns=None):
-    if df.empty or column not in df.columns:
-        return pd.DataFrame()
+    if not os.path.exists(path):
+        return None
     
-    dummies = pd.get_dummies(df[column], prefix=prefix)
-    if reference_columns is not None:
-        # Ensure all reference columns are present
-        for col in reference_columns:
-            if col not in dummies.columns:
-                dummies[col] = 0
-        dummies = dummies.reindex(columns=reference_columns, fill_value=0)
-    return dummies
+    try:
+        loaded_data = joblib.load(path)
+        
+        # Handle different formats
+        if isinstance(loaded_data, dict) and 'model' in loaded_data:
+            # New format with metadata
+            model = loaded_data['model']
+            feature_cols = loaded_data.get('feature_cols', [])
+            saved_version = loaded_data.get('version', 'unknown')
+            
+            if saved_version != MODEL_VERSION:
+                st.sidebar.warning(f"Model version mismatch: {saved_version} (saved) vs {MODEL_VERSION} (current)")
+            
+            return (model, feature_cols)
+            
+        elif isinstance(loaded_data, tuple) and len(loaded_data) == 2:
+            # Old tuple format
+            return loaded_data
+            
+        elif hasattr(loaded_data, 'predict'):
+            # Just the model object
+            return (loaded_data, [])
+            
+        else:
+            st.error(f"Unknown model format in {filename}")
+            return None
+            
+    except Exception as e:
+        st.error(f"Error loading model {filename}: {str(e)}")
+        return None
+
+def find_compatible_model(base_name, ml_model_choice):
+    """Try to find any compatible model file, regardless of version"""
+    pattern = f"{ml_model_choice.replace(' ', '')}_{base_name}_"
+    model_files = [f for f in os.listdir(MODELS_FOLDER) if f.startswith(pattern) and f.endswith('.pkl')]
+    
+    if model_files:
+        # Try to load the most recent one
+        model_files.sort(key=lambda x: os.path.getmtime(os.path.join(MODELS_FOLDER, x)), reverse=True)
+        for model_file in model_files:
+            loaded = load_model(model_file)
+            if loaded is not None:
+                st.sidebar.info(f"Using compatible model: {model_file}")
+                return loaded, model_file
+    
+    return None, None
 
 
 ##################### BLOCO 3 – LOAD DATA #####################
@@ -216,14 +201,46 @@ st.sidebar.header("⚙️ Settings")
 ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest","Random Forest Tuned","XGBoost Tuned"])
 retrain = st.sidebar.checkbox("Retrain models", value=False)
 
+# Add model management options
+st.sidebar.header("🔧 Model Management")
+if st.sidebar.button("Show Available Models"):
+    model_files = [f for f in os.listdir(MODELS_FOLDER) if f.endswith('.pkl')]
+    if model_files:
+        st.sidebar.write("**Available models:**")
+        for model_file in sorted(model_files):
+            st.sidebar.write(f"• {model_file}")
+    else:
+        st.sidebar.write("No models found")
+
+if st.sidebar.button("Delete All Models and Retrain"):
+    model_files = [f for f in os.listdir(MODELS_FOLDER) if f.endswith('.pkl')]
+    for model_file in model_files:
+        os.remove(os.path.join(MODELS_FOLDER, model_file))
+    st.sidebar.success(f"Deleted {len(model_files)} models")
+    st.experimental_rerun()
+
 
 ##################### BLOCO 7 – TREINAR & AVALIAR #####################
 def train_and_evaluate(X, y, name, num_classes):
-    filename = f"{ml_model_choice.replace(' ', '')}_{name}.pkl"
+    target_filename = get_model_filename(name, ml_model_choice)
     feature_cols = X.columns.tolist()
 
     # ---------------- carregar modelo ----------------
-    model_bundle = None if retrain else load_model(filename)
+    model_bundle = None
+    if not retrain:
+        # First try to load the exact version-specific model
+        model_bundle = load_model(target_filename)
+        
+        # If not found, try to find any compatible model
+        if model_bundle is None:
+            model_bundle, found_filename = find_compatible_model(name, ml_model_choice)
+            if model_bundle is not None:
+                st.sidebar.info(f"Using compatible model from {found_filename}")
+    
+    # Debug info
+    if model_bundle is not None:
+        model, loaded_feature_cols = model_bundle
+        st.sidebar.info(f"Model: {type(model).__name__}, Features: {len(loaded_feature_cols) if loaded_feature_cols else 'unknown'}")
 
     if model_bundle is None:
         # Criar modelo novo
@@ -264,12 +281,21 @@ def train_and_evaluate(X, y, name, num_classes):
 
         model.fit(X_train, y_train)
 
-        # Salvar modelo + features
-        save_model(model, feature_cols, filename)
+        # Salvar modelo + features with versioning
+        save_model(model, feature_cols, target_filename)
+        st.sidebar.success(f"Created new model: {target_filename}")
 
     else:
-        # Modelo carregado
-        model, feature_cols = model_bundle
+        # Modelo carregado - handle both formats
+        model, loaded_feature_cols = model_bundle
+        
+        # If feature_cols is empty (old format), use current features
+        if not loaded_feature_cols:
+            loaded_feature_cols = feature_cols
+            st.sidebar.warning("Using current feature set (no features saved with model)")
+        
+        feature_cols = loaded_feature_cols
+        
         # Use full dataset for evaluation when loading pre-trained model
         X_val, y_val = X, y
 
@@ -282,27 +308,39 @@ def train_and_evaluate(X, y, name, num_classes):
     if missing_features:
         st.warning(f"Missing features for {name} evaluation: {missing_features}")
 
-    preds = model.predict(X_val)
-    probs = model.predict_proba(X_val)
+    try:
+        preds = model.predict(X_val)
+        probs = model.predict_proba(X_val)
 
-    acc = accuracy_score(y_val, preds)
-    ll = log_loss(y_val, probs)
+        acc = accuracy_score(y_val, preds)
+        ll = log_loss(y_val, probs)
 
-    if num_classes == 2:
-        bs = f"{brier_score_loss(y_val, probs[:, 1]):.3f}"
-    else:
-        y_onehot = pd.get_dummies(y_val).values
-        bs_raw = np.mean(np.sum((probs - y_onehot) ** 2, axis=1))
-        bs = f"{bs_raw:.3f} (multi)"
+        if num_classes == 2:
+            bs = f"{brier_score_loss(y_val, probs[:, 1]):.3f}"
+        else:
+            y_onehot = pd.get_dummies(y_val).values
+            bs_raw = np.mean(np.sum((probs - y_onehot) ** 2, axis=1))
+            bs = f"{bs_raw:.3f} (multi)"
 
-    metrics = {
-        "Model": f"{ml_model_choice} - {name}",
-        "Accuracy": f"{acc:.3f}",
-        "LogLoss": f"{ll:.3f}",
-        "Brier": bs,
-    }
+        metrics = {
+            "Model": f"{ml_model_choice} - {name}",
+            "Accuracy": f"{acc:.3f}",
+            "LogLoss": f"{ll:.3f}",
+            "Brier": bs,
+        }
 
-    return metrics, (model, feature_cols)
+        return metrics, (model, feature_cols)
+    
+    except Exception as e:
+        st.error(f"Error evaluating model {name}: {e}")
+        # Return dummy metrics and model
+        metrics = {
+            "Model": f"{ml_model_choice} - {name}",
+            "Accuracy": "N/A",
+            "LogLoss": "N/A",
+            "Brier": "N/A",
+        }
+        return metrics, (model, feature_cols)
 
 
 ##################### BLOCO 8 – TREINO MODELOS #####################
