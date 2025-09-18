@@ -22,11 +22,34 @@ MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
 os.makedirs(MODELS_FOLDER, exist_ok=True)
 
 # ---------------- Helpers ----------------
+def preprocess_df(df):
+    """Normaliza colunas de gols e garante Bet Result."""
+    df = df.copy()
+
+    # Renomear colunas de gols duplicadas (_x → padrão)
+    if "Goals_H_FT_x" in df.columns:
+        df = df.rename(columns={
+            "Goals_H_FT_x": "Goals_H_FT",
+            "Goals_A_FT_x": "Goals_A_FT"
+        })
+    elif "Goals_H_FT_y" in df.columns:
+        df = df.rename(columns={
+            "Goals_H_FT_y": "Goals_H_FT",
+            "Goals_A_FT_y": "Goals_A_FT"
+        })
+
+    # Garantir que exista "Bet Result"
+    if "Bet Result" not in df.columns:
+        df["Bet Result"] = 0
+
+    return df
+
 def load_all_games(folder):
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     if not files:
         return pd.DataFrame()
-    return pd.concat([pd.read_csv(os.path.join(folder, f)) for f in files], ignore_index=True)
+    dfs = [preprocess_df(pd.read_csv(os.path.join(folder, f))) for f in files]
+    return pd.concat(dfs, ignore_index=True)
 
 def load_selected_csvs(folder):
     files = sorted([f for f in os.listdir(folder) if f.endswith(".csv")])
@@ -43,9 +66,9 @@ def load_selected_csvs(folder):
 
     selected_dfs = []
     if today_checked:
-        selected_dfs.append(pd.read_csv(os.path.join(folder, today_file)))
+        selected_dfs.append(preprocess_df(pd.read_csv(os.path.join(folder, today_file))))
     if yesterday_checked and yesterday_file:
-        selected_dfs.append(pd.read_csv(os.path.join(folder, yesterday_file)))
+        selected_dfs.append(preprocess_df(pd.read_csv(os.path.join(folder, yesterday_file))))
 
     if not selected_dfs:
         return pd.DataFrame()
@@ -101,17 +124,10 @@ def rolling_stats(sub_df, col, window=5, min_periods=2):
     return sub_df.sort_values("Date")[col].rolling(window=window, min_periods=min_periods).mean()
 
 # Histórico (tem resultados)
-if "Goals_H_FT" in history.columns:
-    history["Custo_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Odd_H"] / history["Goals_H_FT"], 0)
-    history["Custo_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Odd_A"] / history["Goals_A_FT"], 0)
-
-    if "Bet Result" in history.columns:
-        history["Valor_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Bet Result"] / history["Goals_H_FT"], 0)
-        history["Valor_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Bet Result"] / history["Goals_A_FT"], 0)
-    else:
-        history["Valor_Gol_H"] = 0
-        history["Valor_Gol_A"] = 0
-
+history["Custo_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Odd_H"] / history["Goals_H_FT"], 0)
+history["Custo_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Odd_A"] / history["Goals_A_FT"], 0)
+history["Valor_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Bet Result"] / history["Goals_H_FT"], 0)
+history["Valor_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Bet Result"] / history["Goals_A_FT"], 0)
 
 # Jogos do dia (sem resultados → apenas categorias herdadas)
 games_today["Custo_Gol_H"] = 0
@@ -181,6 +197,11 @@ X_btts = pd.concat([history[features_ou_btts], history_leagues], axis=1)
 X_today_1x2 = pd.concat([games_today[features_1x2], games_today_leagues, cat_h_today, cat_a_today], axis=1)
 X_today_ou = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
 X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
+
+# 🔹 Alinhar colunas para evitar ValueError
+X_today_1x2 = X_today_1x2.reindex(columns=X_1x2.columns, fill_value=0)
+X_today_ou = X_today_ou.reindex(columns=X_ou.columns, fill_value=0)
+X_today_btts = X_today_btts.reindex(columns=X_btts.columns, fill_value=0)
 
 # ---------------- Sidebar Config ----------------
 st.sidebar.header("⚙️ Settings")
@@ -252,24 +273,6 @@ def train_and_evaluate(X, y, name, num_classes):
         bs = f"{bs_raw:.3f} (multi)"
 
     metrics = {"Model": f"{ml_model_choice} - {name}", "Accuracy": f"{acc:.3f}", "LogLoss": f"{ll:.3f}", "Brier": bs}
-
-    if num_classes == 3:
-        metrics.update({
-            "Winrate_Home": f"{(preds[y_val == 0] == 0).mean():.2%}",
-            "Winrate_Draw": f"{(preds[y_val == 1] == 1).mean():.2%}",
-            "Winrate_Away": f"{(preds[y_val == 2] == 2).mean():.2%}",
-        })
-    elif num_classes == 2:
-        if name == "OverUnder25":
-            metrics.update({
-                "Winrate_Over25": f"{(preds[y_val == 1] == 1).mean():.2%}",
-                "Winrate_Under25": f"{(preds[y_val == 0] == 0).mean():.2%}",
-            })
-        elif name == "BTTS":
-            metrics.update({
-                "Winrate_BTTS_Yes": f"{(preds[y_val == 1] == 1).mean():.2%}",
-                "Winrate_BTTS_No": f"{(preds[y_val == 0] == 0).mean():.2%}",
-            })
 
     return metrics, model
 
@@ -346,4 +349,3 @@ st.markdown("""
 - 🔴 **(Alto Custo, Baixo Valor)** → Time ineficiente e gols pouco impactantes.  
 - — Sem histórico suficiente para classificar.  
 """)
-
