@@ -222,25 +222,12 @@ if st.sidebar.button("Delete All Models and Retrain"):
 
 ##################### BLOCO 7 – TREINAR & AVALIAR #####################
 def train_and_evaluate(X, y, name, num_classes):
-    target_filename = get_model_filename(name, ml_model_choice)
+    # 🔹 Nome único para evitar conflito com modelos antigos
+    filename = f"{ml_model_choice.replace(' ', '')}_{name}_CG.pkl"
     feature_cols = X.columns.tolist()
 
     # ---------------- carregar modelo ----------------
-    model_bundle = None
-    if not retrain:
-        # First try to load the exact version-specific model
-        model_bundle = load_model(target_filename)
-        
-        # If not found, try to find any compatible model
-        if model_bundle is None:
-            model_bundle, found_filename = find_compatible_model(name, ml_model_choice)
-            if model_bundle is not None:
-                st.sidebar.info(f"Using compatible model from {found_filename}")
-    
-    # Debug info
-    if model_bundle is not None:
-        model, loaded_feature_cols = model_bundle
-        st.sidebar.info(f"Model: {type(model).__name__}, Features: {len(loaded_feature_cols) if loaded_feature_cols else 'unknown'}")
+    model_bundle = None if retrain else load_model(filename)
 
     if model_bundle is None:
         # Criar modelo novo
@@ -281,66 +268,46 @@ def train_and_evaluate(X, y, name, num_classes):
 
         model.fit(X_train, y_train)
 
-        # Salvar modelo + features with versioning
-        save_model(model, feature_cols, target_filename)
-        st.sidebar.success(f"Created new model: {target_filename}")
+        # Salvar modelo + features
+        save_model((model, feature_cols), filename)
 
     else:
-        # Modelo carregado - handle both formats
-        model, loaded_feature_cols = model_bundle
-        
-        # If feature_cols is empty (old format), use current features
-        if not loaded_feature_cols:
-            loaded_feature_cols = feature_cols
-            st.sidebar.warning("Using current feature set (no features saved with model)")
-        
-        feature_cols = loaded_feature_cols
-        
-        # Use full dataset for evaluation when loading pre-trained model
-        X_val, y_val = X, y
+        # 🔹 Pode ser tupla (novo) ou só modelo (antigo, mas com nome diferente não deve existir)
+        if isinstance(model_bundle, tuple):
+            model, feature_cols = model_bundle
+        else:
+            model = model_bundle
+            feature_cols = X.columns.tolist()
+
+        X_train, X_val, y_train, y_val = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
+        X_train = X_train.reindex(columns=feature_cols, fill_value=0)
+        X_val = X_val.reindex(columns=feature_cols, fill_value=0)
 
     # ---------------- avaliação ----------------
-    # Ensure feature alignment
-    X_val = X_val.reindex(columns=feature_cols, fill_value=0)
-    
-    # Check for missing features
-    missing_features = set(feature_cols) - set(X_val.columns)
-    if missing_features:
-        st.warning(f"Missing features for {name} evaluation: {missing_features}")
+    preds = model.predict(X_val)
+    probs = model.predict_proba(X_val)
 
-    try:
-        preds = model.predict(X_val)
-        probs = model.predict_proba(X_val)
+    acc = accuracy_score(y_val, preds)
+    ll = log_loss(y_val, probs)
 
-        acc = accuracy_score(y_val, preds)
-        ll = log_loss(y_val, probs)
+    if num_classes == 2:
+        bs = f"{brier_score_loss(y_val, probs[:, 1]):.3f}"
+    else:
+        y_onehot = pd.get_dummies(y_val).values
+        bs_raw = np.mean(np.sum((probs - y_onehot) ** 2, axis=1))
+        bs = f"{bs_raw:.3f} (multi)"
 
-        if num_classes == 2:
-            bs = f"{brier_score_loss(y_val, probs[:, 1]):.3f}"
-        else:
-            y_onehot = pd.get_dummies(y_val).values
-            bs_raw = np.mean(np.sum((probs - y_onehot) ** 2, axis=1))
-            bs = f"{bs_raw:.3f} (multi)"
+    metrics = {
+        "Model": f"{ml_model_choice} - {name}",
+        "Accuracy": f"{acc:.3f}",
+        "LogLoss": f"{ll:.3f}",
+        "Brier": bs,
+    }
 
-        metrics = {
-            "Model": f"{ml_model_choice} - {name}",
-            "Accuracy": f"{acc:.3f}",
-            "LogLoss": f"{ll:.3f}",
-            "Brier": bs,
-        }
+    return metrics, (model, feature_cols)
 
-        return metrics, (model, feature_cols)
-    
-    except Exception as e:
-        st.error(f"Error evaluating model {name}: {e}")
-        # Return dummy metrics and model
-        metrics = {
-            "Model": f"{ml_model_choice} - {name}",
-            "Accuracy": "N/A",
-            "LogLoss": "N/A",
-            "Brier": "N/A",
-        }
-        return metrics, (model, feature_cols)
 
 
 ##################### BLOCO 8 – TREINO MODELOS #####################
