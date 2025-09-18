@@ -150,7 +150,12 @@ rf_tuned = RandomForestClassifier(
 )
 rf_tuned.fit(X_train, y_train)
 
-log_reg = LogisticRegression(max_iter=1000)
+# ---------------- Logistic Regression com balanceamento ----------------
+log_reg = LogisticRegression(
+    max_iter=1000,
+    class_weight='balanced',  # <-- Novo parâmetro para corrigir desbalanceamento
+    solver='lbfgs'            # Solver padrão, funciona bem na maioria dos casos
+)
 log_reg.fit(X_train_scaled, y_train)
 
 # ---------------- Model Choice ----------------
