@@ -205,7 +205,6 @@ cat_h_today = pd.get_dummies(games_today["Categoria_Gol_H"], prefix="Cat_H").rei
 cat_a_today = pd.get_dummies(games_today["Categoria_Gol_A"], prefix="Cat_A").reindex(columns=cat_a.columns, fill_value=0)
 
 
-
 ##################### BLOCO 6 – SIDEBAR #####################
 st.sidebar.header("⚙️ Settings")
 ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest","Random Forest Tuned","XGBoost Tuned"])
