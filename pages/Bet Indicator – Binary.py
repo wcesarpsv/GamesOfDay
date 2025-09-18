@@ -1,14 +1,20 @@
-# 📊 AI-Powered Bet Indicator – Home vs Away (Binary)
+# 📊 AI-Powered Bet Indicator – Home vs Away (Binary) com SMOTE
 import streamlit as st
 import pandas as pd
 import numpy as np
 import os
 from datetime import date, timedelta
+from collections import Counter
+
+# Machine Learning
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, log_loss, brier_score_loss, classification_report
+
+# SMOTE para balanceamento
+from imblearn.over_sampling import SMOTE
 
 # ---------------- Page Config ----------------
 st.set_page_config(page_title="Bet Indicator – Home vs Away", layout="wide")
@@ -95,7 +101,6 @@ history['Target'] = history.apply(
 
 # ---------------- Check Class Balance ----------------
 class_counts = history['Target'].value_counts()
-
 st.markdown("### ⚖️ Class Distribution (Home vs Away)")
 st.write(pd.DataFrame({
     'Class': ['Home (0)', 'Away (1)'],
@@ -105,7 +110,6 @@ st.write(pd.DataFrame({
         f"{class_counts.get(1, 0) / len(history) * 100:.1f}%"
     ]
 }))
-
 
 # ---------------- Features ----------------
 history['Diff_M'] = history['M_H'] - history['M_A']
@@ -123,22 +127,30 @@ X = pd.concat([history[base_features], history_leagues], axis=1).fillna(0).drop_
 y = history['Target']
 X_today = pd.concat([games_today[base_features], games_today_leagues], axis=1).fillna(0).drop_duplicates(keep="first")
 
-# ---------------- Train & Evaluate ----------------
+# ---------------- Train & Evaluate com SMOTE ----------------
 X_train, X_val, y_train, y_val = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
 
-# Escalador para Logistic Regression
+# Aplicar SMOTE para balancear o treino
+st.info("Aplicando SMOTE para balancear as classes (Away)...")
+smote = SMOTE(random_state=42, sampling_strategy='auto')
+X_train_res, y_train_res = smote.fit_resample(X_train, y_train)
+
+# Mostrar distribuição após SMOTE
+st.write("Distribuição após SMOTE:", dict(Counter(y_train_res)))
+
+# Escalador para Logistic Regression (apenas para features contínuas)
 scaler = StandardScaler()
-X_train_scaled = X_train.copy()
+X_train_scaled = X_train_res.copy()
 X_val_scaled = X_val.copy()
 X_today_scaled = X_today.copy()
 
-X_train_scaled[base_features] = scaler.fit_transform(X_train[base_features].fillna(0))
+X_train_scaled[base_features] = scaler.fit_transform(X_train_res[base_features].fillna(0))
 X_val_scaled[base_features] = scaler.transform(X_val[base_features].fillna(0))
 X_today_scaled[base_features] = scaler.transform(X_today[base_features].fillna(0))
 
-# Train Models
+# Treinar Random Forest balanceado
 rf_tuned = RandomForestClassifier(
     n_estimators=500,
     min_samples_split=5,
@@ -146,17 +158,16 @@ rf_tuned = RandomForestClassifier(
     max_features='sqrt',
     max_depth=None,
     random_state=42,
-    class_weight="balanced_subsample"
+    class_weight="balanced_subsample"  # mantém balanceamento interno
 )
-rf_tuned.fit(X_train, y_train)
+rf_tuned.fit(X_train_res, y_train_res)
 
-# ---------------- Logistic Regression com balanceamento ----------------
+# Treinar Logistic Regression balanceada
 log_reg = LogisticRegression(
     max_iter=1000,
-    class_weight='balanced',  # <-- Novo parâmetro para corrigir desbalanceamento
-    solver='lbfgs'            # Solver padrão, funciona bem na maioria dos casos
+    class_weight='balanced'
 )
-log_reg.fit(X_train_scaled, y_train)
+log_reg.fit(X_train_scaled, y_train_res)
 
 # ---------------- Model Choice ----------------
 model_choice = st.sidebar.radio(
