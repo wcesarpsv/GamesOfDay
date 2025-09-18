@@ -93,6 +93,20 @@ history['Target'] = history.apply(
     axis=1
 )
 
+# ---------------- Check Class Balance ----------------
+class_counts = history['Target'].value_counts()
+
+st.markdown("### ⚖️ Class Distribution (Home vs Away)")
+st.write(pd.DataFrame({
+    'Class': ['Home (0)', 'Away (1)'],
+    'Count': [class_counts.get(0, 0), class_counts.get(1, 0)],
+    'Percentage': [
+        f"{class_counts.get(0, 0) / len(history) * 100:.1f}%",
+        f"{class_counts.get(1, 0) / len(history) * 100:.1f}%"
+    ]
+}))
+
+
 # ---------------- Features ----------------
 history['Diff_M'] = history['M_H'] - history['M_A']
 games_today['Diff_M'] = games_today['M_H'] - games_today['M_A']
