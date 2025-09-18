@@ -423,10 +423,9 @@ st.dataframe(cat_away_stats.style.format("{:.1%}", subset=["Draw","Win_H","Win_A
 
 
 st.markdown("""
-### 🟢⚪🟡🔴 Goal Categories – Legend
-- 🟢 **(Baixo Custo, Alto Valor)**  
-- ⚪ **(Baixo Custo, Baixo Valor)**  
-- 🟡 **(Alto Custo, Alto Valor)**  
-- 🔴 **(Alto Custo, Baixo Valor)**  
-- — Sem histórico suficiente
+📌 Interpretation
+🟢 = efficient team and decisive objectives → “winning” profile.
+⚪ = efficient team but low impact goals → leads to draws.
+🟡 = inefficient team, but when they score they decide → unstable profile.
+🔴 = inefficient team and irrelevant goals → “loser” profile.
 """)
