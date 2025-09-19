@@ -140,23 +140,35 @@ history["Target_BTTS"] = ((history["Goals_H_FT"] > 0) & (history["Goals_A_FT"] >
 
 
 
-##################### BLOCO 4 – EXTRA FEATURES #####################
+##################### BLOCK 4 – EXTRA FEATURES #####################
 def rolling_stats(sub_df, col, window=5, min_periods=1):
     return sub_df.sort_values("Date")[col].rolling(window=window, min_periods=min_periods).mean()
 
-# 1. Cost & Value
+# 1. Cost of goals (odds / goals)
 history["Custo_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Odd_H"] / history["Goals_H_FT"], 0)
 history["Custo_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Odd_A"] / history["Goals_A_FT"], 0)
 
-history["Valor_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Bet Result"] / history["Goals_H_FT"], 0)
-history["Valor_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Bet Result"] / history["Goals_A_FT"], 0)
+# 2. Define Bet Result as betting profit (home win back test)
+#    - If home team wins → profit = Odd_H - 1
+#    - Otherwise (draw or away win) → profit = -1
+history["Bet Result"] = np.where(
+    history["Goals_H_FT"] > history["Goals_A_FT"],
+    history["Odd_H"] - 1,
+    -1
+)
 
-# Today’s matches → inicializa com NaN
+# 3. Value of goals = profit per goal
+history["Valor_Gol_H"] = np.where(history["Goals_H_FT"] > 0,
+                                  history["Bet Result"] / history["Goals_H_FT"], 0)
+history["Valor_Gol_A"] = np.where(history["Goals_A_FT"] > 0,
+                                  history["Bet Result"] / history["Goals_A_FT"], 0)
+
+# Initialize for today’s matches (to be filled with last historical values)
 for col in ["Custo_Gol_H", "Custo_Gol_A", "Valor_Gol_H", "Valor_Gol_A",
             "Media_CustoGol_H", "Media_ValorGol_H", "Media_CustoGol_A", "Media_ValorGol_A"]:
     games_today[col] = np.nan
 
-# 2. Rolling averages
+# 4. Rolling averages (last 5 matches, shifted for training)
 history = history.sort_values("Date")
 history["Media_CustoGol_H"] = history.groupby("Home", group_keys=False).apply(
     lambda x: rolling_stats(x, "Custo_Gol_H")
@@ -171,7 +183,7 @@ history["Media_ValorGol_A"] = history.groupby("Away", group_keys=False).apply(
     lambda x: rolling_stats(x, "Valor_Gol_A")
 ).shift(1)
 
-# 3. Dynamic thresholds
+# 5. Dynamic thresholds (for classification)
 t_c = history[["Media_CustoGol_H", "Media_CustoGol_A"]].stack().quantile(0.6)
 t_v = history[["Media_ValorGol_H", "Media_ValorGol_A"]].stack().quantile(0.4)
 
@@ -179,7 +191,7 @@ st.sidebar.markdown(
     f"### 🔎 Dynamic thresholds (percentiles)\n- Cost (p60): {t_c:.2f}\n- Value (p40): {t_v:.2f}"
 )
 
-# 4. Classification
+# 6. Classification based on cost & value
 def classify_row_dynamic(custo, valor, t_c, t_v):
     if pd.isna(custo) or pd.isna(valor):
         return "—"
@@ -199,7 +211,7 @@ history["Categoria_Gol_A"] = history.apply(
     lambda r: classify_row_dynamic(r["Media_CustoGol_A"], r["Media_ValorGol_A"], t_c, t_v), axis=1
 )
 
-# 5. Categories for today’s matches
+# 7. Categories for today’s matches
 def get_last_category(team, side, min_games=2, max_games=5):
     df = history[history["Home"] == team] if side == "H" else history[history["Away"] == team]
     df = df.sort_values("Date").tail(max_games)
@@ -210,14 +222,14 @@ def get_last_category(team, side, min_games=2, max_games=5):
 games_today["Categoria_Gol_H"] = games_today["Home"].apply(lambda t: get_last_category(t, "H"))
 games_today["Categoria_Gol_A"] = games_today["Away"].apply(lambda t: get_last_category(t, "A"))
 
-# 6. One-hot encoding for categories
+# 8. One-hot encoding for categories
 cat_h = pd.get_dummies(history["Categoria_Gol_H"], prefix="Cat_H")
 cat_a = pd.get_dummies(history["Categoria_Gol_A"], prefix="Cat_A")
 
 cat_h_today = pd.get_dummies(games_today["Categoria_Gol_H"], prefix="Cat_H").reindex(columns=cat_h.columns, fill_value=0)
 cat_a_today = pd.get_dummies(games_today["Categoria_Gol_A"], prefix="Cat_A").reindex(columns=cat_a.columns, fill_value=0)
 
-# 7. Preencher games_today com as últimas médias reais do histórico
+# 9. Fill today's matches with last known averages from history
 for idx, row in games_today.iterrows():
     home = row["Home"]
     away = row["Away"]
