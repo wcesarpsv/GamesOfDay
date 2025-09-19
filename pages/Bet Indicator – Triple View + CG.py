@@ -129,9 +129,10 @@ history["Custo_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Odd_A"] / 
 history["Valor_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Bet Result"] / history["Goals_H_FT"], 0)
 history["Valor_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Bet Result"] / history["Goals_A_FT"], 0)
 
-# Today’s matches → 0
-for col in ["Custo_Gol_H", "Custo_Gol_A", "Valor_Gol_H", "Valor_Gol_A"]:
-    games_today[col] = 0
+# Today’s matches → inicializa com NaN
+for col in ["Custo_Gol_H", "Custo_Gol_A", "Valor_Gol_H", "Valor_Gol_A",
+            "Media_CustoGol_H", "Media_ValorGol_H", "Media_CustoGol_A", "Media_ValorGol_A"]:
+    games_today[col] = np.nan
 
 # 2. Rolling averages
 history = history.sort_values("Date")
@@ -193,6 +194,21 @@ cat_a = pd.get_dummies(history["Categoria_Gol_A"], prefix="Cat_A")
 
 cat_h_today = pd.get_dummies(games_today["Categoria_Gol_H"], prefix="Cat_H").reindex(columns=cat_h.columns, fill_value=0)
 cat_a_today = pd.get_dummies(games_today["Categoria_Gol_A"], prefix="Cat_A").reindex(columns=cat_a.columns, fill_value=0)
+
+# 7. Preencher games_today com as últimas médias reais do histórico
+for idx, row in games_today.iterrows():
+    home = row["Home"]
+    away = row["Away"]
+
+    last_home = history[history["Home"] == home].sort_values("Date").tail(1)
+    last_away = history[history["Away"] == away].sort_values("Date").tail(1)
+
+    games_today.at[idx, "Media_CustoGol_H"] = last_home["Media_CustoGol_H"].values[-1] if not last_home.empty else np.nan
+    games_today.at[idx, "Media_ValorGol_H"] = last_home["Media_ValorGol_H"].values[-1] if not last_home.empty else np.nan
+
+    games_today.at[idx, "Media_CustoGol_A"] = last_away["Media_CustoGol_A"].values[-1] if not last_away.empty else np.nan
+    games_today.at[idx, "Media_ValorGol_A"] = last_away["Media_ValorGol_A"].values[-1] if not last_away.empty else np.nan
+
 
 
 ##################### BLOCO 5 – BASE FEATURES #####################
