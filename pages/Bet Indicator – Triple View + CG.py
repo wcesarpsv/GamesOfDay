@@ -124,7 +124,7 @@ history["Target_BTTS"] = ((history["Goals_H_FT"] > 0) & (history["Goals_A_FT"] >
 
 
 ##################### BLOCO 4 – EXTRA FEATURES (GOAL COST/VALUE + DYNAMIC CATEGORIES) #####################
-def rolling_stats(sub_df, col, window=5, min_periods=2):
+def rolling_stats(sub_df, col, window=5, min_periods=1):
     return sub_df.sort_values("Date")[col].rolling(window=window, min_periods=min_periods).mean()
 
 # 1. Calculate cost and value of goals
