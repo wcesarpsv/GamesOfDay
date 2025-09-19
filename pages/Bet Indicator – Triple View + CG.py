@@ -95,25 +95,39 @@ else:
 if history.empty:
     st.stop()
 
-# ---------------- All matches (today + yesterday filtering will happen later) ----------------
-games_all = filter_leagues(load_selected_csvs(GAMES_FOLDER))
+# ---------------- Today's and Yesterday's Matches ----------------
+today = datetime.now().strftime("%Y-%m-%d")
+yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+games_today = filter_leagues(load_selected_csvs(GAMES_FOLDER))
 
 # Ensure date format is consistent
-if "Date" in games_all.columns:
-    games_all["Date"] = pd.to_datetime(games_all["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
+if "Date" in games_today.columns:
+    games_today["Date"] = pd.to_datetime(games_today["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
+
+# Filter only today's matches
+games_today = games_today[games_today["Date"] == today].copy()
+
+# Sidebar option: include yesterday
+include_yesterday = st.sidebar.checkbox("Yesterday's matches", value=False)
+if include_yesterday:
+    games_today = filter_leagues(load_selected_csvs(GAMES_FOLDER))
+    if "Date" in games_today.columns:
+        games_today["Date"] = pd.to_datetime(games_today["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
+    games_today = games_today[games_today["Date"].isin([today, yesterday])].copy()
 
 # Remove duplicates
-if set(["Date", "Home", "Away"]).issubset(games_all.columns):
-    games_all = games_all.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
+if set(["Date", "Home", "Away"]).issubset(games_today.columns):
+    games_today = games_today.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
 else:
-    games_all = games_all.drop_duplicates(keep="first")
+    games_today = games_today.drop_duplicates(keep="first")
 
 # Remove matches that already have final scores
-if "Goals_H_FT" in games_all.columns:
-    games_all = games_all[games_all["Goals_H_FT"].isna()].copy()
+if "Goals_H_FT" in games_today.columns:
+    games_today = games_today[games_today["Goals_H_FT"].isna()].copy()
 
-if games_all.empty:
-    st.warning("⚠️ No upcoming matches found in the dataset.")
+if games_today.empty:
+    st.warning("⚠️ No matches found for today (or yesterday, if selected).")
     st.stop()
 
 # ---------------- Targets ----------------
@@ -126,7 +140,7 @@ history["Target_BTTS"] = ((history["Goals_H_FT"] > 0) & (history["Goals_A_FT"] >
 
 
 
-##################### BLOCO 4 – EXTRA FEATURES #####################
+##################### BLOCK 4 – EXTRA FEATURES #####################
 def rolling_stats(sub_df, col, window=5, min_periods=1):
     return sub_df.sort_values("Date")[col].rolling(window=window, min_periods=min_periods).mean()
 
@@ -135,6 +149,8 @@ history["Custo_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Odd_H"] / 
 history["Custo_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Odd_A"] / history["Goals_A_FT"], 0)
 
 # 2. Define Bet Result as betting profit (home win back test)
+#    - If home team wins → profit = Odd_H - 1
+#    - Otherwise (draw or away win) → profit = -1
 history["Bet Result"] = np.where(
     history["Goals_H_FT"] > history["Goals_A_FT"],
     history["Odd_H"] - 1,
@@ -146,6 +162,11 @@ history["Valor_Gol_H"] = np.where(history["Goals_H_FT"] > 0,
                                   history["Bet Result"] / history["Goals_H_FT"], 0)
 history["Valor_Gol_A"] = np.where(history["Goals_A_FT"] > 0,
                                   history["Bet Result"] / history["Goals_A_FT"], 0)
+
+# Initialize for today’s matches (to be filled with last historical values)
+for col in ["Custo_Gol_H", "Custo_Gol_A", "Valor_Gol_H", "Valor_Gol_A",
+            "Media_CustoGol_H", "Media_ValorGol_H", "Media_CustoGol_A", "Media_ValorGol_A"]:
+    games_today[col] = np.nan
 
 # 4. Rolling averages (last 5 matches, shifted for training)
 history = history.sort_values("Date")
@@ -190,7 +211,7 @@ history["Categoria_Gol_A"] = history.apply(
     lambda r: classify_row_dynamic(r["Media_CustoGol_A"], r["Media_ValorGol_A"], t_c, t_v), axis=1
 )
 
-# 7. Categories for today’s matches (will be applied after filtering in Block 8)
+# 7. Categories for today’s matches
 def get_last_category(team, side, min_games=2, max_games=5):
     df = history[history["Home"] == team] if side == "H" else history[history["Away"] == team]
     df = df.sort_values("Date").tail(max_games)
@@ -198,23 +219,40 @@ def get_last_category(team, side, min_games=2, max_games=5):
         return "—"
     return df.iloc[-1][f"Categoria_Gol_{side}"]
 
+games_today["Categoria_Gol_H"] = games_today["Home"].apply(lambda t: get_last_category(t, "H"))
+games_today["Categoria_Gol_A"] = games_today["Away"].apply(lambda t: get_last_category(t, "A"))
+
 # 8. One-hot encoding for categories
 cat_h = pd.get_dummies(history["Categoria_Gol_H"], prefix="Cat_H")
 cat_a = pd.get_dummies(history["Categoria_Gol_A"], prefix="Cat_A")
 
-# Save list of extra goal-related columns (to create later in Block 8)
-extra_goal_cols = [
-    "Custo_Gol_H", "Custo_Gol_A", "Valor_Gol_H", "Valor_Gol_A",
-    "Media_CustoGol_H", "Media_ValorGol_H", "Media_CustoGol_A", "Media_ValorGol_A"
-]
+cat_h_today = pd.get_dummies(games_today["Categoria_Gol_H"], prefix="Cat_H").reindex(columns=cat_h.columns, fill_value=0)
+cat_a_today = pd.get_dummies(games_today["Categoria_Gol_A"], prefix="Cat_A").reindex(columns=cat_a.columns, fill_value=0)
+
+# 9. Fill today's matches with last known averages from history
+for idx, row in games_today.iterrows():
+    home = row["Home"]
+    away = row["Away"]
+
+    last_home = history[history["Home"] == home].sort_values("Date").tail(1)
+    last_away = history[history["Away"] == away].sort_values("Date").tail(1)
+
+    games_today.at[idx, "Media_CustoGol_H"] = last_home["Media_CustoGol_H"].values[-1] if not last_home.empty else np.nan
+    games_today.at[idx, "Media_ValorGol_H"] = last_home["Media_ValorGol_H"].values[-1] if not last_home.empty else np.nan
+
+    games_today.at[idx, "Media_CustoGol_A"] = last_away["Media_CustoGol_A"].values[-1] if not last_away.empty else np.nan
+    games_today.at[idx, "Media_ValorGol_A"] = last_away["Media_ValorGol_A"].values[-1] if not last_away.empty else np.nan
+
+
 
 ##################### BLOCO 5 – BASE FEATURES #####################
 if "cat_h" not in locals() or "cat_a" not in locals():
     st.error("❌ Goal categories (BLOCK 4) were not calculated before BLOCK 5.")
     st.stop()
 
-# Feature differences (only for history here, games_today will be handled in Block 8)
+# Feature differences
 history["Diff_M"] = history["M_H"] - history["M_A"]
+games_today["Diff_M"] = games_today["M_H"] - games_today["M_A"]
 
 # Feature sets (incluindo médias de custo/valor do gol)
 features_1x2 = [
@@ -235,13 +273,23 @@ features_ou_btts = [
 
 # One-hot encode leagues
 history_leagues = pd.get_dummies(history["League"], prefix="League")
+games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
+games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
 
-# Final datasets for training
+# Final datasets
 X_1x2 = pd.concat([history[features_1x2], history_leagues, cat_h, cat_a], axis=1)
 X_ou = pd.concat([history[features_ou_btts], history_leagues], axis=1)
 X_btts = pd.concat([history[features_ou_btts], history_leagues], axis=1)
 
+# Today’s matches
+X_today_1x2 = pd.concat([games_today[features_1x2], games_today_leagues, cat_h_today, cat_a_today], axis=1)
+X_today_1x2 = X_today_1x2.reindex(columns=X_1x2.columns, fill_value=0)
 
+X_today_ou = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
+X_today_ou = X_today_ou.reindex(columns=X_ou.columns, fill_value=0)
+
+X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
+X_today_btts = X_today_btts.reindex(columns=X_btts.columns, fill_value=0)
 
 
 ##################### BLOCO 6 – SIDEBAR #####################
@@ -307,55 +355,6 @@ def train_and_evaluate(X, y, name, num_classes):
 
 
 ##################### BLOCO 8 – TRAIN MODELS #####################
-
-# ---------------- Match Filters (Today + Yesterday) ----------------
-today = datetime.now().strftime("%Y-%m-%d")
-yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-
-st.markdown("### ⚽ Match Selection")
-col1, col2 = st.columns(2)
-include_today = col1.checkbox("Today's Matches", value=True)
-include_yesterday = col2.checkbox("Yesterday's Matches", value=False)
-
-selected_dates = []
-if include_today:
-    selected_dates.append(today)
-if include_yesterday:
-    selected_dates.append(yesterday)
-
-if not selected_dates:
-    st.warning("⚠️ Please select at least one option (Today or Yesterday).")
-    st.stop()
-
-games_today = games_all[games_all["Date"].isin(selected_dates)].copy()
-
-# Feature differences for today's matches
-if not games_today.empty:
-    games_today["Diff_M"] = games_today["M_H"] - games_today["M_A"]
-
-# One-hot encode leagues for today's matches
-games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
-games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
-
-
-# Ensure goal-related columns exist in today's matches
-for col in extra_goal_cols:
-    if col not in games_today.columns:
-        games_today[col] = np.nan
-
-# Add categories for today’s matches
-games_today["Categoria_Gol_H"] = games_today["Home"].apply(lambda t: get_last_category(t, "H"))
-games_today["Categoria_Gol_A"] = games_today["Away"].apply(lambda t: get_last_category(t, "A"))
-
-# One-hot encode today's categories
-cat_h_today = pd.get_dummies(games_today["Categoria_Gol_H"], prefix="Cat_H").reindex(columns=cat_h.columns, fill_value=0)
-cat_a_today = pd.get_dummies(games_today["Categoria_Gol_A"], prefix="Cat_A").reindex(columns=cat_a.columns, fill_value=0)
-
-if games_today.empty:
-    st.warning("⚠️ No matches found for the selected filters.")
-    st.stop()
-
-# ---------------- Train Models ----------------
 stats = []
 res, model_multi = train_and_evaluate(X_1x2, history["Target"], "1X2", 3); stats.append(res)
 res, model_ou = train_and_evaluate(X_ou, history["Target_OU25"], "OverUnder25", 2); stats.append(res)
@@ -364,7 +363,6 @@ res, model_btts = train_and_evaluate(X_btts, history["Target_BTTS"], "BTTS", 2);
 df_stats = pd.DataFrame(stats)
 st.markdown("### 📊 Model Statistics (Validation)")
 st.dataframe(df_stats, use_container_width=True)
-
 
 ##################### FEATURE IMPORTANCE #####################
 st.markdown("### 🔎 Feature Importance Analysis")
@@ -386,20 +384,14 @@ plot_feature_importance(model_btts, X_btts, "BTTS Model – Top Features")
 
 
 ##################### BLOCO 9 – PREDICTIONS #####################
-
 # Desempacotar modelos e colunas
 model_multi, cols1 = model_multi
 model_ou, cols2 = model_ou
 model_btts, cols3 = model_btts
 
 # Reindexar para alinhar features
-X_today_1x2 = pd.concat([games_today[features_1x2], games_today_leagues, cat_h_today, cat_a_today], axis=1)
 X_today_1x2 = X_today_1x2.reindex(columns=cols1, fill_value=0)
-
-X_today_ou = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
 X_today_ou = X_today_ou.reindex(columns=cols2, fill_value=0)
-
-X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
 X_today_btts = X_today_btts.reindex(columns=cols3, fill_value=0)
 
 # Só faz previsões se houver jogos
