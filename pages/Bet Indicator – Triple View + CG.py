@@ -190,46 +190,86 @@ retrain = st.sidebar.checkbox("Retrain models", value=False)
 
 ##################### BLOCK 7 – TRAIN & EVALUATE #####################
 def train_and_evaluate(X, y, name, num_classes):
+    # Unique file name
     filename = f"{ml_model_choice.replace(' ', '')}_{name}_CG.pkl"
-    feature_cols = X.columns.tolist()
-    nan_stats = X.isna().mean().sort_values(ascending=False) * 100
-    nan_stats = nan_stats[nan_stats > 0]
-    if not nan_stats.empty:
-        st.markdown(f"### 📊 Missing values – {name}")
-        st.dataframe(nan_stats.to_frame("NaN %").style.format("{:.1f}%"))
-    X = X.fillna(0)
+    feature_cols = X.columns.tolist()  # freeze feature list
+
     model_bundle = None if retrain else load_model(filename)
+
     if model_bundle is None:
+        # Create new model
         if ml_model_choice == "Random Forest":
             model = RandomForestClassifier(n_estimators=300, random_state=42, class_weight="balanced_subsample")
         elif ml_model_choice == "Random Forest Tuned":
-            rf_params = {"1X2":{'n_estimators':600,'max_depth':14,'min_samples_split':10,'min_samples_leaf':1,'max_features':'sqrt'},
-                         "OverUnder25":{'n_estimators':600,'max_depth':5,'min_samples_split':9,'min_samples_leaf':3,'max_features':'sqrt'},
-                         "BTTS":{'n_estimators':400,'max_depth':18,'min_samples_split':4,'min_samples_leaf':5,'max_features':'sqrt'}}
+            rf_params = {
+                "1X2": {'n_estimators': 600, 'max_depth': 14, 'min_samples_split': 10,
+                        'min_samples_leaf': 1, 'max_features': 'sqrt'},
+                "OverUnder25": {'n_estimators': 600, 'max_depth': 5, 'min_samples_split': 9,
+                                'min_samples_leaf': 3, 'max_features': 'sqrt'},
+                "BTTS": {'n_estimators': 400, 'max_depth': 18, 'min_samples_split': 4,
+                         'min_samples_leaf': 5, 'max_features': 'sqrt'},
+            }
             model = RandomForestClassifier(random_state=42, class_weight="balanced_subsample", **rf_params[name])
         elif ml_model_choice == "XGBoost Tuned":
-            xgb_params = {"1X2":{'n_estimators':219,'max_depth':9,'learning_rate':0.05,'subsample':0.9,'colsample_bytree':0.8,'eval_metric':'mlogloss','use_label_encoder':False},
-                          "OverUnder25":{'n_estimators':488,'max_depth':10,'learning_rate':0.03,'subsample':0.9,'colsample_bytree':0.7,'eval_metric':'logloss','use_label_encoder':False},
-                          "BTTS":{'n_estimators':695,'max_depth':6,'learning_rate':0.04,'subsample':0.8,'colsample_bytree':0.8,'eval_metric':'logloss','use_label_encoder':False}}
+            xgb_params = {
+                "1X2": {'n_estimators': 219, 'max_depth': 9, 'learning_rate': 0.05,
+                        'subsample': 0.9, 'colsample_bytree': 0.8,
+                        'eval_metric': 'mlogloss', 'use_label_encoder': False},
+                "OverUnder25": {'n_estimators': 488, 'max_depth': 10, 'learning_rate': 0.03,
+                                'subsample': 0.9, 'colsample_bytree': 0.7,
+                                'eval_metric': 'logloss', 'use_label_encoder': False},
+                "BTTS": {'n_estimators': 695, 'max_depth': 6, 'learning_rate': 0.04,
+                         'subsample': 0.8, 'colsample_bytree': 0.8,
+                         'eval_metric': 'logloss', 'use_label_encoder': False},
+            }
             model = XGBClassifier(random_state=42, **xgb_params[name])
-        X_train, X_val, y_train, y_val = train_test_split(X,y,test_size=0.2,random_state=42,stratify=y)
+
+        # Split train/val
+        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+        # Align features
+        X_train = X_train.reindex(columns=feature_cols, fill_value=0)
+        X_val   = X_val.reindex(columns=feature_cols, fill_value=0)
+        X_train, X_val = X_train.align(X_val, join="left", axis=1, fill_value=0)
+
         model.fit(X_train, y_train)
         save_model((model, feature_cols), filename)
+
     else:
-        model, feature_cols = model_bundle if isinstance(model_bundle, tuple) else (model_bundle, X.columns.tolist())
-        X_train, X_val, y_train, y_val = train_test_split(X,y,test_size=0.2,random_state=42,stratify=y)
+        if isinstance(model_bundle, tuple):
+            model, feature_cols = model_bundle
+        else:
+            model = model_bundle
+            feature_cols = X.columns.tolist()
+
+        # Split again
+        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+        # Align features
+        X_train = X_train.reindex(columns=feature_cols, fill_value=0)
+        X_val   = X_val.reindex(columns=feature_cols, fill_value=0)
+        X_train, X_val = X_train.align(X_val, join="left", axis=1, fill_value=0)
+
+    # Predictions
     preds = model.predict(X_val)
     probs = model.predict_proba(X_val)
+
     acc = accuracy_score(y_val, preds)
     ll = log_loss(y_val, probs)
     if num_classes == 2:
-        bs = f"{brier_score_loss(y_val, probs[:,1]):.3f}"
+        bs = f"{brier_score_loss(y_val, probs[:, 1]):.3f}"
     else:
         y_onehot = pd.get_dummies(y_val).values
-        bs_raw = np.mean(np.sum((probs-y_onehot)**2,axis=1))
+        bs_raw = np.mean(np.sum((probs - y_onehot) ** 2, axis=1))
         bs = f"{bs_raw:.3f} (multi)"
-    metrics = {"Model": f"{ml_model_choice} - {name}","Accuracy": f"{acc:.3f}","LogLoss": f"{ll:.3f}","Brier": bs}
+
+    metrics = {"Model": f"{ml_model_choice} - {name}", 
+               "Accuracy": f"{acc:.3f}", 
+               "LogLoss": f"{ll:.3f}", 
+               "Brier": bs}
     return metrics, (model, feature_cols)
+
+
 
 ##################### BLOCK 8 – TRAIN MODELS #####################
 stats=[]; 
