@@ -508,17 +508,24 @@ def train_and_evaluate(X, y, name, num_classes):
 ##################### BLOCO 8 – TRAIN MODELS #####################
 stats = []
 try:
-    res, model_multi = train_and_evaluate(X_1x2, history["Target"], "1X2", 3); stats.append(res)
-    res, model_ou = train_and_evaluate(X_ou, history["Target_OU25"], "OverUnder25", 2); stats.append(res)
-    res, model_btts = train_and_evaluate(X_btts, history["Target_BTTS"], "BTTS", 2); stats.append(res)
-except Exception as e:
-    logger.error(f"Error training models: {str(e)}")
-    st.error(f"Error training models: {str(e)}")
-    st.stop()
+    # Treinar e validar os 3 modelos
+    res, model_multi = train_and_evaluate(X_1x2, history["Target"], "1X2", 3)
+    stats.append(res)
 
-df_stats = pd.DataFrame(stats)
-st.markdown("### 📊 Model Statistics (Time-Series Cross-Validation)")
-st.dataframe(df_stats, use_container_width=True)
+    res, model_ou = train_and_evaluate(X_ou, history["Target_OU25"], "OverUnder25", 2)
+    stats.append(res)
+
+    res, model_btts = train_and_evaluate(X_btts, history["Target_BTTS"], "BTTS", 2)
+    stats.append(res)
+
+    # Mostrar resultados
+    st.subheader("📊 Model Statistics (Validation) TOP")
+    stats_df = pd.DataFrame(stats)
+    st.dataframe(stats_df)
+
+except Exception as e:
+    logger.error(f"Error during model training: {str(e)}")
+    st.error(f"Error during model training: {str(e)}")
 
 
 ##################### BLOCO 9 – PREDICTIONS #####################
