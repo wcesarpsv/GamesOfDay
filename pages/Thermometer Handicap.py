@@ -3,31 +3,36 @@ import pandas as pd
 import numpy as np
 import os
 
-# ---------------- Page Config ----------------
+########################################
+########## Bloco 1 – Configs ###########
+########################################
 st.set_page_config(page_title="Today's Picks - Momentum Thermometer", layout="wide")
 st.title("Today's Picks - Momentum Thermometer")
 
-# ---------------- Legend ----------------
+# Legenda
 st.markdown("""
-### Recommendation Rules (Momentum Thermometer):
+### Recommendation Rules (Momentum Thermometer - Data-driven):
 
-1. Strong edges -> 🟢 Back Home / 🟠 Back Away  
-2. Moderate edges -> 1X (Home/Draw) or X2 (Away/Draw) when both are Balanced (with thresholds)  
-3. If none of the above -> 1X if Home Balanced vs Away Bottom20%, or X2 if Away Balanced vs Home Bottom20%  
-4. If none of the above -> 1X if Home Top20% vs Away Balanced, or X2 if Away Top20% vs Home Balanced  
-5. **Balanced + Odd_D 2.5–6.0 + M_H (0–1) or M_A (0–0.5) -> ⚪ Back Draw**  
-6. Otherwise -> Avoid
+- **Auto Recommendation** agora considera:
+  - Win Probability histórica (%)
+  - Expected Value (EV) com base nas odds (Home, Away, Draw) ou aproximadas (1X, X2)
+- Se ambas forem boas → Entrada pré-jogo  
+- Se apenas Win Probability for boa → Analisar live
 """)
 
-# ---------------- Configs ----------------
+# Pastas e exclusões
 GAMES_FOLDER = "GamesDay"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa","afc"]
 
+# Parâmetros
 M_DIFF_MARGIN = 0.30
 POWER_MARGIN = 10
 DOMINANT_THRESHOLD = 0.90
 
-# ---------------- Color Helpers ----------------
+
+########################################
+####### Bloco 2 – Color Helpers ########
+########################################
 def color_diff_power(val):
     if pd.isna(val): return ''
     if -8 <= val <= 8:
@@ -71,7 +76,17 @@ def color_auto_rec(val):
     }
     return m.get(val, '')
 
-# ---------------- Core Functions ----------------
+def color_ev(val):
+    if pd.isna(val): return ''
+    if val > 0:
+        return 'background-color: rgba(0, 200, 0, 0.14)'  # verde
+    else:
+        return 'background-color: rgba(255, 0, 0, 0.14)'  # vermelho
+
+
+########################################
+###### Bloco 3 – Core Functions ########
+########################################
 def load_all_games(folder):
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     if not files: return pd.DataFrame()
@@ -155,69 +170,10 @@ def dominant_side(row, threshold=DOMINANT_THRESHOLD):
         return "Away weak"
     return "Mixed / Neutral"
 
-# ---------------- Auto Recommendation ----------------
-def auto_recommendation(row,
-                        diff_mid_lo=0.20, diff_mid_hi=0.80,
-                        diff_mid_hi_highvar=0.75, power_gate=1, power_gate_highvar=5):
 
-    band_home = row.get('Home_Band')
-    band_away = row.get('Away_Band')
-    dominant  = row.get('Dominant')
-    diff_m    = row.get('M_Diff')
-    diff_pow  = row.get('Diff_Power')
-    league_cls= row.get('League_Classification', 'Medium Variation')
-    m_a       = row.get('M_A')
-    m_h       = row.get('M_H')
-    odd_d     = row.get('Odd_D')
-
-    # 1) Strong edges -> Direct Back
-    if band_home == 'Top 20%' and band_away == 'Bottom 20%':
-        return '🟢 Back Home'
-    if band_home == 'Bottom 20%' and band_away == 'Top 20%':
-        return '🟠 Back Away'
-
-    if dominant in ['Both extremes (Home↑ & Away↓)', 'Home strong'] and band_away != 'Top 20%':
-        if diff_m is not None and diff_m >= 0.90:
-            return '🟢 Back Home'
-    if dominant in ['Both extremes (Away↑ & Home↓)', 'Away strong'] and band_home == 'Balanced':
-        if diff_m is not None and diff_m <= -0.90:
-            return '🟪 X2 (Away/Draw)'
-
-    # 2) Both Balanced (with thresholds)
-    if (band_home == 'Balanced') and (band_away == 'Balanced') and (diff_m is not None) and (diff_pow is not None):
-        if league_cls == 'High Variation':
-            if (diff_m >= 0.45 and diff_m < diff_mid_hi_highvar and diff_pow >= power_gate_highvar):
-                return '🟦 1X (Home/Draw)'
-            if (diff_m <= -0.45 and diff_m > -diff_mid_hi_highvar and diff_pow <= -power_gate_highvar):
-                return '🟪 X2 (Away/Draw)'
-        else:
-            if (diff_m >= diff_mid_lo and diff_m < diff_mid_hi and diff_pow >= power_gate):
-                return '🟦 1X (Home/Draw)'
-            if (diff_m <= -diff_mid_lo and diff_m > -diff_mid_hi and diff_pow <= -power_gate):
-                return '🟪 X2 (Away/Draw)'
-
-    # 3) Balanced vs Bottom20%
-    if (band_home == 'Balanced') and (band_away == 'Bottom 20%'):
-        return '🟦 1X (Home/Draw)'
-    if (band_away == 'Balanced') and (band_home == 'Bottom 20%'):
-        return '🟪 X2 (Away/Draw)'
-
-    # 4) Top20% vs Balanced
-    if (band_home == 'Top 20%') and (band_away == 'Balanced'):
-        return '🟦 1X (Home/Draw)'
-    if (band_away == 'Top 20%') and (band_home == 'Balanced'):
-        return '🟪 X2 (Away/Draw)'
-
-    # 5) Novo filtro Draw
-    if (odd_d is not None and 2.5 <= odd_d <= 6.0) and (diff_pow is not None and -10 <= diff_pow <= 10):
-        if (m_h is not None and 0 <= m_h <= 1) or (m_a is not None and 0 <= m_a <= 0.5):
-            return '⚪ Back Draw'
-
-    # 6) Fallback
-    return '❌ Avoid'
-
-
-# ---------------- Win Probability Helpers ----------------
+########################################
+### Bloco 4 – Win Prob / EV Helpers ####
+########################################
 def event_side_for_winprob(auto_rec):
     if pd.isna(auto_rec): return None
     s = str(auto_rec)
@@ -245,15 +201,12 @@ def win_prob_for_recommendation(history, row,
     sample = hist[mask]
     n = len(sample)
 
-    # ❌ Caso seja "Avoid", retorna só o nº de jogos analisados, sem Win_Probability
     if row.get('Auto_Recommendation') == '❌ Avoid':
         return n, None
-
     if n == 0:
         return 0, None
 
     target = event_side_for_winprob(row['Auto_Recommendation'])
-
     if target == 'HOME':
         p = (sample['Goals_H_FT'] > sample['Goals_A_FT']).mean()
     elif target == 'AWAY':
@@ -272,10 +225,59 @@ def win_prob_for_recommendation(history, row,
     return n, (round(float(p)*100, 1) if p is not None else None)
 
 
-# ---------------- Select CSV (Latest or Previous) ----------------
+########################################
+####### Bloco 5 – Auto Selection #######
+########################################
+def auto_recommendation_dynamic_ev(row, history,
+                                   m_diff_margin=M_DIFF_MARGIN,
+                                   power_margin=POWER_MARGIN,
+                                   min_games=30):
+    """
+    Calcula Win Probability + EV e escolhe a melhor recomendação.
+    """
+    candidates = ["🟢 Back Home", "🟠 Back Away", "⚪ Back Draw",
+                  "🟦 1X (Home/Draw)", "🟪 X2 (Away/Draw)"]
+
+    best_rec, best_prob, best_ev, best_n = None, None, None, None
+
+    for rec in candidates:
+        row_copy = row.copy()
+        row_copy["Auto_Recommendation"] = rec
+        n, p = win_prob_for_recommendation(history, row_copy,
+                                           m_diff_margin=m_diff_margin,
+                                           power_margin=power_margin)
+        if p is None or n < min_games:
+            continue
+
+        odd_ref = None
+        if rec == "🟢 Back Home":
+            odd_ref = row.get("Odd_H")
+        elif rec == "🟠 Back Away":
+            odd_ref = row.get("Odd_A")
+        elif rec == "⚪ Back Draw":
+            odd_ref = row.get("Odd_D")
+        elif rec == "🟦 1X (Home/Draw)":
+            if row.get("Odd_H") and row.get("Odd_D"):
+                odd_ref = 1 / (1/row["Odd_H"] + 1/row["Odd_D"])
+        elif rec == "🟪 X2 (Away/Draw)":
+            if row.get("Odd_A") and row.get("Odd_D"):
+                odd_ref = 1 / (1/row["Odd_A"] + 1/row["Odd_D"])
+
+        ev = None
+        if odd_ref is not None and odd_ref > 1.0:
+            ev = (p/100.0) * odd_ref - 1
+
+        if (best_rec is None) or ((ev is not None and (best_ev is None or ev > best_ev)) or (ev is None and p > (best_prob or 0))):
+            best_rec, best_prob, best_ev, best_n = rec, p, ev, n
+
+    return best_rec, best_prob, best_ev, best_n
+
+
+########################################
+######## Bloco 6 – Load Data ###########
+########################################
 files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
 files = sorted(files)
-
 if not files:
     st.warning("No CSV files found in GamesDay folder.")
     st.stop()
@@ -285,11 +287,9 @@ selected_file = st.selectbox("Select matchday file:", options, index=len(options
 
 games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
 games_today = filter_leagues(games_today)
-
 if 'Goals_H_FT' in games_today.columns:
     games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
 
-# ---------------- Derived Metrics ----------------
 all_games = filter_leagues(load_all_games(GAMES_FOLDER))
 history = prepare_history(all_games)
 if history.empty:
@@ -311,28 +311,25 @@ games_today['Away_Band'] = np.where(
     games_today['M_A'] <= games_today['Away_P20'], 'Bottom 20%',
     np.where(games_today['M_A'] >= games_today['Away_P80'], 'Top 20%', 'Balanced')
 )
-
 games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
-games_today['Auto_Recommendation'] = games_today.apply(lambda r: auto_recommendation(r), axis=1)
 
-# ---------------- Win Probability ----------------
-ga_wp = games_today.apply(lambda r: win_prob_for_recommendation(history, r), axis=1)
-games_today['Games_Analyzed']  = [x[0] for x in ga_wp]
-games_today['Win_Probability'] = [x[1] for x in ga_wp]
+# Aplicar Auto Recommendation
+recs = games_today.apply(lambda r: auto_recommendation_dynamic_ev(r, history), axis=1)
+games_today["Auto_Recommendation"] = [x[0] for x in recs]
+games_today["Win_Probability"] = [x[1] for x in recs]
+games_today["EV"] = [x[2] for x in recs]
+games_today["Games_Analyzed"] = [x[3] for x in recs]
 
-games_today = games_today.sort_values(
-    by=['Time'],
-    ascending=True,
-    na_position='last'
-).reset_index(drop=True)
 
-# ---------------- Display Table ----------------
+########################################
+######## Bloco 7 – Exibição ############
+########################################
 cols_to_show = [
     'Date','Time','League','League_Classification',
     'Home','Away','Odd_H','Odd_D','Odd_A',
     'M_H','M_A','Diff_Power',
     'Home_Band','Away_Band','Dominant','Auto_Recommendation',
-    'Games_Analyzed','Win_Probability'
+    'Games_Analyzed','Win_Probability','EV'
 ]
 
 missing_cols = [c for c in cols_to_show if c not in games_today.columns]
@@ -349,11 +346,12 @@ styler = (
     .applymap(color_classification, subset=['League_Classification'])
     .applymap(color_band, subset=['Home_Band','Away_Band'])
     .applymap(color_auto_rec, subset=['Auto_Recommendation'])
+    .applymap(color_ev, subset=['EV'])
     .format({
         'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
         'M_H': '{:.2f}', 'M_A': '{:.2f}',
         'Diff_Power': '{:.2f}',
-        'Win_Probability': '{:.1f}%', 'Games_Analyzed': '{:,.0f}'
+        'Win_Probability': '{:.1f}%', 'EV': '{:.2f}', 'Games_Analyzed': '{:,.0f}'
     }, na_rep='—')
 )
 
