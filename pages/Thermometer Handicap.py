@@ -188,6 +188,7 @@ def add_band_features(df):
 ########################################
 ### Bloco 4 – Win Prob / EV Helpers ####
 ########################################
+
 def event_side_for_winprob(auto_rec):
     if pd.isna(auto_rec): return None
     s = str(auto_rec)
@@ -198,10 +199,17 @@ def event_side_for_winprob(auto_rec):
     if 'X2' in s:       return 'X2'
     return None
 
+
 def win_prob_for_recommendation(history, row,
                                 m_diff_margin=M_DIFF_MARGIN,
-                                power_margin=POWER_MARGIN):
-    """Agora inclui Home_Band_Num e Away_Band_Num no filtro histórico"""
+                                power_margin=POWER_MARGIN,
+                                min_games=10):
+    """
+    Calcula Win Probability considerando bands:
+    1) Match exato (Home_Band_Num e Away_Band_Num).
+    2) Se não houver jogos suficientes → permite Balanced como fallback.
+    3) Se ainda não houver → ignora bands (só M_Diff + Diff_Power).
+    """
     m_h, m_a = row['M_H'], row['M_A']
     diff_m   = m_h - m_a
     diff_pow = row['Diff_Power']
@@ -209,6 +217,7 @@ def win_prob_for_recommendation(history, row,
     hist = history.copy()
     hist['M_Diff'] = hist['M_H'] - hist['M_A']
 
+    # ---- 1) Filtro exato (mais preciso)
     mask = (
         hist['M_Diff'].between(diff_m - m_diff_margin, diff_m + m_diff_margin) &
         hist['Diff_Power'].between(diff_pow - power_margin, diff_pow + power_margin) &
@@ -218,11 +227,39 @@ def win_prob_for_recommendation(history, row,
     sample = hist[mask]
     n = len(sample)
 
+    # ---- 2) Se não achar, permite Balanced como fallback
+    if n < min_games:
+        home_candidates = [row['Home_Band_Num']]
+        away_candidates = [row['Away_Band_Num']]
+        if row['Home_Band_Num'] in [1, 3]:  # Bottom20 ou Top20
+            home_candidates.append(2)       # adiciona Balanced
+        if row['Away_Band_Num'] in [1, 3]:
+            away_candidates.append(2)
+
+        mask = (
+            hist['M_Diff'].between(diff_m - m_diff_margin, diff_m + m_diff_margin) &
+            hist['Diff_Power'].between(diff_pow - power_margin, diff_pow + power_margin) &
+            (hist['Home_Band_Num'].isin(home_candidates)) &
+            (hist['Away_Band_Num'].isin(away_candidates))
+        )
+        sample = hist[mask]
+        n = len(sample)
+
+    # ---- 3) Se ainda não achar → ignora bands
+    if n < min_games:
+        mask = (
+            hist['M_Diff'].between(diff_m - m_diff_margin, diff_m + m_diff_margin) &
+            hist['Diff_Power'].between(diff_pow - power_margin, diff_pow + power_margin)
+        )
+        sample = hist[mask]
+        n = len(sample)
+
     if row.get('Auto_Recommendation') == '❌ Avoid':
         return n, None
     if n == 0:
         return 0, None
 
+    # ---- Calcula probabilidade real
     target = event_side_for_winprob(row['Auto_Recommendation'])
     if target == 'HOME':
         p = (sample['Goals_H_FT'] > sample['Goals_A_FT']).mean()
@@ -240,6 +277,7 @@ def win_prob_for_recommendation(history, row,
         p = max(p_home, p_away)
 
     return n, (round(float(p)*100, 1) if p is not None else None)
+
 
 
 ########################################
