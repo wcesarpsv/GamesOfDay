@@ -13,11 +13,14 @@ st.title("Today's Picks - Momentum Thermometer")
 st.markdown("""
 ### Recommendation Rules (Momentum Thermometer - Data-driven):
 
-- **Auto Recommendation** agora considera:
-  - Win Probability histórica (%)
-  - Expected Value (EV) com base nas odds (Home, Away, Draw) ou aproximadas (1X, X2)
-- Se ambas forem boas → Entrada pré-jogo  
-- Se apenas Win Probability for boa → Analisar live
+1. Primeiro procura maior Winrate em vitórias puras (Home, Away, Draw).  
+   - Se Winrate ≥ 50% → escolha.  
+2. Caso contrário → procura 1X ou X2.  
+3. Se nada ≥ 50% → ❌ Avoid.  
+4. Colunas adicionais:
+   - **Win_Probability** (% histórico)
+   - **EV** (Expected Value, apenas auditoria)
+   - **Bands** (Balanced / Top20 / Bottom20), mas também usados como features numéricas internas.
 """)
 
 # Pastas e exclusões
@@ -47,8 +50,10 @@ def color_diff_power(val):
 
 def color_probability(val):
     if pd.isna(val): return ''
-    intensity = min(1, float(val) / 100.0)
-    return f'background-color: rgba(0, 255, 0, {0.2 + 0.6 * intensity})'
+    if val >= 50:
+        return 'background-color: rgba(0, 200, 0, 0.14)'  # verde
+    else:
+        return 'background-color: rgba(255, 0, 0, 0.14)'  # vermelho
 
 def color_classification(val):
     if pd.isna(val): return ''
@@ -79,41 +84,124 @@ def color_auto_rec(val):
 def color_ev(val):
     if pd.isna(val): return ''
     if val > 0:
-        return 'background-color: rgba(0, 200, 0, 0.14)'  # verde
+        return 'background-color: rgba(0, 200, 0, 0.14)'
     else:
-        return 'background-color: rgba(255, 0, 0, 0.14)'  # vermelho
+        return 'background-color: rgba(255, 0, 0, 0.14)'
 
+
+########################################
+###### Bloco 3 – Core Functions ########
+########################################
+def load_all_games(folder):
+    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
+    if not files: return pd.DataFrame()
+    df_list = []
+    for file in files:
+        try:
+            df = pd.read_csv(os.path.join(folder, file))
+            df_list.append(df)
+        except Exception as e:
+            st.error(f"Error loading {file}: {e}")
+    return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
+
+def filter_leagues(df):
+    if df.empty or 'League' not in df.columns:
+        return df
+    pattern = '|'.join(EXCLUDED_LEAGUE_KEYWORDS)
+    return df[~df['League'].str.lower().str.contains(pattern, na=False)].copy()
+
+def prepare_history(df):
+    required = ['Goals_H_FT', 'Goals_A_FT', 'M_H', 'M_A', 'Diff_Power', 'League']
+    for col in required:
+        if col not in df.columns:
+            st.error(f"Missing required column: {col}")
+            return pd.DataFrame()
+    return df.dropna(subset=['Goals_H_FT', 'Goals_A_FT'])
+
+def classify_leagues_variation(history_df):
+    agg = (
+        history_df.groupby('League')
+        .agg(
+            M_H_Min=('M_H','min'), M_H_Max=('M_H','max'),
+            M_A_Min=('M_A','min'), M_A_Max=('M_A','max'),
+            Hist_Games=('M_H','count')
+        ).reset_index()
+    )
+    agg['Variation_Total'] = (agg['M_H_Max'] - agg['M_H_Min']) + (agg['M_A_Max'] - agg['M_A_Min'])
+    def label(v):
+        if v > 6.0: return "High Variation"
+        if v >= 3.0: return "Medium Variation"
+        return "Low Variation"
+    agg['League_Classification'] = agg['Variation_Total'].apply(label)
+    return agg[['League','League_Classification','Variation_Total','Hist_Games']]
+
+def compute_league_bands(history_df):
+    hist = history_df.copy()
+    hist['M_Diff'] = hist['M_H'] - hist['M_A']
+    diff_q = (
+        hist.groupby('League')['M_Diff']
+            .quantile([0.20, 0.80]).unstack()
+            .rename(columns={0.2:'P20_Diff', 0.8:'P80_Diff'})
+            .reset_index()
+    )
+    home_q = (
+        hist.groupby('League')['M_H']
+            .quantile([0.20, 0.80]).unstack()
+            .rename(columns={0.2:'Home_P20', 0.8:'Home_P80'})
+            .reset_index()
+    )
+    away_q = (
+        hist.groupby('League')['M_A']
+            .quantile([0.20, 0.80]).unstack()
+            .rename(columns={0.2:'Away_P20', 0.8:'Away_P80'})
+            .reset_index()
+    )
+    out = diff_q.merge(home_q, on='League', how='inner').merge(away_q, on='League', how='inner')
+    return out
+
+def dominant_side(row, threshold=DOMINANT_THRESHOLD):
+    m_h, m_a = row['M_H'], row['M_A']
+    if (m_h >= threshold) and (m_a <= -threshold):
+        return "Both extremes (Home↑ & Away↓)"
+    if (m_a >= threshold) and (m_h <= -threshold):
+        return "Both extremes (Away↑ & Home↓)"
+    if m_h >= threshold:
+        return "Home strong"
+    if m_h <= -threshold:
+        return "Home weak"
+    if m_a >= threshold:
+        return "Away strong"
+    if m_a <= -threshold:
+        return "Away weak"
+    return "Mixed / Neutral"
 
 def add_band_features(df):
-    """
-    Adiciona colunas Home_Band, Away_Band (texto) e suas versões numéricas.
-    """
-    if df.empty: 
+    """Adiciona Home_Band, Away_Band e versões numéricas ao histórico."""
+    if df.empty:
         return df
-
     BAND_MAP = {"Bottom 20%": 1, "Balanced": 2, "Top 20%": 3}
-
-    df['Home_Band'] = np.where(
-        df['M_H'] <= df['M_H'].quantile(0.20), 'Bottom 20%',
-        np.where(df['M_H'] >= df['M_H'].quantile(0.80), 'Top 20%', 'Balanced')
-    )
-    df['Away_Band'] = np.where(
-        df['M_A'] <= df['M_A'].quantile(0.20), 'Bottom 20%',
-        np.where(df['M_A'] >= df['M_A'].quantile(0.80), 'Top 20%', 'Balanced')
-    )
-
-    df["Home_Band_Num"] = df["Home_Band"].map(BAND_MAP)
-    df["Away_Band_Num"] = df["Away_Band"].map(BAND_MAP)
-
+    df["Home_Band_Num"] = df["Home_Band"].map(BAND_MAP) if "Home_Band" in df else None
+    df["Away_Band_Num"] = df["Away_Band"].map(BAND_MAP) if "Away_Band" in df else None
     return df
 
+
+########################################
+### Bloco 4 – Win Prob / EV Helpers ####
+########################################
+def event_side_for_winprob(auto_rec):
+    if pd.isna(auto_rec): return None
+    s = str(auto_rec)
+    if 'Back Home' in s: return 'HOME'
+    if 'Back Away' in s: return 'AWAY'
+    if 'Back Draw' in s: return 'DRAW'
+    if '1X' in s:       return '1X'
+    if 'X2' in s:       return 'X2'
+    return None
 
 def win_prob_for_recommendation(history, row,
                                 m_diff_margin=M_DIFF_MARGIN,
                                 power_margin=POWER_MARGIN):
-    """
-    Calcula Win Probability considerando também Home_Band_Num e Away_Band_Num.
-    """
+    """Agora inclui Home_Band_Num e Away_Band_Num no filtro histórico"""
     m_h, m_a = row['M_H'], row['M_A']
     diff_m   = m_h - m_a
     diff_pow = row['Diff_Power']
@@ -161,54 +249,39 @@ def auto_recommendation_dynamic_winrate(row, history,
                                         m_diff_margin=M_DIFF_MARGIN,
                                         power_margin=POWER_MARGIN,
                                         min_games=30):
-    """
-    Seleciona a recomendação com base no maior Winrate histórico.
-    1) Prioriza vitórias puras (Home, Away, Draw) se >= 50%
-    2) Caso contrário, considera 1X / X2
-    3) Se nada >= 50%, retorna Avoid
-    """
-
+    """Escolhe recomendação baseada no maior Winrate, com fallback 1X/X2"""
     candidates_main = ["🟢 Back Home", "🟠 Back Away", "⚪ Back Draw"]
     candidates_fallback = ["🟦 1X (Home/Draw)", "🟪 X2 (Away/Draw)"]
 
     best_rec, best_prob, best_ev, best_n = None, None, None, None
 
-    # --- 1) Checa vitórias puras ---
+    # 1) Checa vitórias puras
     for rec in candidates_main:
         row_copy = row.copy()
         row_copy["Auto_Recommendation"] = rec
         n, p = win_prob_for_recommendation(history, row_copy,
-                                           m_diff_margin=m_diff_margin,
-                                           power_margin=power_margin)
+                                           m_diff_margin, power_margin)
         if p is None or n < min_games:
             continue
 
         odd_ref = None
-        if rec == "🟢 Back Home":
-            odd_ref = row.get("Odd_H")
-        elif rec == "🟠 Back Away":
-            odd_ref = row.get("Odd_A")
-        elif rec == "⚪ Back Draw":
-            odd_ref = row.get("Odd_D")
-
-        ev = None
-        if odd_ref is not None and odd_ref > 1.0:
-            ev = (p/100.0) * odd_ref - 1
+        if rec == "🟢 Back Home": odd_ref = row.get("Odd_H")
+        elif rec == "🟠 Back Away": odd_ref = row.get("Odd_A")
+        elif rec == "⚪ Back Draw": odd_ref = row.get("Odd_D")
+        ev = (p/100.0) * odd_ref - 1 if odd_ref and odd_ref > 1.0 else None
 
         if (best_prob is None) or (p > best_prob):
             best_rec, best_prob, best_ev, best_n = rec, p, ev, n
 
-    # Se maior Winrate >= 50% já retorna
     if best_prob is not None and best_prob >= 50:
         return best_rec, best_prob, best_ev, best_n
 
-    # --- 2) Se não, checa 1X / X2 ---
+    # 2) Se não, checa 1X/X2
     for rec in candidates_fallback:
         row_copy = row.copy()
         row_copy["Auto_Recommendation"] = rec
         n, p = win_prob_for_recommendation(history, row_copy,
-                                           m_diff_margin=m_diff_margin,
-                                           power_margin=power_margin)
+                                           m_diff_margin, power_margin)
         if p is None or n < min_games:
             continue
 
@@ -217,22 +290,48 @@ def auto_recommendation_dynamic_winrate(row, history,
             odd_ref = 1 / (1/row["Odd_H"] + 1/row["Odd_D"])
         elif rec == "🟪 X2 (Away/Draw)" and row.get("Odd_A") and row.get("Odd_D"):
             odd_ref = 1 / (1/row["Odd_A"] + 1/row["Odd_D"])
-
-        ev = None
-        if odd_ref is not None and odd_ref > 1.0:
-            ev = (p/100.0) * odd_ref - 1
+        ev = (p/100.0) * odd_ref - 1 if odd_ref and odd_ref > 1.0 else None
 
         if (best_prob is None) or (p > best_prob):
             best_rec, best_prob, best_ev, best_n = rec, p, ev, n
 
-    # --- 3) Se nada >= 50%, evita ---
     if best_prob is None or best_prob < 50:
         return "❌ Avoid", best_prob, best_ev, best_n
 
     return best_rec, best_prob, best_ev, best_n
 
 
-# Bands via quantis da liga (já calculados)
+########################################
+######## Bloco 6 – Load Data ###########
+########################################
+files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
+files = sorted(files)
+if not files:
+    st.warning("No CSV files found in GamesDay folder.")
+    st.stop()
+
+options = files[-2:] if len(files) >= 2 else files
+selected_file = st.selectbox("Select matchday file:", options, index=len(options)-1)
+
+games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
+games_today = filter_leagues(games_today)
+
+if 'Goals_H_FT' in games_today.columns:
+    games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
+
+all_games = filter_leagues(load_all_games(GAMES_FOLDER))
+history = prepare_history(all_games)
+if history.empty:
+    st.warning("No valid historical data found.")
+    st.stop()
+
+league_class = classify_leagues_variation(history)
+league_bands = compute_league_bands(history)
+
+games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
+games_today = games_today.merge(league_class, on='League', how='left')
+games_today = games_today.merge(league_bands, on='League', how='left')
+
 games_today['Home_Band'] = np.where(
     games_today['M_H'] <= games_today['Home_P20'], 'Bottom 20%',
     np.where(games_today['M_H'] >= games_today['Home_P80'], 'Top 20%', 'Balanced')
@@ -242,13 +341,18 @@ games_today['Away_Band'] = np.where(
     np.where(games_today['M_A'] >= games_today['Away_P80'], 'Top 20%', 'Balanced')
 )
 
-# Bandas numéricas
 BAND_MAP = {"Bottom 20%": 1, "Balanced": 2, "Top 20%": 3}
 games_today["Home_Band_Num"] = games_today["Home_Band"].map(BAND_MAP)
 games_today["Away_Band_Num"] = games_today["Away_Band"].map(BAND_MAP)
 
-# Também adiciona no histórico
 history = add_band_features(history)
+games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
+
+recs = games_today.apply(lambda r: auto_recommendation_dynamic_winrate(r, history), axis=1)
+games_today["Auto_Recommendation"] = [x[0] for x in recs]
+games_today["Win_Probability"] = [x[1] for x in recs]
+games_today["EV"] = [x[2] for x in recs]
+games_today["Games_Analyzed"] = [x[3] for x in recs]
 
 
 ########################################
@@ -258,7 +362,8 @@ cols_to_show = [
     'Date','Time','League','League_Classification',
     'Home','Away','Odd_H','Odd_D','Odd_A',
     'M_H','M_A','Diff_Power',
-    'Home_Band','Away_Band','Dominant','Auto_Recommendation',
+    'Home_Band','Away_Band',
+    'Dominant','Auto_Recommendation',
     'Games_Analyzed','Win_Probability','EV'
 ]
 
