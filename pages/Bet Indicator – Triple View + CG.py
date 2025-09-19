@@ -333,37 +333,50 @@ st.dataframe(styled_df,use_container_width=True,height=1000)
 st.markdown("## 📊 Analysis of Results by Goal Category")
 
 def match_result(row):
-    if row["Goals_H_FT"] > row["Goals_A_FT"]: return "Win_H"
-    elif row["Goals_H_FT"] < row["Goals_A_FT"]: return "Win_A"
-    else: return "Draw"
+    if row["Goals_H_FT"] > row["Goals_A_FT"]: 
+        return "Win_H"
+    elif row["Goals_H_FT"] < row["Goals_A_FT"]: 
+        return "Win_A"
+    else: 
+        return "Draw"
 
 # Only for history
 history["Result"] = history.apply(match_result, axis=1)
 
-def stats_by_category(df, col_categoria):
-    stats = ( df.groupby(col_categoria)["Result"]
-                .value_counts(normalize=True)
-                .unstack(fill_value=0)
-                .reset_index() )
+def stats_by_category(df, col_categoria, custo_col, valor_col):
+    stats = (
+        df.groupby(col_categoria)["Result"]
+        .value_counts(normalize=True)
+        .unstack(fill_value=0)
+        .reset_index()
+    )
     stats["Games"] = df.groupby(col_categoria)["Result"].count().values
+    stats["Avg_Custo"] = df.groupby(col_categoria)[custo_col].mean().values
+    stats["Avg_Valor"] = df.groupby(col_categoria)[valor_col].mean().values
     return stats
 
 # Home teams
-cat_home_stats = stats_by_category(history, "Categoria_Gol_H")
+cat_home_stats = stats_by_category(history, "Categoria_Gol_H", "Media_CustoGol_H", "Media_ValorGol_H")
 # Away teams
-cat_away_stats = stats_by_category(history, "Categoria_Gol_A")
+cat_away_stats = stats_by_category(history, "Categoria_Gol_A", "Media_CustoGol_A", "Media_ValorGol_A")
 
 # Show in Streamlit
 st.markdown("### 🏠 Home Teams")
-st.dataframe(cat_home_stats.style.format("{:.1%}", subset=["Draw","Win_H","Win_A"]))
+st.dataframe(cat_home_stats.style.format({
+    "Draw": "{:.1%}", "Win_H": "{:.1%}", "Win_A": "{:.1%}",
+    "Avg_Custo": "{:.2f}", "Avg_Valor": "{:.2f}"
+}))
 
 st.markdown("### 🚗 Away Teams")
-st.dataframe(cat_away_stats.style.format("{:.1%}", subset=["Draw","Win_H","Win_A"]))
+st.dataframe(cat_away_stats.style.format({
+    "Draw": "{:.1%}", "Win_H": "{:.1%}", "Win_A": "{:.1%}",
+    "Avg_Custo": "{:.2f}", "Avg_Valor": "{:.2f}"
+}))
 
 st.markdown("""
 📌 Interpretation  
 🟢 = efficient team and decisive goals → “winning” profile.  
 ⚪ = efficient team but low impact goals → tendency to draws.  
-🟡 = inefficient team, but when they score they decide → unstable profile.  
+🟡 = inefficient team, but when they score it matters → unstable profile.  
 🔴 = inefficient team and irrelevant goals → “loser” profile.  
 """)
