@@ -384,17 +384,33 @@ plot_feature_importance(model_btts, X_btts, "BTTS Model – Top Features")
 
 
 ##################### BLOCO 9 – PREDICTIONS #####################
+# Desempacotar modelos e colunas
 model_multi, cols1 = model_multi
 model_ou, cols2 = model_ou
 model_btts, cols3 = model_btts
 
+# Reindexar para alinhar features
 X_today_1x2 = X_today_1x2.reindex(columns=cols1, fill_value=0)
 X_today_ou = X_today_ou.reindex(columns=cols2, fill_value=0)
 X_today_btts = X_today_btts.reindex(columns=cols3, fill_value=0)
 
-games_today["p_home"], games_today["p_draw"], games_today["p_away"] = model_multi.predict_proba(X_today_1x2).T
-games_today["p_over25"], games_today["p_under25"] = model_ou.predict_proba(X_today_ou).T
-games_today["p_btts_yes"], games_today["p_btts_no"] = model_btts.predict_proba(X_today_btts).T
+# Só faz previsões se houver jogos
+if not games_today.empty:
+    # ----- 1X2 -----
+    probs_multi = model_multi.predict_proba(X_today_1x2)
+    for cls, col in zip(model_multi.classes_, ["p_home", "p_draw", "p_away"]):
+        games_today[col] = probs_multi[:, cls]
+
+    # ----- Over/Under 2.5 -----
+    probs_ou = model_ou.predict_proba(X_today_ou)
+    for cls, col in zip(model_ou.classes_, ["p_under25", "p_over25"]):
+        games_today[col] = probs_ou[:, cls]
+
+    # ----- BTTS -----
+    probs_btts = model_btts.predict_proba(X_today_btts)
+    for cls, col in zip(model_btts.classes_, ["p_btts_no", "p_btts_yes"]):
+        games_today[col] = probs_btts[:, cls]
+
 
 
 ##################### BLOCO 10 – DISPLAY #####################
