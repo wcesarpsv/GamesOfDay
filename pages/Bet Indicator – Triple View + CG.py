@@ -77,7 +77,9 @@ def load_model(filename):
 
 
 
-##################### BLOCO 3 – LOAD DATA #####################
+##################### BLOCK 3 – LOAD DATA #####################
+from datetime import datetime, timedelta
+
 st.info("📂 Loading data...")
 
 # Load full history
@@ -93,10 +95,28 @@ else:
 if history.empty:
     st.stop()
 
-# Load today's matches
+# ---------------- Today's and Yesterday's Matches ----------------
+today = datetime.now().strftime("%Y-%m-%d")
+yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
 games_today = filter_leagues(load_selected_csvs(GAMES_FOLDER))
 
-# Ensure no duplicates
+# Ensure date format is consistent
+if "Date" in games_today.columns:
+    games_today["Date"] = pd.to_datetime(games_today["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
+
+# Filter only today's matches
+games_today = games_today[games_today["Date"] == today].copy()
+
+# Sidebar option: include yesterday
+include_yesterday = st.sidebar.checkbox("Yesterday's matches", value=False)
+if include_yesterday:
+    games_today = filter_leagues(load_selected_csvs(GAMES_FOLDER))
+    if "Date" in games_today.columns:
+        games_today["Date"] = pd.to_datetime(games_today["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
+    games_today = games_today[games_today["Date"].isin([today, yesterday])].copy()
+
+# Remove duplicates
 if set(["Date", "Home", "Away"]).issubset(games_today.columns):
     games_today = games_today.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
 else:
@@ -107,15 +127,17 @@ if "Goals_H_FT" in games_today.columns:
     games_today = games_today[games_today["Goals_H_FT"].isna()].copy()
 
 if games_today.empty:
+    st.warning("⚠️ No matches found for today (or yesterday, if selected).")
     st.stop()
 
-# Targets
+# ---------------- Targets ----------------
 history["Target"] = history.apply(
     lambda r: 0 if r["Goals_H_FT"] > r["Goals_A_FT"]
     else (1 if r["Goals_H_FT"] == r["Goals_A_FT"] else 2), axis=1
 )
 history["Target_OU25"] = (history["Goals_H_FT"] + history["Goals_A_FT"] > 2.5).astype(int)
 history["Target_BTTS"] = ((history["Goals_H_FT"] > 0) & (history["Goals_A_FT"] > 0)).astype(int)
+
 
 
 ##################### BLOCO 4 – EXTRA FEATURES #####################
