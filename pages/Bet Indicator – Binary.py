@@ -114,6 +114,8 @@ st.write(pd.DataFrame({
 # ---------------- Calculando Diff_M ----------------
 history['Diff_M'] = history['M_H'] - history['M_A']
 games_today['Diff_M'] = games_today['M_H'] - games_today['M_A']
+history['Diff_Abs'] = (history['M_H'] - history['M_A']).abs()
+games_today['Diff_Abs'] = (games_today['M_H'] - games_toda['M_A']).abs()
 
 # ---------------- Novas Features: PesoMomentum e CustoMomentum ----------------
 def add_momentum_features(df):
@@ -136,7 +138,7 @@ games_today = add_momentum_features(games_today)
 # ---------------- Atualizando lista de features ----------------
 base_features = [
     'Odd_H', 'Odd_D', 'Odd_A',
-    'M_H', 'M_A', 'Diff_Power', 'Diff_M',
+    'M_H', 'M_A', 'Diff_Power', 'Diff_M','Diff_Abs',
     'PesoMomentum_H', 'PesoMomentum_A',
     'CustoMomentum_H', 'CustoMomentum_A'
 ]
