@@ -177,5 +177,3 @@ st.markdown(""" 📌Interpretation
 🟡 = inefficient team, but goals matter when they score → unstable profile.
 🔴 = inefficient team and irrelevant goals → “loser” profile.
 """)
-
-can you review this code for me
