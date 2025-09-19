@@ -86,7 +86,7 @@ st.info("📂 Loading data...")
 history = filter_leagues(load_all_games(GAMES_FOLDER))
 history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT"]).copy()
 
-# Ensure no duplicates: Date + Home + Away
+# Remove duplicates
 if set(["Date", "Home", "Away"]).issubset(history.columns):
     history = history.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
 else:
@@ -95,48 +95,15 @@ else:
 if history.empty:
     st.stop()
 
-# ---------------- Today's and Yesterday's Matches ----------------
+# Prepare today / yesterday labels
 today = datetime.now().strftime("%Y-%m-%d")
 yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
-games_today = filter_leagues(load_selected_csvs(GAMES_FOLDER))
+# Load all matches (we will filter later with checkboxes in Block 8)
+games_all = filter_leagues(load_selected_csvs(GAMES_FOLDER))
+if "Date" in games_all.columns:
+    games_all["Date"] = pd.to_datetime(games_all["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
 
-# Ensure date format is consistent
-if "Date" in games_today.columns:
-    games_today["Date"] = pd.to_datetime(games_today["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
-
-# Filter only today's matches
-games_today = games_today[games_today["Date"] == today].copy()
-
-# Sidebar option: include yesterday
-include_yesterday = st.sidebar.checkbox("Yesterday's matches", value=False)
-if include_yesterday:
-    games_today = filter_leagues(load_selected_csvs(GAMES_FOLDER))
-    if "Date" in games_today.columns:
-        games_today["Date"] = pd.to_datetime(games_today["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
-    games_today = games_today[games_today["Date"].isin([today, yesterday])].copy()
-
-# Remove duplicates
-if set(["Date", "Home", "Away"]).issubset(games_today.columns):
-    games_today = games_today.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
-else:
-    games_today = games_today.drop_duplicates(keep="first")
-
-# Remove matches that already have final scores
-if "Goals_H_FT" in games_today.columns:
-    games_today = games_today[games_today["Goals_H_FT"].isna()].copy()
-
-if games_today.empty:
-    st.warning("⚠️ No matches found for today (or yesterday, if selected).")
-    st.stop()
-
-# ---------------- Targets ----------------
-history["Target"] = history.apply(
-    lambda r: 0 if r["Goals_H_FT"] > r["Goals_A_FT"]
-    else (1 if r["Goals_H_FT"] == r["Goals_A_FT"] else 2), axis=1
-)
-history["Target_OU25"] = (history["Goals_H_FT"] + history["Goals_A_FT"] > 2.5).astype(int)
-history["Target_BTTS"] = ((history["Goals_H_FT"] > 0) & (history["Goals_A_FT"] > 0)).astype(int)
 
 
 
@@ -354,7 +321,35 @@ def train_and_evaluate(X, y, name, num_classes):
 
 
 
-##################### BLOCO 8 – TRAIN MODELS #####################
+##################### BLOCK 8 – TRAIN MODELS #####################
+
+# Add match filters above Model Statistics
+st.markdown("### 📌 Match Filters")
+show_today = st.checkbox("Today's Matches", value=True)
+show_yesterday = st.checkbox("Yesterday's Matches", value=False)
+
+# Apply filters
+games_today = pd.DataFrame()
+if show_today:
+    games_today = pd.concat([games_today, games_all[games_all["Date"] == today]])
+if show_yesterday:
+    games_today = pd.concat([games_today, games_all[games_all["Date"] == yesterday]])
+
+# Remove duplicates
+if set(["Date", "Home", "Away"]).issubset(games_today.columns):
+    games_today = games_today.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
+else:
+    games_today = games_today.drop_duplicates(keep="first")
+
+# Remove finished games
+if "Goals_H_FT" in games_today.columns:
+    games_today = games_today[games_today["Goals_H_FT"].isna()].copy()
+
+if games_today.empty:
+    st.warning("⚠️ No matches selected for today or yesterday.")
+    st.stop()
+
+# Train models
 stats = []
 res, model_multi = train_and_evaluate(X_1x2, history["Target"], "1X2", 3); stats.append(res)
 res, model_ou = train_and_evaluate(X_ou, history["Target_OU25"], "OverUnder25", 2); stats.append(res)
@@ -363,6 +358,7 @@ res, model_btts = train_and_evaluate(X_btts, history["Target_BTTS"], "BTTS", 2);
 df_stats = pd.DataFrame(stats)
 st.markdown("### 📊 Model Statistics (Validation)")
 st.dataframe(df_stats, use_container_width=True)
+
 
 ##################### FEATURE IMPORTANCE #####################
 st.markdown("### 🔎 Feature Importance Analysis")
