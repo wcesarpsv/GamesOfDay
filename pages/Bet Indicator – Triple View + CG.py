@@ -93,68 +93,105 @@ history["Target_OU25"] = (history["Goals_H_FT"] + history["Goals_A_FT"] > 2.5).a
 history["Target_BTTS"] = ((history["Goals_H_FT"]>0) & (history["Goals_A_FT"]>0)).astype(int)
 
 
-##################### BLOCK 4 – EXTRA FEATURES (COST/VALUE + DYNAMIC CATEGORIES) #####################
-history["Custo_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Odd_H"] / history["Goals_H_FT"], np.nan)
-history["Custo_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Odd_A"] / history["Goals_A_FT"], np.nan)
-history["Valor_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Bet Result"] / history["Goals_H_FT"], np.nan)
-history["Valor_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Bet Result"] / history["Goals_A_FT"], np.nan)
-for col in ["Custo_Gol_H","Custo_Gol_A","Valor_Gol_H","Valor_Gol_A"]:
-    games_today[col] = np.nan
+##################### BLOCK 4 – EXTRA FEATURES (GOAL COST/VALUE + DYNAMIC CATEGORIES) #####################
 
+def rolling_stats(sub_df, col, window=5, min_periods=2):
+    return sub_df.sort_values("Date")[col].rolling(window=window, min_periods=min_periods).mean()
+
+# ====================
+# 1. Calculate cost and value of goals
+# ====================
+history["Custo_Gol_H"] = np.where(history["Goals_H_FT"] > 0,
+                                  history["Odd_H"] / history["Goals_H_FT"], 0)
+history["Custo_Gol_A"] = np.where(history["Goals_A_FT"] > 0,
+                                  history["Odd_A"] / history["Goals_A_FT"], 0)
+
+history["Valor_Gol_H"] = np.where(history["Goals_H_FT"] > 0,
+                                  history["Bet Result"] / history["Goals_H_FT"], 0)
+history["Valor_Gol_A"] = np.where(history["Goals_A_FT"] > 0,
+                                  history["Bet Result"] / history["Goals_A_FT"], 0)
+
+# For today's games (no result yet → 0)
+games_today["Custo_Gol_H"] = 0
+games_today["Custo_Gol_A"] = 0
+games_today["Valor_Gol_H"] = 0
+games_today["Valor_Gol_A"] = 0
+
+# ====================
+# 2. Rolling averages (last 5 games, min 2)
+# ====================
 history = history.sort_values("Date")
-# training → shift(1)
-history["Media_CustoGol_H"] = history.groupby("Home")["Custo_Gol_H"].transform(lambda x: x.shift().rolling(5, min_periods=2).mean())
-history["Media_ValorGol_H"] = history.groupby("Home")["Valor_Gol_H"].transform(lambda x: x.shift().rolling(5, min_periods=2).mean())
-history["Media_CustoGol_A"] = history.groupby("Away")["Custo_Gol_A"].transform(lambda x: x.shift().rolling(5, min_periods=2).mean())
-history["Media_ValorGol_A"] = history.groupby("Away")["Valor_Gol_A"].transform(lambda x: x.shift().rolling(5, min_periods=2).mean())
 
-# thresholds
-t_c_h = history["Media_CustoGol_H"].quantile(0.6)
-t_c_a = history["Media_CustoGol_A"].quantile(0.6)
-t_v_h = history["Media_ValorGol_H"].quantile(0.4)
-t_v_a = history["Media_ValorGol_A"].quantile(0.4)
-st.sidebar.markdown(f"""
-### 🔎 Dynamic thresholds (percentiles)
-- Cost H (p60): {t_c_h:.2f}  
-- Value H (p40): {t_v_h:.2f}  
-- Cost A (p60): {t_c_a:.2f}  
-- Value A (p40): {t_v_a:.2f}  
-""")
+history["Media_CustoGol_H"] = history.groupby("Home", group_keys=False).apply(
+    lambda x: rolling_stats(x, "Custo_Gol_H")).shift(1)
+history["Media_ValorGol_H"] = history.groupby("Home", group_keys=False).apply(
+    lambda x: rolling_stats(x, "Valor_Gol_H")).shift(1)
 
+history["Media_CustoGol_A"] = history.groupby("Away", group_keys=False).apply(
+    lambda x: rolling_stats(x, "Custo_Gol_A")).shift(1)
+history["Media_ValorGol_A"] = history.groupby("Away", group_keys=False).apply(
+    lambda x: rolling_stats(x, "Valor_Gol_A")).shift(1)
+
+# ====================
+# 3. Dynamic thresholds (percentiles)
+# ====================
+t_c = history[["Media_CustoGol_H", "Media_CustoGol_A"]].stack().quantile(0.6)  # 60% → cost
+t_v = history[["Media_ValorGol_H", "Media_ValorGol_A"]].stack().quantile(0.4)  # 40% → value
+
+st.sidebar.markdown(f"### 🔎 Dynamic Thresholds (percentiles)\n- Cost (p60): {t_c:.2f}\n- Value (p40): {t_v:.2f}")
+
+# ====================
+# 4. Dynamic category classification
+# ====================
 def classify_row_dynamic(custo, valor, t_c, t_v):
-    if pd.isna(custo) or pd.isna(valor): return "—"
-    if custo <= t_c and valor > t_v: return "🟢"
-    elif custo <= t_c and valor <= t_v: return "⚪"
-    elif custo > t_c and valor > t_v: return "🟡"
-    else: return "🔴"
+    if pd.isna(custo) or pd.isna(valor):
+        return "—"
+    if custo <= t_c and valor > t_v:
+        return "🟢"  # Low cost, high value
+    elif custo <= t_c and valor <= t_v:
+        return "⚪"  # Low cost, low value
+    elif custo > t_c and valor > t_v:
+        return "🟡"  # High cost, high value
+    else:
+        return "🔴"  # High cost, low value
 
-history["Categoria_Gol_H"] = history.apply(lambda r: classify_row_dynamic(r["Media_CustoGol_H"], r["Media_ValorGol_H"], t_c_h, t_v_h), axis=1)
-history["Categoria_Gol_A"] = history.apply(lambda r: classify_row_dynamic(r["Media_CustoGol_A"], r["Media_ValorGol_A"], t_c_a, t_v_a), axis=1)
+# Apply to history
+history["Categoria_Gol_H"] = history.apply(
+    lambda r: classify_row_dynamic(r["Media_CustoGol_H"], r["Media_ValorGol_H"], t_c, t_v), axis=1
+)
+history["Categoria_Gol_A"] = history.apply(
+    lambda r: classify_row_dynamic(r["Media_CustoGol_A"], r["Media_ValorGol_A"], t_c, t_v), axis=1
+)
 
-# production → rolling without shift
-def get_last_mean(team, side, col):
-    df = history[history["Home"] == team] if side == "H" else history[history["Away"] == team]
-    if df.empty: return np.nan
-    return df[col].rolling(window=5, min_periods=2).mean().iloc[-1]
+# ====================
+# 5. Categories for today's games (based on last N matches averages)
+# ====================
+def get_team_category(team, side, n=5):
+    if side == "H":
+        df = history[history["Home"] == team].sort_values("Date")
+        custo = df["Custo_Gol_H"].tail(n).mean()
+        valor = df["Valor_Gol_H"].tail(n).mean()
+    else:
+        df = history[history["Away"] == team].sort_values("Date")
+        custo = df["Custo_Gol_A"].tail(n).mean()
+        valor = df["Valor_Gol_A"].tail(n).mean()
+    
+    if np.isnan(custo) or np.isnan(valor):
+        return "—"
+    return classify_row_dynamic(custo, valor, t_c, t_v)
 
-games_today["Media_CustoGol_H"] = games_today["Home"].apply(lambda t: get_last_mean(t, "H", "Custo_Gol_H"))
-games_today["Media_ValorGol_H"] = games_today["Home"].apply(lambda t: get_last_mean(t, "H", "Valor_Gol_H"))
-games_today["Media_CustoGol_A"] = games_today["Away"].apply(lambda t: get_last_mean(t, "A", "Custo_Gol_A"))
-games_today["Media_ValorGol_A"] = games_today["Away"].apply(lambda t: get_last_mean(t, "A", "Valor_Gol_A"))
+games_today["Categoria_Gol_H"] = games_today["Home"].apply(lambda t: get_team_category(t, "H"))
+games_today["Categoria_Gol_A"] = games_today["Away"].apply(lambda t: get_team_category(t, "A"))
 
-def get_last_category(team, side):
-    df = history[history["Home"] == team] if side == "H" else history[history["Away"] == team]
-    row = df.sort_values("Date").tail(1)
-    return row[f"Categoria_Gol_{side}"].iloc[0] if not row.empty else "—"
+# ====================
+# 6. One-hot encoding for categories
+# ====================
+cat_h = pd.get_dummies(history["Categoria_Gol_H"], prefix="Cat_H")
+cat_a = pd.get_dummies(history["Categoria_Gol_A"], prefix="Cat_A")
 
-games_today["Categoria_Gol_H"] = games_today["Home"].apply(lambda t: get_last_category(t, "H"))
-games_today["Categoria_Gol_A"] = games_today["Away"].apply(lambda t: get_last_category(t, "A"))
-
-expected_cats = ["🟢","⚪","🟡","🔴"]
-cat_h = pd.get_dummies(history["Categoria_Gol_H"], prefix="Cat_H").reindex(columns=[f"Cat_H_{c}" for c in expected_cats], fill_value=0)
-cat_a = pd.get_dummies(history["Categoria_Gol_A"], prefix="Cat_A").reindex(columns=[f"Cat_A_{c}" for c in expected_cats], fill_value=0)
 cat_h_today = pd.get_dummies(games_today["Categoria_Gol_H"], prefix="Cat_H").reindex(columns=cat_h.columns, fill_value=0)
 cat_a_today = pd.get_dummies(games_today["Categoria_Gol_A"], prefix="Cat_A").reindex(columns=cat_a.columns, fill_value=0)
+
 
 
 ##################### BLOCK 5 – FEATURES #####################
