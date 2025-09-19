@@ -127,7 +127,6 @@ history["Target_BTTS"] = ((history["Goals_H_FT"] > 0) & (history["Goals_A_FT"] >
 def rolling_stats(sub_df, col, window=5, min_periods=2):
     return sub_df.sort_values("Date")[col].rolling(window=window, min_periods=min_periods).mean()
 
-
 # 1. Calculate cost and value of goals
 history["Custo_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Odd_H"] / history["Goals_H_FT"], 0)
 history["Custo_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Odd_A"] / history["Goals_A_FT"], 0)
@@ -179,7 +178,6 @@ def classify_row_dynamic(custo, valor, t_c, t_v):
     else:
         return "🔴"
 
-
 history["Categoria_Gol_H"] = history.apply(
     lambda r: classify_row_dynamic(r["Media_CustoGol_H"], r["Media_ValorGol_H"], t_c, t_v), axis=1
 )
@@ -187,12 +185,22 @@ history["Categoria_Gol_A"] = history.apply(
     lambda r: classify_row_dynamic(r["Media_CustoGol_A"], r["Media_ValorGol_A"], t_c, t_v), axis=1
 )
 
-# 5. Categories for today’s matches (last observed match per team)
-def get_last_category(team, side):
+# 5. Categories for today’s matches (use min 2, max 5 last games)
+def get_last_category(team, side, min_games=2, max_games=5):
     df = history[history["Home"] == team] if side == "H" else history[history["Away"] == team]
-    row = df.sort_values("Date").tail(1)
-    return row[f"Categoria_Gol_{side}"].iloc[0] if not row.empty else "—"
-
+    df = df.sort_values("Date").tail(max_games)  # last up to 5 matches
+    
+    if len(df) < min_games:
+        return "—"  # not enough history
+    
+    # calculate mean ignoring zeros (no goals)
+    custo_mean = df[f"Custo_Gol_{side}"].replace(0, np.nan).mean()
+    valor_mean = df[f"Valor_Gol_{side}"].replace(0, np.nan).mean()
+    
+    if pd.isna(custo_mean) or pd.isna(valor_mean):
+        return "—"
+    
+    return classify_row_dynamic(custo_mean, valor_mean, t_c, t_v)
 
 games_today["Categoria_Gol_H"] = games_today["Home"].apply(lambda t: get_last_category(t, "H"))
 games_today["Categoria_Gol_A"] = games_today["Away"].apply(lambda t: get_last_category(t, "A"))
@@ -203,6 +211,8 @@ cat_a = pd.get_dummies(history["Categoria_Gol_A"], prefix="Cat_A")
 
 cat_h_today = pd.get_dummies(games_today["Categoria_Gol_H"], prefix="Cat_H").reindex(columns=cat_h.columns, fill_value=0)
 cat_a_today = pd.get_dummies(games_today["Categoria_Gol_A"], prefix="Cat_A").reindex(columns=cat_a.columns, fill_value=0)
+
+
 
 
 ##################### BLOCO 5 – BASE FEATURES #####################
