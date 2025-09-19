@@ -23,17 +23,14 @@ os.makedirs(MODELS_FOLDER, exist_ok=True)
 ##################### BLOCO 2 – HELPERS #####################
 def preprocess_df(df):
     df = df.copy()
-    # Renomear colunas duplicadas
     if "Goals_H_FT_x" in df.columns:
         df = df.rename(columns={"Goals_H_FT_x": "Goals_H_FT", "Goals_A_FT_x": "Goals_A_FT"})
     elif "Goals_H_FT_y" in df.columns:
         df = df.rename(columns={"Goals_H_FT_y": "Goals_H_FT", "Goals_A_FT_y": "Goals_A_FT"})
 
-    # Garantir coluna Bet Result
     if "Bet Result" not in df.columns:
         df["Bet Result"] = 0
 
-    # Garantir odds, se não existirem
     for col in ["Odd_H", "Odd_D", "Odd_A"]:
         if col not in df.columns:
             df[col] = np.nan
@@ -64,17 +61,20 @@ def filter_leagues(df):
     return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
 
 
-def save_model(model, filename):
+def save_model(model, feature_cols, filename):
+    """Salva (modelo, colunas) no arquivo"""
     with open(os.path.join(MODELS_FOLDER, filename), "wb") as f:
-        joblib.dump(model, f)
+        joblib.dump((model, feature_cols), f)
 
 
 def load_model(filename):
+    """Carrega (modelo, colunas) se existir"""
     path = os.path.join(MODELS_FOLDER, filename)
     if os.path.exists(path):
         with open(path, "rb") as f:
-            return joblib.load(f)
+            return joblib.load(f)  # sempre retorna (model, cols)
     return None
+
 
 
 ##################### BLOCO 3 – LOAD DATA #####################
@@ -266,13 +266,18 @@ retrain = st.sidebar.checkbox("Retrain models", value=False)
 
 ##################### BLOCO 7 – TRAIN & EVALUATE #####################
 def train_and_evaluate(X, y, name, num_classes):
-    filename = f"{ml_model_choice.replace(' ', '')}_{name}_CG.pkl"
+    # Nome único do arquivo (evita conflito entre modelos)
+    safe_name = name.replace(" ", "")
+    safe_model = ml_model_choice.replace(" ", "")
+    filename = f"{safe_model}_{safe_name}_{num_classes}C.pkl"
+
     feature_cols = X.columns.tolist()
 
-    # Try to load model
+    # Tenta carregar modelo salvo
     if not retrain:
-        model = load_model(filename)
-        if model:
+        loaded = load_model(filename)
+        if loaded:
+            model, cols = loaded
             preds = model.predict(X)
             probs = model.predict_proba(X)
             res = {
@@ -281,9 +286,9 @@ def train_and_evaluate(X, y, name, num_classes):
                 "LogLoss": log_loss(y, probs, labels=np.arange(num_classes)),
                 "BrierScore": brier_score_loss(pd.get_dummies(y).values.ravel(), probs.ravel())
             }
-            return res, (model, feature_cols)
+            return res, (model, cols)
 
-    # Train new model
+    # Treina novo modelo
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
     if "Random Forest" in ml_model_choice:
@@ -309,8 +314,10 @@ def train_and_evaluate(X, y, name, num_classes):
         "BrierScore": brier_score_loss(pd.get_dummies(y_test).values.ravel(), probs.ravel())
     }
 
-    save_model(model, filename)
+    # Salva (modelo, colunas)
+    save_model(model, feature_cols, filename)
     return res, (model, feature_cols)
+
 
 
 ##################### BLOCO 8 – TRAIN MODELS #####################
