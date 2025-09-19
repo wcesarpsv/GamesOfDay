@@ -201,14 +201,16 @@ def event_side_for_winprob(auto_rec):
 
 
 def win_prob_for_recommendation(history, row,
-                                m_diff_margin=M_DIFF_MARGIN,
-                                power_margin=POWER_MARGIN,
-                                min_games=10):
+                                base_m_diff=0.30,
+                                base_power=10,
+                                min_games=10,
+                                max_m_diff=1.0,
+                                max_power=25):
     """
-    Calcula Win Probability considerando bands:
-    1) Match exato (Home_Band_Num e Away_Band_Num).
-    2) Se não houver jogos suficientes → permite Balanced como fallback.
-    3) Se ainda não houver → ignora bands (só M_Diff + Diff_Power).
+    Calcula Win Probability com ranges automáticos:
+    - Começa estreito (precisão alta)
+    - Se não houver jogos suficientes, expande ranges até achar
+    - Inclui fallback com bands e odds implícitas
     """
     m_h, m_a = row['M_H'], row['M_A']
     diff_m   = m_h - m_a
@@ -217,46 +219,45 @@ def win_prob_for_recommendation(history, row,
     hist = history.copy()
     hist['M_Diff'] = hist['M_H'] - hist['M_A']
 
-    # ---- 1) Filtro exato (mais preciso)
-    mask = (
-        hist['M_Diff'].between(diff_m - m_diff_margin, diff_m + m_diff_margin) &
-        hist['Diff_Power'].between(diff_pow - power_margin, diff_pow + power_margin) &
-        (hist['Home_Band_Num'] == row['Home_Band_Num']) &
-        (hist['Away_Band_Num'] == row['Away_Band_Num'])
-    )
-    sample = hist[mask]
-    n = len(sample)
+    # Inicializa ranges
+    m_diff_margin = base_m_diff
+    power_margin = base_power
+    sample = pd.DataFrame()
+    n = 0
 
-    # ---- 2) Se não achar, permite Balanced como fallback
-    if n < min_games:
-        home_candidates = [row['Home_Band_Num']]
-        away_candidates = [row['Away_Band_Num']]
-        if row['Home_Band_Num'] in [1, 3]:  # Bottom20 ou Top20
-            home_candidates.append(2)       # adiciona Balanced
-        if row['Away_Band_Num'] in [1, 3]:
-            away_candidates.append(2)
-
-        mask = (
-            hist['M_Diff'].between(diff_m - m_diff_margin, diff_m + m_diff_margin) &
-            hist['Diff_Power'].between(diff_pow - power_margin, diff_pow + power_margin) &
-            (hist['Home_Band_Num'].isin(home_candidates)) &
-            (hist['Away_Band_Num'].isin(away_candidates))
-        )
-        sample = hist[mask]
-        n = len(sample)
-
-    # ---- 3) Se ainda não achar → ignora bands
-    if n < min_games:
+    while n < min_games and (m_diff_margin <= max_m_diff and power_margin <= max_power):
         mask = (
             hist['M_Diff'].between(diff_m - m_diff_margin, diff_m + m_diff_margin) &
             hist['Diff_Power'].between(diff_pow - power_margin, diff_pow + power_margin)
         )
+
+        # Bands (flexível: aceita Balanced como similar)
+        home_candidates = [row['Home_Band_Num']]
+        away_candidates = [row['Away_Band_Num']]
+        if row['Home_Band_Num'] in [1, 3]: home_candidates.append(2)
+        if row['Away_Band_Num'] in [1, 3]: away_candidates.append(2)
+
+        mask = mask & hist['Home_Band_Num'].isin(home_candidates) & hist['Away_Band_Num'].isin(away_candidates)
+
         sample = hist[mask]
         n = len(sample)
+
+        # Se não achar suficiente → expande ranges
+        if n < min_games:
+            m_diff_margin += 0.20
+            power_margin += 5
 
     if row.get('Auto_Recommendation') == '❌ Avoid':
         return n, None
     if n == 0:
+        # fallback absoluto: usar odd implícita
+        target = event_side_for_winprob(row['Auto_Recommendation'])
+        if target == 'HOME' and row.get("Odd_H"):
+            return 0, round(100 / row["Odd_H"], 1)
+        if target == 'AWAY' and row.get("Odd_A"):
+            return 0, round(100 / row["Odd_A"], 1)
+        if target == 'DRAW' and row.get("Odd_D"):
+            return 0, round(100 / row["Odd_D"], 1)
         return 0, None
 
     # ---- Calcula probabilidade real
@@ -279,15 +280,20 @@ def win_prob_for_recommendation(history, row,
     return n, (round(float(p)*100, 1) if p is not None else None)
 
 
-
 ########################################
 ####### Bloco 5 – Auto Selection #######
 ########################################
 def auto_recommendation_dynamic_winrate(row, history,
-                                        m_diff_margin=M_DIFF_MARGIN,
-                                        power_margin=POWER_MARGIN,
-                                        min_games=30):
-    """Escolhe recomendação baseada no maior Winrate, com fallback 1X/X2"""
+                                        min_games=5,
+                                        min_winrate=45.0):
+    """
+    Escolhe recomendação baseada no maior Winrate.
+    - Primeiro tenta Home / Away / Draw.
+    - Se Winrate >= min_winrate e n >= min_games → aceita.
+    - Caso contrário → tenta fallback 1X / X2.
+    - Se nada válido → ❌ Avoid.
+    """
+
     candidates_main = ["🟢 Back Home", "🟠 Back Away", "⚪ Back Draw"]
     candidates_fallback = ["🟦 1X (Home/Draw)", "🟪 X2 (Away/Draw)"]
 
@@ -297,8 +303,8 @@ def auto_recommendation_dynamic_winrate(row, history,
     for rec in candidates_main:
         row_copy = row.copy()
         row_copy["Auto_Recommendation"] = rec
-        n, p = win_prob_for_recommendation(history, row_copy,
-                                           m_diff_margin, power_margin)
+        n, p = win_prob_for_recommendation(history, row_copy)
+
         if p is None or n < min_games:
             continue
 
@@ -306,20 +312,21 @@ def auto_recommendation_dynamic_winrate(row, history,
         if rec == "🟢 Back Home": odd_ref = row.get("Odd_H")
         elif rec == "🟠 Back Away": odd_ref = row.get("Odd_A")
         elif rec == "⚪ Back Draw": odd_ref = row.get("Odd_D")
+
         ev = (p/100.0) * odd_ref - 1 if odd_ref and odd_ref > 1.0 else None
 
         if (best_prob is None) or (p > best_prob):
             best_rec, best_prob, best_ev, best_n = rec, p, ev, n
 
-    if best_prob is not None and best_prob >= 50:
+    if best_prob is not None and best_prob >= min_winrate:
         return best_rec, best_prob, best_ev, best_n
 
     # 2) Se não, checa 1X/X2
     for rec in candidates_fallback:
         row_copy = row.copy()
         row_copy["Auto_Recommendation"] = rec
-        n, p = win_prob_for_recommendation(history, row_copy,
-                                           m_diff_margin, power_margin)
+        n, p = win_prob_for_recommendation(history, row_copy)
+
         if p is None or n < min_games:
             continue
 
@@ -328,12 +335,14 @@ def auto_recommendation_dynamic_winrate(row, history,
             odd_ref = 1 / (1/row["Odd_H"] + 1/row["Odd_D"])
         elif rec == "🟪 X2 (Away/Draw)" and row.get("Odd_A") and row.get("Odd_D"):
             odd_ref = 1 / (1/row["Odd_A"] + 1/row["Odd_D"])
+
         ev = (p/100.0) * odd_ref - 1 if odd_ref and odd_ref > 1.0 else None
 
         if (best_prob is None) or (p > best_prob):
             best_rec, best_prob, best_ev, best_n = rec, p, ev, n
 
-    if best_prob is None or best_prob < 50:
+    # 3) Se ainda não achar nada aceitável
+    if best_prob is None or best_prob < min_winrate:
         return "❌ Avoid", best_prob, best_ev, best_n
 
     return best_rec, best_prob, best_ev, best_n
