@@ -115,7 +115,7 @@ st.write(pd.DataFrame({
 history['Diff_M'] = history['M_H'] - history['M_A']
 games_today['Diff_M'] = games_today['M_H'] - games_today['M_A']
 history['Diff_Abs'] = (history['M_H'] - history['M_A']).abs()
-games_today['Diff_Abs'] = (games_today['M_H'] - games_toda['M_A']).abs()
+games_today['Diff_Abs'] = (games_today['M_H'] - games_today['M_A']).abs()
 
 # ---------------- Novas Features: PesoMomentum e CustoMomentum ----------------
 def add_momentum_features(df):
