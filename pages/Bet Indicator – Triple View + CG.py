@@ -214,9 +214,8 @@ if "cat_h" not in locals() or "cat_a" not in locals():
     st.error("❌ Goal categories (BLOCK 4) were not calculated before BLOCK 5.")
     st.stop()
 
-# Feature differences
+# Feature differences (only history here, games_today will be handled in Block 8)
 history["Diff_M"] = history["M_H"] - history["M_A"]
-games_today["Diff_M"] = games_today["M_H"] - games_today["M_A"]
 
 # Feature sets (incluindo médias de custo/valor do gol)
 features_1x2 = [
@@ -237,23 +236,8 @@ features_ou_btts = [
 
 # One-hot encode leagues
 history_leagues = pd.get_dummies(history["League"], prefix="League")
-games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
-games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
+games_today_leagues = pd.DataFrame()  # será preenchido no Block 8
 
-# Final datasets
-X_1x2 = pd.concat([history[features_1x2], history_leagues, cat_h, cat_a], axis=1)
-X_ou = pd.concat([history[features_ou_btts], history_leagues], axis=1)
-X_btts = pd.concat([history[features_ou_btts], history_leagues], axis=1)
-
-# Today’s matches
-X_today_1x2 = pd.concat([games_today[features_1x2], games_today_leagues, cat_h_today, cat_a_today], axis=1)
-X_today_1x2 = X_today_1x2.reindex(columns=X_1x2.columns, fill_value=0)
-
-X_today_ou = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
-X_today_ou = X_today_ou.reindex(columns=X_ou.columns, fill_value=0)
-
-X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
-X_today_btts = X_today_btts.reindex(columns=X_btts.columns, fill_value=0)
 
 
 ##################### BLOCO 6 – SIDEBAR #####################
@@ -341,6 +325,15 @@ if not selected_dates:
 
 games_today = games_all[games_all["Date"].isin(selected_dates)].copy()
 
+# Feature differences for today's matches
+if not games_today.empty:
+    games_today["Diff_M"] = games_today["M_H"] - games_today["M_A"]
+
+# One-hot encode leagues for today's matches
+games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
+games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
+
+
 # Ensure goal-related columns exist in today's matches
 for col in extra_goal_cols:
     if col not in games_today.columns:
@@ -389,14 +382,20 @@ plot_feature_importance(model_btts, X_btts, "BTTS Model – Top Features")
 
 
 ##################### BLOCO 9 – PREDICTIONS #####################
+
 # Desempacotar modelos e colunas
 model_multi, cols1 = model_multi
 model_ou, cols2 = model_ou
 model_btts, cols3 = model_btts
 
 # Reindexar para alinhar features
+X_today_1x2 = pd.concat([games_today[features_1x2], games_today_leagues, cat_h_today, cat_a_today], axis=1)
 X_today_1x2 = X_today_1x2.reindex(columns=cols1, fill_value=0)
+
+X_today_ou = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
 X_today_ou = X_today_ou.reindex(columns=cols2, fill_value=0)
+
+X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
 X_today_btts = X_today_btts.reindex(columns=cols3, fill_value=0)
 
 # Só faz previsões se houver jogos
