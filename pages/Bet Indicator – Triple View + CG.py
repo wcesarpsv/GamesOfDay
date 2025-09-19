@@ -105,13 +105,33 @@ def load_model(filename):
 
 ##################### BLOCO 3 – LOAD DATA #####################
 st.info("📂 Loading data...")
+
+# Load full history
 history = filter_leagues(load_all_games(GAMES_FOLDER))
 history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT"]).copy()
+
+# Ensure no duplicates: Date + Home + Away
+if set(["Date", "Home", "Away"]).issubset(history.columns):
+    history = history.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
+else:
+    history = history.drop_duplicates(keep="first")
+
 if history.empty:
     st.stop()
+
+# Load today's matches
 games_today = filter_leagues(load_selected_csvs(GAMES_FOLDER))
+
+# Ensure no duplicates: Date + Home + Away
+if set(["Date", "Home", "Away"]).issubset(games_today.columns):
+    games_today = games_today.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
+else:
+    games_today = games_today.drop_duplicates(keep="first")
+
+# Remove matches that already have final scores
 if "Goals_H_FT" in games_today.columns:
     games_today = games_today[games_today["Goals_H_FT"].isna()].copy()
+
 if games_today.empty:
     st.stop()
 
