@@ -344,7 +344,7 @@ games_today['Away_Band'] = np.where(
 games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
 
 # Aplicar Auto Recommendation
-recs = games_today.apply(lambda r: auto_recommendation_dynamic_ev(r, history), axis=1)
+recs = games_today.apply(lambda r: auto_recommendation_dynamic_winrate(r, history), axis=1)
 games_today["Auto_Recommendation"] = [x[0] for x in recs]
 games_today["Win_Probability"] = [x[1] for x in recs]
 games_today["EV"] = [x[2] for x in recs]
