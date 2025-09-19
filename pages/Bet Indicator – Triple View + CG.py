@@ -208,13 +208,12 @@ extra_goal_cols = [
     "Media_CustoGol_H", "Media_ValorGol_H", "Media_CustoGol_A", "Media_ValorGol_A"
 ]
 
-
 ##################### BLOCO 5 – BASE FEATURES #####################
 if "cat_h" not in locals() or "cat_a" not in locals():
     st.error("❌ Goal categories (BLOCK 4) were not calculated before BLOCK 5.")
     st.stop()
 
-# Feature differences (only history here, games_today will be handled in Block 8)
+# Feature differences (only for history here, games_today will be handled in Block 8)
 history["Diff_M"] = history["M_H"] - history["M_A"]
 
 # Feature sets (incluindo médias de custo/valor do gol)
@@ -236,7 +235,12 @@ features_ou_btts = [
 
 # One-hot encode leagues
 history_leagues = pd.get_dummies(history["League"], prefix="League")
-games_today_leagues = pd.DataFrame()  # será preenchido no Block 8
+
+# Final datasets for training
+X_1x2 = pd.concat([history[features_1x2], history_leagues, cat_h, cat_a], axis=1)
+X_ou = pd.concat([history[features_ou_btts], history_leagues], axis=1)
+X_btts = pd.concat([history[features_ou_btts], history_leagues], axis=1)
+
 
 
 
