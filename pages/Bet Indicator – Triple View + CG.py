@@ -126,7 +126,7 @@ history["Target_BTTS"] = ((history["Goals_H_FT"] > 0) & (history["Goals_A_FT"] >
 
 
 
-##################### BLOCK 4 – EXTRA FEATURES #####################
+##################### BLOCO 4 – EXTRA FEATURES #####################
 def rolling_stats(sub_df, col, window=5, min_periods=1):
     return sub_df.sort_values("Date")[col].rolling(window=window, min_periods=min_periods).mean()
 
@@ -135,8 +135,6 @@ history["Custo_Gol_H"] = np.where(history["Goals_H_FT"] > 0, history["Odd_H"] / 
 history["Custo_Gol_A"] = np.where(history["Goals_A_FT"] > 0, history["Odd_A"] / history["Goals_A_FT"], 0)
 
 # 2. Define Bet Result as betting profit (home win back test)
-#    - If home team wins → profit = Odd_H - 1
-#    - Otherwise (draw or away win) → profit = -1
 history["Bet Result"] = np.where(
     history["Goals_H_FT"] > history["Goals_A_FT"],
     history["Odd_H"] - 1,
@@ -148,11 +146,6 @@ history["Valor_Gol_H"] = np.where(history["Goals_H_FT"] > 0,
                                   history["Bet Result"] / history["Goals_H_FT"], 0)
 history["Valor_Gol_A"] = np.where(history["Goals_A_FT"] > 0,
                                   history["Bet Result"] / history["Goals_A_FT"], 0)
-
-# Initialize for today’s matches (to be filled with last historical values)
-for col in ["Custo_Gol_H", "Custo_Gol_A", "Valor_Gol_H", "Valor_Gol_A",
-            "Media_CustoGol_H", "Media_ValorGol_H", "Media_CustoGol_A", "Media_ValorGol_A"]:
-    games_today[col] = np.nan
 
 # 4. Rolling averages (last 5 matches, shifted for training)
 history = history.sort_values("Date")
@@ -197,7 +190,7 @@ history["Categoria_Gol_A"] = history.apply(
     lambda r: classify_row_dynamic(r["Media_CustoGol_A"], r["Media_ValorGol_A"], t_c, t_v), axis=1
 )
 
-# 7. Categories for today’s matches
+# 7. Categories for today’s matches (will be applied after filtering in Block 8)
 def get_last_category(team, side, min_games=2, max_games=5):
     df = history[history["Home"] == team] if side == "H" else history[history["Away"] == team]
     df = df.sort_values("Date").tail(max_games)
@@ -205,30 +198,15 @@ def get_last_category(team, side, min_games=2, max_games=5):
         return "—"
     return df.iloc[-1][f"Categoria_Gol_{side}"]
 
-games_today["Categoria_Gol_H"] = games_today["Home"].apply(lambda t: get_last_category(t, "H"))
-games_today["Categoria_Gol_A"] = games_today["Away"].apply(lambda t: get_last_category(t, "A"))
-
 # 8. One-hot encoding for categories
 cat_h = pd.get_dummies(history["Categoria_Gol_H"], prefix="Cat_H")
 cat_a = pd.get_dummies(history["Categoria_Gol_A"], prefix="Cat_A")
 
-cat_h_today = pd.get_dummies(games_today["Categoria_Gol_H"], prefix="Cat_H").reindex(columns=cat_h.columns, fill_value=0)
-cat_a_today = pd.get_dummies(games_today["Categoria_Gol_A"], prefix="Cat_A").reindex(columns=cat_a.columns, fill_value=0)
-
-# 9. Fill today's matches with last known averages from history
-for idx, row in games_today.iterrows():
-    home = row["Home"]
-    away = row["Away"]
-
-    last_home = history[history["Home"] == home].sort_values("Date").tail(1)
-    last_away = history[history["Away"] == away].sort_values("Date").tail(1)
-
-    games_today.at[idx, "Media_CustoGol_H"] = last_home["Media_CustoGol_H"].values[-1] if not last_home.empty else np.nan
-    games_today.at[idx, "Media_ValorGol_H"] = last_home["Media_ValorGol_H"].values[-1] if not last_home.empty else np.nan
-
-    games_today.at[idx, "Media_CustoGol_A"] = last_away["Media_CustoGol_A"].values[-1] if not last_away.empty else np.nan
-    games_today.at[idx, "Media_ValorGol_A"] = last_away["Media_ValorGol_A"].values[-1] if not last_away.empty else np.nan
-
+# Save list of extra goal-related columns (to create later in Block 8)
+extra_goal_cols = [
+    "Custo_Gol_H", "Custo_Gol_A", "Valor_Gol_H", "Valor_Gol_A",
+    "Media_CustoGol_H", "Media_ValorGol_H", "Media_CustoGol_A", "Media_ValorGol_A"
+]
 
 
 ##################### BLOCO 5 – BASE FEATURES #####################
@@ -362,6 +340,19 @@ if not selected_dates:
     st.stop()
 
 games_today = games_all[games_all["Date"].isin(selected_dates)].copy()
+
+# Ensure goal-related columns exist in today's matches
+for col in extra_goal_cols:
+    if col not in games_today.columns:
+        games_today[col] = np.nan
+
+# Add categories for today’s matches
+games_today["Categoria_Gol_H"] = games_today["Home"].apply(lambda t: get_last_category(t, "H"))
+games_today["Categoria_Gol_A"] = games_today["Away"].apply(lambda t: get_last_category(t, "A"))
+
+# One-hot encode today's categories
+cat_h_today = pd.get_dummies(games_today["Categoria_Gol_H"], prefix="Cat_H").reindex(columns=cat_h.columns, fill_value=0)
+cat_a_today = pd.get_dummies(games_today["Categoria_Gol_A"], prefix="Cat_A").reindex(columns=cat_a.columns, fill_value=0)
 
 if games_today.empty:
     st.warning("⚠️ No matches found for the selected filters.")
