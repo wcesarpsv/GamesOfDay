@@ -1,11 +1,3 @@
-Você tem razão ⚡ — eu cortei o código no final do Bloco 8 e também faltou colar os Blocos 9, 10 e 11 completos.
-Vou te mandar agora a versão completa, do início ao fim, em inglês, já com todos os updates que fizemos.
-
-
----
-
-✅ Código completo atualizado
-
 ##################### BLOCK 1 – IMPORTS & CONFIG #####################
 import streamlit as st
 import pandas as pd
