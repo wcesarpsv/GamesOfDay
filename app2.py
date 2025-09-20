@@ -95,7 +95,7 @@ try:
         df_history = pd.concat(all_dfs, ignore_index=True)
 
         df_history = df_history.drop_duplicates(
-            subset=["League", "Home", "Away", "Odd_H", "Odd_D", "Odd_A"],
+            subset=["League", "Home", "Away", "Odd_H", "Odd_D", "Odd_A","Goals_H_FT","Goals_A_FT"],
             keep="first"
         )
 
@@ -194,3 +194,4 @@ except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
 except Exception as e:
     st.error(f"⚠️ Unexpected error: {e}")
+
