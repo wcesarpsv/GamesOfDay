@@ -287,9 +287,10 @@ def auto_recommendation_hybrid(row, history,
                                min_games=5,
                                min_winrate=45.0):
     """
-    1. Aplica regras fixas (bands, dominant, thresholds).
-    2. Valida a recomendação usando histórico (Win Probability + EV).
-    3. Se não houver histórico suficiente ou Winrate < min_winrate → ❌ Avoid.
+    Híbrido:
+    1. Tenta pelas regras fixas (bands, dominant, thresholds).
+    2. Valida com histórico (Win Probability + EV).
+    3. Se cair em Avoid → chama fallback automático (dynamic winrate).
     """
 
     band_home = row.get('Home_Band')
@@ -303,7 +304,7 @@ def auto_recommendation_hybrid(row, history,
     odd_d     = row.get('Odd_D')
 
     rec = None
-    # === Regras determinísticas (sequência antiga) ===
+    # === Regras determinísticas ===
     if band_home == 'Top 20%' and band_away == 'Bottom 20%':
         rec = '🟢 Back Home'
     elif band_home == 'Bottom 20%' and band_away == 'Top 20%':
@@ -355,10 +356,12 @@ def auto_recommendation_hybrid(row, history,
 
     ev = (p/100.0) * odd_ref - 1 if (odd_ref and p) else None
 
-    if (p is None) or (n < min_games) or (p < min_winrate):
-        return "❌ Avoid", p, ev, n
+    # Se falhar nas regras → fallback automático
+    if rec == "❌ Avoid" or (p is None) or (n < min_games) or (p < min_winrate):
+        return auto_recommendation_dynamic_winrate(row, history, min_games, min_winrate)
 
     return rec, p, ev, n
+
 
 
 
