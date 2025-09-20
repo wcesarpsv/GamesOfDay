@@ -87,6 +87,7 @@ try:
             try:
                 df_tmp = pd.read_csv(os.path.join(DATA_FOLDER, f))
                 df_tmp = df_tmp.loc[:, ~df_tmp.columns.str.contains('^Unnamed')]
+                df_tmp.columns = df_tmp.columns.str.strip()
                 all_dfs.append(df_tmp)
             except:
                 continue
@@ -94,11 +95,18 @@ try:
     if all_dfs:
         df_history = pd.concat(all_dfs, ignore_index=True)
 
+        # 🧹 Remove duplicates
         df_history = df_history.drop_duplicates(
-            subset=["League", "Home", "Away", "Goals_H_FT","Goals_A_FT"],
+            subset=["League", "Home", "Away", "Odd_H", "Odd_D", "Odd_A"],
             keep="first"
         )
 
+        # 🗑️ Exclude games from the selected date
+        if "Date" in df_history.columns:
+            df_history["Date"] = pd.to_datetime(df_history["Date"], errors="coerce").dt.date
+            df_history = df_history[df_history["Date"] != selected_date]
+
+        # 🎯 Compute global perspective
         if "Goals_H_FT" in df_history.columns and "Goals_A_FT" in df_history.columns:
             total_games = len(df_history)
             home_wins = (df_history["Goals_H_FT"] > df_history["Goals_A_FT"]).sum()
@@ -113,10 +121,7 @@ try:
             st.write(f"**Home Wins:** {pct_home:.1f}%")
             st.write(f"**Draws:** {pct_draw:.1f}%")
             st.write(f"**Away Wins:** {pct_away:.1f}%")
-            st.write(f"*Based on {total_games:,} matches in history*")
-
-except Exception as e:
-    st.warning(f"⚠️ Could not build historical perspective: {e}")
+            st.write(f"*Based on {total_games:,} matches in history (excluding {selected_date})*")
 
 
 # ########################################################
@@ -194,5 +199,6 @@ except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
 except Exception as e:
     st.error(f"⚠️ Unexpected error: {e}")
+
 
 
