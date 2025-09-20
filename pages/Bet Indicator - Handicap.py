@@ -120,6 +120,34 @@ if games_today.empty:
     st.warning("⚠️ No matches found for today (or yesterday, if selected).")
     st.stop()
 
+# ---------------- Função para converter Asian_Line para decimal ----------------
+def convert_asian_line(line_str):
+    """
+    Converte linha asiática fracionada (ex: '0/0.5') para decimal (ex: 0.25).
+    """
+    try:
+        # Se vier vazio ou None
+        if pd.isna(line_str) or line_str == "":
+            return None
+
+        # Sempre tratar como string
+        line_str = str(line_str).strip()
+
+        # Se não houver "/", retorna como float
+        if "/" not in line_str:
+            return float(line_str)
+
+        # Divide a linha e calcula a média
+        parts = [float(x) for x in line_str.split("/")]
+        return sum(parts) / len(parts)
+    
+    except:
+        return None
+
+# Criar coluna de exibição no formato decimal
+history["Asian_Line_Display"] = history["Asian_Line"].apply(convert_asian_line)
+games_today["Asian_Line_Display"] = games_today["Asian_Line"].apply(convert_asian_line)
+
 # ---------------- Handicap Asian Logic ----------------
 def calc_handicap_result(margin, asian_line_str, invert=False):
     """Calcula o resultado do handicap asiático (0.0, 0.5, 1.0)."""
@@ -298,8 +326,6 @@ if not games_today.empty:
     for cls, col in zip(model_ah_away.classes_, ["p_ah_away_no", "p_ah_away_yes"]):
         games_today[col] = probs_away[:, cls]
 
-
-
 ##################### BLOCO 9 – DISPLAY #####################
 def color_prob(val, color):
     if pd.isna(val): return ""
@@ -310,13 +336,14 @@ styled_df = (
     games_today[[
         "Date","Time","League","Home","Away",
         "Odd_H", "Odd_D", "Odd_A",
-        "Asian_Line","Odd_H_Asi","Odd_A_Asi",
+        "Asian_Line_Display","Odd_H_Asi","Odd_A_Asi",
         "p_ah_home_yes","p_ah_away_yes"
     ]]
     .style.format({
         "Odd_H": "{:.2f}",
         "Odd_D": "{:.2f}",
         "Odd_A": "{:.2f}",
+        "Asian_Line_Display": "{:.2f}",  # Linha no formato decimal
         "Odd_H_Asi": "{:.2f}",
         "Odd_A_Asi": "{:.2f}",
         "p_ah_home_yes": "{:.1%}",
@@ -328,3 +355,5 @@ styled_df = (
 
 st.markdown("### 📌 Predictions for Today's Matches – Asian Handicap")
 st.dataframe(styled_df, use_container_width=True, height=800)
+
+
