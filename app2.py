@@ -78,8 +78,10 @@ file_path = os.path.join(DATA_FOLDER, filename)
 
 
 # ########################################################
-# Bloco 4 – Perspective for the Day (Segmented by Diff_Power, M_H, M_A)
+# Bloco 4 – Perspective for the Day (Segmented by Diff_Power, Diff_M, Diff_HT_P)
 # ########################################################
+import numpy as np
+
 try:
     all_dfs = []
     for f in os.listdir(DATA_FOLDER):
@@ -107,13 +109,16 @@ try:
             df_history = df_history[df_history["Date"] != selected_date]
 
         # Precisamos dessas colunas no histórico
-        needed_cols = ["Diff_Power", "M_H", "M_A", "Goals_H_FT", "Goals_A_FT"]
+        needed_cols = ["Diff_Power", "M_H", "M_A", "Diff_HT_P", "Goals_H_FT", "Goals_A_FT"]
         if all(col in df_history.columns for col in needed_cols):
 
-            # Criar bins
+            # Criar coluna Diff_M (diferença de força ofensiva)
+            df_history["Diff_M"] = df_history["M_H"] - df_history["M_A"]
+
+            # Criar bins para as 3 métricas
             df_history["DiffPower_bin"] = pd.cut(df_history["Diff_Power"], bins=range(-50, 55, 10))
-            df_history["M_H_bin"] = pd.cut(df_history["M_H"], bins=[i*1.0 for i in range(0, 41)])
-            df_history["M_A_bin"] = pd.cut(df_history["M_A"], bins=[i*1.0 for i in range(0, 41)])
+            df_history["DiffM_bin"] = pd.cut(df_history["Diff_M"], bins=np.arange(-10, 10.5, 1.0))
+            df_history["DiffHTP_bin"] = pd.cut(df_history["Diff_HT_P"], bins=range(-30, 35, 5))
 
             # Resultado real
             def get_result(row):
@@ -133,34 +138,38 @@ try:
             if "Date" in df_day.columns:
                 df_day["Date"] = pd.to_datetime(df_day["Date"], errors="coerce").dt.date
                 df_day = df_day[df_day["Date"] == selected_date]
-            df_day = df_day.dropna(subset=["Diff_Power", "M_H", "M_A"])
+
+            # Criar coluna Diff_M no df_day
+            df_day["Diff_M"] = df_day["M_H"] - df_day["M_A"]
+            df_day = df_day.dropna(subset=["Diff_Power", "Diff_M", "Diff_HT_P"])
 
             total_matches = 0
             home_wins, away_wins, draws = 0, 0, 0
 
             # Intervalos dos bins
             dp_bins = pd.IntervalIndex(df_history["DiffPower_bin"].cat.categories)
-            mh_bins = pd.IntervalIndex(df_history["M_H_bin"].cat.categories)
-            ma_bins = pd.IntervalIndex(df_history["M_A_bin"].cat.categories)
+            dm_bins = pd.IntervalIndex(df_history["DiffM_bin"].cat.categories)
+            dhtp_bins = pd.IntervalIndex(df_history["DiffHTP_bin"].cat.categories)
 
             for _, game in df_day.iterrows():
                 try:
-                    # Verificar se cada valor está dentro do range dos bins
+                    # Garantir que os valores do jogo estão dentro dos bins
                     if (
-                        dp_bins.contains(game["Diff_Power"]).any()
-                        and mh_bins.contains(game["M_H"]).any()
-                        and ma_bins.contains(game["M_A"]).any()
+                        dp_bins.contains(game["Diff_Power"]).any() and
+                        dm_bins.contains(game["Diff_M"]).any() and
+                        dhtp_bins.contains(game["Diff_HT_P"]).any()
                     ):
                         dp_bin = dp_bins.get_loc(game["Diff_Power"])
-                        mh_bin = mh_bins.get_loc(game["M_H"])
-                        ma_bin = ma_bins.get_loc(game["M_A"])
+                        dm_bin = dm_bins.get_loc(game["Diff_M"])
+                        dhtp_bin = dhtp_bins.get_loc(game["Diff_HT_P"])
                     else:
                         continue  # pula jogo fora dos ranges
 
+                    # Filtrar histórico com base nos 3 bins
                     subset = df_history[
                         (df_history["DiffPower_bin"] == dp_bins[dp_bin]) &
-                        (df_history["M_H_bin"] == mh_bins[mh_bin]) &
-                        (df_history["M_A_bin"] == ma_bins[ma_bin])
+                        (df_history["DiffM_bin"] == dm_bins[dm_bin]) &
+                        (df_history["DiffHTP_bin"] == dhtp_bins[dhtp_bin])
                     ]
 
                     if not subset.empty:
@@ -171,13 +180,14 @@ try:
                 except Exception:
                     continue  # segurança extra
 
+            # Exibir resultados
             if total_matches > 0:
                 pct_home = 100 * home_wins / total_matches
                 pct_away = 100 * away_wins / total_matches
                 pct_draw = 100 * draws / total_matches
 
                 st.markdown("## ===== Perspective for the Day =====")
-                st.write("*(Based on historical matches with similar Diff_Power, M_H, M_A)*")
+                st.write("*(Based on historical matches with similar Diff_Power, Diff_M, Diff_HT_P)*")
                 st.write(f"**Home Wins:** {pct_home:.1f}%")
                 st.write(f"**Draws:** {pct_draw:.1f}%")
                 st.write(f"**Away Wins:** {pct_away:.1f}%")
@@ -265,6 +275,7 @@ except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
 except Exception as e:
     st.error(f"⚠️ Unexpected error: {e}")
+
 
 
 
