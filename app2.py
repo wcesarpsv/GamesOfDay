@@ -127,8 +127,17 @@ try:
             df_history["Result"] = df_history.apply(get_result, axis=1)
 
             # Agora para os jogos do dia
-            df_day = df[df["Date"] == selected_date].copy()
+            # 🔹 Load today's games directly (since df is not yet defined here)
+            df_day = pd.read_csv(file_path)
+            df_day = df_day.loc[:, ~df_day.columns.str.contains('^Unnamed')]
+            df_day.columns = df_day.columns.str.strip()
+            
+            if "Date" in df_day.columns:
+                df_day["Date"] = pd.to_datetime(df_day["Date"], errors="coerce").dt.date
+                df_day = df_day[df_day["Date"] == selected_date]
+            
             df_day = df_day.dropna(subset=["Diff_Power", "M_H", "M_A"])
+
 
             total_matches = 0
             home_wins, away_wins, draws = 0, 0, 0
@@ -245,6 +254,7 @@ except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
 except Exception as e:
     st.error(f"⚠️ Unexpected error: {e}")
+
 
 
 
