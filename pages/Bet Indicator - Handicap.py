@@ -314,6 +314,9 @@ styled_df = (
         "p_ah_home_yes","p_ah_away_yes"
     ]]
     .style.format({
+        "Odd_H": "{:.2f}",
+        "Odd_D": "{:.2f}",
+        "Odd_A": "{:.2f}",
         "Odd_H_Asi": "{:.2f}",
         "Odd_A_Asi": "{:.2f}",
         "p_ah_home_yes": "{:.1%}",
