@@ -281,7 +281,74 @@ def win_prob_for_recommendation(history, row,
 
 
 ########################################
-####### Bloco 5 – Auto Selection #######
+### Bloco 5A – Auto (Dynamic Winrate) ##
+########################################
+def auto_recommendation_dynamic_winrate(row, history,
+                                        min_games=5,
+                                        min_winrate=45.0):
+    """
+    Escolhe recomendação baseada no maior Winrate (automático).
+    - Primeiro tenta Home / Away / Draw.
+    - Se Winrate >= min_winrate e n >= min_games → aceita.
+    - Caso contrário → tenta fallback 1X / X2.
+    - Se nada válido → ❌ Avoid.
+    """
+    candidates_main = ["🟢 Back Home", "🟠 Back Away", "⚪ Back Draw"]
+    candidates_fallback = ["🟦 1X (Home/Draw)", "🟪 X2 (Away/Draw)"]
+
+    best_rec, best_prob, best_ev, best_n = None, None, None, None
+
+    # 1) Checa vitórias puras
+    for rec in candidates_main:
+        row_copy = row.copy()
+        row_copy["Auto_Recommendation"] = rec
+        n, p = win_prob_for_recommendation(history, row_copy)
+
+        if p is None or n < min_games:
+            continue
+
+        odd_ref = None
+        if rec == "🟢 Back Home": odd_ref = row.get("Odd_H")
+        elif rec == "🟠 Back Away": odd_ref = row.get("Odd_A")
+        elif rec == "⚪ Back Draw": odd_ref = row.get("Odd_D")
+
+        ev = (p/100.0) * odd_ref - 1 if odd_ref and odd_ref > 1.0 else None
+
+        if (best_prob is None) or (p > best_prob):
+            best_rec, best_prob, best_ev, best_n = rec, p, ev, n
+
+    if best_prob is not None and best_prob >= min_winrate:
+        return best_rec, best_prob, best_ev, best_n
+
+    # 2) Se não, checa 1X/X2
+    for rec in candidates_fallback:
+        row_copy = row.copy()
+        row_copy["Auto_Recommendation"] = rec
+        n, p = win_prob_for_recommendation(history, row_copy)
+
+        if p is None or n < min_games:
+            continue
+
+        odd_ref = None
+        if rec == "🟦 1X (Home/Draw)" and row.get("Odd_H") and row.get("Odd_D"):
+            odd_ref = 1 / (1/row["Odd_H"] + 1/row["Odd_D"])
+        elif rec == "🟪 X2 (Away/Draw)" and row.get("Odd_A") and row.get("Odd_D"):
+            odd_ref = 1 / (1/row["Odd_A"] + 1/row["Odd_D"])
+
+        ev = (p/100.0) * odd_ref - 1 if odd_ref and odd_ref > 1.0 else None
+
+        if (best_prob is None) or (p > best_prob):
+            best_rec, best_prob, best_ev, best_n = rec, p, ev, n
+
+    # 3) Se ainda não achar nada aceitável
+    if best_prob is None or best_prob < min_winrate:
+        return "❌ Avoid", best_prob, best_ev, best_n
+
+    return best_rec, best_prob, best_ev, best_n
+
+
+########################################
+####### Bloco 5B – Auto Hybrid #########
 ########################################
 def auto_recommendation_hybrid(row, history,
                                min_games=5,
@@ -361,6 +428,7 @@ def auto_recommendation_hybrid(row, history,
         return auto_recommendation_dynamic_winrate(row, history, min_games, min_winrate)
 
     return rec, p, ev, n
+
 
 
 
