@@ -309,6 +309,7 @@ def color_prob(val, color):
 styled_df = (
     games_today[[
         "Date","Time","League","Home","Away",
+        "Odd_H", "Odd_D", "Odd_A",
         "Asian_Line","Odd_H_Asi","Odd_A_Asi",
         "p_ah_home_yes","p_ah_away_yes"
     ]]
