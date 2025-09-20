@@ -123,6 +123,10 @@ try:
             st.write(f"**Away Wins:** {pct_away:.1f}%")
             st.write(f"*Based on {total_games:,} matches in history (excluding {selected_date})*")
 
+except Exception as e:
+    st.warning(f"⚠️ Could not build historical perspective: {e}")
+
+
 
 # ########################################################
 # Bloco 5 – Carregar e Filtrar Jogo do Dia
@@ -199,6 +203,7 @@ except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
 except Exception as e:
     st.error(f"⚠️ Unexpected error: {e}")
+
 
 
 
