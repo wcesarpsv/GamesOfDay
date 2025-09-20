@@ -281,15 +281,19 @@ feature_blocks["categorical"] = list(history_leagues.columns) + list(cat_h.colum
 
 # ---------------- 4. Montar datasets por tarefa ----------------
 def build_feature_matrix(df, leagues, cat_h, cat_a, blocks):
-    """Concatena blocos de features em um único X"""
+    """Concatena blocos de features em um único X, ignorando colunas ausentes"""
     dfs = []
     for block_name, cols in blocks.items():
         if block_name == "categorical":
             dfs.append(leagues)
-            dfs.append(cat_h)
-            dfs.append(cat_a)
+            if not cat_h.empty:
+                dfs.append(cat_h)
+            if not cat_a.empty:
+                dfs.append(cat_a)
         else:
-            dfs.append(df[cols])
+            available_cols = [c for c in cols if c in df.columns]  # só mantém colunas que existem
+            if available_cols:
+                dfs.append(df[available_cols])
     return pd.concat(dfs, axis=1)
 
 # Histórico
@@ -313,18 +317,22 @@ scaler = StandardScaler()
 def scale_features(X_train, X_today, blocks):
     """Normaliza apenas blocos numéricos (odds, strength, goal_dynamics)"""
     numeric_cols = sum([cols for name, cols in blocks.items() if name != "categorical"], [])
+    numeric_cols = [c for c in numeric_cols if c in X_train.columns]  # garante apenas colunas existentes
+    
     X_train_scaled = X_train.copy()
     X_today_scaled = X_today.copy()
     
-    X_train_scaled[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
-    X_today_scaled[numeric_cols] = scaler.transform(X_today[numeric_cols])
+    if numeric_cols:  # só escala se houver colunas numéricas válidas
+        X_train_scaled[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
+        X_today_scaled[numeric_cols] = scaler.transform(X_today[numeric_cols])
     
     return X_train_scaled, X_today_scaled
 
 # Aplicar normalização
-X_1x2, X_today_1x2 = scale_features(X_1x2, X_today_1x2, feature_blocks)
-X_ou,  X_today_ou  = scale_features(X_ou,  X_today_ou, feature_blocks)
+X_1x2, X_today_1x2   = scale_features(X_1x2, X_today_1x2, feature_blocks)
+X_ou, X_today_ou     = scale_features(X_ou, X_today_ou, feature_blocks)
 X_btts, X_today_btts = scale_features(X_btts, X_today_btts, feature_blocks)
+
 
 
 ##################### BLOCO 6 – SIDEBAR #####################
