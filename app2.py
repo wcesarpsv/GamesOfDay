@@ -111,9 +111,9 @@ try:
         if all(col in df_history.columns for col in needed_cols):
 
             # Criar bins
-            df_history["DiffPower_bin"] = pd.cut(df_history["Diff_Power"], bins=range(-50, 55, 5))
-            df_history["M_H_bin"] = pd.cut(df_history["M_H"], bins=[i*0.5 for i in range(0, 41)])
-            df_history["M_A_bin"] = pd.cut(df_history["M_A"], bins=[i*0.5 for i in range(0, 41)])
+            df_history["DiffPower_bin"] = pd.cut(df_history["Diff_Power"], bins=range(-50, 55, 10))
+            df_history["M_H_bin"] = pd.cut(df_history["M_H"], bins=[i*1.0 for i in range(0, 41)])
+            df_history["M_A_bin"] = pd.cut(df_history["M_A"], bins=[i*1.0 for i in range(0, 41)])
 
             # Resultado real
             def get_result(row):
@@ -265,6 +265,7 @@ except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
 except Exception as e:
     st.error(f"⚠️ Unexpected error: {e}")
+
 
 
 
