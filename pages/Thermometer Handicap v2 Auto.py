@@ -416,15 +416,30 @@ history['Away_Band'] = np.where(
 history["Home_Band_Num"] = history["Home_Band"].map(BAND_MAP)
 history["Away_Band_Num"] = history["Away_Band"].map(BAND_MAP)
 
+# ==== Aproximação das odds 1X e X2 ====
+def compute_double_chance_odds(df):
+    probs = pd.DataFrame()
+    probs['p_H'] = 1 / df['Odd_H']
+    probs['p_D'] = 1 / df['Odd_D']
+    probs['p_A'] = 1 / df['Odd_A']
+    probs = probs.div(probs.sum(axis=1), axis=0)  # normaliza (remove vig)
+
+    df['Odd_1X'] = 1 / (probs['p_H'] + probs['p_D'])
+    df['Odd_X2'] = 1 / (probs['p_A'] + probs['p_D'])
+    return df
+
+games_today = compute_double_chance_odds(games_today)
+
 # ==== Continuar pipeline normal ====
 games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
 
-# Aplica recomendação + métricas
-recs = games_today.apply(lambda r: auto_recommendation_dynamic_winrate(r, history), axis=1)
+# Aplica recomendação + métricas (respeitando lógica híbrida)
+recs = games_today.apply(lambda r: auto_recommendation_hybrid(r, history), axis=1)
 games_today["Auto_Recommendation"] = [x[0] for x in recs]
 games_today["Win_Probability"] = [x[1] for x in recs]
 games_today["EV"] = [x[2] for x in recs]
 games_today["Games_Analyzed"] = [x[3] for x in recs]
+
 
 
 
