@@ -78,7 +78,7 @@ file_path = os.path.join(DATA_FOLDER, filename)
 
 
 # ########################################################
-# Bloco 4 – Perspective for the Day (Histórico)
+# Bloco 4 – Perspective for the Day (Segmented by Diff_Power, M_H, M_A)
 # ########################################################
 try:
     all_dfs = []
@@ -101,30 +101,72 @@ try:
             keep="first"
         )
 
-        # 🗑️ Exclude games from the selected date
+        # Garantir coluna Date e excluir jogos do dia selecionado
         if "Date" in df_history.columns:
             df_history["Date"] = pd.to_datetime(df_history["Date"], errors="coerce").dt.date
             df_history = df_history[df_history["Date"] != selected_date]
 
-        # 🎯 Compute global perspective
-        if "Goals_H_FT" in df_history.columns and "Goals_A_FT" in df_history.columns:
-            total_games = len(df_history)
-            home_wins = (df_history["Goals_H_FT"] > df_history["Goals_A_FT"]).sum()
-            away_wins = (df_history["Goals_H_FT"] < df_history["Goals_A_FT"]).sum()
-            draws = (df_history["Goals_H_FT"] == df_history["Goals_A_FT"]).sum()
+        # Precisamos dessas colunas no histórico
+        needed_cols = ["Diff_Power", "M_H", "M_A", "Goals_H_FT", "Goals_A_FT"]
+        if all(col in df_history.columns for col in needed_cols):
 
-            pct_home = 100 * home_wins / total_games if total_games > 0 else 0
-            pct_away = 100 * away_wins / total_games if total_games > 0 else 0
-            pct_draw = 100 * draws / total_games if total_games > 0 else 0
+            # Criar bins
+            df_history["DiffPower_bin"] = pd.cut(df_history["Diff_Power"], bins=range(-50, 55, 5))
+            df_history["M_H_bin"] = pd.cut(df_history["M_H"], bins=[i*0.5 for i in range(0, 41)])
+            df_history["M_A_bin"] = pd.cut(df_history["M_A"], bins=[i*0.5 for i in range(0, 41)])
 
-            st.markdown("## ===== Perspective for the Day =====")
-            st.write(f"**Home Wins:** {pct_home:.1f}%")
-            st.write(f"**Draws:** {pct_draw:.1f}%")
-            st.write(f"**Away Wins:** {pct_away:.1f}%")
-            st.write(f"*Based on {total_games:,} matches in history (excluding {selected_date})*")
+            # Resultado real
+            def get_result(row):
+                if row["Goals_H_FT"] > row["Goals_A_FT"]:
+                    return "Home"
+                elif row["Goals_H_FT"] < row["Goals_A_FT"]:
+                    return "Away"
+                else:
+                    return "Draw"
+
+            df_history["Result"] = df_history.apply(get_result, axis=1)
+
+            # Agora para os jogos do dia
+            df_day = df[df["Date"] == selected_date].copy()
+            df_day = df_day.dropna(subset=["Diff_Power", "M_H", "M_A"])
+
+            total_matches = 0
+            home_wins, away_wins, draws = 0, 0, 0
+
+            for _, game in df_day.iterrows():
+                dp_bin = pd.IntervalIndex(df_history["DiffPower_bin"].cat.categories).get_loc(game["Diff_Power"])
+                mh_bin = pd.IntervalIndex(df_history["M_H_bin"].cat.categories).get_loc(game["M_H"])
+                ma_bin = pd.IntervalIndex(df_history["M_A_bin"].cat.categories).get_loc(game["M_A"])
+
+                subset = df_history[
+                    (df_history["DiffPower_bin"] == df_history["DiffPower_bin"].cat.categories[dp_bin]) &
+                    (df_history["M_H_bin"] == df_history["M_H_bin"].cat.categories[mh_bin]) &
+                    (df_history["M_A_bin"] == df_history["M_A_bin"].cat.categories[ma_bin])
+                ]
+
+                if not subset.empty:
+                    total_matches += len(subset)
+                    home_wins += (subset["Result"] == "Home").sum()
+                    away_wins += (subset["Result"] == "Away").sum()
+                    draws += (subset["Result"] == "Draw").sum()
+
+            if total_matches > 0:
+                pct_home = 100 * home_wins / total_matches
+                pct_away = 100 * away_wins / total_matches
+                pct_draw = 100 * draws / total_matches
+
+                st.markdown("## ===== Perspective for the Day =====")
+                st.write("*(Based on historical matches with similar Diff_Power, M_H, M_A)*")
+                st.write(f"**Home Wins:** {pct_home:.1f}%")
+                st.write(f"**Draws:** {pct_draw:.1f}%")
+                st.write(f"**Away Wins:** {pct_away:.1f}%")
+                st.write(f"*Based on {total_matches:,} similar matches in history (excluding {selected_date})*")
+            else:
+                st.info("No similar historical matches found for today's games.")
 
 except Exception as e:
-    st.warning(f"⚠️ Could not build historical perspective: {e}")
+    st.warning(f"⚠️ Could not build segmented perspective: {e}")
+
 
 
 
@@ -203,6 +245,7 @@ except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
 except Exception as e:
     st.error(f"⚠️ Unexpected error: {e}")
+
 
 
 
