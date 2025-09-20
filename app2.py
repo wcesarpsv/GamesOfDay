@@ -138,22 +138,38 @@ try:
             total_matches = 0
             home_wins, away_wins, draws = 0, 0, 0
 
+            # Intervalos dos bins
+            dp_bins = pd.IntervalIndex(df_history["DiffPower_bin"].cat.categories)
+            mh_bins = pd.IntervalIndex(df_history["M_H_bin"].cat.categories)
+            ma_bins = pd.IntervalIndex(df_history["M_A_bin"].cat.categories)
+
             for _, game in df_day.iterrows():
-                dp_bin = pd.IntervalIndex(df_history["DiffPower_bin"].cat.categories).get_loc(game["Diff_Power"])
-                mh_bin = pd.IntervalIndex(df_history["M_H_bin"].cat.categories).get_loc(game["M_H"])
-                ma_bin = pd.IntervalIndex(df_history["M_A_bin"].cat.categories).get_loc(game["M_A"])
+                try:
+                    # Verificar se cada valor está dentro do range dos bins
+                    if (
+                        dp_bins.contains(game["Diff_Power"]).any()
+                        and mh_bins.contains(game["M_H"]).any()
+                        and ma_bins.contains(game["M_A"]).any()
+                    ):
+                        dp_bin = dp_bins.get_loc(game["Diff_Power"])
+                        mh_bin = mh_bins.get_loc(game["M_H"])
+                        ma_bin = ma_bins.get_loc(game["M_A"])
+                    else:
+                        continue  # pula jogo fora dos ranges
 
-                subset = df_history[
-                    (df_history["DiffPower_bin"] == df_history["DiffPower_bin"].cat.categories[dp_bin]) &
-                    (df_history["M_H_bin"] == df_history["M_H_bin"].cat.categories[mh_bin]) &
-                    (df_history["M_A_bin"] == df_history["M_A_bin"].cat.categories[ma_bin])
-                ]
+                    subset = df_history[
+                        (df_history["DiffPower_bin"] == dp_bins[dp_bin]) &
+                        (df_history["M_H_bin"] == mh_bins[mh_bin]) &
+                        (df_history["M_A_bin"] == ma_bins[ma_bin])
+                    ]
 
-                if not subset.empty:
-                    total_matches += len(subset)
-                    home_wins += (subset["Result"] == "Home").sum()
-                    away_wins += (subset["Result"] == "Away").sum()
-                    draws += (subset["Result"] == "Draw").sum()
+                    if not subset.empty:
+                        total_matches += len(subset)
+                        home_wins += (subset["Result"] == "Home").sum()
+                        away_wins += (subset["Result"] == "Away").sum()
+                        draws += (subset["Result"] == "Draw").sum()
+                except Exception:
+                    continue  # segurança extra
 
             if total_matches > 0:
                 pct_home = 100 * home_wins / total_matches
@@ -249,6 +265,7 @@ except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
 except Exception as e:
     st.error(f"⚠️ Unexpected error: {e}")
+
 
 
 
