@@ -4,16 +4,20 @@ from datetime import datetime
 import os
 import re
 
-# 📁 Pasta dos arquivos
+# ########################################################
+# Bloco 1 – Configuração Inicial
+# ########################################################
 DATA_FOLDER = "GamesDay"
 
 st.set_page_config(page_title="Data-Driven Football Insights", layout="wide")
 st.title("🔮 Data-Driven Football Insights")
 
-# 🚫 Ligas a excluir
-EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "uefa","nordeste","afc"]
+EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "uefa", "nordeste", "afc"]
 
-# 🧠 Função para extrair datas dos arquivos
+
+# ########################################################
+# Bloco 2 – Funções auxiliares
+# ########################################################
 def get_available_dates(folder):
     pattern = re.compile(r'jogosdodia_(\d{4}-\d{2}-\d{2})\.csv', re.IGNORECASE)
     dates = []
@@ -26,13 +30,13 @@ def get_available_dates(folder):
                 continue
     return sorted(dates)
 
-# 🎯 Função para setinhas
+
 def arrow_trend(val, mean, threshold=0.4):
     try:
         v = float(val)
     except:
         return val
-    
+
     if v > mean + threshold:
         return f"🔵 {v:.2f}"
     elif v < mean - threshold:
@@ -40,7 +44,10 @@ def arrow_trend(val, mean, threshold=0.4):
     else:
         return f"🟠 {v:.2f}"
 
-# 🔍 Datas disponíveis
+
+# ########################################################
+# Bloco 3 – Seleção de Data e Arquivo
+# ########################################################
 available_dates = get_available_dates(DATA_FOLDER)
 if not available_dates:
     st.error("❌ No CSV files found in the game data folder.")
@@ -56,10 +63,9 @@ if latest_date and latest_date != st.session_state.last_seen_date:
     st.session_state.last_seen_date = latest_date
     st.rerun()
 
-# Mostrar todas ou só últimas 7
 show_all = st.checkbox("🔓 Show all available dates", value=False)
 dates_to_display = available_dates if show_all else available_dates[-7:]
-default_index = dates_to_display.index(latest_date) if latest_date in dates_to_display else len(dates_to_display)-1
+default_index = dates_to_display.index(latest_date) if latest_date in dates_to_display else len(dates_to_display) - 1
 
 selected_date = st.selectbox(
     "📅 Select a date:",
@@ -67,36 +73,77 @@ selected_date = st.selectbox(
     index=default_index
 )
 
-# Arquivo do dia
 filename = f'Jogosdodia_{selected_date}.csv'
 file_path = os.path.join(DATA_FOLDER, filename)
 
+
+# ########################################################
+# Bloco 4 – Perspective for the Day (Histórico)
+# ########################################################
+try:
+    all_dfs = []
+    for f in os.listdir(DATA_FOLDER):
+        if f.lower().endswith(".csv"):
+            try:
+                df_tmp = pd.read_csv(os.path.join(DATA_FOLDER, f))
+                df_tmp = df_tmp.loc[:, ~df_tmp.columns.str.contains('^Unnamed')]
+                all_dfs.append(df_tmp)
+            except:
+                continue
+
+    if all_dfs:
+        df_history = pd.concat(all_dfs, ignore_index=True)
+
+        df_history = df_history.drop_duplicates(
+            subset=["League", "Home", "Away", "Odd_H", "Odd_D", "Odd_A"],
+            keep="first"
+        )
+
+        if "Goals_H_FT" in df_history.columns and "Goals_A_FT" in df_history.columns:
+            total_games = len(df_history)
+            home_wins = (df_history["Goals_H_FT"] > df_history["Goals_A_FT"]).sum()
+            away_wins = (df_history["Goals_H_FT"] < df_history["Goals_A_FT"]).sum()
+            draws = (df_history["Goals_H_FT"] == df_history["Goals_A_FT"]).sum()
+
+            pct_home = 100 * home_wins / total_games if total_games > 0 else 0
+            pct_away = 100 * away_wins / total_games if total_games > 0 else 0
+            pct_draw = 100 * draws / total_games if total_games > 0 else 0
+
+            st.markdown("## ===== Perspective for the Day =====")
+            st.write(f"**Home Wins:** {pct_home:.1f}%")
+            st.write(f"**Draws:** {pct_draw:.1f}%")
+            st.write(f"**Away Wins:** {pct_away:.1f}%")
+            st.write(f"*Based on {total_games:,} matches in history*")
+
+except Exception as e:
+    st.warning(f"⚠️ Could not build historical perspective: {e}")
+
+
+# ########################################################
+# Bloco 5 – Carregar e Filtrar Jogo do Dia
+# ########################################################
 try:
     df = pd.read_csv(file_path)
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
     df.columns = df.columns.str.strip()
     df = df.dropna(axis=1, how='all')
 
-    # Garantir Date
     if "Date" in df.columns:
         if not pd.api.types.is_datetime64_any_dtype(df["Date"]):
             df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
         df["Date"] = df["Date"].dt.date
     else:
-        st.error("❌ O arquivo não contém a coluna 'Date'.")
+        st.error("❌ File does not contain 'Date' column.")
         st.stop()
 
-    # Filtrar data
     df_filtered = df[df["Date"] == selected_date]
 
-    # Excluir ligas
     if "League" in df_filtered.columns:
         df_filtered["League"] = df_filtered["League"].astype(str).str.strip()
         if EXCLUDED_LEAGUE_KEYWORDS:
             pattern = "|".join(map(re.escape, EXCLUDED_LEAGUE_KEYWORDS))
             df_filtered = df_filtered[~df_filtered["League"].str.contains(pattern, case=False, na=False)]
 
-    # ✅ Colunas desejadas e ordem
     selected_columns = [
         "Date", "Time", "League", "Home", "Away",
         "Diff_HT_P", "Diff_Power", "OU_Total",
@@ -107,7 +154,6 @@ try:
     df_display = df_filtered[existing_columns].copy()
     df_display.index = range(len(df_display))
 
-    # Resumo
     st.markdown(f"""
 ### 📊 Matchday Summary – *{selected_date.strftime('%Y-%m-%d')}*
 
@@ -136,7 +182,7 @@ try:
                 "M_H": (lambda x: arrow_trend(x, mean_cols["M_H"])) if "M_H" in mean_cols else None,
                 "M_A": (lambda x: arrow_trend(x, mean_cols["M_A"])) if "M_A" in mean_cols else None,
             })
-            .background_gradient(cmap="RdYlGn", subset=[c for c in ["Diff_HT_P","Diff_Power"] if c in df_display.columns])
+            .background_gradient(cmap="RdYlGn", subset=[c for c in ["Diff_HT_P", "Diff_Power"] if c in df_display.columns])
             .background_gradient(cmap="Blues", subset=[c for c in ["OU_Total"] if c in df_display.columns])
         )
 
