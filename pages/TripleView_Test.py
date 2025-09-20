@@ -14,12 +14,15 @@ from sklearn.model_selection import train_test_split
 st.set_page_config(page_title="Bet Indicator – Triple View", layout="wide")
 st.title("📊 Bet Indicator – Triple View (1X2 + OU + BTTS + Goal Categories)")
 
+# ---------------- Configurações ----------------
+PAGE_PREFIX = "TripleView"   # <<< prefixo único para os modelos dessa página
 GAMES_FOLDER = "GamesDay"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa"]
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
 os.makedirs(MODELS_FOLDER, exist_ok=True)
+
 
 
 ##################### BLOCO 2 – HELPERS #####################
@@ -332,11 +335,10 @@ retrain = st.sidebar.checkbox("Retrain models", value=False)
 
 ##################### BLOCO 7 – TRAIN & EVALUATE #####################
 def train_and_evaluate(X, y, name, num_classes):
-    # Nome único do arquivo (evita conflito entre modelos)
+    # Nome único do arquivo (prefixo da página + modelo + target + num_classes)
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
-    page_prefix = "TripleView_Test"
-    filename = f"{page_prefix}_{safe_model}_{safe_name}_{num_classes}C.pkl"
+    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_{num_classes}C.pkl"
 
     feature_cols = X.columns.tolist()
 
@@ -381,7 +383,7 @@ def train_and_evaluate(X, y, name, num_classes):
         "BrierScore": brier_score_loss(pd.get_dummies(y_test).values.ravel(), probs.ravel())
     }
 
-    # Salva (modelo, colunas)
+    # Salva (modelo, colunas) com prefixo
     save_model(model, feature_cols, filename)
     return res, (model, feature_cols)
 
