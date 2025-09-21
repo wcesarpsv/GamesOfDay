@@ -257,7 +257,7 @@ try:
                 "Odd_A": "{:.2f}" if "Odd_A" in df_display.columns else None,
                 "Diff_HT_P": "{:.2f}" if "Diff_HT_P" in df_display.columns else None,
                 "Diff_Power": "{:.2f}" if "Diff_Power" in df_display.columns else None,
-                "OU_Total": (lambda x: f"{x:.2f}") *10 if "OU_Total" in df_display.columns else None,
+                "OU_Total": (lambda x: f"{x:.2f}") if "OU_Total" in df_display.columns else None,
                 "M_HT_H": (lambda x: arrow_trend(x, mean_cols["M_HT_H"])) if "M_HT_H" in mean_cols else None,
                 "M_HT_A": (lambda x: arrow_trend(x, mean_cols["M_HT_A"])) if "M_HT_A" in mean_cols else None,
                 "M_H": (lambda x: arrow_trend(x, mean_cols["M_H"])) if "M_H" in mean_cols else None,
@@ -275,6 +275,7 @@ except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
 except Exception as e:
     st.error(f"⚠️ Unexpected error: {e}")
+
 
 
 
