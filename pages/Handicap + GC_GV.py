@@ -253,23 +253,31 @@ retrain = st.sidebar.checkbox("Retrain models", value=False)
 def train_and_evaluate(X, y, name):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
+    # 🔹 usa prefixo da página para não conflitar com outros modelos
     filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C.pkl"
 
     feature_cols = X.columns.tolist()
+
+    # ---------- Tenta carregar modelo salvo ----------
     if not retrain:
         loaded = load_model(filename)
         if loaded:
             model, cols = loaded
+            # 🔹 garante que X tenha as mesmas colunas do modelo
+            X = X.reindex(columns=cols, fill_value=0)
+
             preds = model.predict(X)
             probs = model.predict_proba(X)
             res = {
                 "Model": name,
                 "Accuracy": accuracy_score(y, preds),
                 "LogLoss": log_loss(y, probs),
-                "BrierScore": brier_score_loss(pd.get_dummies(y).values.ravel(), probs.ravel())
+                "BrierScore": brier_score_loss(pd.get_dummies(y).values.ravel(), probs.ravel()),
+                "Model_File": filename  # mostra qual arquivo foi carregado
             }
             return res, (model, cols)
 
+    # ---------- Treina novo modelo ----------
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
     if ml_model_choice == "Random Forest":
@@ -289,9 +297,11 @@ def train_and_evaluate(X, y, name):
         "Model": name,
         "Accuracy": accuracy_score(y_test, preds),
         "LogLoss": log_loss(y_test, probs),
-        "BrierScore": brier_score_loss(pd.get_dummies(y_test).values.ravel(), probs.ravel())
+        "BrierScore": brier_score_loss(pd.get_dummies(y_test).values.ravel(), probs.ravel()),
+        "Model_File": filename  # mostra qual arquivo foi salvo
     }
 
+    # ---------- Salva modelo com colunas ----------
     save_model(model, feature_cols, filename)
     return res, (model, feature_cols)
 
