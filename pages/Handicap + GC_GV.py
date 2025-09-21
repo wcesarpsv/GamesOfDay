@@ -254,7 +254,7 @@ def train_and_evaluate(X, y, name):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
     # 🔹 usa prefixo da página para não conflitar com outros modelos
-    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C.pkl"
+    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2v.pkl"
 
     feature_cols = X.columns.tolist()
 
