@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime, timedelta
 
-st.set_page_config(page_title="Bet Indicator – Asian Handicap", layout="wide")
+st.set_page_config(page_title="Bet Indicator – Asian Handicap GC + GV ", layout="wide")
 st.title("📊 Bet Indicator – Asian Handicap (Home vs Away)")
 
 PAGE_PREFIX = "AsianHandicap"
