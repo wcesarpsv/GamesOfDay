@@ -266,7 +266,7 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
                                    scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1)
 
     if use_calibration:
-        model = CalibratedClassifierCV(base_estimator=base_model, method="isotonic", cv=3)
+        model = CalibratedClassifierCV(base_estimator=base_model, method="sigmoid", cv=3)
         model.fit(X_train, y_train)
     else:
         if ml_model_choice == "XGBoost":
