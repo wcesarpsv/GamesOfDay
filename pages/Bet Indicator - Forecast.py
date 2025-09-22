@@ -384,3 +384,4 @@ except Exception as e:
     st.warning(f"⚠️ Forecast Híbrido não pôde ser gerado: {e}")
 
 
+
