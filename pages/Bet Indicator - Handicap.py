@@ -235,7 +235,6 @@ retrain = st.sidebar.checkbox("Retrain models", value=False)
 
 
 
-##################### BLOCO 6 – TRAIN & EVALUATE #####################
 def train_and_evaluate(X, y, name):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
@@ -247,21 +246,21 @@ def train_and_evaluate(X, y, name):
     if not retrain:
         loaded = load_model(filename)
         if loaded:
-            model, cols, scaler = loaded
+            model, cols = loaded   # 🔹 igual ao código original
             preds = model.predict(X)
             probs = model.predict_proba(X)
             res = {
                 "Model": name,
                 "Accuracy": accuracy_score(y, preds),
                 "LogLoss": log_loss(y, probs),
-                "BrierScore": brier_score_loss(y, probs[:,1])  # binário corrigido
+                "BrierScore": brier_score_loss(y, probs[:,1])
             }
-            return res, (model, cols, scaler)
+            return res, (model, cols)
 
-    # Split temporal (dataset deve estar ordenado por data!)
+    # Split temporal
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
-    # 🔹 Normalização SEM leakage
+    # 🔹 Ajuste do scaler SEM leakage
     scaler = StandardScaler()
     X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
     X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
@@ -284,11 +283,13 @@ def train_and_evaluate(X, y, name):
         "Model": name,
         "Accuracy": accuracy_score(y_test, preds),
         "LogLoss": log_loss(y_test, probs),
-        "BrierScore": brier_score_loss(y_test, probs[:,1])  # binário corrigido
+        "BrierScore": brier_score_loss(y_test, probs[:,1])
     }
 
-    save_model((model, feature_cols, scaler), feature_cols, filename)
-    return res, (model, feature_cols, scaler)
+    # 🔹 salvar igual ao código original (só modelo + cols)
+    save_model(model, feature_cols, filename)
+
+    return res, (model, feature_cols)
 
 
 
@@ -306,21 +307,22 @@ st.dataframe(pd.DataFrame(stats), use_container_width=True)
 
 
 
-##################### BLOCO 8 – PREDICTIONS #####################
-model_ah_home, cols1, scaler_home = model_ah_home
-model_ah_away, cols2, scaler_away = model_ah_away
+model_ah_home, cols1 = model_ah_home
+model_ah_away, cols2 = model_ah_away
 
 # Reindexar para alinhar features
 X_today_ah_home = X_today_ah_home.reindex(columns=cols1, fill_value=0)
 X_today_ah_away = X_today_ah_away.reindex(columns=cols2, fill_value=0)
 
-# 🔹 Aplicar o scaler correto (o mesmo usado no treino)
-if not games_today.empty:
-    if scaler_home is not None:
-        X_today_ah_home[numeric_cols] = scaler_home.transform(X_today_ah_home[numeric_cols])
-    if scaler_away is not None:
-        X_today_ah_away[numeric_cols] = scaler_away.transform(X_today_ah_away[numeric_cols])
+# 🔹 refaz scaler sempre que rodar (sem salvar em pkl)
+scaler = StandardScaler()
+X_ah_home[numeric_cols] = scaler.fit_transform(X_ah_home[numeric_cols])
+X_today_ah_home[numeric_cols] = scaler.transform(X_today_ah_home[numeric_cols])
 
+X_ah_away[numeric_cols] = scaler.fit_transform(X_ah_away[numeric_cols])
+X_today_ah_away[numeric_cols] = scaler.transform(X_today_ah_away[numeric_cols])
+
+if not games_today.empty:
     # Previsões para Home
     probs_home = model_ah_home.predict_proba(X_today_ah_home)
     for cls, col in zip(model_ah_home.classes_, ["p_ah_home_no", "p_ah_home_yes"]):
@@ -330,6 +332,7 @@ if not games_today.empty:
     probs_away = model_ah_away.predict_proba(X_today_ah_away)
     for cls, col in zip(model_ah_away.classes_, ["p_ah_away_no", "p_ah_away_yes"]):
         games_today[col] = probs_away[:, cls]
+
 
 
 ##################### BLOCO 9 – DISPLAY #####################
