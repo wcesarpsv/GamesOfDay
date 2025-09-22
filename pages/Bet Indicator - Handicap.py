@@ -9,6 +9,8 @@ from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.calibration import CalibratedClassifierCV
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Bet Indicator – Asian Handicap", layout="wide")
 st.title("📊 Bet Indicator – Asian Handicap (Home vs Away)")
@@ -23,7 +25,6 @@ MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
 os.makedirs(MODELS_FOLDER, exist_ok=True)
 
 
-
 ##################### BLOCO 2 – HELPERS #####################
 def preprocess_df(df):
     df = df.copy()
@@ -33,14 +34,12 @@ def preprocess_df(df):
         df = df.rename(columns={"Goals_H_FT_y": "Goals_H_FT", "Goals_A_FT_y": "Goals_A_FT"})
     return df
 
-
 def load_all_games(folder):
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     if not files:
         return pd.DataFrame()
     dfs = [preprocess_df(pd.read_csv(os.path.join(folder, f))) for f in files]
     return pd.concat(dfs, ignore_index=True)
-
 
 def load_selected_csvs(folder):
     files = sorted([f for f in os.listdir(folder) if f.endswith(".csv")])
@@ -49,18 +48,15 @@ def load_selected_csvs(folder):
     dfs = [preprocess_df(pd.read_csv(os.path.join(folder, f))) for f in files]
     return pd.concat(dfs, ignore_index=True)
 
-
 def filter_leagues(df):
     if df.empty or "League" not in df.columns:
         return df
     pattern = "|".join(EXCLUDED_LEAGUE_KEYWORDS)
     return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
 
-
 def save_model(model, feature_cols, filename):
     with open(os.path.join(MODELS_FOLDER, filename), "wb") as f:
         joblib.dump((model, feature_cols), f)
-
 
 def load_model(filename):
     path = os.path.join(MODELS_FOLDER, filename)
@@ -70,13 +66,9 @@ def load_model(filename):
     return None
 
 
-
 ##################### BLOCO 3 – LOAD DATA + HANDICAP TARGET #####################
-from datetime import datetime, timedelta
-
 st.info("📂 Loading data...")
 
-# Load histórico completo
 history = filter_leagues(load_all_games(GAMES_FOLDER))
 history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line"]).copy()
 
@@ -94,11 +86,8 @@ today = datetime.now().strftime("%Y-%m-%d")
 yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
 games_today = filter_leagues(load_selected_csvs(GAMES_FOLDER))
-
 if "Date" in games_today.columns:
     games_today["Date"] = pd.to_datetime(games_today["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
-
-# Apenas jogos de hoje
 games_today = games_today[games_today["Date"] == today].copy()
 
 include_yesterday = st.sidebar.checkbox("Include yesterday's matches", value=False)
@@ -108,11 +97,9 @@ if include_yesterday:
         games_today["Date"] = pd.to_datetime(games_today["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
     games_today = games_today[games_today["Date"].isin([today, yesterday])].copy()
 
-# Remover duplicatas
 if set(["Date", "Home", "Away"]).issubset(games_today.columns):
     games_today = games_today.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
 
-# Apenas jogos sem placar final
 if "Goals_H_FT" in games_today.columns:
     games_today = games_today[games_today["Goals_H_FT"].isna()].copy()
 
@@ -120,37 +107,24 @@ if games_today.empty:
     st.warning("⚠️ No matches found for today (or yesterday, if selected).")
     st.stop()
 
-# ---------------- Função para converter Asian_Line para decimal ----------------
+# Conversão da linha asiática
 def convert_asian_line(line_str):
-    """
-    Converte linha asiática fracionada (ex: '0/0.5') para decimal (ex: 0.25).
-    """
     try:
-        # Se vier vazio ou None
         if pd.isna(line_str) or line_str == "":
             return None
-
-        # Sempre tratar como string
         line_str = str(line_str).strip()
-
-        # Se não houver "/", retorna como float
         if "/" not in line_str:
             return float(line_str)
-
-        # Divide a linha e calcula a média
         parts = [float(x) for x in line_str.split("/")]
         return sum(parts) / len(parts)
-    
     except:
         return None
 
-# Criar coluna de exibição no formato decimal
 history["Asian_Line_Display"] = history["Asian_Line"].apply(convert_asian_line)
 games_today["Asian_Line_Display"] = games_today["Asian_Line"].apply(convert_asian_line)
 
-# ---------------- Handicap Asian Logic ----------------
+# Resultado handicap
 def calc_handicap_result(margin, asian_line_str, invert=False):
-    """Calcula o resultado do handicap asiático (0.0, 0.5, 1.0)."""
     if pd.isna(asian_line_str):
         return np.nan
     if invert:
@@ -159,7 +133,6 @@ def calc_handicap_result(margin, asian_line_str, invert=False):
         parts = [float(x) for x in str(asian_line_str).split('/')]
     except:
         return np.nan
-    
     results = []
     for line in parts:
         if margin > line:
@@ -170,21 +143,12 @@ def calc_handicap_result(margin, asian_line_str, invert=False):
             results.append(0.0)
     return np.mean(results)
 
-# Margem de gols
 history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
+history["Handicap_Home_Result"] = history.apply(lambda r: calc_handicap_result(r["Margin"], r["Asian_Line"], invert=False), axis=1)
+history["Handicap_Away_Result"] = history.apply(lambda r: calc_handicap_result(r["Margin"], r["Asian_Line"], invert=True), axis=1)
 
-# Resultado bruto
-history["Handicap_Home_Result"] = history.apply(
-    lambda r: calc_handicap_result(r["Margin"], r["Asian_Line"], invert=False), axis=1
-)
-history["Handicap_Away_Result"] = history.apply(
-    lambda r: calc_handicap_result(r["Margin"], r["Asian_Line"], invert=True), axis=1
-)
-
-# Targets binários
 history["Target_AH_Home"] = history["Handicap_Home_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
 history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
-
 
 
 ##################### BLOCO 4 – FEATURE ENGINEERING #####################
@@ -194,11 +158,9 @@ feature_blocks = {
     "categorical": []
 }
 
-# One-hot encoding de ligas
 history_leagues = pd.get_dummies(history["League"], prefix="League")
 games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
 games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
-
 feature_blocks["categorical"] = list(history_leagues.columns)
 
 def build_feature_matrix(df, leagues, blocks):
@@ -212,20 +174,15 @@ def build_feature_matrix(df, leagues, blocks):
                 dfs.append(df[available_cols])
     return pd.concat(dfs, axis=1)
 
-# Histórico
 X_ah_home = build_feature_matrix(history, history_leagues, feature_blocks)
 X_ah_away = X_ah_home.copy()
 
-# Jogos de hoje
 X_today_ah_home = build_feature_matrix(games_today, games_today_leagues, feature_blocks)
 X_today_ah_home = X_today_ah_home.reindex(columns=X_ah_home.columns, fill_value=0)
-
 X_today_ah_away = X_today_ah_home.copy()
 
-# 🔹 Numeric columns para normalização
 numeric_cols = sum([cols for name, cols in feature_blocks.items() if name != "categorical"], [])
 numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
-
 
 
 ##################### BLOCO 5 – SIDEBAR CONFIG #####################
@@ -234,68 +191,7 @@ ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest", "XGB
 retrain = st.sidebar.checkbox("Retrain models", value=False)
 
 
-
-def train_and_evaluate(X, y, name):
-    safe_name = name.replace(" ", "")
-    safe_model = ml_model_choice.replace(" ", "")
-    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2n.pkl"
-
-    feature_cols = X.columns.tolist()
-
-    # Tenta carregar modelo salvo
-    if not retrain:
-        loaded = load_model(filename)
-        if loaded:
-            model, cols = loaded   # 🔹 igual ao código original
-            preds = model.predict(X)
-            probs = model.predict_proba(X)
-            res = {
-                "Model": name,
-                "Accuracy": accuracy_score(y, preds),
-                "LogLoss": log_loss(y, probs),
-                "BrierScore": brier_score_loss(y, probs[:,1])
-            }
-            return res, (model, cols)
-
-    # Split temporal
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
-
-    # 🔹 Ajuste do scaler SEM leakage
-    scaler = StandardScaler()
-    X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
-    X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
-
-    if ml_model_choice == "Random Forest":
-        model = RandomForestClassifier(n_estimators=300, max_depth=8, random_state=42)
-    else:
-        model = XGBClassifier(
-            n_estimators=400, max_depth=6, learning_rate=0.05,
-            subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
-            use_label_encoder=False, random_state=42
-        )
-
-    model.fit(X_train, y_train)
-
-    preds = model.predict(X_test)
-    probs = model.predict_proba(X_test)
-
-    res = {
-        "Model": name,
-        "Accuracy": accuracy_score(y_test, preds),
-        "LogLoss": log_loss(y_test, probs),
-        "BrierScore": brier_score_loss(y_test, probs[:,1])
-    }
-
-    # 🔹 salvar igual ao código original (só modelo + cols)
-    save_model(model, feature_cols, filename)
-
-    return res, (model, feature_cols)
-
-
 ##################### BLOCO 6 – TRAIN & EVALUATE (v1 e v2) #####################
-from sklearn.calibration import CalibratedClassifierCV
-
-# -------- Versão 1 (original) --------
 def train_and_evaluate(X, y, name):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
@@ -309,12 +205,8 @@ def train_and_evaluate(X, y, name):
             model, cols = loaded
             preds = model.predict(X)
             probs = model.predict_proba(X)
-            res = {
-                "Model": f"{name}_v1",
-                "Accuracy": accuracy_score(y, preds),
-                "LogLoss": log_loss(y, probs),
-                "BrierScore": brier_score_loss(y, probs[:,1])
-            }
+            res = {"Model": f"{name}_v1", "Accuracy": accuracy_score(y, preds),
+                   "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
             return res, (model, cols)
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
@@ -326,28 +218,21 @@ def train_and_evaluate(X, y, name):
     if ml_model_choice == "Random Forest":
         model = RandomForestClassifier(n_estimators=300, max_depth=8, random_state=42)
     else:
-        model = XGBClassifier(
-            n_estimators=400, max_depth=6, learning_rate=0.05,
-            subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
-            use_label_encoder=False, random_state=42
-        )
+        model = XGBClassifier(n_estimators=400, max_depth=6, learning_rate=0.05,
+                              subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
+                              use_label_encoder=False, random_state=42)
 
     model.fit(X_train, y_train)
     preds = model.predict(X_test)
     probs = model.predict_proba(X_test)
 
-    res = {
-        "Model": f"{name}_v1",
-        "Accuracy": accuracy_score(y_test, preds),
-        "LogLoss": log_loss(y_test, probs),
-        "BrierScore": brier_score_loss(y_test, probs[:,1])
-    }
+    res = {"Model": f"{name}_v1", "Accuracy": accuracy_score(y_test, preds),
+           "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
 
     save_model(model, feature_cols, filename)
     return res, (model, feature_cols)
 
 
-# -------- Versão 2 (ajustada) --------
 def train_and_evaluate_v2(X, y, name, use_calibration=True):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
@@ -361,12 +246,8 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
             model, cols = loaded
             preds = model.predict(X)
             probs = model.predict_proba(X)
-            res = {
-                "Model": f"{name}_v2",
-                "Accuracy": accuracy_score(y, preds),
-                "LogLoss": log_loss(y, probs),
-                "BrierScore": brier_score_loss(y, probs[:,1])
-            }
+            res = {"Model": f"{name}_v2", "Accuracy": accuracy_score(y, preds),
+                   "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
             return res, (model, cols)
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
@@ -376,27 +257,13 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
     X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
 
     if ml_model_choice == "Random Forest":
-        base_model = RandomForestClassifier(
-            n_estimators=500,
-            max_depth=None,
-            min_samples_split=2,
-            min_samples_leaf=1,
-            class_weight="balanced",
-            random_state=42,
-            n_jobs=-1
-        )
-    else:  # XGBoost
-        base_model = XGBClassifier(
-            n_estimators=1000,
-            max_depth=5,
-            learning_rate=0.1,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            eval_metric="logloss",
-            use_label_encoder=False,
-            random_state=42,
-            scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1
-        )
+        base_model = RandomForestClassifier(n_estimators=500, max_depth=None, class_weight="balanced",
+                                            random_state=42, n_jobs=-1)
+    else:
+        base_model = XGBClassifier(n_estimators=1000, max_depth=5, learning_rate=0.1,
+                                   subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
+                                   use_label_encoder=False, random_state=42,
+                                   scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1)
 
     if use_calibration:
         model = CalibratedClassifierCV(base_estimator=base_model, method="isotonic", cv=3)
@@ -411,70 +278,62 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
     preds = model.predict(X_test)
     probs = model.predict_proba(X_test)
 
-    res = {
-        "Model": f"{name}_v2",
-        "Accuracy": accuracy_score(y_test, preds),
-        "LogLoss": log_loss(y_test, probs),
-        "BrierScore": brier_score_loss(y_test, probs[:,1])
-    }
+    res = {"Model": f"{name}_v2", "Accuracy": accuracy_score(y_test, preds),
+           "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
 
     save_model(model, feature_cols, filename)
     return res, (model, feature_cols)
 
 
-
 ##################### BLOCO 7 – TRAINING MODELS #####################
 stats = []
+res, model_ah_home_v1 = train_and_evaluate(X_ah_home, history["Target_AH_Home"], "AH_Home"); stats.append(res)
+res, model_ah_away_v1 = train_and_evaluate(X_ah_away, history["Target_AH_Away"], "AH_Away"); stats.append(res)
+res, model_ah_home_v2 = train_and_evaluate_v2(X_ah_home, history["Target_AH_Home"], "AH_Home"); stats.append(res)
+res, model_ah_away_v2 = train_and_evaluate_v2(X_ah_away, history["Target_AH_Away"], "AH_Away"); stats.append(res)
 
-# -------- Versão 1 --------
-res, model_ah_home_v1 = train_and_evaluate(X_ah_home, history["Target_AH_Home"], "AH_Home")
-stats.append(res)
-
-res, model_ah_away_v1 = train_and_evaluate(X_ah_away, history["Target_AH_Away"], "AH_Away")
-stats.append(res)
-
-# -------- Versão 2 --------
-res, model_ah_home_v2 = train_and_evaluate_v2(X_ah_home, history["Target_AH_Home"], "AH_Home")
-stats.append(res)
-
-res, model_ah_away_v2 = train_and_evaluate_v2(X_ah_away, history["Target_AH_Away"], "AH_Away")
-stats.append(res)
-
-# Mostrar resultados
 stats_df = pd.DataFrame(stats)[["Model", "Accuracy", "LogLoss", "BrierScore"]]
 st.markdown("### 📊 Model Statistics (Validation) – v1 vs v2")
 st.dataframe(stats_df, use_container_width=True)
 
 
+##################### BLOCO 8 – PREDICTIONS #####################
+# Por padrão vamos usar versão 2 para previsões
+model_ah_home, cols1 = model_ah_home_v2
+model_ah_away, cols2 = model_ah_away_v2
 
-##################### BLOCO 9 – DISPLAY #####################
+X_today_ah_home = X_today_ah_home.reindex(columns=cols1, fill_value=0)
+X_today_ah_away = X_today_ah_away.reindex(columns=cols2, fill_value=0)
+
+scaler = StandardScaler()
+X_ah_home[numeric_cols] = scaler.fit_transform(X_ah_home[numeric_cols])
+X_today_ah_home[numeric_cols] = scaler.transform(X_today_ah_home[numeric_cols])
+X_ah_away[numeric_cols] = scaler.fit_transform(X_ah_away[numeric_cols])
+X_today_ah_away[numeric_cols] = scaler.transform(X_today_ah_away[numeric_cols])
+
+if not games_today.empty:
+    probs_home = model_ah_home.predict_proba(X_today_ah_home)
+    for cls, col in zip(model_ah_home.classes_, ["p_ah_home_no", "p_ah_home_yes"]):
+        games_today[col] = probs_home[:, cls]
+
+    probs_away = model_ah_away.predict_proba(X_today_ah_away)
+    for cls, col in zip(model_ah_away.classes_, ["p_ah_away_no", "p_ah_away_yes"]):
+        games_today[col] = probs_away[:, cls]
+
 def color_prob(val, color):
     if pd.isna(val): return ""
     alpha = float(np.clip(val, 0, 1))
     return f"background-color: rgba({color}, {alpha:.2f})"
 
 styled_df = (
-    games_today[[
-        "Date","Time","League","Home","Away",
-        "Odd_H", "Odd_D", "Odd_A",
-        "Asian_Line_Display","Odd_H_Asi","Odd_A_Asi",
-        "p_ah_home_yes","p_ah_away_yes"
-    ]]
-    .style.format({
-        "Odd_H": "{:.2f}",
-        "Odd_D": "{:.2f}",
-        "Odd_A": "{:.2f}",
-        "Asian_Line_Display": "{:.2f}",  # Linha no formato decimal
-        "Odd_H_Asi": "{:.2f}",
-        "Odd_A_Asi": "{:.2f}",
-        "p_ah_home_yes": "{:.1%}",
-        "p_ah_away_yes": "{:.1%}"
-    }, na_rep="—")
+    games_today[["Date","Time","League","Home","Away","Odd_H","Odd_D","Odd_A",
+                 "Asian_Line_Display","Odd_H_Asi","Odd_A_Asi","p_ah_home_yes","p_ah_away_yes"]]
+    .style.format({"Odd_H": "{:.2f}","Odd_D": "{:.2f}","Odd_A": "{:.2f}",
+                   "Asian_Line_Display": "{:.2f}","Odd_H_Asi": "{:.2f}","Odd_A_Asi": "{:.2f}",
+                   "p_ah_home_yes": "{:.1%}","p_ah_away_yes": "{:.1%}"}, na_rep="—")
     .applymap(lambda v: color_prob(v, "0,200,0"), subset=["p_ah_home_yes"])
     .applymap(lambda v: color_prob(v, "255,140,0"), subset=["p_ah_away_yes"])
 )
 
-st.markdown("### 📌 Predictions for Today's Matches – Asian Handicap")
+st.markdown("### 📌 Predictions for Today's Matches – Asian Handicap (v2)")
 st.dataframe(styled_df, use_container_width=True, height=800)
-
-
