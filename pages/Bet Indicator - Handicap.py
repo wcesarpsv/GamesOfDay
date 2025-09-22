@@ -184,8 +184,9 @@ numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
 ##################### BLOCO 5 – SIDEBAR CONFIG #####################
 st.sidebar.header("⚙️ Settings")
 ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest", "XGBoost"])
+ml_version_choice = st.sidebar.selectbox("Choose Model Version", ["v1", "v2"])
 retrain = st.sidebar.checkbox("Retrain models", value=False)
-normalize_features = st.sidebar.checkbox("Normalize features (odds + strength)", value=True)
+normalize_features = st.sidebar.checkbox("Normalize features (odds + strength)", value=False)
 
 
 ##################### BLOCO 6 – TRAIN & EVALUATE #####################
@@ -298,15 +299,19 @@ st.dataframe(stats_df, use_container_width=True)
 
 
 ##################### BLOCO 8 – PREDICTIONS #####################
-model_ah_home, cols1 = model_ah_home_v2
-model_ah_away, cols2 = model_ah_away_v2
+if ml_version_choice == "v1":
+    model_ah_home, cols1 = model_ah_home_v1
+    model_ah_away, cols2 = model_ah_away_v1
+else:
+    model_ah_home, cols1 = model_ah_home_v2
+    model_ah_away, cols2 = model_ah_away_v2
 
 X_today_ah_home = X_today_ah_home.reindex(columns=cols1, fill_value=0)
 X_today_ah_away = X_today_ah_away.reindex(columns=cols2, fill_value=0)
 
 if normalize_features:
     scaler = StandardScaler()
-    scaler.fit(X_ah_home[numeric_cols])  # ajusta no histórico
+    scaler.fit(X_ah_home[numeric_cols])
     X_today_ah_home[numeric_cols] = scaler.transform(X_today_ah_home[numeric_cols])
     X_today_ah_away[numeric_cols] = scaler.transform(X_today_ah_away[numeric_cols])
 
@@ -341,5 +346,5 @@ styled_df = (
     .applymap(lambda v: color_prob(v, "255,140,0"), subset=["p_ah_away_yes"])
 )
 
-st.markdown("### 📌 Predictions for Today's Matches – Asian Handicap (v2)")
+st.markdown(f"### 📌 Predictions for Today's Matches – Asian Handicap ({ml_version_choice})")
 st.dataframe(styled_df, use_container_width=True, height=800)
