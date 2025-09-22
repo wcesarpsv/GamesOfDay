@@ -191,7 +191,8 @@ ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest", "XGB
 retrain = st.sidebar.checkbox("Retrain models", value=False)
 
 
-##################### BLOCO 6 – TRAIN & EVALUATE (v1 e v2) #####################
+##################### BLOCO 6 – TRAIN & EVALUATE (v1 e v2 com prefit) #####################
+
 def train_and_evaluate(X, y, name):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
@@ -266,8 +267,12 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
                                    scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1)
 
     if use_calibration:
+        # Treina modelo base
+        base_model.fit(X_train, y_train)
+
+        # Calibração com prefit usando o conjunto de validação
         model = CalibratedClassifierCV(base_estimator=base_model, method="sigmoid", cv="prefit")
-        model.fit(X_train, y_train)
+        model.fit(X_test, y_test)
     else:
         if ml_model_choice == "XGBoost":
             base_model.fit(X_train, y_train, eval_set=[(X_test, y_test)], early_stopping_rounds=30, verbose=False)
@@ -283,6 +288,7 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
 
     save_model(model, feature_cols, filename)
     return res, (model, feature_cols)
+
 
 
 ##################### BLOCO 7 – TRAINING MODELS #####################
