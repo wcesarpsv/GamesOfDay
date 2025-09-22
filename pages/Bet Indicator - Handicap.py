@@ -238,7 +238,7 @@ retrain = st.sidebar.checkbox("Retrain models", value=False)
 def train_and_evaluate(X, y, name):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
-    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C.pkl"
+    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2n.pkl"
 
     feature_cols = X.columns.tolist()
 
