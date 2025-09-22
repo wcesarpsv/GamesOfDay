@@ -16,7 +16,7 @@ st.set_page_config(page_title="Bet Indicator – Asian Handicap", layout="wide")
 st.title("📊 Bet Indicator – Asian Handicap (Home vs Away)")
 
 # ---------------- Configurações ----------------
-PAGE_PREFIX = "AsianHandicap"   # prefixo único
+PAGE_PREFIX = "AsianHandicap"
 GAMES_FOLDER = "GamesDay"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa"]
 
@@ -72,7 +72,6 @@ st.info("📂 Loading data...")
 history = filter_leagues(load_all_games(GAMES_FOLDER))
 history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line"]).copy()
 
-# Garantir que não haja duplicatas: Date + Home + Away
 if set(["Date", "Home", "Away"]).issubset(history.columns):
     history = history.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
 else:
@@ -81,7 +80,6 @@ else:
 if history.empty:
     st.stop()
 
-# ---------------- Jogos de hoje ----------------
 today = datetime.now().strftime("%Y-%m-%d")
 yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
@@ -107,7 +105,6 @@ if games_today.empty:
     st.warning("⚠️ No matches found for today (or yesterday, if selected).")
     st.stop()
 
-# Conversão da linha asiática
 def convert_asian_line(line_str):
     try:
         if pd.isna(line_str) or line_str == "":
@@ -123,7 +120,6 @@ def convert_asian_line(line_str):
 history["Asian_Line_Display"] = history["Asian_Line"].apply(convert_asian_line)
 games_today["Asian_Line_Display"] = games_today["Asian_Line"].apply(convert_asian_line)
 
-# Resultado handicap
 def calc_handicap_result(margin, asian_line_str, invert=False):
     if pd.isna(asian_line_str):
         return np.nan
@@ -181,7 +177,7 @@ X_today_ah_home = build_feature_matrix(games_today, games_today_leagues, feature
 X_today_ah_home = X_today_ah_home.reindex(columns=X_ah_home.columns, fill_value=0)
 X_today_ah_away = X_today_ah_home.copy()
 
-numeric_cols = sum([cols for name, cols in feature_blocks.items() if name != "categorical"], [])
+numeric_cols = feature_blocks["odds"] + feature_blocks["strength"]
 numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
 
 
@@ -189,15 +185,14 @@ numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
 st.sidebar.header("⚙️ Settings")
 ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest", "XGBoost"])
 retrain = st.sidebar.checkbox("Retrain models", value=False)
+normalize_features = st.sidebar.checkbox("Normalize features (odds + strength)", value=True)
 
 
-##################### BLOCO 6 – TRAIN & EVALUATE (v1 e v2 com calibração robusta) #####################
-
+##################### BLOCO 6 – TRAIN & EVALUATE #####################
 def train_and_evaluate(X, y, name):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
     filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C_v1.pkl"
-
     feature_cols = X.columns.tolist()
 
     if not retrain:
@@ -212,9 +207,10 @@ def train_and_evaluate(X, y, name):
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
-    scaler = StandardScaler()
-    X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
-    X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
+    if normalize_features:
+        scaler = StandardScaler()
+        X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
+        X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
 
     if ml_model_choice == "Random Forest":
         model = RandomForestClassifier(n_estimators=300, max_depth=8, random_state=42)
@@ -238,7 +234,6 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
     filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C_v2.pkl"
-
     feature_cols = X.columns.tolist()
 
     if not retrain:
@@ -253,9 +248,10 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
-    scaler = StandardScaler()
-    X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
-    X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
+    if normalize_features:
+        scaler = StandardScaler()
+        X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
+        X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
 
     if ml_model_choice == "Random Forest":
         base_model = RandomForestClassifier(n_estimators=500, max_depth=None, class_weight="balanced",
@@ -267,7 +263,6 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
                                    scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1)
 
     if use_calibration:
-        # Compatibilidade entre versões novas e antigas do scikit-learn
         try:
             model = CalibratedClassifierCV(estimator=base_model, method="sigmoid", cv=2)
         except TypeError:
@@ -290,8 +285,6 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
     return res, (model, feature_cols)
 
 
-
-
 ##################### BLOCO 7 – TRAINING MODELS #####################
 stats = []
 res, model_ah_home_v1 = train_and_evaluate(X_ah_home, history["Target_AH_Home"], "AH_Home"); stats.append(res)
@@ -305,18 +298,17 @@ st.dataframe(stats_df, use_container_width=True)
 
 
 ##################### BLOCO 8 – PREDICTIONS #####################
-# Por padrão vamos usar versão 2 para previsões
 model_ah_home, cols1 = model_ah_home_v2
 model_ah_away, cols2 = model_ah_away_v2
 
 X_today_ah_home = X_today_ah_home.reindex(columns=cols1, fill_value=0)
 X_today_ah_away = X_today_ah_away.reindex(columns=cols2, fill_value=0)
 
-scaler = StandardScaler()
-X_ah_home[numeric_cols] = scaler.fit_transform(X_ah_home[numeric_cols])
-X_today_ah_home[numeric_cols] = scaler.transform(X_today_ah_home[numeric_cols])
-X_ah_away[numeric_cols] = scaler.fit_transform(X_ah_away[numeric_cols])
-X_today_ah_away[numeric_cols] = scaler.transform(X_today_ah_away[numeric_cols])
+if normalize_features:
+    scaler = StandardScaler()
+    scaler.fit(X_ah_home[numeric_cols])  # ajusta no histórico
+    X_today_ah_home[numeric_cols] = scaler.transform(X_today_ah_home[numeric_cols])
+    X_today_ah_away[numeric_cols] = scaler.transform(X_today_ah_away[numeric_cols])
 
 if not games_today.empty:
     probs_home = model_ah_home.predict_proba(X_today_ah_home)
@@ -333,11 +325,18 @@ def color_prob(val, color):
     return f"background-color: rgba({color}, {alpha:.2f})"
 
 styled_df = (
-    games_today[["Date","Time","League","Home","Away","Odd_H","Odd_D","Odd_A",
-                 "Asian_Line_Display","Odd_H_Asi","Odd_A_Asi","p_ah_home_yes","p_ah_away_yes"]]
-    .style.format({"Odd_H": "{:.2f}","Odd_D": "{:.2f}","Odd_A": "{:.2f}",
-                   "Asian_Line_Display": "{:.2f}","Odd_H_Asi": "{:.2f}","Odd_A_Asi": "{:.2f}",
-                   "p_ah_home_yes": "{:.1%}","p_ah_away_yes": "{:.1%}"}, na_rep="—")
+    games_today[[
+        "Date","Time","League","Home","Away",
+        "Odd_H","Odd_D","Odd_A",
+        "Asian_Line_Display","Odd_H_Asi","Odd_A_Asi",
+        "p_ah_home_yes","p_ah_away_yes"
+    ]]
+    .style.format({
+        "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
+        "Asian_Line_Display": "{:.2f}",
+        "Odd_H_Asi": "{:.2f}", "Odd_A_Asi": "{:.2f}",
+        "p_ah_home_yes": "{:.1%}", "p_ah_away_yes": "{:.1%}"
+    }, na_rep="—")
     .applymap(lambda v: color_prob(v, "0,200,0"), subset=["p_ah_home_yes"])
     .applymap(lambda v: color_prob(v, "255,140,0"), subset=["p_ah_away_yes"])
 )
