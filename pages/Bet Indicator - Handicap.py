@@ -307,14 +307,20 @@ st.dataframe(pd.DataFrame(stats), use_container_width=True)
 
 
 ##################### BLOCO 8 – PREDICTIONS #####################
-model_ah_home, cols1 = model_ah_home
-model_ah_away, cols2 = model_ah_away
+model_ah_home, cols1, scaler_home = model_ah_home
+model_ah_away, cols2, scaler_away = model_ah_away
 
 # Reindexar para alinhar features
 X_today_ah_home = X_today_ah_home.reindex(columns=cols1, fill_value=0)
 X_today_ah_away = X_today_ah_away.reindex(columns=cols2, fill_value=0)
 
+# 🔹 Aplicar o scaler correto (o mesmo usado no treino)
 if not games_today.empty:
+    if scaler_home is not None:
+        X_today_ah_home[numeric_cols] = scaler_home.transform(X_today_ah_home[numeric_cols])
+    if scaler_away is not None:
+        X_today_ah_away[numeric_cols] = scaler_away.transform(X_today_ah_away[numeric_cols])
+
     # Previsões para Home
     probs_home = model_ah_home.predict_proba(X_today_ah_home)
     for cls, col in zip(model_ah_home.classes_, ["p_ah_home_no", "p_ah_home_yes"]):
@@ -324,6 +330,7 @@ if not games_today.empty:
     probs_away = model_ah_away.predict_proba(X_today_ah_away)
     for cls, col in zip(model_ah_away.classes_, ["p_ah_away_no", "p_ah_away_yes"]):
         games_today[col] = probs_away[:, cls]
+
 
 ##################### BLOCO 9 – DISPLAY #####################
 def color_prob(val, color):
