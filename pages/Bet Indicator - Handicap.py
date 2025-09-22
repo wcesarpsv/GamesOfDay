@@ -150,7 +150,11 @@ history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if
 ##################### BLOCO 4 – FEATURE ENGINEERING #####################
 feature_blocks = {
     "odds": ["Odd_H", "Odd_D", "Odd_A"],
-    "strength": ["Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "M_HT_H", "M_HT_A","Asian_Line_Display"],
+    "strength": [
+        "Diff_Power", "M_H", "M_A", "Diff_M",
+        "Diff_HT_P", "M_HT_H", "M_HT_A",
+        "Asian_Line_Display"   # ✅ agora usamos a versão convertida em float
+    ],
     "categorical": []
 }
 
@@ -179,6 +183,7 @@ X_today_ah_away = X_today_ah_home.copy()
 
 numeric_cols = feature_blocks["odds"] + feature_blocks["strength"]
 numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
+
 
 
 ##################### BLOCO 5 – SIDEBAR CONFIG #####################
