@@ -222,7 +222,7 @@ X_today_ah_home = X_today_ah_home.reindex(columns=X_ah_home.columns, fill_value=
 
 X_today_ah_away = X_today_ah_home.copy()
 
-# 🔹 Não normalizar aqui — será feito dentro do train_and_evaluate para evitar leakage
+# 🔹 Numeric columns para normalização
 numeric_cols = sum([cols for name, cols in feature_blocks.items() if name != "categorical"], [])
 numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
 
@@ -292,46 +292,158 @@ def train_and_evaluate(X, y, name):
     return res, (model, feature_cols)
 
 
+##################### BLOCO 6 – TRAIN & EVALUATE (v1 e v2) #####################
+from sklearn.calibration import CalibratedClassifierCV
+
+# -------- Versão 1 (original) --------
+def train_and_evaluate(X, y, name):
+    safe_name = name.replace(" ", "")
+    safe_model = ml_model_choice.replace(" ", "")
+    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C_v1.pkl"
+
+    feature_cols = X.columns.tolist()
+
+    if not retrain:
+        loaded = load_model(filename)
+        if loaded:
+            model, cols = loaded
+            preds = model.predict(X)
+            probs = model.predict_proba(X)
+            res = {
+                "Model": f"{name}_v1",
+                "Accuracy": accuracy_score(y, preds),
+                "LogLoss": log_loss(y, probs),
+                "BrierScore": brier_score_loss(y, probs[:,1])
+            }
+            return res, (model, cols)
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+
+    scaler = StandardScaler()
+    X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
+    X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
+
+    if ml_model_choice == "Random Forest":
+        model = RandomForestClassifier(n_estimators=300, max_depth=8, random_state=42)
+    else:
+        model = XGBClassifier(
+            n_estimators=400, max_depth=6, learning_rate=0.05,
+            subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
+            use_label_encoder=False, random_state=42
+        )
+
+    model.fit(X_train, y_train)
+    preds = model.predict(X_test)
+    probs = model.predict_proba(X_test)
+
+    res = {
+        "Model": f"{name}_v1",
+        "Accuracy": accuracy_score(y_test, preds),
+        "LogLoss": log_loss(y_test, probs),
+        "BrierScore": brier_score_loss(y_test, probs[:,1])
+    }
+
+    save_model(model, feature_cols, filename)
+    return res, (model, feature_cols)
+
+
+# -------- Versão 2 (ajustada) --------
+def train_and_evaluate_v2(X, y, name, use_calibration=True):
+    safe_name = name.replace(" ", "")
+    safe_model = ml_model_choice.replace(" ", "")
+    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C_v2.pkl"
+
+    feature_cols = X.columns.tolist()
+
+    if not retrain:
+        loaded = load_model(filename)
+        if loaded:
+            model, cols = loaded
+            preds = model.predict(X)
+            probs = model.predict_proba(X)
+            res = {
+                "Model": f"{name}_v2",
+                "Accuracy": accuracy_score(y, preds),
+                "LogLoss": log_loss(y, probs),
+                "BrierScore": brier_score_loss(y, probs[:,1])
+            }
+            return res, (model, cols)
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+
+    scaler = StandardScaler()
+    X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
+    X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
+
+    if ml_model_choice == "Random Forest":
+        base_model = RandomForestClassifier(
+            n_estimators=500,
+            max_depth=None,
+            min_samples_split=2,
+            min_samples_leaf=1,
+            class_weight="balanced",
+            random_state=42,
+            n_jobs=-1
+        )
+    else:  # XGBoost
+        base_model = XGBClassifier(
+            n_estimators=1000,
+            max_depth=5,
+            learning_rate=0.1,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            eval_metric="logloss",
+            use_label_encoder=False,
+            random_state=42,
+            scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1
+        )
+
+    if use_calibration:
+        model = CalibratedClassifierCV(base_estimator=base_model, method="isotonic", cv=3)
+        model.fit(X_train, y_train)
+    else:
+        if ml_model_choice == "XGBoost":
+            base_model.fit(X_train, y_train, eval_set=[(X_test, y_test)], early_stopping_rounds=30, verbose=False)
+        else:
+            base_model.fit(X_train, y_train)
+        model = base_model
+
+    preds = model.predict(X_test)
+    probs = model.predict_proba(X_test)
+
+    res = {
+        "Model": f"{name}_v2",
+        "Accuracy": accuracy_score(y_test, preds),
+        "LogLoss": log_loss(y_test, probs),
+        "BrierScore": brier_score_loss(y_test, probs[:,1])
+    }
+
+    save_model(model, feature_cols, filename)
+    return res, (model, feature_cols)
+
 
 
 ##################### BLOCO 7 – TRAINING MODELS #####################
 stats = []
-res, model_ah_home = train_and_evaluate(X_ah_home, history["Target_AH_Home"], "AH_Home")
+
+# -------- Versão 1 --------
+res, model_ah_home_v1 = train_and_evaluate(X_ah_home, history["Target_AH_Home"], "AH_Home")
 stats.append(res)
 
-res, model_ah_away = train_and_evaluate(X_ah_away, history["Target_AH_Away"], "AH_Away")
+res, model_ah_away_v1 = train_and_evaluate(X_ah_away, history["Target_AH_Away"], "AH_Away")
 stats.append(res)
 
-st.markdown("### 📊 Model Statistics (Validation)")
-st.dataframe(pd.DataFrame(stats), use_container_width=True)
+# -------- Versão 2 --------
+res, model_ah_home_v2 = train_and_evaluate_v2(X_ah_home, history["Target_AH_Home"], "AH_Home")
+stats.append(res)
 
+res, model_ah_away_v2 = train_and_evaluate_v2(X_ah_away, history["Target_AH_Away"], "AH_Away")
+stats.append(res)
 
-
-model_ah_home, cols1 = model_ah_home
-model_ah_away, cols2 = model_ah_away
-
-# Reindexar para alinhar features
-X_today_ah_home = X_today_ah_home.reindex(columns=cols1, fill_value=0)
-X_today_ah_away = X_today_ah_away.reindex(columns=cols2, fill_value=0)
-
-# 🔹 refaz scaler sempre que rodar (sem salvar em pkl)
-scaler = StandardScaler()
-X_ah_home[numeric_cols] = scaler.fit_transform(X_ah_home[numeric_cols])
-X_today_ah_home[numeric_cols] = scaler.transform(X_today_ah_home[numeric_cols])
-
-X_ah_away[numeric_cols] = scaler.fit_transform(X_ah_away[numeric_cols])
-X_today_ah_away[numeric_cols] = scaler.transform(X_today_ah_away[numeric_cols])
-
-if not games_today.empty:
-    # Previsões para Home
-    probs_home = model_ah_home.predict_proba(X_today_ah_home)
-    for cls, col in zip(model_ah_home.classes_, ["p_ah_home_no", "p_ah_home_yes"]):
-        games_today[col] = probs_home[:, cls]
-
-    # Previsões para Away
-    probs_away = model_ah_away.predict_proba(X_today_ah_away)
-    for cls, col in zip(model_ah_away.classes_, ["p_ah_away_no", "p_ah_away_yes"]):
-        games_today[col] = probs_away[:, cls]
+# Mostrar resultados
+stats_df = pd.DataFrame(stats)[["Model", "Accuracy", "LogLoss", "BrierScore"]]
+st.markdown("### 📊 Model Statistics (Validation) – v1 vs v2")
+st.dataframe(stats_df, use_container_width=True)
 
 
 
