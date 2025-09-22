@@ -312,7 +312,7 @@ try:
 
         # Remove duplicados
         df_history = df_history.drop_duplicates(
-            subset=["League", "Home", "Away", "Odd_H", "Odd_D", "Odd_A", "Goals_H_FT", "Goals_A_FT"],
+            subset=[ "Home", "Away", "Goals_H_FT", "Goals_A_FT"],
             keep="first"
         )
 
