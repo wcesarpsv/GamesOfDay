@@ -73,7 +73,7 @@ history = filter_leagues(load_all_games(GAMES_FOLDER))
 history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line"]).copy()
 
 if set(["Date", "Home", "Away"]).issubset(history.columns):
-    history = history.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
+    history = history.drop_duplicates(subset=["Home", "Away","Goals_H_FT", "Goals_A_FT"], keep="first")
 else:
     history = history.drop_duplicates(keep="first")
 
@@ -149,8 +149,8 @@ history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if
 
 ##################### BLOCO 4 – FEATURE ENGINEERING #####################
 feature_blocks = {
-    "odds": ["Odd_H", "Odd_D", "Odd_A", "Odd_H_Asi", "Odd_A_Asi", "OU_Total"],
-    "strength": ["Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "M_HT_H", "M_HT_A"],
+    "odds": ["Odd_H", "Odd_D", "Odd_A"],
+    "strength": ["Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "M_HT_H", "M_HT_A","Asian_Line_Display"],
     "categorical": []
 }
 
