@@ -303,7 +303,7 @@ def train_and_evaluate(X, y, name, num_classes):
     # Nome único do arquivo (evita conflito entre modelos)
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
-    filename = f"{safe_model}_{safe_name}_{num_classes}C.pkl"
+    filename = f"{safe_model}_{safe_name}_{num_classes}CG.pkl"
 
     feature_cols = X.columns.tolist()
 
