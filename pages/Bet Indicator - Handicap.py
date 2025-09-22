@@ -96,7 +96,7 @@ if include_yesterday:
     games_today = games_today[games_today["Date"].isin([today, yesterday])].copy()
 
 if set(["Date", "Home", "Away"]).issubset(games_today.columns):
-    games_today = games_today.drop_duplicates(subset=["Date", "Home", "Away"], keep="first")
+    games_today = games_today.drop_duplicates(subset=["Home", "Away","Goals_H_FT","Goals_A_FT"], keep="first")
 
 if "Goals_H_FT" in games_today.columns:
     games_today = games_today[games_today["Goals_H_FT"].isna()].copy()
