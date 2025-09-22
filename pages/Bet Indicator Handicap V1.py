@@ -14,7 +14,7 @@ st.set_page_config(page_title="Bet Indicator – Asian Handicap", layout="wide")
 st.title("📊 Bet Indicator – Asian Handicap (Home vs Away)")
 
 # ---------------- Configurações ----------------
-PAGE_PREFIX = "AsianHandicap"   # prefixo único
+PAGE_PREFIX = "AsianHandicapv1"   # prefixo único
 GAMES_FOLDER = "GamesDay"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa"]
 
