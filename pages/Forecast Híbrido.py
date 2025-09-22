@@ -284,3 +284,93 @@ styled_df = (
 
 st.markdown("### 📌 Predictions for Selected Matches")
 st.dataframe(styled_df, use_container_width=True, height=1000)
+
+
+
+# ########################################################
+# Bloco 11 – Forecast Híbrido (Estatístico vs ML)
+# ########################################################
+st.markdown("## 🔮 Forecast Híbrido – Perspective vs ML")
+
+try:
+    # ===== Forecast Estatístico (Perspective) =====
+    history["Diff_M"] = history["M_H"] - history["M_A"]
+    games_today["Diff_M"] = games_today["M_H"] - games_today["M_A"]
+
+    # Criar bins
+    history["DiffPower_bin"] = pd.cut(history["Diff_Power"], bins=range(-50, 55, 10))
+    history["DiffM_bin"] = pd.cut(history["Diff_M"], bins=np.arange(-10, 10.5, 1.0))
+    history["DiffHTP_bin"] = pd.cut(history["Diff_HT_P"], bins=range(-30, 35, 5))
+
+    # Resultado real
+    def get_result(row):
+        if row["Goals_H_FT"] > row["Goals_A_FT"]:
+            return "Home"
+        elif row["Goals_H_FT"] < row["Goals_A_FT"]:
+            return "Away"
+        else:
+            return "Draw"
+
+    history["Result"] = history.apply(get_result, axis=1)
+
+    # Match histórico similar
+    total_matches, home_wins, away_wins, draws = 0, 0, 0, 0
+    for _, game in games_today.iterrows():
+        try:
+            subset = history[
+                (history["DiffPower_bin"] == pd.cut([game["Diff_Power"]], bins=range(-50, 55, 10))[0]) &
+                (history["DiffM_bin"] == pd.cut([game["Diff_M"]], bins=np.arange(-10, 10.5, 1.0))[0]) &
+                (history["DiffHTP_bin"] == pd.cut([game["Diff_HT_P"]], bins=range(-30, 35, 5))[0])
+            ]
+            if not subset.empty:
+                total_matches += len(subset)
+                home_wins += (subset["Result"] == "Home").sum()
+                away_wins += (subset["Result"] == "Away").sum()
+                draws += (subset["Result"] == "Draw").sum()
+        except:
+            continue
+
+    if total_matches > 0:
+        pct_home = 100 * home_wins / total_matches
+        pct_away = 100 * away_wins / total_matches
+        pct_draw = 100 * draws / total_matches
+    else:
+        pct_home, pct_away, pct_draw = 0, 0, 0
+
+    # ===== Forecast ML =====
+    if not games_today.empty:
+        ml_probs = model_multi.predict_proba(X_today_1x2)
+        df_preds = pd.DataFrame(ml_probs, columns=["p_home", "p_draw", "p_away"])
+
+        ml_home = df_preds["p_home"].mean() * 100
+        ml_draw = df_preds["p_draw"].mean() * 100
+        ml_away = df_preds["p_away"].mean() * 100
+    else:
+        ml_home, ml_draw, ml_away = 0, 0, 0
+
+    # ===== Mostrar lado a lado =====
+    cols = st.columns(2)
+
+    with cols[0]:
+        st.markdown("### 📊 Histórico (Perspective)")
+        st.write(f"**Home Wins:** {pct_home:.1f}%")
+        st.write(f"**Draws:** {pct_draw:.1f}%")
+        st.write(f"**Away Wins:** {pct_away:.1f}%")
+        st.caption(f"Baseado em {total_matches:,} jogos históricos similares")
+
+    with cols[1]:
+        st.markdown("### 🤖 ML (Modelo Treinado)")
+        st.write(f"**Home Wins:** {ml_home:.1f}%")
+        st.write(f"**Draws:** {ml_draw:.1f}%")
+        st.write(f"**Away Wins:** {ml_away:.1f}%")
+        st.caption(f"Baseado em {len(games_today)} jogos de hoje")
+
+    # ===== Diferença =====
+    st.markdown("### 🔍 Diferença Estatística vs ML")
+    st.write(f"- Home: {ml_home - pct_home:+.1f} pp")
+    st.write(f"- Draw: {ml_draw - pct_draw:+.1f} pp")
+    st.write(f"- Away: {ml_away - pct_away:+.1f} pp")
+
+except Exception as e:
+    st.warning(f"⚠️ Forecast Híbrido não pôde ser gerado: {e}")
+
