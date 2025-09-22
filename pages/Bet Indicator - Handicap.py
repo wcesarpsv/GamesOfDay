@@ -271,7 +271,7 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
         base_model.fit(X_train, y_train)
 
         # Calibração com prefit usando o conjunto de validação
-        model = CalibratedClassifierCV(base_estimator=base_model, method="sigmoid", cv="prefit")
+        model = CalibratedClassifierCV(base_estimator=base_model, method="sigmoid", cv=2)
         model.fit(X_test, y_test)
     else:
         if ml_model_choice == "XGBoost":
