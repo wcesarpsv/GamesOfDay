@@ -288,7 +288,7 @@ st.dataframe(styled_df, use_container_width=True, height=1000)
 
 
 # ########################################################
-# Bloco 11 – Forecast Híbrido (Estatístico vs ML)
+# Bloco 11 – Forecast Híbrido (Estatístico vs ML) – Revisado
 # ########################################################
 st.markdown("## 🔮 Forecast Híbrido – Perspective vs ML")
 
@@ -297,12 +297,24 @@ try:
     history["Diff_M"] = history["M_H"] - history["M_A"]
     games_today["Diff_M"] = games_today["M_H"] - games_today["M_A"]
 
-    # Criar bins para histórico
+    # Garantir coluna Date e excluir jogos do dia atual
+    if "Date" in history.columns and "Date" in games_today.columns:
+        history["Date"] = pd.to_datetime(history["Date"], errors="coerce").dt.date
+        games_today["Date"] = pd.to_datetime(games_today["Date"], errors="coerce").dt.date
+        if not games_today.empty:
+            today_date = games_today["Date"].iloc[0]
+            history = history[history["Date"] != today_date]
+
+    # Criar bins (mesma lógica da página principal)
     history["DiffPower_bin"] = pd.cut(history["Diff_Power"], bins=range(-50, 55, 10))
     history["DiffM_bin"] = pd.cut(history["Diff_M"], bins=np.arange(-10, 10.5, 1.0))
     history["DiffHTP_bin"] = pd.cut(history["Diff_HT_P"], bins=range(-30, 35, 5))
 
-    # Resultado real
+    games_today["DiffPower_bin"] = pd.cut(games_today["Diff_Power"], bins=range(-50, 55, 10))
+    games_today["DiffM_bin"] = pd.cut(games_today["Diff_M"], bins=np.arange(-10, 10.5, 1.0))
+    games_today["DiffHTP_bin"] = pd.cut(games_today["Diff_HT_P"], bins=range(-30, 35, 5))
+
+    # Resultado real no histórico
     def get_result(row):
         if row["Goals_H_FT"] > row["Goals_A_FT"]:
             return "Home"
@@ -313,14 +325,8 @@ try:
 
     history["Result"] = history.apply(get_result, axis=1)
 
-    # Criar bins também nos jogos do dia (mesmos cortes do histórico)
-    games_today["DiffPower_bin"] = pd.cut(games_today["Diff_Power"], bins=range(-50, 55, 10))
-    games_today["DiffM_bin"] = pd.cut(games_today["Diff_M"], bins=np.arange(-10, 10.5, 1.0))
-    games_today["DiffHTP_bin"] = pd.cut(games_today["Diff_HT_P"], bins=range(-30, 35, 5))
-
     # Contadores
     total_matches, home_wins, away_wins, draws = 0, 0, 0, 0
-
     for _, game in games_today.iterrows():
         subset = history[
             (history["DiffPower_bin"] == game["DiffPower_bin"]) &
@@ -359,7 +365,7 @@ try:
         st.write(f"**Home Wins:** {pct_home:.1f}%")
         st.write(f"**Draws:** {pct_draw:.1f}%")
         st.write(f"**Away Wins:** {pct_away:.1f}%")
-        st.caption(f"Baseado em {total_matches:,} jogos históricos similares")
+        st.caption(f"Baseado em {total_matches:,} jogos históricos similares (excluindo o dia atual)")
 
     with cols[1]:
         st.markdown("### 🤖 ML (Modelo Treinado)")
@@ -374,13 +380,7 @@ try:
     st.write(f"- Draw: {ml_draw - pct_draw:+.1f} pp")
     st.write(f"- Away: {ml_away - pct_away:+.1f} pp")
 
-    # Debug opcional (remova depois se não precisar)
-    # st.write("Total matches históricos encontrados:", total_matches)
-
 except Exception as e:
     st.warning(f"⚠️ Forecast Híbrido não pôde ser gerado: {e}")
 
-
-except Exception as e:
-    st.warning(f"⚠️ Forecast Híbrido não pôde ser gerado: {e}")
 
