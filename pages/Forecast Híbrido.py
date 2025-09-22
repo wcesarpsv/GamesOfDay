@@ -297,7 +297,7 @@ try:
     history["Diff_M"] = history["M_H"] - history["M_A"]
     games_today["Diff_M"] = games_today["M_H"] - games_today["M_A"]
 
-    # Criar bins
+    # Criar bins para histórico
     history["DiffPower_bin"] = pd.cut(history["Diff_Power"], bins=range(-50, 55, 10))
     history["DiffM_bin"] = pd.cut(history["Diff_M"], bins=np.arange(-10, 10.5, 1.0))
     history["DiffHTP_bin"] = pd.cut(history["Diff_HT_P"], bins=range(-30, 35, 5))
@@ -313,22 +313,25 @@ try:
 
     history["Result"] = history.apply(get_result, axis=1)
 
-    # Match histórico similar
+    # Criar bins também nos jogos do dia (mesmos cortes do histórico)
+    games_today["DiffPower_bin"] = pd.cut(games_today["Diff_Power"], bins=range(-50, 55, 10))
+    games_today["DiffM_bin"] = pd.cut(games_today["Diff_M"], bins=np.arange(-10, 10.5, 1.0))
+    games_today["DiffHTP_bin"] = pd.cut(games_today["Diff_HT_P"], bins=range(-30, 35, 5))
+
+    # Contadores
     total_matches, home_wins, away_wins, draws = 0, 0, 0, 0
+
     for _, game in games_today.iterrows():
-        try:
-            subset = history[
-                (history["DiffPower_bin"] == pd.cut([game["Diff_Power"]], bins=range(-50, 55, 10))[0]) &
-                (history["DiffM_bin"] == pd.cut([game["Diff_M"]], bins=np.arange(-10, 10.5, 1.0))[0]) &
-                (history["DiffHTP_bin"] == pd.cut([game["Diff_HT_P"]], bins=range(-30, 35, 5))[0])
-            ]
-            if not subset.empty:
-                total_matches += len(subset)
-                home_wins += (subset["Result"] == "Home").sum()
-                away_wins += (subset["Result"] == "Away").sum()
-                draws += (subset["Result"] == "Draw").sum()
-        except:
-            continue
+        subset = history[
+            (history["DiffPower_bin"] == game["DiffPower_bin"]) &
+            (history["DiffM_bin"] == game["DiffM_bin"]) &
+            (history["DiffHTP_bin"] == game["DiffHTP_bin"])
+        ]
+        if not subset.empty:
+            total_matches += len(subset)
+            home_wins += (subset["Result"] == "Home").sum()
+            away_wins += (subset["Result"] == "Away").sum()
+            draws += (subset["Result"] == "Draw").sum()
 
     if total_matches > 0:
         pct_home = 100 * home_wins / total_matches
@@ -370,6 +373,13 @@ try:
     st.write(f"- Home: {ml_home - pct_home:+.1f} pp")
     st.write(f"- Draw: {ml_draw - pct_draw:+.1f} pp")
     st.write(f"- Away: {ml_away - pct_away:+.1f} pp")
+
+    # Debug opcional (remova depois se não precisar)
+    # st.write("Total matches históricos encontrados:", total_matches)
+
+except Exception as e:
+    st.warning(f"⚠️ Forecast Híbrido não pôde ser gerado: {e}")
+
 
 except Exception as e:
     st.warning(f"⚠️ Forecast Híbrido não pôde ser gerado: {e}")
