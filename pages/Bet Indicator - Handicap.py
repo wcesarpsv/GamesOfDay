@@ -222,16 +222,9 @@ X_today_ah_home = X_today_ah_home.reindex(columns=X_ah_home.columns, fill_value=
 
 X_today_ah_away = X_today_ah_home.copy()
 
-# Normalização
-scaler = StandardScaler()
+# 🔹 Não normalizar aqui — será feito dentro do train_and_evaluate para evitar leakage
 numeric_cols = sum([cols for name, cols in feature_blocks.items() if name != "categorical"], [])
 numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
-
-X_ah_home[numeric_cols] = scaler.fit_transform(X_ah_home[numeric_cols])
-X_today_ah_home[numeric_cols] = scaler.transform(X_today_ah_home[numeric_cols])
-
-X_ah_away[numeric_cols] = X_ah_home[numeric_cols]
-X_today_ah_away[numeric_cols] = X_today_ah_home[numeric_cols]
 
 
 
@@ -254,19 +247,24 @@ def train_and_evaluate(X, y, name):
     if not retrain:
         loaded = load_model(filename)
         if loaded:
-            model, cols = loaded
+            model, cols, scaler = loaded
             preds = model.predict(X)
             probs = model.predict_proba(X)
             res = {
                 "Model": name,
                 "Accuracy": accuracy_score(y, preds),
                 "LogLoss": log_loss(y, probs),
-                "BrierScore": brier_score_loss(pd.get_dummies(y).values.ravel(), probs.ravel())
+                "BrierScore": brier_score_loss(y, probs[:,1])  # binário corrigido
             }
-            return res, (model, cols)
+            return res, (model, cols, scaler)
 
-    # Treina novo modelo
+    # Split temporal (dataset deve estar ordenado por data!)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+
+    # 🔹 Normalização SEM leakage
+    scaler = StandardScaler()
+    X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
+    X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
 
     if ml_model_choice == "Random Forest":
         model = RandomForestClassifier(n_estimators=300, max_depth=8, random_state=42)
@@ -286,11 +284,12 @@ def train_and_evaluate(X, y, name):
         "Model": name,
         "Accuracy": accuracy_score(y_test, preds),
         "LogLoss": log_loss(y_test, probs),
-        "BrierScore": brier_score_loss(pd.get_dummies(y_test).values.ravel(), probs.ravel())
+        "BrierScore": brier_score_loss(y_test, probs[:,1])  # binário corrigido
     }
 
-    save_model(model, feature_cols, filename)
-    return res, (model, feature_cols)
+    save_model((model, feature_cols, scaler), feature_cols, filename)
+    return res, (model, feature_cols, scaler)
+
 
 
 
