@@ -137,10 +137,11 @@ retrain = st.sidebar.checkbox("Retrain model", value=False)
 from sklearn.preprocessing import LabelEncoder
 
 def train_and_evaluate(X, y, name):
-    filename = f"{ml_model_choice.replace(' ', '')}_{name}_score.pkl"
+    # 🔹 Nome do arquivo inclui tipo de modelo + target
+    filename = f"{ml_model_choice.replace(' ', '').replace('-', '')}_{name}_ExactScore.pkl"
     model = None
 
-    # 🔹 Codificar placares em inteiros (necessário para XGBoost)
+    # 🔹 LabelEncoder para todos (assim padronizamos)
     le = LabelEncoder()
     y_enc = le.fit_transform(y)
 
@@ -159,13 +160,23 @@ def train_and_evaluate(X, y, name):
                 eval_metric="mlogloss", random_state=42, use_label_encoder=False
             )
 
+        # 🔹 Treino
         X_train, X_val, y_train, y_val = train_test_split(
             X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
         )
         model.fit(X_train, y_train)
-        save_model((model, le), filename)  # 🔹 salvar modelo + encoder
+
+        # 🔹 Sempre salvar como tuple (model, le)
+        save_model((model, le), filename)
     else:
-        model, le = model  # 🔹 carregar modelo + encoder
+        try:
+            model, le = model  # 🔹 garantir tuple
+        except:
+            # caso antigo sem encoder
+            model = model
+            le = LabelEncoder().fit(y)
+
+        # 🔹 Re-divisão dos dados para métrica de validação
         X_train, X_val, y_train, y_val = train_test_split(
             X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
         )
@@ -183,6 +194,7 @@ def train_and_evaluate(X, y, name):
     }
 
     return metrics, (model, le)
+
 
 
 
