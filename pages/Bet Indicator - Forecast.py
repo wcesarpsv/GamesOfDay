@@ -316,11 +316,9 @@ try:
             keep="first"
         )
 
-        # Normalizar Date e excluir o dia atual
-        if "Date" in df_history.columns and "Date" in games_today.columns:
+        # Normalizar Date e excluir o dia selecionado
+        if "Date" in df_history.columns:
             df_history["Date"] = pd.to_datetime(df_history["Date"], errors="coerce").dt.date
-            games_today["Date"] = pd.to_datetime(games_today["Date"], errors="coerce").dt.date
-            selected_date = games_today["Date"].iloc[0]
             df_history = df_history[df_history["Date"] != selected_date]
 
         # Criar Diff_M e bins
@@ -341,9 +339,11 @@ try:
         df_history["Result"] = df_history.apply(get_result, axis=1)
 
         # Preparar jogos do dia
-        df_day = games_today.copy()
+        df_day = pd.read_csv(file_path)
         df_day = df_day.loc[:, ~df_day.columns.str.contains('^Unnamed')]
         df_day.columns = df_day.columns.str.strip()
+        df_day["Date"] = pd.to_datetime(df_day["Date"], errors="coerce").dt.date
+        df_day = df_day[df_day["Date"] == selected_date]
         df_day["Diff_M"] = df_day["M_H"] - df_day["M_A"]
         df_day = df_day.dropna(subset=["Diff_Power", "Diff_M", "Diff_HT_P"])
 
@@ -400,6 +400,16 @@ try:
     else:
         ml_home, ml_draw, ml_away = 0, 0, 0
 
+    # ===== Índice de Divergência =====
+    divergence = abs(ml_home - pct_home) + abs(ml_draw - pct_draw) + abs(ml_away - pct_away)
+
+    if divergence < 10:
+        status_icon, status_text = "🟢", "Alta confiança (ML e histórico alinhados)"
+    elif divergence < 25:
+        status_icon, status_text = "🟡", "Confiança média (alguma divergência)"
+    else:
+        status_icon, status_text = "🔴", "Baixa confiança (ML difere muito do histórico)"
+
     # ===== Mostrar lado a lado =====
     cols = st.columns(2)
     with cols[0]:
@@ -415,14 +425,19 @@ try:
         st.write(f"**Away Wins:** {ml_away:.1f}%")
         st.caption(f"Baseado em {len(games_today)} jogos de hoje")
 
-    # Diferença
+    # Diferença e Divergência
     st.markdown("### 🔍 Diferença Estatística vs ML")
     st.write(f"- Home: {ml_home - pct_home:+.1f} pp")
     st.write(f"- Draw: {ml_draw - pct_draw:+.1f} pp")
     st.write(f"- Away: {ml_away - pct_away:+.1f} pp")
 
+    st.markdown("### 📈 Índice de Divergência Global")
+    st.write(f"{status_icon} {status_text}")
+    st.caption(f"Índice total de divergência: {divergence:.1f} pontos percentuais")
+
 except Exception as e:
     st.warning(f"⚠️ Forecast Híbrido não pôde ser gerado: {e}")
+
 
 
 
