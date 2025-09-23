@@ -288,20 +288,20 @@ st.dataframe(styled_df, use_container_width=True, height=1000)
 
 
 # ########################################################
-# Bloco 11 – Forecast Híbrido (Estatístico vs ML)
+# Block 11 – Hybrid Forecast (Historical vs ML)
 # ########################################################
-st.markdown("## 🔮 Forecast Híbrido – Perspective vs ML")
+st.markdown("## 🔮 Hybrid Forecast – Perspective vs ML")
 
 try:
     import numpy as np
 
-    # 🔹 Garantir que temos uma data de referência
+    # 🔹 Ensure we have a reference date
     if not games_today.empty and "Date" in games_today.columns:
         selected_date = pd.to_datetime(games_today["Date"], errors="coerce").dt.date.iloc[0]
     else:
         selected_date = None
 
-    # ===== Forecast Estatístico (Perspective) =====
+    # ===== Historical Perspective =====
     all_dfs = []
     for f in os.listdir(GAMES_FOLDER):
         if f.lower().endswith(".csv"):
@@ -316,24 +316,24 @@ try:
     if all_dfs and selected_date is not None:
         df_history = pd.concat(all_dfs, ignore_index=True)
 
-        # 🧹 Remove duplicados
+        # 🧹 Remove duplicates
         df_history = df_history.drop_duplicates(
             subset=["League", "Home", "Away", "Goals_H_FT", "Goals_A_FT"],
             keep="first"
         )
 
-        # Normalizar Date e excluir o dia atual
+        # Normalize dates and exclude today's matches
         if "Date" in df_history.columns:
             df_history["Date"] = pd.to_datetime(df_history["Date"], errors="coerce").dt.date
             df_history = df_history[df_history["Date"] != selected_date]
 
-        # Criar Diff_M e bins
+        # Create Diff_M and bins
         df_history["Diff_M"] = df_history["M_H"] - df_history["M_A"]
         df_history["DiffPower_bin"] = pd.cut(df_history["Diff_Power"], bins=range(-50, 55, 10))
         df_history["DiffM_bin"] = pd.cut(df_history["Diff_M"], bins=np.arange(-10, 10.5, 1.0))
         df_history["DiffHTP_bin"] = pd.cut(df_history["Diff_HT_P"], bins=range(-30, 35, 5))
 
-        # Resultado real
+        # Real match outcome
         def get_result(row):
             if row["Goals_H_FT"] > row["Goals_A_FT"]:
                 return "Home"
@@ -344,7 +344,7 @@ try:
 
         df_history["Result"] = df_history.apply(get_result, axis=1)
 
-        # Preparar jogos do dia (usando games_today)
+        # Prepare today's matches (using games_today)
         df_day = games_today.copy()
         df_day = df_day.loc[:, ~df_day.columns.str.contains('^Unnamed')]
         df_day.columns = df_day.columns.str.strip()
@@ -353,12 +353,12 @@ try:
         df_day["Diff_M"] = df_day["M_H"] - df_day["M_A"]
         df_day = df_day.dropna(subset=["Diff_Power", "Diff_M", "Diff_HT_P"])
 
-        # Intervalos dos bins
+        # Bin intervals
         dp_bins = pd.IntervalIndex(df_history["DiffPower_bin"].cat.categories)
         dm_bins = pd.IntervalIndex(df_history["DiffM_bin"].cat.categories)
         dhtp_bins = pd.IntervalIndex(df_history["DiffHTP_bin"].cat.categories)
 
-        # Contadores
+        # Counters
         total_matches, home_wins, away_wins, draws = 0, 0, 0, 0
 
         for _, game in df_day.iterrows():
@@ -395,7 +395,7 @@ try:
         else:
             pct_home, pct_away, pct_draw = 0, 0, 0
 
-    # ===== Forecast ML =====
+    # ===== ML Forecast =====
     if not games_today.empty:
         ml_probs = model_multi.predict_proba(X_today_1x2)
         df_preds = pd.DataFrame(ml_probs, columns=["p_home", "p_draw", "p_away"])
@@ -406,57 +406,58 @@ try:
     else:
         ml_home, ml_draw, ml_away = 0, 0, 0
 
-    # ===== Mostrar lado a lado =====
+    # ===== Side by side display =====
     cols = st.columns(2)
     with cols[0]:
-        st.markdown("### 📊 Histórico (Perspective)")
+        st.markdown("### 📊 Historical Perspective")
         st.write(f"**Home Wins:** {pct_home:.1f}%")
         st.write(f"**Draws:** {pct_draw:.1f}%")
         st.write(f"**Away Wins:** {pct_away:.1f}%")
-        st.caption(f"Baseado em {total_matches:,} jogos históricos similares (excluindo o dia atual)")
+        st.caption(f"Based on {total_matches:,} similar historical matches (excluding today)")
     with cols[1]:
-        st.markdown("### 🤖 ML (Modelo Treinado)")
+        st.markdown("### 🤖 ML Forecast (Trained Model)")
         st.write(f"**Home Wins:** {ml_home:.1f}%")
         st.write(f"**Draws:** {ml_draw:.1f}%")
         st.write(f"**Away Wins:** {ml_away:.1f}%")
-        st.caption(f"Baseado em {len(games_today)} jogos de hoje")
+        st.caption(f"Based on {len(games_today)} matches today")
 
 except Exception as e:
-    st.warning(f"⚠️ Forecast Híbrido não pôde ser gerado: {e}")
+    st.warning(f"⚠️ Hybrid Forecast could not be generated: {e}")
+
 
 
 # ########################################################
-# Bloco 12 – Índice de Divergência com Gauge
+# Block 12 – Divergence Index with Gauge
 # ########################################################
 try:
     import plotly.graph_objects as go
 
-    # ===== Índice de Divergência =====
+    # ===== Divergence Index =====
     divergence = abs(ml_home - pct_home) + abs(ml_draw - pct_draw) + abs(ml_away - pct_away)
 
     if divergence < 10:
-        status_icon, status_text = "🟢", "Alta confiança (ML e histórico alinhados)"
+        status_icon, status_text = "🟢", "High confidence (ML aligned with historical)"
     elif divergence < 25:
-        status_icon, status_text = "🟡", "Confiança média (alguma divergência)"
+        status_icon, status_text = "🟡", "Medium confidence (some divergence)"
     else:
-        status_icon, status_text = "🔴", "Baixa confiança (ML difere muito do histórico)"
+        status_icon, status_text = "🔴", "Low confidence (ML diverges strongly from historical)"
 
-    # Diferença estatística
-    st.markdown("### 🔍 Diferença Estatística vs ML")
+    # Detailed differences
+    st.markdown("### 🔍 Difference: Historical vs ML")
     st.write(f"- Home: {ml_home - pct_home:+.1f} pp")
     st.write(f"- Draw: {ml_draw - pct_draw:+.1f} pp")
     st.write(f"- Away: {ml_away - pct_away:+.1f} pp")
 
-    # Índice global
-    st.markdown("### 📈 Índice de Divergência Global")
+    # Global index
+    st.markdown("### 📈 Global Divergence Index")
     st.write(f"{status_icon} {status_text}")
-    st.caption(f"Índice total de divergência: {divergence:.1f} pontos percentuais")
+    st.caption(f"Total divergence index: {divergence:.1f} percentage points")
 
-    # Gauge Velocímetro
+    # Gauge Chart
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=divergence,
-        title={'text': "Índice de Divergência"},
+        title={'text': "Divergence Index"},
         gauge={
             'axis': {'range': [0, 50]},
             'bar': {'color': "darkblue"},
@@ -476,7 +477,8 @@ try:
     st.plotly_chart(fig, use_container_width=True)
 
 except Exception as e:
-    st.warning(f"⚠️ Bloco de Divergência não pôde ser gerado: {e}")
+    st.warning(f"⚠️ Divergence Block could not be generated: {e}")
+
 
 
 
