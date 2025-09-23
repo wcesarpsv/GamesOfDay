@@ -288,13 +288,12 @@ st.dataframe(styled_df, use_container_width=True, height=1000)
 
 
 # ########################################################
-# Bloco 11 – Forecast Híbrido (Estatístico vs ML) – Final
+# Bloco 11 – Forecast Híbrido (Estatístico vs ML)
 # ########################################################
 st.markdown("## 🔮 Forecast Híbrido – Perspective vs ML")
 
 try:
     import numpy as np
-    import plotly.graph_objects as go
 
     # 🔹 Garantir que temos uma data de referência
     if not games_today.empty and "Date" in games_today.columns:
@@ -345,8 +344,8 @@ try:
 
         df_history["Result"] = df_history.apply(get_result, axis=1)
 
-        # Preparar jogos do dia (CSV cru)
-        df_day = pd.read_csv(file_path)
+        # Preparar jogos do dia (usando games_today)
+        df_day = games_today.copy()
         df_day = df_day.loc[:, ~df_day.columns.str.contains('^Unnamed')]
         df_day.columns = df_day.columns.str.strip()
         df_day["Date"] = pd.to_datetime(df_day["Date"], errors="coerce").dt.date
@@ -407,16 +406,6 @@ try:
     else:
         ml_home, ml_draw, ml_away = 0, 0, 0
 
-    # ===== Índice de Divergência =====
-    divergence = abs(ml_home - pct_home) + abs(ml_draw - pct_draw) + abs(ml_away - pct_away)
-
-    if divergence < 10:
-        status_icon, status_text = "🟢", "Alta confiança (ML e histórico alinhados)"
-    elif divergence < 25:
-        status_icon, status_text = "🟡", "Confiança média (alguma divergência)"
-    else:
-        status_icon, status_text = "🔴", "Baixa confiança (ML difere muito do histórico)"
-
     # ===== Mostrar lado a lado =====
     cols = st.columns(2)
     with cols[0]:
@@ -432,17 +421,38 @@ try:
         st.write(f"**Away Wins:** {ml_away:.1f}%")
         st.caption(f"Baseado em {len(games_today)} jogos de hoje")
 
-    # Diferença e Divergência
+except Exception as e:
+    st.warning(f"⚠️ Forecast Híbrido não pôde ser gerado: {e}")
+
+
+# ########################################################
+# Bloco 12 – Índice de Divergência com Gauge
+# ########################################################
+try:
+    import plotly.graph_objects as go
+
+    # ===== Índice de Divergência =====
+    divergence = abs(ml_home - pct_home) + abs(ml_draw - pct_draw) + abs(ml_away - pct_away)
+
+    if divergence < 10:
+        status_icon, status_text = "🟢", "Alta confiança (ML e histórico alinhados)"
+    elif divergence < 25:
+        status_icon, status_text = "🟡", "Confiança média (alguma divergência)"
+    else:
+        status_icon, status_text = "🔴", "Baixa confiança (ML difere muito do histórico)"
+
+    # Diferença estatística
     st.markdown("### 🔍 Diferença Estatística vs ML")
     st.write(f"- Home: {ml_home - pct_home:+.1f} pp")
     st.write(f"- Draw: {ml_draw - pct_draw:+.1f} pp")
     st.write(f"- Away: {ml_away - pct_away:+.1f} pp")
 
+    # Índice global
     st.markdown("### 📈 Índice de Divergência Global")
     st.write(f"{status_icon} {status_text}")
     st.caption(f"Índice total de divergência: {divergence:.1f} pontos percentuais")
 
-    # ===== Gauge Velocímetro =====
+    # Gauge Velocímetro
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=divergence,
@@ -466,7 +476,9 @@ try:
     st.plotly_chart(fig, use_container_width=True)
 
 except Exception as e:
-    st.warning(f"⚠️ Forecast Híbrido não pôde ser gerado: {e}")
+    st.warning(f"⚠️ Bloco de Divergência não pôde ser gerado: {e}")
+
+
 
 
 
