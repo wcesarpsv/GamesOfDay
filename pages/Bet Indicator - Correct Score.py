@@ -204,20 +204,24 @@ df_preds_full = games_today[["Date","Time","League","Home","Away","Odd_H","Odd_D
 for idx, score in enumerate(score_classes):
     df_preds_full[score] = probas_score[:, idx]
 
-# Função de cor (quanto maior probabilidade, mais forte a cor verde)
+# 🔹 Função de cor para probabilidades
 def color_prob(val):
     if pd.isna(val):
         return ""
     return f"background-color: rgba(0,200,0,{val:.2f})"
 
-# Formatando tabela
+# 🔹 Formatação separada: odds (2 decimais), placares (%)
+fmt_dict = {col: "{:.2f}" for col in ["Odd_H","Odd_D","Odd_A"]}
+fmt_dict.update({col: "{:.1%}" for col in score_classes})
+
+# 🔹 Aplicar estilo
 styled_df = (
     df_preds_full.style
-    .format({col: "{:.2f}" for col in ["Odd_H","Odd_D","Odd_A"]})
-    .format({col: "{:.1%}" for col in score_classes})
-    .applymap(color_prob, subset=score_classes)  # aplicar cor nos placares
+    .format(fmt_dict)
+    .applymap(color_prob, subset=score_classes)  # só aplica cores nos placares
 )
 
 st.markdown("### 📌 Predictions for Selected Matches (Exact Score Probabilities)")
 st.dataframe(styled_df, use_container_width=True, height=800)
+
 
