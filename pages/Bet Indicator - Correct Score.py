@@ -192,17 +192,32 @@ st.dataframe(df_stats, use_container_width=True)
 
 
 # ########################################################
-# Bloco 9 – Previsões de Placar
+# Bloco 9 – Previsões de Placar com estilo tabular
 # ########################################################
 probas_score = model_score.predict_proba(X_today_score)
 score_classes = model_score.classes_
 
-st.markdown("### 📌 Predictions for Selected Matches (Top 5 Scores)")
-for i, game in games_today.iterrows():
-    df_preds = pd.DataFrame({
-        "Score": score_classes,
-        "Probability": probas_score[i]
-    }).sort_values(by="Probability", ascending=False)
+# Criar DataFrame com odds + probabilidades por placar
+df_preds_full = games_today[["Date","Time","League","Home","Away","Odd_H","Odd_D","Odd_A"]].copy()
 
-    st.subheader(f"{game['Home']} vs {game['Away']}")
-    st.table(df_preds.head(5).style.format({"Probability": "{:.1%}"}))
+# adicionar uma coluna para cada placar
+for idx, score in enumerate(score_classes):
+    df_preds_full[score] = probas_score[:, idx]
+
+# Função de cor (quanto maior probabilidade, mais forte a cor verde)
+def color_prob(val):
+    if pd.isna(val):
+        return ""
+    return f"background-color: rgba(0,200,0,{val:.2f})"
+
+# Formatando tabela
+styled_df = (
+    df_preds_full.style
+    .format({col: "{:.2f}" for col in ["Odd_H","Odd_D","Odd_A"]})
+    .format({col: "{:.1%}" for col in score_classes})
+    .applymap(color_prob, subset=score_classes)  # aplicar cor nos placares
+)
+
+st.markdown("### 📌 Predictions for Selected Matches (Exact Score Probabilities)")
+st.dataframe(styled_df, use_container_width=True, height=800)
+
