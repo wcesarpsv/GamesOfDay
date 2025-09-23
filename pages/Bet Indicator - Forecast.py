@@ -288,7 +288,7 @@ st.dataframe(styled_df, use_container_width=True, height=1000)
 
 
 # ########################################################
-# Bloco 11 – Forecast Híbrido (Estatístico vs ML) – Alinhado com Página 1
+# Bloco 11 – Forecast Híbrido (Estatístico vs ML) – Final
 # ########################################################
 st.markdown("## 🔮 Forecast Híbrido – Perspective vs ML")
 
@@ -310,18 +310,18 @@ try:
     if all_dfs:
         df_history = pd.concat(all_dfs, ignore_index=True)
 
-        # Remove duplicados
+        # 🧹 Remove duplicados (mesmo critério da página principal)
         df_history = df_history.drop_duplicates(
-            subset=[ "Home", "Away", "Goals_H_FT", "Goals_A_FT"],
+            subset=["League", "Home", "Away", "Goals_H_FT", "Goals_A_FT"],
             keep="first"
         )
 
         # Normalizar Date e excluir o dia atual
-        if "Date" in df_history.columns:
+        if "Date" in df_history.columns and "Date" in games_today.columns:
             df_history["Date"] = pd.to_datetime(df_history["Date"], errors="coerce").dt.date
-            if "Date" in games_today.columns:
-                selected_date = games_today["Date"].iloc[0]
-                df_history = df_history[df_history["Date"] != selected_date]
+            games_today["Date"] = pd.to_datetime(games_today["Date"], errors="coerce").dt.date
+            selected_date = games_today["Date"].iloc[0]
+            df_history = df_history[df_history["Date"] != selected_date]
 
         # Criar Diff_M e bins
         df_history["Diff_M"] = df_history["M_H"] - df_history["M_A"]
@@ -423,6 +423,7 @@ try:
 
 except Exception as e:
     st.warning(f"⚠️ Forecast Híbrido não pôde ser gerado: {e}")
+
 
 
 
