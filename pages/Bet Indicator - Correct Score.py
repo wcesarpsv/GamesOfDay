@@ -131,13 +131,18 @@ ml_model_choice = st.sidebar.selectbox(
 )
 retrain = st.sidebar.checkbox("Retrain model", value=False)
 
-
 # ########################################################
 # Bloco 7 – Treino & Avaliação
 # ########################################################
+from sklearn.preprocessing import LabelEncoder
+
 def train_and_evaluate(X, y, name):
     filename = f"{ml_model_choice.replace(' ', '')}_{name}_score.pkl"
     model = None
+
+    # 🔹 Codificar placares em inteiros (necessário para XGBoost)
+    le = LabelEncoder()
+    y_enc = le.fit_transform(y)
 
     if not retrain:
         model = load_model(filename)
@@ -151,17 +156,18 @@ def train_and_evaluate(X, y, name):
             model = XGBClassifier(
                 n_estimators=500, max_depth=8, learning_rate=0.05,
                 subsample=0.9, colsample_bytree=0.8,
-                eval_metric="mlogloss", use_label_encoder=False, random_state=42
+                eval_metric="mlogloss", random_state=42, use_label_encoder=False
             )
 
         X_train, X_val, y_train, y_val = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
+            X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
         )
         model.fit(X_train, y_train)
-        save_model(model, filename)
+        save_model((model, le), filename)  # 🔹 salvar modelo + encoder
     else:
+        model, le = model  # 🔹 carregar modelo + encoder
         X_train, X_val, y_train, y_val = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
+            X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
         )
 
     preds = model.predict(X_val)
@@ -176,7 +182,8 @@ def train_and_evaluate(X, y, name):
         "LogLoss": f"{ll:.3f}",
     }
 
-    return metrics, model
+    return metrics, (model, le)
+
 
 
 # ########################################################
@@ -194,8 +201,9 @@ st.dataframe(df_stats, use_container_width=True)
 # ########################################################
 # Bloco 9 – Previsões de Placar com estilo tabular
 # ########################################################
-probas_score = model_score.predict_proba(X_today_score)
-score_classes = model_score.classes_
+model, le = model_score
+probas_score = model.predict_proba(X_today_score)
+score_classes = le.inverse_transform(np.arange(probas_score.shape[1]))
 
 # Criar DataFrame com odds + probabilidades por placar
 df_preds_full = games_today[["Date","Time","League","Home","Away","Odd_H","Odd_D","Odd_A"]].copy()
