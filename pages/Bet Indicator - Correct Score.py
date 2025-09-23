@@ -11,8 +11,8 @@ from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, log_loss
 from sklearn.model_selection import train_test_split
 
-st.set_page_config(page_title="Bet Indicator – Exact Score", layout="wide")
-st.title("📊 Bet Indicator – Exact Score (0x0 até 3x3)")
+st.set_page_config(page_title="Bet Indicator – Correct Score", layout="wide")
+st.title("📊 Bet Indicator – Correct Score (0x0 - 3x3)")
 
 # Paths
 GAMES_FOLDER = "GamesDay"
