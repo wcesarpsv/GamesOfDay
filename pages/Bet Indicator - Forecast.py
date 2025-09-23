@@ -294,6 +294,13 @@ st.markdown("## 🔮 Forecast Híbrido – Perspective vs ML")
 
 try:
     import numpy as np
+    import plotly.graph_objects as go
+
+    # 🔹 Garantir que temos uma data de referência
+    if not games_today.empty and "Date" in games_today.columns:
+        selected_date = pd.to_datetime(games_today["Date"], errors="coerce").dt.date.iloc[0]
+    else:
+        selected_date = None
 
     # ===== Forecast Estatístico (Perspective) =====
     all_dfs = []
@@ -307,16 +314,16 @@ try:
             except:
                 continue
 
-    if all_dfs:
+    if all_dfs and selected_date is not None:
         df_history = pd.concat(all_dfs, ignore_index=True)
 
-        # 🧹 Remove duplicados (mesmo critério da página principal)
+        # 🧹 Remove duplicados
         df_history = df_history.drop_duplicates(
             subset=["League", "Home", "Away", "Goals_H_FT", "Goals_A_FT"],
             keep="first"
         )
 
-        # Normalizar Date e excluir o dia selecionado
+        # Normalizar Date e excluir o dia atual
         if "Date" in df_history.columns:
             df_history["Date"] = pd.to_datetime(df_history["Date"], errors="coerce").dt.date
             df_history = df_history[df_history["Date"] != selected_date]
@@ -338,7 +345,7 @@ try:
 
         df_history["Result"] = df_history.apply(get_result, axis=1)
 
-        # Preparar jogos do dia
+        # Preparar jogos do dia (CSV cru)
         df_day = pd.read_csv(file_path)
         df_day = df_day.loc[:, ~df_day.columns.str.contains('^Unnamed')]
         df_day.columns = df_day.columns.str.strip()
@@ -435,8 +442,32 @@ try:
     st.write(f"{status_icon} {status_text}")
     st.caption(f"Índice total de divergência: {divergence:.1f} pontos percentuais")
 
+    # ===== Gauge Velocímetro =====
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=divergence,
+        title={'text': "Índice de Divergência"},
+        gauge={
+            'axis': {'range': [0, 50]},
+            'bar': {'color': "darkblue"},
+            'steps': [
+                {'range': [0, 10], 'color': "lightgreen"},
+                {'range': [10, 25], 'color': "khaki"},
+                {'range': [25, 50], 'color': "lightcoral"}
+            ],
+            'threshold': {
+                'line': {'color': "black", 'width': 4},
+                'thickness': 0.75,
+                'value': divergence
+            }
+        }
+    ))
+
+    st.plotly_chart(fig, use_container_width=True)
+
 except Exception as e:
     st.warning(f"⚠️ Forecast Híbrido não pôde ser gerado: {e}")
+
 
 
 
