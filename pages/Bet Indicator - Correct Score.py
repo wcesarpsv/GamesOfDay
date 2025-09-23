@@ -16,7 +16,7 @@ st.title("📊 Bet Indicator – Correct Score (0x0 - 3x3)")
 
 # Paths
 GAMES_FOLDER = "GamesDay"
-EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "uefa", "nordeste", "afc"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copa", "copas", "uefa", "nordeste", "afc"]
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
