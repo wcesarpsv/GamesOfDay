@@ -253,13 +253,68 @@ def auto_recommendation_dynamic_winrate(row, history,
     return best_rec, best_prob, best_ev, best_n
 
 
-# ---------------- Nova Auto Recommendation ----------------
+ # ---------------- Nova Auto Recommendation ----------------
 def auto_recommendation(row,
                         diff_lo=0.20, diff_hi=0.80,
                         diff_hi_highvar=0.75,
                         power_min=1, power_min_highvar=5):
-    # (aqui vai a função refinada que te mandei na última mensagem)
-    ...
+    band_home = row.get('Home_Band')
+    band_away = row.get('Away_Band')
+    dominant  = row.get('Dominant')
+    diff_m    = row.get('M_Diff')
+    diff_pow  = row.get('Diff_Power')
+    league_cls= row.get('League_Classification', 'Medium Variation')
+    m_a       = row.get('M_A')
+    m_h       = row.get('M_H')
+    odd_d     = row.get('Odd_D')
+
+    # (1) Strong edges
+    if band_home == 'Top 20%' and band_away == 'Bottom 20%':
+        return '🟢 Back Home'
+    if band_home == 'Bottom 20%' and band_away == 'Top 20%':
+        return '🟠 Back Away'
+
+    # (2) Dominant extremes
+    if dominant in ['Both extremes (Home↑ & Away↓)', 'Home strong']:
+        if diff_m is not None and diff_m >= 0.90 and band_away != 'Top 20%':
+            return '🟢 Back Home'
+    if dominant in ['Both extremes (Away↑ & Home↓)', 'Away strong']:
+        if diff_m is not None and diff_m <= -0.90 and band_home != 'Top 20%':
+            return '🟠 Back Away'
+
+    # (3) Both Balanced
+    if (band_home == 'Balanced') and (band_away == 'Balanced') and (diff_m is not None) and (diff_pow is not None):
+        if league_cls == 'High Variation':
+            if (0.45 <= diff_m < diff_hi_highvar) and (diff_pow >= power_min_highvar):
+                return '🟦 1X (Home/Draw)'
+            if (-diff_hi_highvar < diff_m <= -0.45) and (diff_pow <= -power_min_highvar):
+                return '🟪 X2 (Away/Draw)'
+        else:
+            if (diff_lo <= diff_m < diff_hi) and (diff_pow >= power_min):
+                return '🟦 1X (Home/Draw)'
+            if (-diff_hi < diff_m <= -diff_lo) and (diff_pow <= -power_min):
+                return '🟪 X2 (Away/Draw)'
+
+    # (4) Balanced vs Bottom20%
+    if (band_home == 'Balanced') and (band_away == 'Bottom 20%'):
+        return '🟦 1X (Home/Draw)'
+    if (band_away == 'Balanced') and (band_home == 'Bottom 20%'):
+        return '🟪 X2 (Away/Draw)'
+
+    # (5) Top20% vs Balanced
+    if (band_home == 'Top 20%') and (band_away == 'Balanced'):
+        return '🟦 1X (Home/Draw)'
+    if (band_away == 'Top 20%') and (band_home == 'Balanced'):
+        return '🟪 X2 (Away/Draw)'
+
+    # (6) Draw filter
+    if (odd_d is not None and 2.5 <= odd_d <= 6.0) and (diff_pow is not None and -10 <= diff_pow <= 10):
+        if (m_h is not None and 0 <= m_h <= 1) and (m_a is not None and m_a <= 0.5):
+            return '⚪ Back Draw'
+
+    # (7) Fallback
+    return '❌ Avoid'
+
     
 
 def auto_recommendation_hybrid(row, history,
@@ -424,24 +479,12 @@ games_today["ML_Recommendation"] = [
 
 
 
-########################################
-####### Bloco 9 – Exibição Final #######
-########################################
-cols_to_show = [
-    'Date','Time','League','Home','Away',
-    'Auto_Recommendation','Win_Probability',
-    'ML_Recommendation',
-    'ML_Proba_Home','ML_Proba_Draw','ML_Proba_Away'
-]
-
-available_cols = [c for c in cols_to_show if c in games_today.columns]
-
 # Coluna de comparação (igual ou diferente)
 if "Auto_Recommendation" in games_today and "ML_Recommendation" in games_today:
     games_today["Agreement"] = np.where(
         games_today["Auto_Recommendation"] == games_today["ML_Recommendation"],
-        "✅",
-        "⚠️"
+        "🟢 Concordam",
+        "🔴 Divergem"
     )
     if "Agreement" not in available_cols:
         available_cols.insert(6, "Agreement")
@@ -454,9 +497,8 @@ st.dataframe(
         'ML_Proba_Home':'{:.2f}',
         'ML_Proba_Draw':'{:.2f}',
         'ML_Proba_Away':'{:.2f}'
-        
     }),
-    use_container_width=True,
-    height=1200  # 👈 aumenta a altura da tabela
+    use_container_width=True  # altura dinâmica → mostra todos os jogos
 )
+
 
