@@ -166,7 +166,7 @@ def train_and_evaluate(X, y, name):
 
         elif ml_model_choice == "XGBoost Tuned":
             model = XGBClassifier(
-                n_estimators=1000,          # limite alto, mas vai parar antes
+                n_estimators=500,          # limite alto, mas vai parar antes
                 max_depth=6,
                 learning_rate=0.1,
                 subsample=0.9,
