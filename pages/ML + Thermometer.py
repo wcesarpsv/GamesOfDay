@@ -1,6 +1,7 @@
 ########################################
-####### Bloco 1 – Preparação ###########
+####### Bloco 1 – Imports & Config #####
 ########################################
+import streamlit as st
 import pandas as pd
 import numpy as np
 import os
@@ -9,21 +10,36 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
 
-# Carrega histórico
-def load_all_games(folder):
-    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
-    df_list = [pd.read_csv(os.path.join(folder, f)) for f in files]
-    return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
+st.set_page_config(page_title="ML Prototype – With Model Features", layout="wide")
+st.title("🤖 ML Prototype – Using Features from Rules Model")
 
 GAMES_FOLDER = "GamesDay"
-history = load_all_games(GAMES_FOLDER)
-
-# Filtro: só jogos com resultado
-history = history.dropna(subset=['Goals_H_FT','Goals_A_FT'])
-
 
 ########################################
-########## Bloco 2 – Target ############
+####### Bloco 2 – Load Data ############
+########################################
+@st.cache_data
+def load_all_games(folder):
+    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
+    df_list = []
+    for file in files:
+        try:
+            df = pd.read_csv(os.path.join(folder, file))
+            df_list.append(df)
+        except Exception as e:
+            st.error(f"Erro carregando {file}: {e}")
+    return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
+
+history = load_all_games(GAMES_FOLDER)
+
+if history.empty:
+    st.warning("Nenhum histórico encontrado.")
+    st.stop()
+
+history = history.dropna(subset=['Goals_H_FT','Goals_A_FT'])
+
+########################################
+####### Bloco 3 – Target & Features ####
 ########################################
 def map_result(row):
     if row['Goals_H_FT'] > row['Goals_A_FT']:
@@ -34,12 +50,8 @@ def map_result(row):
         return "Draw"
 
 history['Result'] = history.apply(map_result, axis=1)
+history['M_Diff'] = history['M_H'] - history['M_A']
 
-
-########################################
-##### Bloco 3 – Features Modelo ########
-########################################
-# Reuso do que já existe no seu código
 features_raw = [
     'M_H','M_A','Diff_Power','M_Diff',
     'Home_Band','Away_Band',
@@ -48,24 +60,16 @@ features_raw = [
     'EV','Games_Analyzed'
 ]
 
-# Filtra só as colunas disponíveis
 features_raw = [f for f in features_raw if f in history.columns]
-
 X = history[features_raw].copy()
 
 # Bands -> numérico
 BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
-if 'Home_Band' in X:
-    X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
-if 'Away_Band' in X:
-    X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
+if 'Home_Band' in X: X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
+if 'Away_Band' in X: X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
 
-# One-hot para categóricos (Dominant, League_Classification)
-cat_cols = []
-for col in ['Dominant','League_Classification']:
-    if col in X:
-        cat_cols.append(col)
-
+# One-hot Dominant / League_Classification
+cat_cols = [c for c in ['Dominant','League_Classification'] if c in X]
 encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
 if cat_cols:
     encoded = encoder.fit_transform(X[cat_cols])
@@ -75,40 +79,46 @@ if cat_cols:
 
 y = history['Result']
 
-
 ########################################
-######## Bloco 4 – Train/Test ##########
+####### Bloco 4 – Train/Test Split #####
 ########################################
+from sklearn.utils.class_weight import compute_class_weight
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
 
-
 ########################################
-####### Bloco 5 – Treino ML ############
+####### Bloco 5 – Model Training #######
 ########################################
+from sklearn.ensemble import RandomForestClassifier
 model = RandomForestClassifier(
     n_estimators=300,
     max_depth=15,
-    class_weight="balanced",   # evita bias pró-Home
+    class_weight="balanced",
     random_state=42,
     n_jobs=-1
 )
-
 model.fit(X_train, y_train)
 
 y_pred = model.predict(X_test)
 y_proba = model.predict_proba(X_test)
 
-
 ########################################
-####### Bloco 6 – Métricas #############
+####### Bloco 6 – Metrics Output #######
 ########################################
 acc = accuracy_score(y_test, y_pred)
 ll  = log_loss(y_test, y_proba)
 br  = brier_score_loss(pd.get_dummies(y_test).values.ravel(), y_proba.ravel())
 
-print("=== Modelo Aprendendo das Features do Código ===")
-print(f"Accuracy: {acc:.3f}")
-print(f"Log Loss: {ll:.3f}")
-print(f"Brier Score: {br:.3f}")
+st.subheader("📊 Model Performance (using your features)")
+col1, col2, col3 = st.columns(3)
+col1.metric("Accuracy", f"{acc:.3f}")
+col2.metric("Log Loss", f"{ll:.3f}")
+col3.metric("Brier Score", f"{br:.3f}")
+
+########################################
+####### Bloco 7 – Feature Importance ###
+########################################
+importances = pd.Series(model.feature_importances_, index=X.columns).sort_values(ascending=False)
+st.subheader("🔥 Top Feature Importances")
+st.dataframe(importances.head(20))
