@@ -131,9 +131,6 @@ ml_model_choice = st.sidebar.selectbox(
 )
 retrain = st.sidebar.checkbox("Retrain model", value=False)
 
-# ########################################################
-# Bloco 7 – Treino & Avaliação
-# ########################################################
 from sklearn.preprocessing import LabelEncoder
 
 def train_and_evaluate(X, y, name):
@@ -141,47 +138,67 @@ def train_and_evaluate(X, y, name):
     filename = f"{ml_model_choice.replace(' ', '').replace('-', '')}_{name}CC.pkl"
     model = None
 
-    # 🔹 LabelEncoder para todos (assim padronizamos)
+    # 🔹 LabelEncoder para padronizar classes
     le = LabelEncoder()
     y_enc = le.fit_transform(y)
 
+    # Se não for para re-treinar, tenta carregar o modelo já salvo
     if not retrain:
-        model = load_model(filename)
+        model = load_model_local(filename)
 
     if model is None:
         if ml_model_choice == "Random Forest":
             model = RandomForestClassifier(
                 n_estimators=400, random_state=42, class_weight="balanced_subsample"
             )
+            # treino normal
+            X_train, X_val, y_train, y_val = train_test_split(
+                X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
+            )
+            model.fit(X_train, y_train)
+
         elif ml_model_choice == "XGBoost Tuned":
             model = XGBClassifier(
-                tree_method="hist",
-                n_estimators=300, max_depth=6, learning_rate=0.05,
-                subsample=0.9, colsample_bytree=0.8,
-                eval_metric="mlogloss", random_state=42, use_label_encoder=False
+                n_estimators=1000,              # alto limite, mas vamos parar antes
+                max_depth=6,
+                learning_rate=0.1,
+                subsample=0.9,
+                colsample_bytree=0.8,
+                tree_method="hist",             # muito mais rápido
+                eval_metric="mlogloss",
+                random_state=42,
+                use_label_encoder=False
             )
 
-        # 🔹 Treino
-        X_train, X_val, y_train, y_val = train_test_split(
-            X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
-        )
-        model.fit(X_train, y_train)
+            # 🔹 split para validação
+            X_train, X_val, y_train, y_val = train_test_split(
+                X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
+            )
+
+            # 🔹 treino com early stopping
+            model.fit(
+                X_train, y_train,
+                eval_set=[(X_val, y_val)],
+                early_stopping_rounds=30,   # para se não melhorar
+                verbose=False
+            )
 
         # 🔹 Sempre salvar como tuple (model, le)
-        save_model((model, le), filename)
+        save_model_local((model, le), filename)
+
     else:
         try:
-            model, le = model  # 🔹 garantir tuple
+            model, le = model  # garantir tuple
         except:
-            # caso antigo sem encoder
             model = model
             le = LabelEncoder().fit(y)
 
-        # 🔹 Re-divisão dos dados para métrica de validação
+        # re-divisão para validação
         X_train, X_val, y_train, y_val = train_test_split(
             X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
         )
 
+    # 🔹 Avaliação
     preds = model.predict(X_val)
     probs = model.predict_proba(X_val)
 
@@ -195,6 +212,7 @@ def train_and_evaluate(X, y, name):
     }
 
     return metrics, (model, le)
+
 
 
 
