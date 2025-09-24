@@ -166,12 +166,12 @@ def train_and_evaluate(X, y, name):
 
         elif ml_model_choice == "XGBoost Tuned":
             model = XGBClassifier(
-                n_estimators=500,          # limite alto, mas vai parar antes
+                n_estimators=300,          # reduzido para ser mais rápido
                 max_depth=6,
                 learning_rate=0.1,
                 subsample=0.9,
                 colsample_bytree=0.8,
-                tree_method="hist",         # muito mais rápido
+                tree_method="hist",
                 eval_metric="mlogloss",
                 random_state=42,
                 use_label_encoder=False
@@ -182,21 +182,8 @@ def train_and_evaluate(X, y, name):
                 X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
             )
 
-            # 🔹 treino com fallback para versões antigas
-            try:
-                model.fit(
-                    X_train, y_train,
-                    eval_set=[(X_val, y_val)],
-                    eval_metric="mlogloss",
-                    early_stopping_rounds=30
-                )
-            except TypeError:
-                # fallback se a versão não suportar early_stopping_rounds
-                model.fit(
-                    X_train, y_train,
-                    eval_set=[(X_val, y_val)],
-                    eval_metric="mlogloss"
-                )
+            # treino normal (sem early stopping)
+            model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
 
         # 🔹 Sempre salvar como tuple (model, le)
         save_model((model, le), filename)
@@ -225,10 +212,6 @@ def train_and_evaluate(X, y, name):
         "Accuracy": f"{acc:.3f}",
         "LogLoss": f"{ll:.3f}",
     }
-
-    # Se for XGBoost, mostrar a melhor iteração usada (se existir)
-    if ml_model_choice == "XGBoost Tuned" and hasattr(model, "best_iteration"):
-        metrics["Best Iteration"] = model.best_iteration
 
     return metrics, (model, le)
 
