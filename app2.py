@@ -1,294 +1,480 @@
-import pandas as pd
+# ########################################################
+# Bloco 1 – Imports & Config
+# ########################################################
 import streamlit as st
-from datetime import datetime
+import pandas as pd
+import numpy as np
 import os
-import re
+import joblib
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
+from sklearn.model_selection import train_test_split
 
-# ########################################################
-# Bloco 1 – Configuração Inicial
-# ########################################################
-DATA_FOLDER = "GamesDay"
+st.set_page_config(page_title="Bet Indicator – Triple View", layout="wide")
+st.title("📊 Bet Indicator – Triple View (1X2 + OU + BTTS)")
 
-st.set_page_config(page_title="Data-Driven Football Insights", layout="wide")
-st.title("🔮 Data-Driven Football Insights")
-
+# Paths
+GAMES_FOLDER = "GamesDay"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copa", "copas", "uefa", "nordeste", "afc"]
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
+os.makedirs(MODELS_FOLDER, exist_ok=True)
 
 
 # ########################################################
 # Bloco 2 – Funções auxiliares
 # ########################################################
-def get_available_dates(folder):
-    pattern = re.compile(r'jogosdodia_(\d{4}-\d{2}-\d{2})\.csv', re.IGNORECASE)
-    dates = []
-    for filename in os.listdir(folder):
-        match = pattern.search(filename)
-        if match:
-            try:
-                dates.append(datetime.strptime(match.group(1), '%Y-%m-%d').date())
-            except:
-                continue
-    return sorted(dates)
+def load_all_games(folder):
+    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
+    if not files:
+        return pd.DataFrame()
+    return pd.concat([pd.read_csv(os.path.join(folder, f)) for f in files], ignore_index=True)
 
+def load_selected_csvs(folder):
+    files = sorted([f for f in os.listdir(folder) if f.endswith(".csv")])
+    if not files:
+        return pd.DataFrame()
+    
+    today_file = files[-1]
+    yesterday_file = files[-2] if len(files) >= 2 else None
 
-def arrow_trend(val, mean, threshold=0.4):
-    try:
-        v = float(val)
-    except:
-        return val
+    st.markdown("### 📂 Select matches to display")
+    col1, col2 = st.columns(2)
+    today_checked = col1.checkbox("Today Matches", value=True)
+    yesterday_checked = col2.checkbox("Yesterday Matches", value=False)
 
-    if v > mean + threshold:
-        return f"🔵 {v:.2f}"
-    elif v < mean - threshold:
-        return f"🔴 {v:.2f}"
-    else:
-        return f"🟠 {v:.2f}"
+    selected_dfs = []
+    if today_checked:
+        selected_dfs.append(pd.read_csv(os.path.join(folder, today_file)))
+    if yesterday_checked and yesterday_file:
+        selected_dfs.append(pd.read_csv(os.path.join(folder, yesterday_file)))
+
+    if not selected_dfs:
+        return pd.DataFrame()
+    return pd.concat(selected_dfs, ignore_index=True)
+
+def filter_leagues(df):
+    if df.empty or "League" not in df.columns:
+        return df
+    pattern = "|".join(EXCLUDED_LEAGUE_KEYWORDS)
+    return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
+
+def save_model(model, filename):
+    path = os.path.join(MODELS_FOLDER, filename)
+    with open(path, "wb") as f:
+        joblib.dump(model, f)
+
+def load_model(filename):
+    path = os.path.join(MODELS_FOLDER, filename)
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            return joblib.load(f)
+    return None
 
 
 # ########################################################
-# Bloco 3 – Seleção de Data e Arquivo
+# Bloco 3 – Carregar Dados
 # ########################################################
-available_dates = get_available_dates(DATA_FOLDER)
-if not available_dates:
-    st.error("❌ No CSV files found in the game data folder.")
+st.info("📂 Loading data...")
+
+history = filter_leagues(load_all_games(GAMES_FOLDER))
+history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT"]).copy()
+
+if history.empty:
+    st.error("⚠️ No valid historical data found in GamesDay.")
     st.stop()
 
-latest_date = available_dates[-1]
+games_today = filter_leagues(load_selected_csvs(GAMES_FOLDER))
+if "Goals_H_FT" in games_today.columns:
+    games_today = games_today[games_today["Goals_H_FT"].isna()].copy()
 
-if "last_seen_date" not in st.session_state:
-    st.session_state.last_seen_date = latest_date
+if games_today.empty:
+    st.error("⚠️ No valid matches selected.")
+    st.stop()
 
-if latest_date and latest_date != st.session_state.last_seen_date:
-    st.cache_data.clear()
-    st.session_state.last_seen_date = latest_date
-    st.rerun()
 
-show_all = st.checkbox("🔓 Show all available dates", value=False)
-dates_to_display = available_dates if show_all else available_dates[-7:]
-default_index = dates_to_display.index(latest_date) if latest_date in dates_to_display else len(dates_to_display) - 1
+# ########################################################
+# Bloco 4 – Targets
+# ########################################################
+history["Target"] = history.apply(
+    lambda row: 0 if row["Goals_H_FT"] > row["Goals_A_FT"]
+    else (1 if row["Goals_H_FT"] == row["Goals_A_FT"] else 2),
+    axis=1,
+)
+history["Target_OU25"] = (history["Goals_H_FT"] + history["Goals_A_FT"] > 2.5).astype(int)
+history["Target_BTTS"] = ((history["Goals_H_FT"] > 0) & (history["Goals_A_FT"] > 0)).astype(int)
 
-selected_date = st.selectbox(
-    "📅 Select a date:",
-    dates_to_display,
-    index=default_index
+
+# ########################################################
+# Bloco 5 – Features & One-Hot Leagues
+# ########################################################
+history["Diff_M"] = history["M_H"] - history["M_A"]
+games_today["Diff_M"] = games_today["M_H"] - games_today["M_A"]
+
+features_1x2 = ["Odd_H", "Odd_D", "Odd_A", "Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "M_HT_H", "M_HT_A"]
+features_ou_btts = ["Odd_H", "Odd_D", "Odd_A", "Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "OU_Total"]
+
+history_leagues = pd.get_dummies(history["League"], prefix="League")
+games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
+games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
+
+X_1x2 = pd.concat([history[features_1x2], history_leagues], axis=1)
+X_ou = pd.concat([history[features_ou_btts], history_leagues], axis=1)
+X_btts = pd.concat([history[features_ou_btts], history_leagues], axis=1)
+
+X_today_1x2 = pd.concat([games_today[features_1x2], games_today_leagues], axis=1)
+X_today_ou = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
+X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
+
+
+# ########################################################
+# Bloco 6 – Configurações ML (Sidebar)
+# ########################################################
+st.sidebar.header("⚙️ Settings")
+ml_model_choice = st.sidebar.selectbox(
+    "Choose ML Model", 
+    ["Random Forest", "Random Forest Tuned", "XGBoost Tuned"]
+)
+retrain = st.sidebar.checkbox("Retrain models", value=False)
+
+st.sidebar.markdown("""
+**ℹ️ Usage recommendations:**
+- 🔹 *Random Forest*: simple and fast baseline.  
+- 🔹 *Random Forest Tuned*: suitable for market **1X2**.  
+- 🔹 *XGBoost Tuned*: suitable for markets **Over/Under 2.5** e **BTTS**.  
+""")
+
+
+# ########################################################
+# Bloco 7 – Treino & Avaliação
+# ########################################################
+def train_and_evaluate(X, y, name, num_classes):
+    filename = f"{ml_model_choice.replace(' ', '')}_{name}_fc.pkl"
+    model = None
+
+    if not retrain:
+        model = load_model(filename)
+
+    if model is None:
+        if ml_model_choice == "Random Forest":
+            model = RandomForestClassifier(n_estimators=300, random_state=42, class_weight="balanced_subsample")
+
+        elif ml_model_choice == "Random Forest Tuned":
+            rf_params = {
+                "1X2": {'n_estimators': 600, 'max_depth': 14, 'min_samples_split': 10,
+                        'min_samples_leaf': 1, 'max_features': 'sqrt'},
+                "OverUnder25": {'n_estimators': 600, 'max_depth': 5, 'min_samples_split': 9,
+                                'min_samples_leaf': 3, 'max_features': 'sqrt'},
+                "BTTS": {'n_estimators': 400, 'max_depth': 18, 'min_samples_split': 4,
+                         'min_samples_leaf': 5, 'max_features': 'sqrt'},
+            }
+            model = RandomForestClassifier(random_state=42, class_weight="balanced_subsample", **rf_params[name])
+
+        elif ml_model_choice == "XGBoost Tuned":
+            xgb_params = {
+                "1X2": {'n_estimators': 219, 'max_depth': 9, 'learning_rate': 0.05,
+                        'subsample': 0.9, 'colsample_bytree': 0.8,
+                        'eval_metric': 'mlogloss', 'use_label_encoder': False},
+                "OverUnder25": {'n_estimators': 488, 'max_depth': 10, 'learning_rate': 0.03,
+                                'subsample': 0.9, 'colsample_bytree': 0.7,
+                                'eval_metric': 'logloss', 'use_label_encoder': False},
+                "BTTS": {'n_estimators': 695, 'max_depth': 6, 'learning_rate': 0.04,
+                         'subsample': 0.8, 'colsample_bytree': 0.8,
+                         'eval_metric': 'logloss', 'use_label_encoder': False},
+            }
+            model = XGBClassifier(random_state=42, **xgb_params[name])
+
+        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+        model.fit(X_train, y_train)
+        save_model(model, filename)
+    else:
+        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+    preds = model.predict(X_val)
+    probs = model.predict_proba(X_val)
+
+    acc = accuracy_score(y_val, preds)
+    ll = log_loss(y_val, probs)
+
+    if num_classes == 2:
+        bs = brier_score_loss(y_val, probs[:, 1])
+        bs = f"{bs:.3f}"
+    else:
+        y_onehot = pd.get_dummies(y_val).values
+        bs_raw = np.mean(np.sum((probs - y_onehot) ** 2, axis=1))
+        bs = f"{bs_raw:.3f} (multi)"
+
+    metrics = {
+        "Model": f"{ml_model_choice} - {name}",
+        "Accuracy": f"{acc:.3f}",
+        "LogLoss": f"{ll:.3f}",
+        "Brier": bs,
+    }
+
+    return metrics, model
+
+
+# ########################################################
+# Bloco 8 – Treinar Modelos
+# ########################################################
+stats = []
+res, model_multi = train_and_evaluate(X_1x2, history["Target"], "1X2", 3)
+stats.append(res)
+res, model_ou = train_and_evaluate(X_ou, history["Target_OU25"], "OverUnder25", 2)
+stats.append(res)
+res, model_btts = train_and_evaluate(X_btts, history["Target_BTTS"], "BTTS", 2)
+stats.append(res)
+
+df_stats = pd.DataFrame(stats)
+st.markdown("### 📊 Model Statistics (Validation)")
+st.dataframe(df_stats, use_container_width=True)
+
+
+# ########################################################
+# Bloco 9 – Previsões
+# ########################################################
+games_today["p_home"], games_today["p_draw"], games_today["p_away"] = model_multi.predict_proba(X_today_1x2).T
+games_today["p_over25"], games_today["p_under25"] = model_ou.predict_proba(X_today_ou).T
+games_today["p_btts_yes"], games_today["p_btts_no"] = model_btts.predict_proba(X_today_btts).T
+
+
+# ########################################################
+# Bloco 10 – Styling e Display
+# ########################################################
+def color_prob(val, color):
+    alpha = int(val * 255)
+    return f"background-color: rgba({color}, {alpha/255:.2f})"
+
+def style_probs(val, col):
+    if col == "p_home": return color_prob(val, "0,200,0")
+    elif col == "p_draw": return color_prob(val, "150,150,150")
+    elif col == "p_away": return color_prob(val, "255,140,0")
+    elif col == "p_over25": return color_prob(val, "0,100,255")
+    elif col == "p_under25": return color_prob(val, "128,0,128")
+    elif col == "p_btts_yes": return color_prob(val, "0,200,200")
+    elif col == "p_btts_no": return color_prob(val, "200,0,0")
+    return ""
+
+cols_final = [
+    "Date","Time","League","Home","Away",
+    "Odd_H","Odd_D","Odd_A",
+    "p_home","p_draw","p_away",
+    "p_over25","p_under25",
+    "p_btts_yes","p_btts_no"
+]
+
+styled_df = (
+    games_today[cols_final]
+    .style.format({
+        "Odd_H": "{:.2f}","Odd_D": "{:.2f}","Odd_A": "{:.2f}",
+        "p_home": "{:.1%}","p_draw": "{:.1%}","p_away": "{:.1%}",
+        "p_over25": "{:.1%}","p_under25": "{:.1%}",
+        "p_btts_yes": "{:.1%}","p_btts_no": "{:.1%}",
+    }, na_rep="—")
+    .applymap(lambda v: style_probs(v, "p_home"), subset=["p_home"])
+    .applymap(lambda v: style_probs(v, "p_draw"), subset=["p_draw"])
+    .applymap(lambda v: style_probs(v, "p_away"), subset=["p_away"])
+    .applymap(lambda v: style_probs(v, "p_over25"), subset=["p_over25"])
+    .applymap(lambda v: style_probs(v, "p_under25"), subset=["p_under25"])
+    .applymap(lambda v: style_probs(v, "p_btts_yes"), subset=["p_btts_yes"])
+    .applymap(lambda v: style_probs(v, "p_btts_no"), subset=["p_btts_no"])
 )
 
-filename = f'Jogosdodia_{selected_date}.csv'
-file_path = os.path.join(DATA_FOLDER, filename)
+st.markdown("### 📌 Predictions for Selected Matches")
+st.dataframe(styled_df, use_container_width=True, height=1000)
+
 
 
 # ########################################################
-# Bloco 4 – Perspective for the Day (Segmented by Diff_Power, Diff_M, Diff_HT_P)
+# Block 11 – Hybrid Forecast (Historical vs ML)
 # ########################################################
-import numpy as np
+st.markdown("## 🔮 Hybrid Forecast – Perspective vs ML")
 
 try:
+    import numpy as np
+
+    # 🔹 Ensure we have a reference date
+    if not games_today.empty and "Date" in games_today.columns:
+        selected_date = pd.to_datetime(games_today["Date"], errors="coerce").dt.date.iloc[0]
+    else:
+        selected_date = None
+
+    # ===== Historical Perspective =====
     all_dfs = []
-    for f in os.listdir(DATA_FOLDER):
+    for f in os.listdir(GAMES_FOLDER):
         if f.lower().endswith(".csv"):
             try:
-                df_tmp = pd.read_csv(os.path.join(DATA_FOLDER, f))
+                df_tmp = pd.read_csv(os.path.join(GAMES_FOLDER, f))
                 df_tmp = df_tmp.loc[:, ~df_tmp.columns.str.contains('^Unnamed')]
                 df_tmp.columns = df_tmp.columns.str.strip()
                 all_dfs.append(df_tmp)
             except:
                 continue
 
-    if all_dfs:
+    if all_dfs and selected_date is not None:
         df_history = pd.concat(all_dfs, ignore_index=True)
 
         # 🧹 Remove duplicates
         df_history = df_history.drop_duplicates(
-            subset=["League", "Home", "Away","Goals_H_FT","Goals_A_FT"],
+            subset=["League", "Home", "Away", "Goals_H_FT", "Goals_A_FT"],
             keep="first"
         )
 
-        # Garantir coluna Date e excluir jogos do dia selecionado
+        # Normalize dates and exclude today's matches
         if "Date" in df_history.columns:
             df_history["Date"] = pd.to_datetime(df_history["Date"], errors="coerce").dt.date
             df_history = df_history[df_history["Date"] != selected_date]
 
-        # Precisamos dessas colunas no histórico
-        needed_cols = ["Diff_Power", "M_H", "M_A", "Diff_HT_P", "Goals_H_FT", "Goals_A_FT"]
-        if all(col in df_history.columns for col in needed_cols):
+        # Create Diff_M and bins
+        df_history["Diff_M"] = df_history["M_H"] - df_history["M_A"]
+        df_history["DiffPower_bin"] = pd.cut(df_history["Diff_Power"], bins=range(-50, 55, 10))
+        df_history["DiffM_bin"] = pd.cut(df_history["Diff_M"], bins=np.arange(-10, 10.5, 1.0))
+        df_history["DiffHTP_bin"] = pd.cut(df_history["Diff_HT_P"], bins=range(-30, 35, 5))
 
-            # Criar coluna Diff_M (diferença de força ofensiva)
-            df_history["Diff_M"] = df_history["M_H"] - df_history["M_A"]
-
-            # Criar bins para as 3 métricas
-            df_history["DiffPower_bin"] = pd.cut(df_history["Diff_Power"], bins=range(-50, 55, 10))
-            df_history["DiffM_bin"] = pd.cut(df_history["Diff_M"], bins=np.arange(-10, 10.5, 1.0))
-            df_history["DiffHTP_bin"] = pd.cut(df_history["Diff_HT_P"], bins=range(-30, 35, 5))
-
-            # Resultado real
-            def get_result(row):
-                if row["Goals_H_FT"] > row["Goals_A_FT"]:
-                    return "Home"
-                elif row["Goals_H_FT"] < row["Goals_A_FT"]:
-                    return "Away"
-                else:
-                    return "Draw"
-
-            df_history["Result"] = df_history.apply(get_result, axis=1)
-
-            # 🔹 Carregar jogos do dia diretamente
-            df_day = pd.read_csv(file_path)
-            df_day = df_day.loc[:, ~df_day.columns.str.contains('^Unnamed')]
-            df_day.columns = df_day.columns.str.strip()
-            if "Date" in df_day.columns:
-                df_day["Date"] = pd.to_datetime(df_day["Date"], errors="coerce").dt.date
-                df_day = df_day[df_day["Date"] == selected_date]
-
-            # Criar coluna Diff_M no df_day
-            df_day["Diff_M"] = df_day["M_H"] - df_day["M_A"]
-            df_day = df_day.dropna(subset=["Diff_Power", "Diff_M", "Diff_HT_P"])
-
-            total_matches = 0
-            home_wins, away_wins, draws = 0, 0, 0
-
-            # Intervalos dos bins
-            dp_bins = pd.IntervalIndex(df_history["DiffPower_bin"].cat.categories)
-            dm_bins = pd.IntervalIndex(df_history["DiffM_bin"].cat.categories)
-            dhtp_bins = pd.IntervalIndex(df_history["DiffHTP_bin"].cat.categories)
-
-            for _, game in df_day.iterrows():
-                try:
-                    # Garantir que os valores do jogo estão dentro dos bins
-                    if (
-                        dp_bins.contains(game["Diff_Power"]).any() and
-                        dm_bins.contains(game["Diff_M"]).any() and
-                        dhtp_bins.contains(game["Diff_HT_P"]).any()
-                    ):
-                        dp_bin = dp_bins.get_loc(game["Diff_Power"])
-                        dm_bin = dm_bins.get_loc(game["Diff_M"])
-                        dhtp_bin = dhtp_bins.get_loc(game["Diff_HT_P"])
-                    else:
-                        continue  # pula jogo fora dos ranges
-
-                    # Filtrar histórico com base nos 3 bins
-                    subset = df_history[
-                        (df_history["DiffPower_bin"] == dp_bins[dp_bin]) &
-                        (df_history["DiffM_bin"] == dm_bins[dm_bin]) &
-                        (df_history["DiffHTP_bin"] == dhtp_bins[dhtp_bin])
-                    ]
-
-                    if not subset.empty:
-                        total_matches += len(subset)
-                        home_wins += (subset["Result"] == "Home").sum()
-                        away_wins += (subset["Result"] == "Away").sum()
-                        draws += (subset["Result"] == "Draw").sum()
-                except Exception:
-                    continue  # segurança extra
-
-            # Exibir resultados
-            if total_matches > 0:
-                pct_home = 100 * home_wins / total_matches
-                pct_away = 100 * away_wins / total_matches
-                pct_draw = 100 * draws / total_matches
-
-                st.markdown("## ===== Perspective for the Day =====")
-                st.write("*(Based on historical matches with similar Diff_Power, Diff_M, Diff_HT_P)*")
-                st.write(f"**Home Wins:** {pct_home:.1f}%")
-                st.write(f"**Draws:** {pct_draw:.1f}%")
-                st.write(f"**Away Wins:** {pct_away:.1f}%")
-                st.write(f"*Based on {total_matches:,} similar matches in history (excluding {selected_date})*")
+        # Real match outcome
+        def get_result(row):
+            if row["Goals_H_FT"] > row["Goals_A_FT"]:
+                return "Home"
+            elif row["Goals_H_FT"] < row["Goals_A_FT"]:
+                return "Away"
             else:
-                st.info("No similar historical matches found for today's games.")
+                return "Draw"
+
+        df_history["Result"] = df_history.apply(get_result, axis=1)
+
+        # Prepare today's matches (using games_today)
+        df_day = games_today.copy()
+        df_day = df_day.loc[:, ~df_day.columns.str.contains('^Unnamed')]
+        df_day.columns = df_day.columns.str.strip()
+        df_day["Date"] = pd.to_datetime(df_day["Date"], errors="coerce").dt.date
+        df_day = df_day[df_day["Date"] == selected_date]
+        df_day["Diff_M"] = df_day["M_H"] - df_day["M_A"]
+        df_day = df_day.dropna(subset=["Diff_Power", "Diff_M", "Diff_HT_P"])
+
+        # Bin intervals
+        dp_bins = pd.IntervalIndex(df_history["DiffPower_bin"].cat.categories)
+        dm_bins = pd.IntervalIndex(df_history["DiffM_bin"].cat.categories)
+        dhtp_bins = pd.IntervalIndex(df_history["DiffHTP_bin"].cat.categories)
+
+        # Counters
+        total_matches, home_wins, away_wins, draws = 0, 0, 0, 0
+
+        for _, game in df_day.iterrows():
+            try:
+                if (
+                    dp_bins.contains(game["Diff_Power"]).any() and
+                    dm_bins.contains(game["Diff_M"]).any() and
+                    dhtp_bins.contains(game["Diff_HT_P"]).any()
+                ):
+                    dp_bin = dp_bins.get_loc(game["Diff_Power"])
+                    dm_bin = dm_bins.get_loc(game["Diff_M"])
+                    dhtp_bin = dhtp_bins.get_loc(game["Diff_HT_P"])
+                else:
+                    continue
+
+                subset = df_history[
+                    (df_history["DiffPower_bin"] == dp_bins[dp_bin]) &
+                    (df_history["DiffM_bin"] == dm_bins[dm_bin]) &
+                    (df_history["DiffHTP_bin"] == dhtp_bins[dhtp_bin])
+                ]
+
+                if not subset.empty:
+                    total_matches += len(subset)
+                    home_wins += (subset["Result"] == "Home").sum()
+                    away_wins += (subset["Result"] == "Away").sum()
+                    draws += (subset["Result"] == "Draw").sum()
+            except:
+                continue
+
+        if total_matches > 0:
+            pct_home = 100 * home_wins / total_matches
+            pct_away = 100 * away_wins / total_matches
+            pct_draw = 100 * draws / total_matches
+        else:
+            pct_home, pct_away, pct_draw = 0, 0, 0
+
+    # ===== ML Forecast =====
+    if not games_today.empty:
+        ml_probs = model_multi.predict_proba(X_today_1x2)
+        df_preds = pd.DataFrame(ml_probs, columns=["p_home", "p_draw", "p_away"])
+
+        ml_home = df_preds["p_home"].mean() * 100
+        ml_draw = df_preds["p_draw"].mean() * 100
+        ml_away = df_preds["p_away"].mean() * 100
+    else:
+        ml_home, ml_draw, ml_away = 0, 0, 0
+
+    # ===== Side by side display =====
+    cols = st.columns(2)
+    with cols[0]:
+        st.markdown("### 📊 Historical Perspective")
+        st.write(f"**Home Wins:** {pct_home:.1f}%")
+        st.write(f"**Draws:** {pct_draw:.1f}%")
+        st.write(f"**Away Wins:** {pct_away:.1f}%")
+        st.caption(f"Based on {total_matches:,} similar historical matches (excluding today)")
+    with cols[1]:
+        st.markdown("### 🤖 ML Forecast (Trained Model)")
+        st.write(f"**Home Wins:** {ml_home:.1f}%")
+        st.write(f"**Draws:** {ml_draw:.1f}%")
+        st.write(f"**Away Wins:** {ml_away:.1f}%")
+        st.caption(f"Based on {len(games_today)} matches today")
 
 except Exception as e:
-    st.warning(f"⚠️ Could not build segmented perspective: {e}")
+    st.warning(f"⚠️ Hybrid Forecast could not be generated: {e}")
 
 
 
 # ########################################################
-# Bloco 5 – Carregar e Filtrar Jogo do Dia
+# Block 12 – Divergence Index with Gauge
 # ########################################################
 try:
-    df = pd.read_csv(file_path)
-    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
-    df.columns = df.columns.str.strip()
-    df = df.dropna(axis=1, how='all')
+    import plotly.graph_objects as go
 
-    if "Date" in df.columns:
-        if not pd.api.types.is_datetime64_any_dtype(df["Date"]):
-            df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-        df["Date"] = df["Date"].dt.date
+    # ===== Divergence Index =====
+    divergence = abs(ml_home - pct_home) + abs(ml_draw - pct_draw) + abs(ml_away - pct_away)
+
+    if divergence < 10:
+        status_icon, status_text = "🟢", "High confidence (ML aligned with historical)"
+    elif divergence < 25:
+        status_icon, status_text = "🟡", "Medium confidence (some divergence)"
     else:
-        st.error("❌ File does not contain 'Date' column.")
-        st.stop()
+        status_icon, status_text = "🔴", "Low confidence (ML diverges strongly from historical)"
 
-    df_filtered = df[df["Date"] == selected_date]
+    # Detailed differences
+    st.markdown("### 🔍 Difference: Historical vs ML")
+    st.write(f"- Home: {ml_home - pct_home:+.1f} pp")
+    st.write(f"- Draw: {ml_draw - pct_draw:+.1f} pp")
+    st.write(f"- Away: {ml_away - pct_away:+.1f} pp")
 
-    if "League" in df_filtered.columns:
-        df_filtered["League"] = df_filtered["League"].astype(str).str.strip()
-        if EXCLUDED_LEAGUE_KEYWORDS:
-            pattern = "|".join(map(re.escape, EXCLUDED_LEAGUE_KEYWORDS))
-            df_filtered = df_filtered[~df_filtered["League"].str.contains(pattern, case=False, na=False)]
+    # Global index
+    st.markdown("### 📈 Global Divergence Index")
+    st.write(f"{status_icon} {status_text}")
+    st.caption(f"Total divergence index: {divergence:.1f} percentage points")
 
-    selected_columns = [
-        "Date", "Time", "League", "Home", "Away",
-        "Diff_HT_P", "Diff_Power", "OU_Total",
-        "M_HT_H", "M_HT_A", "M_H", "M_A",
-        "Odd_H", "Odd_D", "Odd_A"
-    ]
-    existing_columns = [c for c in selected_columns if c in df_filtered.columns]
-    df_display = df_filtered[existing_columns].copy()
-    df_display.index = range(len(df_display))
+    # Gauge Chart
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=divergence,
+        title={'text': "Divergence Index"},
+        gauge={
+            'axis': {'range': [0, 50]},
+            'bar': {'color': "darkblue"},
+            'steps': [
+                {'range': [0, 10], 'color': "lightgreen"},
+                {'range': [10, 25], 'color': "khaki"},
+                {'range': [25, 50], 'color': "lightcoral"}
+            ],
+            'threshold': {
+                'line': {'color': "black", 'width': 4},
+                'thickness': 0.75,
+                'value': divergence
+            }
+        }
+    ))
 
-    st.markdown(f"""
-### 📊 Matchday Summary – *{selected_date.strftime('%Y-%m-%d')}*
+    st.plotly_chart(fig, use_container_width=True)
 
-- **Total matches:** {len(df_filtered)}
-- **Total leagues:** {df_filtered['League'].nunique() if 'League' in df_filtered.columns else '—'}
-
----
-""")
-
-    if df_display.empty:
-        st.warning("⚠️ No matches found for the selected date after applying the filters.")
-    else:
-        mean_cols = {col: df_display[col].mean() for col in ["M_HT_H", "M_HT_A", "M_H", "M_A"] if col in df_display.columns}
-
-        styled = (
-            df_display.style
-            .format({
-                "Odd_H": "{:.2f}" if "Odd_H" in df_display.columns else None,
-                "Odd_D": "{:.2f}" if "Odd_D" in df_display.columns else None,
-                "Odd_A": "{:.2f}" if "Odd_A" in df_display.columns else None,
-                "Diff_HT_P": "{:.2f}" if "Diff_HT_P" in df_display.columns else None,
-                "Diff_Power": "{:.2f}" if "Diff_Power" in df_display.columns else None,
-                "OU_Total": (lambda x: f"{x:.2f}") if "OU_Total" in df_display.columns else None,
-                "M_HT_H": (lambda x: arrow_trend(x, mean_cols["M_HT_H"])) if "M_HT_H" in mean_cols else None,
-                "M_HT_A": (lambda x: arrow_trend(x, mean_cols["M_HT_A"])) if "M_HT_A" in mean_cols else None,
-                "M_H": (lambda x: arrow_trend(x, mean_cols["M_H"])) if "M_H" in mean_cols else None,
-                "M_A": (lambda x: arrow_trend(x, mean_cols["M_A"])) if "M_A" in mean_cols else None,
-            })
-            .background_gradient(cmap="RdYlGn", subset=[c for c in ["Diff_HT_P", "Diff_Power"] if c in df_display.columns])
-            .background_gradient(cmap="Blues", subset=[c for c in ["OU_Total"] if c in df_display.columns])
-        )
-
-        st.dataframe(styled, height=1200, use_container_width=True)
-
-except FileNotFoundError:
-    st.error(f"❌ File `{filename}` not found.")
-except pd.errors.EmptyDataError:
-    st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
 except Exception as e:
-    st.error(f"⚠️ Unexpected error: {e}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    st.warning(f"⚠️ Divergence Block could not be generated: {e}")
