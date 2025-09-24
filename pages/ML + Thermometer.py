@@ -372,6 +372,12 @@ model.fit(X, y)
 ####### Bloco 8 – Apply ML to Today ####
 ########################################
 
+# Slider para threshold no sidebar
+threshold = st.sidebar.slider(
+    "ML Threshold for Direct Win (%)", 
+    min_value=50, max_value=80, value=65, step=1
+) / 100.0  # converte para decimal
+
 # Função para traduzir probabilidades ML em recomendações estilo 1X2/dupla
 def ml_recommendation_from_proba(p_home, p_draw, p_away, threshold=0.65):
     """
@@ -423,7 +429,8 @@ games_today["ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
 games_today["ML_Recommendation"] = [
     ml_recommendation_from_proba(row["ML_Proba_Home"], 
                                  row["ML_Proba_Draw"], 
-                                 row["ML_Proba_Away"])
+                                 row["ML_Proba_Away"],
+                                 threshold=threshold)
     for _, row in games_today.iterrows()
 ]
 
