@@ -168,7 +168,7 @@ def train_and_evaluate(X, y, name):
             model = XGBClassifier(
                 n_estimators=300,          # reduzido para ser mais rápido
                 max_depth=6,
-                learning_rate=0.1,
+                learning_rate=0.05,
                 subsample=0.9,
                 colsample_bytree=0.8,
                 tree_method="hist",
