@@ -13,14 +13,14 @@ st.title("Today's Picks - Momentum Thermometer")
 st.markdown("""
 ### Recommendation Rules (Momentum Thermometer - Data-driven):
 
-1. Primeiro procura maior Winrate em vitórias puras (Home, Away, Draw).  
-   - Se Winrate ≥ 50% → escolha.  
-2. Caso contrário → procura 1X ou X2.  
-3. Se nada ≥ 50% → ❌ Avoid.  
-4. Colunas adicionais:
-   - **Win_Probability** (% histórico)
-   - **EV** (Expected Value, apenas auditoria)
-   - **Bands** (Balanced / Top20 / Bottom20), mas também usados como features numéricas internas.
+First, look for the highest Winrate in pure wins (Home, Away, Draw).
+If Winrate ≥ 50% → choose it.
+Otherwise → look for 1X or X2.
+If nothing ≥ 50% → ❌ Avoid.
+Additional columns:
+Win_Probability (historical %)
+EV (Expected Value, audit only)
+Bands (Balanced / Top20 / Bottom20), but also used as internal numeric features.
 """)
 
 # Pastas e exclusões
