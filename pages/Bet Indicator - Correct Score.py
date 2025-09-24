@@ -131,6 +131,11 @@ ml_model_choice = st.sidebar.selectbox(
 )
 retrain = st.sidebar.checkbox("Retrain model", value=False)
 
+
+# ########################################################
+# Bloco 7 – Treino & Avaliação 
+# ########################################################
+
 from sklearn.preprocessing import LabelEncoder
 
 def train_and_evaluate(X, y, name):
@@ -149,9 +154,11 @@ def train_and_evaluate(X, y, name):
     if model is None:
         if ml_model_choice == "Random Forest":
             model = RandomForestClassifier(
-                n_estimators=400, random_state=42, class_weight="balanced_subsample"
+                n_estimators=400,
+                random_state=42,
+                class_weight="balanced_subsample"
             )
-            # treino normal
+            # split de treino/validação
             X_train, X_val, y_train, y_val = train_test_split(
                 X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
             )
@@ -159,28 +166,28 @@ def train_and_evaluate(X, y, name):
 
         elif ml_model_choice == "XGBoost Tuned":
             model = XGBClassifier(
-                n_estimators=1000,              # alto limite, mas vamos parar antes
+                n_estimators=1000,          # limite alto, mas vai parar antes
                 max_depth=6,
                 learning_rate=0.1,
                 subsample=0.9,
                 colsample_bytree=0.8,
-                tree_method="hist",             # muito mais rápido
+                tree_method="hist",         # muito mais rápido
                 eval_metric="mlogloss",
                 random_state=42,
                 use_label_encoder=False
             )
 
-            # 🔹 split para validação
+            # split de treino/validação
             X_train, X_val, y_train, y_val = train_test_split(
                 X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
             )
 
-            # 🔹 treino com early stopping
+            # treino com early stopping
             model.fit(
                 X_train, y_train,
                 eval_set=[(X_val, y_val)],
-                early_stopping_rounds=30,   # para se não melhorar
-                verbose=False
+                early_stopping_rounds=30,
+                verbose=0   # 🔹 corrigido (int, não bool)
             )
 
         # 🔹 Sempre salvar como tuple (model, le)
@@ -211,8 +218,11 @@ def train_and_evaluate(X, y, name):
         "LogLoss": f"{ll:.3f}",
     }
 
-    return metrics, (model, le)
+    # Se for XGBoost, mostrar a melhor iteração usada
+    if ml_model_choice == "XGBoost Tuned" and hasattr(model, "best_iteration"):
+        metrics["Best Iteration"] = model.best_iteration
 
+    return metrics, (model, le)
 
 
 
