@@ -7,6 +7,7 @@ import numpy as np
 import os
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import OneHotEncoder
+from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
 
 
 ########################################
@@ -131,6 +132,7 @@ def win_prob_for_recommendation(history, row,
     hist = history.copy()
     hist['M_Diff'] = hist['M_H'] - hist['M_A']
 
+    # Inicializa ranges
     m_diff_margin = base_m_diff
     power_margin = base_power
     sample = pd.DataFrame()
@@ -151,6 +153,7 @@ def win_prob_for_recommendation(history, row,
     if row.get('Auto_Recommendation') == '❌ Avoid':
         return n, None
     if n == 0:
+        # fallback: usar odd implícita
         target = event_side_for_winprob(row['Auto_Recommendation'])
         if target == 'HOME' and row.get("Odd_H"):
             return 0, round(100 / row["Odd_H"], 1)
@@ -160,6 +163,7 @@ def win_prob_for_recommendation(history, row,
             return 0, round(100 / row["Odd_D"], 1)
         return 0, None
 
+    # ---- Calcula probabilidade real
     target = event_side_for_winprob(row['Auto_Recommendation'])
     if target == 'HOME':
         p = (sample['Goals_H_FT'] > sample['Goals_A_FT']).mean()
@@ -180,8 +184,6 @@ def win_prob_for_recommendation(history, row,
 ########################################
 ####### Bloco 6 – Regras Híbridas ######
 ########################################
-
-# === Regras manuais (copiadas da página modelo) ===
 def auto_recommendation(row,
                         diff_mid_lo=0.20, diff_mid_hi=0.80,
                         diff_mid_hi_highvar=0.75, power_gate=1, power_gate_highvar=5):
@@ -243,19 +245,65 @@ def auto_recommendation(row,
     return '❌ Avoid'
 
 
-# === Híbrido: usa regras + validação histórica ===
+def auto_recommendation_dynamic_winrate(row, history,
+                                        min_games=5,
+                                        min_winrate=45.0):
+    candidates_main = ["🟢 Back Home", "🟠 Back Away", "⚪ Back Draw"]
+    candidates_fallback = ["🟦 1X (Home/Draw)", "🟪 X2 (Away/Draw)"]
+
+    best_rec, best_prob, best_ev, best_n = None, None, None, None
+
+    for rec in candidates_main:
+        row_copy = row.copy()
+        row_copy["Auto_Recommendation"] = rec
+        n, p = win_prob_for_recommendation(history, row_copy)
+
+        if p is None or n < min_games:
+            continue
+
+        odd_ref = None
+        if rec == "🟢 Back Home": odd_ref = row.get("Odd_H")
+        elif rec == "🟠 Back Away": odd_ref = row.get("Odd_A")
+        elif rec == "⚪ Back Draw": odd_ref = row.get("Odd_D")
+
+        ev = (p/100.0) * odd_ref - 1 if odd_ref and odd_ref > 1.0 else None
+
+        if (best_prob is None) or (p > best_prob):
+            best_rec, best_prob, best_ev, best_n = rec, p, ev, n
+
+    if best_prob is not None and best_prob >= min_winrate:
+        return best_rec, best_prob, best_ev, best_n
+
+    for rec in candidates_fallback:
+        row_copy = row.copy()
+        row_copy["Auto_Recommendation"] = rec
+        n, p = win_prob_for_recommendation(history, row_copy)
+
+        if p is None or n < min_games:
+            continue
+
+        odd_ref = None
+        if rec == "🟦 1X (Home/Draw)" and row.get("Odd_H") and row.get("Odd_D"):
+            odd_ref = 1 / (1/row["Odd_H"] + 1/row["Odd_D"])
+        elif rec == "🟪 X2 (Away/Draw)" and row.get("Odd_A") and row.get("Odd_D"):
+            odd_ref = 1 / (1/row["Odd_A"] + 1/row["Odd_D"])
+
+        ev = (p/100.0) * odd_ref - 1 if odd_ref and odd_ref > 1.0 else None
+
+        if (best_prob is None) or (p > best_prob):
+            best_rec, best_prob, best_ev, best_n = rec, p, ev, n
+
+    if best_prob is None or best_prob < min_winrate:
+        return "❌ Avoid", best_prob, best_ev, best_n
+
+    return best_rec, best_prob, best_ev, best_n
+
+
 def auto_recommendation_hybrid(row, history,
                                min_games=5,
                                min_winrate=45.0):
-    """
-    Híbrido:
-    1. Usa a lógica manual (modelo).
-    2. Valida com histórico (Win Probability + EV).
-    3. Se falhar, cai no fallback automático.
-    """
     rec = auto_recommendation(row)
 
-    # Validação no histórico
     row_copy = row.copy()
     row_copy["Auto_Recommendation"] = rec
     n, p = win_prob_for_recommendation(history, row_copy)
@@ -269,12 +317,18 @@ def auto_recommendation_hybrid(row, history,
 
     ev = (p/100.0) * odd_ref - 1 if (odd_ref and p) else None
 
-    # Se não confiável → fallback automático
     if rec == "❌ Avoid" or (p is None) or (n < min_games) or (p < min_winrate):
         return auto_recommendation_dynamic_winrate(row, history, min_games, min_winrate)
 
     return rec, p, ev, n
 
+
+# === Aplicar regras nos jogos do dia ===
+recs = games_today.apply(lambda r: auto_recommendation_hybrid(r, history), axis=1)
+games_today["Auto_Recommendation"] = [x[0] for x in recs]
+games_today["Win_Probability"] = [x[1] for x in recs]
+games_today["EV"] = [x[2] for x in recs]
+games_today["Games_Analyzed"] = [x[3] for x in recs]
 
 
 ########################################
@@ -294,12 +348,27 @@ history['Result'] = history.apply(map_result, axis=1)
 
 features_raw = [
     'M_H','M_A','Diff_Power','M_Diff',
-    'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2'
+    'Home_Band','Away_Band',
+    'Dominant','League_Classification',
+    'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2',
+    'EV','Games_Analyzed'
 ]
 features_raw = [f for f in features_raw if f in history.columns]
 
 X = history[features_raw].copy()
 y = history['Result']
+
+BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
+if 'Home_Band' in X: X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
+if 'Away_Band' in X: X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
+
+cat_cols = [c for c in ['Dominant','League_Classification'] if c in X]
+encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
+if cat_cols:
+    encoded = encoder.fit_transform(X[cat_cols])
+    encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(cat_cols))
+    X = pd.concat([X.drop(columns=cat_cols).reset_index(drop=True),
+                   encoded_df.reset_index(drop=True)], axis=1)
 
 model = RandomForestClassifier(
     n_estimators=300,
@@ -337,7 +406,21 @@ def ml_recommendation_from_proba(p_home, p_draw, p_away, threshold=0.65):
             return "❌ Avoid"
 
 X_today = games_today[features_raw].copy()
+
+if 'Home_Band' in X_today: 
+    X_today['Home_Band_Num'] = X_today['Home_Band'].map(BAND_MAP)
+if 'Away_Band' in X_today: 
+    X_today['Away_Band_Num'] = X_today['Away_Band'].map(BAND_MAP)
+
+if cat_cols:
+    encoded_today = encoder.transform(X_today[cat_cols])
+    encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(cat_cols))
+    X_today = pd.concat([X_today.drop(columns=cat_cols).reset_index(drop=True),
+                         encoded_today_df.reset_index(drop=True)], axis=1)
+
+ml_preds = model.predict(X_today)
 ml_proba = model.predict_proba(X_today)
+
 games_today["ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
 games_today["ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
 games_today["ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
@@ -370,8 +453,7 @@ if "Auto_Recommendation" in games_today and "ML_Recommendation" in games_today:
         "⚠️"
     )
     if "Agreement" not in available_cols:
-        insert_idx = available_cols.index("Auto_Recommendation") + 1
-        available_cols.insert(insert_idx, "Agreement")
+        available_cols.insert(6, "Agreement")
 
 st.subheader("📊 Regras vs ML")
 st.dataframe(
@@ -383,5 +465,5 @@ st.dataframe(
         'ML_Proba_Away':'{:.2f}'
     }),
     use_container_width=True,
-    height=1200  # 👈 mostra mais linhas
+    height=1200  # tabela maior
 )
