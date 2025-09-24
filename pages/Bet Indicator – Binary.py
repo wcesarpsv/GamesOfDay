@@ -268,7 +268,7 @@ st.dataframe(df_report.style.format("{:.2f}"), use_container_width=True)
 
 
 # ########################################################
-# BLOCO 11 – Previsões para os jogos de hoje + Export CSV
+# BLOCO 11 – Previsões para os jogos de hoje + Download CSV
 # ########################################################
 if model_choice == "Random Forest (Tuned)":
     probs_today = rf_tuned.predict_proba(X_today)
@@ -313,15 +313,21 @@ styled_df = (
 st.markdown("### 📌 Predictions for Selected Matches")
 st.dataframe(styled_df, use_container_width=True, height=1000)
 
-# 🔹 Salvar automaticamente em CSV
-PREDICTIONS_FOLDER = "GamesOfDay/Models"
-os.makedirs(PREDICTIONS_FOLDER, exist_ok=True)
 
-output_filename = f"predictions_{os.path.splitext(selected_file)[0]}.csv"
-output_path = os.path.join(PREDICTIONS_FOLDER, output_filename)
+# 🔹 Botão para download do CSV
+import io
+today_str = date.today().strftime("%Y-%m-%d")
+csv_buffer = io.BytesIO()
+games_today.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
+csv_buffer.seek(0)
 
-games_today.to_csv(output_path, index=False, encoding="utf-8-sig")
-st.success(f"✅ Predictions saved automatically at: {output_path}")
+st.download_button(
+    label="📥 Download Predictions CSV",
+    data=csv_buffer,
+    file_name=f"predictions_{today_str}.csv",
+    mime="text/csv"
+)
+
 
 
 
