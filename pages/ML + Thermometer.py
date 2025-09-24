@@ -441,14 +441,15 @@ cols_to_show = [
 
 available_cols = [c for c in cols_to_show if c in games_today.columns]
 
-# Criar coluna de comparação (igual ou diferente)
+# Coluna de comparação (igual ou diferente)
 if "Auto_Recommendation" in games_today and "ML_Recommendation" in games_today:
     games_today["Agreement"] = np.where(
         games_today["Auto_Recommendation"] == games_today["ML_Recommendation"],
         "✅",
         "⚠️"
     )
-    available_cols.insert(6, "Agreement")  # insere logo após Auto_Recommendation
+    if "Agreement" not in available_cols:
+        available_cols.insert(6, "Agreement")
 
 st.subheader("📊 Regras vs ML")
 st.dataframe(
@@ -459,5 +460,7 @@ st.dataframe(
         'ML_Proba_Away':'{:.2f}',
         'ML_Proba_Draw':'{:.2f}'
     }),
-    use_container_width=True
+    use_container_width=True,
+    height=1200  # 👈 aumenta a altura da tabela
 )
+
