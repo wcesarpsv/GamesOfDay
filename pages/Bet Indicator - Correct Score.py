@@ -182,12 +182,21 @@ def train_and_evaluate(X, y, name):
                 X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
             )
 
-            # treino com early stopping (seguro p/ todas versões de xgboost)
-            model.fit(
-                X_train, y_train,
-                eval_set=[(X_val, y_val)],
-                early_stopping_rounds=30
-            )
+            # 🔹 treino com fallback para versões antigas
+            try:
+                model.fit(
+                    X_train, y_train,
+                    eval_set=[(X_val, y_val)],
+                    eval_metric="mlogloss",
+                    early_stopping_rounds=30
+                )
+            except TypeError:
+                # fallback se a versão não suportar early_stopping_rounds
+                model.fit(
+                    X_train, y_train,
+                    eval_set=[(X_val, y_val)],
+                    eval_metric="mlogloss"
+                )
 
         # 🔹 Sempre salvar como tuple (model, le)
         save_model((model, le), filename)
@@ -217,11 +226,12 @@ def train_and_evaluate(X, y, name):
         "LogLoss": f"{ll:.3f}",
     }
 
-    # Se for XGBoost, mostrar a melhor iteração usada
+    # Se for XGBoost, mostrar a melhor iteração usada (se existir)
     if ml_model_choice == "XGBoost Tuned" and hasattr(model, "best_iteration"):
         metrics["Best Iteration"] = model.best_iteration
 
     return metrics, (model, le)
+
 
 
 
