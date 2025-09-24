@@ -314,7 +314,7 @@ st.markdown("### 📌 Predictions for Selected Matches")
 st.dataframe(styled_df, use_container_width=True, height=1000)
 
 # 🔹 Salvar automaticamente em CSV
-PREDICTIONS_FOLDER = "Models"
+PREDICTIONS_FOLDER = "GamesOfDay/Models"
 os.makedirs(PREDICTIONS_FOLDER, exist_ok=True)
 
 output_filename = f"predictions_{os.path.splitext(selected_file)[0]}.csv"
