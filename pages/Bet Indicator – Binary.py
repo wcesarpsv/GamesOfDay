@@ -324,7 +324,7 @@ csv_buffer.seek(0)
 st.download_button(
     label="📥 Download Predictions CSV",
     data=csv_buffer,
-    file_name=f"predictions_{today_str}.csv",
+    file_name=f"Bet_Indicator_Binary)_{today_str}.csv",
     mime="text/csv"
 )
 
