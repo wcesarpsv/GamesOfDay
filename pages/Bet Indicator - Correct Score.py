@@ -182,13 +182,12 @@ def train_and_evaluate(X, y, name):
                 X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
             )
 
-            # treino com early stopping (compatível com todas versões de xgboost)
-            fit_params = {
-                "eval_set": [(X_val, y_val)],
-                "early_stopping_rounds": 30,
-                "verbose": 0
-            }
-            model.fit(X_train, y_train, **fit_params)
+            # treino com early stopping (seguro p/ todas versões de xgboost)
+            model.fit(
+                X_train, y_train,
+                eval_set=[(X_val, y_val)],
+                early_stopping_rounds=30
+            )
 
         # 🔹 Sempre salvar como tuple (model, le)
         save_model((model, le), filename)
