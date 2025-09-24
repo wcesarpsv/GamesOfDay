@@ -143,64 +143,47 @@ def train_and_evaluate(X, y, name):
     filename = f"{ml_model_choice.replace(' ', '').replace('-', '')}_{name}CC.pkl"
     model = None
 
-    # 🔹 LabelEncoder para padronizar classes
+    # 🔹 LabelEncoder para todos (assim padronizamos)
     le = LabelEncoder()
     y_enc = le.fit_transform(y)
 
-    # Se não for para re-treinar, tenta carregar o modelo já salvo
     if not retrain:
         model = load_model(filename)
 
     if model is None:
         if ml_model_choice == "Random Forest":
             model = RandomForestClassifier(
-                n_estimators=400,
-                random_state=42,
-                class_weight="balanced_subsample"
+                n_estimators=400, random_state=42, class_weight="balanced_subsample"
             )
-            # split de treino/validação
-            X_train, X_val, y_train, y_val = train_test_split(
-                X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
-            )
-            model.fit(X_train, y_train)
-
         elif ml_model_choice == "XGBoost Tuned":
             model = XGBClassifier(
                 tree_method="hist",
-                n_estimators=300,          # reduzido para ser mais rápido
-                max_depth=6,
-                learning_rate=0.05,
-                subsample=0.9,
-                colsample_bytree=0.8,
-                eval_metric="mlogloss",
-                random_state=42,
-                use_label_encoder=False
+                n_estimators=300, max_depth=6, learning_rate=0.05,
+                subsample=0.9, colsample_bytree=0.8,
+                eval_metric="mlogloss", random_state=42, use_label_encoder=False
             )
 
-            # split de treino/validação
-            X_train, X_val, y_train, y_val = train_test_split(
-                X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
-            )
-
-            # treino normal (sem early stopping)
-            model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
+        # 🔹 Treino
+        X_train, X_val, y_train, y_val = train_test_split(
+            X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
+        )
+        model.fit(X_train, y_train)
 
         # 🔹 Sempre salvar como tuple (model, le)
         save_model((model, le), filename)
-
     else:
         try:
-            model, le = model  # garantir tuple
+            model, le = model  # 🔹 garantir tuple
         except:
+            # caso antigo sem encoder
             model = model
             le = LabelEncoder().fit(y)
 
-        # re-divisão para validação
+        # 🔹 Re-divisão dos dados para métrica de validação
         X_train, X_val, y_train, y_val = train_test_split(
             X, y_enc, test_size=0.2, random_state=42, stratify=y_enc
         )
 
-    # 🔹 Avaliação
     preds = model.predict(X_val)
     probs = model.predict_proba(X_val)
 
@@ -214,6 +197,7 @@ def train_and_evaluate(X, y, name):
     }
 
     return metrics, (model, le)
+
 
 
 
