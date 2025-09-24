@@ -120,11 +120,6 @@ def win_prob_for_recommendation(history, row,
                                 min_games=10,
                                 max_m_diff=1.0,
                                 max_power=25):
-    """
-    Calcula Win Probability usando ranges de Diff_Power e M_Diff.
-    Se não houver jogos suficientes, expande ranges até encontrar.
-    Se ainda não houver → fallback usa odds implícitas.
-    """
     m_h, m_a = row.get('M_H'), row.get('M_A')
     diff_m   = m_h - m_a if (m_h is not None and m_a is not None) else None
     diff_pow = row.get('Diff_Power')
@@ -153,7 +148,6 @@ def win_prob_for_recommendation(history, row,
     if row.get('Auto_Recommendation') == '❌ Avoid':
         return n, None
     if n == 0:
-        # fallback: usar odd implícita
         target = event_side_for_winprob(row['Auto_Recommendation'])
         if target == 'HOME' and row.get("Odd_H"):
             return 0, round(100 / row["Odd_H"], 1)
@@ -163,7 +157,6 @@ def win_prob_for_recommendation(history, row,
             return 0, round(100 / row["Odd_D"], 1)
         return 0, None
 
-    # ---- Calcula probabilidade real
     target = event_side_for_winprob(row['Auto_Recommendation'])
     if target == 'HOME':
         p = (sample['Goals_H_FT'] > sample['Goals_A_FT']).mean()
@@ -179,6 +172,86 @@ def win_prob_for_recommendation(history, row,
         return n, None
 
     return n, (round(float(p)*100, 1) if p is not None else None)
+
+
+########################################
+####### Bloco 5C – Bands & Dominant ####
+########################################
+def classify_leagues_variation(history_df):
+    agg = (
+        history_df.groupby('League')
+        .agg(
+            M_H_Min=('M_H','min'), M_H_Max=('M_H','max'),
+            M_A_Min=('M_A','min'), M_A_Max=('M_A','max'),
+            Hist_Games=('M_H','count')
+        ).reset_index()
+    )
+    agg['Variation_Total'] = (agg['M_H_Max'] - agg['M_H_Min']) + (agg['M_A_Max'] - agg['M_A_Min'])
+    def label(v):
+        if v > 6.0: return "High Variation"
+        if v >= 3.0: return "Medium Variation"
+        return "Low Variation"
+    agg['League_Classification'] = agg['Variation_Total'].apply(label)
+    return agg[['League','League_Classification','Variation_Total','Hist_Games']]
+
+def compute_league_bands(history_df):
+    hist = history_df.copy()
+    hist['M_Diff'] = hist['M_H'] - hist['M_A']
+    diff_q = (
+        hist.groupby('League')['M_Diff']
+            .quantile([0.20, 0.80]).unstack()
+            .rename(columns={0.2:'P20_Diff', 0.8:'P80_Diff'})
+            .reset_index()
+    )
+    home_q = (
+        hist.groupby('League')['M_H']
+            .quantile([0.20, 0.80]).unstack()
+            .rename(columns={0.2:'Home_P20', 0.8:'Home_P80'})
+            .reset_index()
+    )
+    away_q = (
+        hist.groupby('League')['M_A']
+            .quantile([0.20, 0.80]).unstack()
+            .rename(columns={0.2:'Away_P20', 0.8:'Away_P80'})
+            .reset_index()
+    )
+    out = diff_q.merge(home_q, on='League', how='inner').merge(away_q, on='League', how='inner')
+    return out
+
+def dominant_side(row, threshold=DOMINANT_THRESHOLD):
+    m_h, m_a = row['M_H'], row['M_A']
+    if (m_h >= threshold) and (m_a <= -threshold):
+        return "Both extremes (Home↑ & Away↓)"
+    if (m_a >= threshold) and (m_h <= -threshold):
+        return "Both extremes (Away↑ & Home↓)"
+    if m_h >= threshold:
+        return "Home strong"
+    if m_h <= -threshold:
+        return "Home weak"
+    if m_a >= threshold:
+        return "Away strong"
+    if m_a <= -threshold:
+        return "Away weak"
+    return "Mixed / Neutral"
+
+
+# === aplicar nos jogos do dia ===
+league_class = classify_leagues_variation(history)
+league_bands = compute_league_bands(history)
+
+games_today = games_today.merge(league_class, on='League', how='left')
+games_today = games_today.merge(league_bands, on='League', how='left')
+
+games_today['Home_Band'] = np.where(
+    games_today['M_H'] <= games_today['Home_P20'], 'Bottom 20%',
+    np.where(games_today['M_H'] >= games_today['Home_P80'], 'Top 20%', 'Balanced')
+)
+games_today['Away_Band'] = np.where(
+    games_today['M_A'] <= games_today['Away_P20'], 'Bottom 20%',
+    np.where(games_today['M_A'] >= games_today['Away_P80'], 'Top 20%', 'Balanced')
+)
+
+games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
 
 
 ########################################
