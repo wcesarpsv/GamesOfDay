@@ -444,7 +444,7 @@ cols_to_show = [
     'Date','Time','League','Home','Away',
     'Auto_Recommendation','Win_Probability',
     'ML_Recommendation',
-    'ML_Proba_Home','ML_Proba_Away','ML_Proba_Draw'
+    'ML_Proba_Home','ML_Proba_Draw','ML_Proba_Away'
 ]
 
 available_cols = [c for c in cols_to_show if c in games_today.columns]
