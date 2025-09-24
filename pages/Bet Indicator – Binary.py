@@ -268,7 +268,7 @@ st.dataframe(df_report.style.format("{:.2f}"), use_container_width=True)
 
 
 # ########################################################
-# BLOCO 11 – Previsões para os jogos de hoje
+# BLOCO 11 – Previsões para os jogos de hoje + Export CSV
 # ########################################################
 if model_choice == "Random Forest (Tuned)":
     probs_today = rf_tuned.predict_proba(X_today)
@@ -312,6 +312,17 @@ styled_df = (
 
 st.markdown("### 📌 Predictions for Selected Matches")
 st.dataframe(styled_df, use_container_width=True, height=1000)
+
+# 🔹 Salvar automaticamente em CSV
+PREDICTIONS_FOLDER = "Models"
+os.makedirs(PREDICTIONS_FOLDER, exist_ok=True)
+
+output_filename = f"predictions_{os.path.splitext(selected_file)[0]}.csv"
+output_path = os.path.join(PREDICTIONS_FOLDER, output_filename)
+
+games_today.to_csv(output_path, index=False, encoding="utf-8-sig")
+st.success(f"✅ Predictions saved automatically at: {output_path}")
+
 
 
 
