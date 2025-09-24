@@ -155,7 +155,8 @@ def train_and_evaluate(X, y, name):
             )
         elif ml_model_choice == "XGBoost Tuned":
             model = XGBClassifier(
-                n_estimators=500, max_depth=8, learning_rate=0.05,
+                tree_method="hist",
+                n_estimators=300, max_depth=6, learning_rate=0.05,
                 subsample=0.9, colsample_bytree=0.8,
                 eval_metric="mlogloss", random_state=42, use_label_encoder=False
             )
