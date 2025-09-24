@@ -189,75 +189,13 @@ def win_prob_for_recommendation(history, row,
 ####### Bloco 6 – Regras Híbridas ######
 ########################################
 
-def auto_recommendation_dynamic_winrate(row, history,
-                                        min_games=5,
-                                        min_winrate=45.0):
-    """
-    Escolhe recomendação baseada no maior Winrate (automático).
-    - Primeiro tenta Home / Away / Draw.
-    - Se Winrate >= min_winrate e n >= min_games → aceita.
-    - Caso contrário → tenta fallback 1X / X2.
-    - Se nada válido → ❌ Avoid.
-    """
-    candidates_main = ["🟢 Back Home", "🟠 Back Away", "⚪ Back Draw"]
-    candidates_fallback = ["🟦 1X (Home/Draw)", "🟪 X2 (Away/Draw)"]
-
-    best_rec, best_prob, best_ev, best_n = None, None, None, None
-
-    # 1) Checa vitórias puras
-    for rec in candidates_main:
-        row_copy = row.copy()
-        row_copy["Auto_Recommendation"] = rec
-        n, p = win_prob_for_recommendation(history, row_copy)
-
-        if p is None or n < min_games:
-            continue
-
-        odd_ref = None
-        if rec == "🟢 Back Home": odd_ref = row.get("Odd_H")
-        elif rec == "🟠 Back Away": odd_ref = row.get("Odd_A")
-        elif rec == "⚪ Back Draw": odd_ref = row.get("Odd_D")
-
-        ev = (p/100.0) * odd_ref - 1 if odd_ref and odd_ref > 1.0 else None
-
-        if (best_prob is None) or (p > best_prob):
-            best_rec, best_prob, best_ev, best_n = rec, p, ev, n
-
-    if best_prob is not None and best_prob >= min_winrate:
-        return best_rec, best_prob, best_ev, best_n
-
-    # 2) Se não, checa 1X/X2
-    for rec in candidates_fallback:
-        row_copy = row.copy()
-        row_copy["Auto_Recommendation"] = rec
-        n, p = win_prob_for_recommendation(history, row_copy)
-
-        if p is None or n < min_games:
-            continue
-
-        odd_ref = None
-        if rec == "🟦 1X (Home/Draw)" and row.get("Odd_H") and row.get("Odd_D"):
-            odd_ref = 1 / (1/row["Odd_H"] + 1/row["Odd_D"])
-        elif rec == "🟪 X2 (Away/Draw)" and row.get("Odd_A") and row.get("Odd_D"):
-            odd_ref = 1 / (1/row["Odd_A"] + 1/row["Odd_D"])
-
-        ev = (p/100.0) * odd_ref - 1 if odd_ref and odd_ref > 1.0 else None
-
-        if (best_prob is None) or (p > best_prob):
-            best_rec, best_prob, best_ev, best_n = rec, p, ev, n
-
-    # 3) Se ainda não achar nada aceitável
-    if best_prob is None or best_prob < min_winrate:
-        return "❌ Avoid", best_prob, best_ev, best_n
-
-    return best_rec, best_prob, best_ev, best_n
-
-
- # ---------------- Nova Auto Recommendation ----------------
 def auto_recommendation(row,
                         diff_lo=0.20, diff_hi=0.80,
                         diff_hi_highvar=0.75,
                         power_min=1, power_min_highvar=5):
+    """
+    Regras manuais refinadas para recomendar Back, 1X, X2 ou Draw.
+    """
     band_home = row.get('Home_Band')
     band_away = row.get('Away_Band')
     dominant  = row.get('Dominant')
@@ -268,54 +206,52 @@ def auto_recommendation(row,
     m_h       = row.get('M_H')
     odd_d     = row.get('Odd_D')
 
-    # (1) Strong edges
+    # 1) Strong edges -> Direct Back
     if band_home == 'Top 20%' and band_away == 'Bottom 20%':
         return '🟢 Back Home'
     if band_home == 'Bottom 20%' and band_away == 'Top 20%':
         return '🟠 Back Away'
 
-    # (2) Dominant extremes
-    if dominant in ['Both extremes (Home↑ & Away↓)', 'Home strong']:
-        if diff_m is not None and diff_m >= 0.90 and band_away != 'Top 20%':
+    if dominant in ['Both extremes (Home↑ & Away↓)', 'Home strong'] and band_away != 'Top 20%':
+        if diff_m is not None and diff_m >= 0.90:
             return '🟢 Back Home'
-    if dominant in ['Both extremes (Away↑ & Home↓)', 'Away strong']:
-        if diff_m is not None and diff_m <= -0.90 and band_home != 'Top 20%':
-            return '🟠 Back Away'
+    if dominant in ['Both extremes (Away↑ & Home↓)', 'Away strong'] and band_home == 'Balanced':
+        if diff_m is not None and diff_m <= -0.90:
+            return '🟪 X2 (Away/Draw)'
 
-    # (3) Both Balanced
+    # 2) Both Balanced (com thresholds diferentes por variação de liga)
     if (band_home == 'Balanced') and (band_away == 'Balanced') and (diff_m is not None) and (diff_pow is not None):
         if league_cls == 'High Variation':
-            if (0.45 <= diff_m < diff_hi_highvar) and (diff_pow >= power_min_highvar):
+            if (diff_m >= 0.45 and diff_m < diff_hi_highvar and diff_pow >= power_min_highvar):
                 return '🟦 1X (Home/Draw)'
-            if (-diff_hi_highvar < diff_m <= -0.45) and (diff_pow <= -power_min_highvar):
+            if (diff_m <= -0.45 and diff_m > -diff_hi_highvar and diff_pow <= -power_min_highvar):
                 return '🟪 X2 (Away/Draw)'
         else:
-            if (diff_lo <= diff_m < diff_hi) and (diff_pow >= power_min):
+            if (diff_m >= diff_lo and diff_m < diff_hi and diff_pow >= power_min):
                 return '🟦 1X (Home/Draw)'
-            if (-diff_hi < diff_m <= -diff_lo) and (diff_pow <= -power_min):
+            if (diff_m <= -diff_lo and diff_m > -diff_hi and diff_pow <= -power_min):
                 return '🟪 X2 (Away/Draw)'
 
-    # (4) Balanced vs Bottom20%
+    # 3) Balanced vs Bottom20%
     if (band_home == 'Balanced') and (band_away == 'Bottom 20%'):
         return '🟦 1X (Home/Draw)'
     if (band_away == 'Balanced') and (band_home == 'Bottom 20%'):
         return '🟪 X2 (Away/Draw)'
 
-    # (5) Top20% vs Balanced
+    # 4) Top20% vs Balanced
     if (band_home == 'Top 20%') and (band_away == 'Balanced'):
         return '🟦 1X (Home/Draw)'
     if (band_away == 'Top 20%') and (band_home == 'Balanced'):
         return '🟪 X2 (Away/Draw)'
 
-    # (6) Draw filter
+    # 5) Novo filtro Draw
     if (odd_d is not None and 2.5 <= odd_d <= 6.0) and (diff_pow is not None and -10 <= diff_pow <= 10):
-        if (m_h is not None and 0 <= m_h <= 1) and (m_a is not None and m_a <= 0.5):
+        if (m_h is not None and 0 <= m_h <= 1) or (m_a is not None and 0 <= m_a <= 0.5):
             return '⚪ Back Draw'
 
-    # (7) Fallback
+    # 6) Fallback
     return '❌ Avoid'
 
-    
 
 def auto_recommendation_hybrid(row, history,
                                min_games=5,
@@ -496,10 +432,9 @@ available_cols = [c for c in cols_to_show if c in games_today.columns]
 if "Auto_Recommendation" in games_today and "ML_Recommendation" in games_today:
     games_today["Agreement"] = np.where(
         games_today["Auto_Recommendation"] == games_today["ML_Recommendation"],
-        "🟢 Concordam",
-        "🔴 Divergem"
+        "✅ Concordam",
+        "⚠️ Divergem"
     )
-    # insere Agreement no ponto certo, se ainda não estiver
     if "Agreement" not in available_cols:
         insert_idx = available_cols.index("Auto_Recommendation") + 1
         available_cols.insert(insert_idx, "Agreement")
@@ -513,7 +448,7 @@ st.dataframe(
         'ML_Proba_Draw':'{:.2f}',
         'ML_Proba_Away':'{:.2f}'
     }),
-    use_container_width=True  # altura dinâmica
+    use_container_width=True  # deixa altura dinâmica
 )
 
 
