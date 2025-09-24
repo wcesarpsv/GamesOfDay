@@ -479,6 +479,19 @@ games_today["ML_Recommendation"] = [
 
 
 
+########################################
+####### Bloco 9 – Exibição Final #######
+########################################
+cols_to_show = [
+    'Date','Time','League','Home','Away',
+    'Auto_Recommendation','Win_Probability',
+    'ML_Recommendation',
+    'ML_Proba_Home','ML_Proba_Draw','ML_Proba_Away'
+]
+
+# cria lista só com colunas que realmente existem no DF
+available_cols = [c for c in cols_to_show if c in games_today.columns]
+
 # Coluna de comparação (igual ou diferente)
 if "Auto_Recommendation" in games_today and "ML_Recommendation" in games_today:
     games_today["Agreement"] = np.where(
@@ -486,8 +499,10 @@ if "Auto_Recommendation" in games_today and "ML_Recommendation" in games_today:
         "🟢 Concordam",
         "🔴 Divergem"
     )
+    # insere Agreement no ponto certo, se ainda não estiver
     if "Agreement" not in available_cols:
-        available_cols.insert(6, "Agreement")
+        insert_idx = available_cols.index("Auto_Recommendation") + 1
+        available_cols.insert(insert_idx, "Agreement")
 
 st.subheader("📊 Regras vs ML")
 st.dataframe(
@@ -498,7 +513,7 @@ st.dataframe(
         'ML_Proba_Draw':'{:.2f}',
         'ML_Proba_Away':'{:.2f}'
     }),
-    use_container_width=True  # altura dinâmica → mostra todos os jogos
+    use_container_width=True  # altura dinâmica
 )
 
 
