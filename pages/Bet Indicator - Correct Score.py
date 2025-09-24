@@ -138,7 +138,7 @@ from sklearn.preprocessing import LabelEncoder
 
 def train_and_evaluate(X, y, name):
     # 🔹 Nome do arquivo inclui tipo de modelo + target
-    filename = f"{ml_model_choice.replace(' ', '').replace('-', '')}_{name}_ExactScore.pkl"
+    filename = f"{ml_model_choice.replace(' ', '').replace('-', '')}_{name}CC.pkl"
     model = None
 
     # 🔹 LabelEncoder para todos (assim padronizamos)
