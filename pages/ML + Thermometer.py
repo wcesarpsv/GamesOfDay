@@ -422,8 +422,9 @@ ml_proba = model.predict_proba(X_today)
 
 # Probabilidades individuais
 games_today["ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
-games_today["ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
 games_today["ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
+games_today["ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
+
 
 # Recomendação final ML (formato 1X2 + duplas)
 games_today["ML_Recommendation"] = [
