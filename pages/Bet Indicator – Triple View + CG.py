@@ -304,8 +304,10 @@ def train_and_evaluate(X, y, name, num_classes):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
     filename = f"{safe_model}_{safe_name}_{num_classes}CG.pkl"
+    filepath = os.path.join(MODELS_FOLDER, filename)
 
     feature_cols = X.columns.tolist()
+    trained_new = False  # flag para saber se foi treinado agora
 
     # Tenta carregar modelo salvo
     if not retrain:
@@ -320,7 +322,7 @@ def train_and_evaluate(X, y, name, num_classes):
                 "LogLoss": log_loss(y, probs, labels=np.arange(num_classes)),
                 "BrierScore": brier_score_loss(pd.get_dummies(y).values.ravel(), probs.ravel())
             }
-            return res, (model, cols)
+            return res, (model, cols), filepath, trained_new
 
     # Treina novo modelo
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
@@ -350,19 +352,37 @@ def train_and_evaluate(X, y, name, num_classes):
 
     # Salva (modelo, colunas)
     save_model(model, feature_cols, filename)
-    return res, (model, feature_cols)
+    trained_new = True
+    return res, (model, feature_cols), filepath, trained_new
 
 
 
 ##################### BLOCO 8 – TRAIN MODELS #####################
 stats = []
-res, model_multi = train_and_evaluate(X_1x2, history["Target"], "1X2", 3); stats.append(res)
-res, model_ou = train_and_evaluate(X_ou, history["Target_OU25"], "OverUnder25", 2); stats.append(res)
-res, model_btts = train_and_evaluate(X_btts, history["Target_BTTS"], "BTTS", 2); stats.append(res)
+
+res, model_multi, file_multi, trained_multi = train_and_evaluate(X_1x2, history["Target"], "1X2", 3); stats.append(res)
+res, model_ou, file_ou, trained_ou = train_and_evaluate(X_ou, history["Target_OU25"], "OverUnder25", 2); stats.append(res)
+res, model_btts, file_btts, trained_btts = train_and_evaluate(X_btts, history["Target_BTTS"], "BTTS", 2); stats.append(res)
 
 df_stats = pd.DataFrame(stats)
 st.markdown("### 📊 Model Statistics (Validation)")
 st.dataframe(df_stats, use_container_width=True)
+
+# ----- BOTÕES DE DOWNLOAD -----
+st.markdown("### ⬇️ Download Trained Models")
+
+if os.path.exists(file_multi):
+    with open(file_multi, "rb") as f:
+        st.download_button("Download 1X2 Model", f, file_name=os.path.basename(file_multi))
+
+if os.path.exists(file_ou):
+    with open(file_ou, "rb") as f:
+        st.download_button("Download Over/Under 2.5 Model", f, file_name=os.path.basename(file_ou))
+
+if os.path.exists(file_btts):
+    with open(file_btts, "rb") as f:
+        st.download_button("Download BTTS Model", f, file_name=os.path.basename(file_btts))
+
 
 ##################### FEATURE IMPORTANCE #####################
 st.markdown("### 🔎 Feature Importance Analysis")
