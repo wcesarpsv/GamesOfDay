@@ -457,8 +457,9 @@ st.dataframe(
     .style.format({
         'Win_Probability':'{:.1f}%',
         'ML_Proba_Home':'{:.2f}',
-        'ML_Proba_Away':'{:.2f}',
-        'ML_Proba_Draw':'{:.2f}'
+        'ML_Proba_Draw':'{:.2f}',
+        'ML_Proba_Away':'{:.2f}'
+        
     }),
     use_container_width=True,
     height=1200  # 👈 aumenta a altura da tabela
