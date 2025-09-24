@@ -358,8 +358,8 @@ available_cols = [c for c in cols_to_show if c in games_today.columns]
 if "Auto_Recommendation" in games_today and "ML_Recommendation" in games_today:
     games_today["Agreement"] = np.where(
         games_today["Auto_Recommendation"] == games_today["ML_Recommendation"],
-        "✅ Concordam",
-        "⚠️ Divergem"
+        "✅",
+        "⚠️"
     )
     if "Agreement" not in available_cols:
         insert_idx = available_cols.index("Auto_Recommendation") + 1
