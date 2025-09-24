@@ -371,10 +371,38 @@ model.fit(X, y)
 ########################################
 ####### Bloco 8 – Apply ML to Today ####
 ########################################
+
+# Função para traduzir probabilidades ML em recomendações estilo 1X2/dupla
+def ml_recommendation_from_proba(p_home, p_draw, p_away, threshold=0.65):
+    """
+    Converte probabilidades da ML em recomendações estilo 1X2 + duplas.
+    - Se Home ou Away >= threshold → vitória direta
+    - Caso contrário → decide 1X ou X2 baseado em somas
+    """
+    if p_home >= threshold:
+        return "🟢 Back Home"
+    elif p_away >= threshold:
+        return "🟠 Back Away"
+    else:
+        sum_home_draw = p_home + p_draw
+        sum_away_draw = p_away + p_draw
+        if abs(p_home - p_away) < 0.05 and p_draw > 0.35:
+            return "⚪ Back Draw"
+        elif sum_home_draw > sum_away_draw:
+            return "🟦 1X (Home/Draw)"
+        elif sum_away_draw > sum_home_draw:
+            return "🟪 X2 (Away/Draw)"
+        else:
+            return "❌ Avoid"
+
+
+# === Preparar features dos jogos de hoje ===
 X_today = games_today[features_raw].copy()
 
-if 'Home_Band' in X_today: X_today['Home_Band_Num'] = X_today['Home_Band'].map(BAND_MAP)
-if 'Away_Band' in X_today: X_today['Away_Band_Num'] = X_today['Away_Band'].map(BAND_MAP)
+if 'Home_Band' in X_today: 
+    X_today['Home_Band_Num'] = X_today['Home_Band'].map(BAND_MAP)
+if 'Away_Band' in X_today: 
+    X_today['Away_Band_Num'] = X_today['Away_Band'].map(BAND_MAP)
 
 if cat_cols:
     encoded_today = encoder.transform(X_today[cat_cols])
@@ -382,13 +410,23 @@ if cat_cols:
     X_today = pd.concat([X_today.drop(columns=cat_cols).reset_index(drop=True),
                          encoded_today_df.reset_index(drop=True)], axis=1)
 
+# === Predições ML ===
 ml_preds = model.predict(X_today)
 ml_proba = model.predict_proba(X_today)
 
-games_today["ML_Prediction"] = ml_preds
+# Probabilidades individuais
 games_today["ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
 games_today["ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
 games_today["ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
+
+# Recomendação final ML (formato 1X2 + duplas)
+games_today["ML_Recommendation"] = [
+    ml_recommendation_from_proba(row["ML_Proba_Home"], 
+                                 row["ML_Proba_Draw"], 
+                                 row["ML_Proba_Away"])
+    for _, row in games_today.iterrows()
+]
+
 
 
 ########################################
@@ -397,12 +435,24 @@ games_today["ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
 cols_to_show = [
     'Date','Time','League','Home','Away',
     'Auto_Recommendation','Win_Probability',
-    'ML_Prediction','ML_Proba_Home','ML_Proba_Away','ML_Proba_Draw'
+    'ML_Recommendation',
+    'ML_Proba_Home','ML_Proba_Away','ML_Proba_Draw'
 ]
+
+available_cols = [c for c in cols_to_show if c in games_today.columns]
+
+# Criar coluna de comparação (igual ou diferente)
+if "Auto_Recommendation" in games_today and "ML_Recommendation" in games_today:
+    games_today["Agreement"] = np.where(
+        games_today["Auto_Recommendation"] == games_today["ML_Recommendation"],
+        "✅",
+        "⚠️"
+    )
+    available_cols.insert(6, "Agreement")  # insere logo após Auto_Recommendation
 
 st.subheader("📊 Regras vs ML")
 st.dataframe(
-    games_today[cols_to_show]
+    games_today[available_cols]
     .style.format({
         'Win_Probability':'{:.1f}%',
         'ML_Proba_Home':'{:.2f}',
