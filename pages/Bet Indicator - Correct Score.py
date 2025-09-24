@@ -124,6 +124,8 @@ X_today_score = pd.concat([games_today[features_score], games_today_leagues], ax
 # ########################################################
 # Bloco 6 – Configurações ML (Sidebar)
 # ########################################################
+
+
 st.sidebar.header("⚙️ Settings")
 ml_model_choice = st.sidebar.selectbox(
     "Choose ML Model", 
@@ -131,8 +133,9 @@ ml_model_choice = st.sidebar.selectbox(
 )
 retrain = st.sidebar.checkbox("Retrain model", value=False)
 
-# 🔹 Novo botão para salvar modelo
-save_model_btn = st.sidebar.button("💾 Save Model")
+# 🔹 Espaço reservado para botão de download (adicionado depois do treino)
+download_placeholder = st.sidebar.empty()
+
 
 
 
@@ -141,6 +144,7 @@ save_model_btn = st.sidebar.button("💾 Save Model")
 # ########################################################
 
 from sklearn.preprocessing import LabelEncoder
+import io
 
 def train_and_evaluate(X, y, name):
     # Nome do arquivo inclui tipo de modelo + target
@@ -181,10 +185,17 @@ def train_and_evaluate(X, y, name):
         )
         model.fit(X_train, y_train)
 
-        # 🔹 Só salva se usuário clicar no botão
-        if save_model_btn:
-            save_model((model, le), filename)
-            st.sidebar.success(f"Modelo salvo em Models/{filename}")
+        # 🔹 Criar buffer e disponibilizar download
+        buffer = io.BytesIO()
+        joblib.dump((model, le), buffer)
+        buffer.seek(0)
+
+        download_placeholder.download_button(
+            label="💾 Download Model",
+            data=buffer,
+            file_name=filename,
+            mime="application/octet-stream"
+        )
 
     else:
         try:
