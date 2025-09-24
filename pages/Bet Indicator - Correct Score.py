@@ -149,7 +149,7 @@ def train_and_evaluate(X, y, name):
 
     # Se não for para re-treinar, tenta carregar o modelo já salvo
     if not retrain:
-        model = load_model_local(filename)
+        model = load_model(filename)
 
     if model is None:
         if ml_model_choice == "Random Forest":
@@ -187,11 +187,11 @@ def train_and_evaluate(X, y, name):
                 X_train, y_train,
                 eval_set=[(X_val, y_val)],
                 early_stopping_rounds=30,
-                verbose=0   # 🔹 corrigido (int, não bool)
+                verbose=0   # 🔹 corrigido
             )
 
         # 🔹 Sempre salvar como tuple (model, le)
-        save_model_local((model, le), filename)
+        save_model((model, le), filename)
 
     else:
         try:
@@ -223,7 +223,6 @@ def train_and_evaluate(X, y, name):
         metrics["Best Iteration"] = model.best_iteration
 
     return metrics, (model, le)
-
 
 
 
