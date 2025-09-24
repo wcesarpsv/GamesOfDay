@@ -105,6 +105,87 @@ games_today = compute_double_chance_odds(games_today)
 
 
 ########################################
+####### Bloco 5B – Win Prob Helper #####
+########################################
+def event_side_for_winprob(auto_rec):
+    if pd.isna(auto_rec): return None
+    s = str(auto_rec)
+    if 'Back Home' in s: return 'HOME'
+    if 'Back Away' in s: return 'AWAY'
+    if 'Back Draw' in s: return 'DRAW'
+    if '1X' in s:       return '1X'
+    if 'X2' in s:       return 'X2'
+    return None
+
+def win_prob_for_recommendation(history, row,
+                                base_m_diff=0.30,
+                                base_power=10,
+                                min_games=10,
+                                max_m_diff=1.0,
+                                max_power=25):
+    """
+    Calcula Win Probability usando ranges de Diff_Power e M_Diff.
+    Se não houver jogos suficientes, expande ranges até encontrar.
+    Se ainda não houver → fallback usa odds implícitas.
+    """
+    m_h, m_a = row.get('M_H'), row.get('M_A')
+    diff_m   = m_h - m_a if (m_h is not None and m_a is not None) else None
+    diff_pow = row.get('Diff_Power')
+
+    hist = history.copy()
+    hist['M_Diff'] = hist['M_H'] - hist['M_A']
+
+    # Inicializa ranges
+    m_diff_margin = base_m_diff
+    power_margin = base_power
+    sample = pd.DataFrame()
+    n = 0
+
+    while n < min_games and (m_diff_margin <= max_m_diff and power_margin <= max_power):
+        mask = (
+            hist['M_Diff'].between(diff_m - m_diff_margin, diff_m + m_diff_margin) &
+            hist['Diff_Power'].between(diff_pow - power_margin, diff_pow + power_margin)
+        )
+        sample = hist[mask]
+        n = len(sample)
+
+        if n < min_games:
+            m_diff_margin += 0.20
+            power_margin += 5
+
+    if row.get('Auto_Recommendation') == '❌ Avoid':
+        return n, None
+    if n == 0:
+        # fallback: usar odd implícita
+        target = event_side_for_winprob(row['Auto_Recommendation'])
+        if target == 'HOME' and row.get("Odd_H"):
+            return 0, round(100 / row["Odd_H"], 1)
+        if target == 'AWAY' and row.get("Odd_A"):
+            return 0, round(100 / row["Odd_A"], 1)
+        if target == 'DRAW' and row.get("Odd_D"):
+            return 0, round(100 / row["Odd_D"], 1)
+        return 0, None
+
+    # ---- Calcula probabilidade real
+    target = event_side_for_winprob(row['Auto_Recommendation'])
+    if target == 'HOME':
+        p = (sample['Goals_H_FT'] > sample['Goals_A_FT']).mean()
+    elif target == 'AWAY':
+        p = (sample['Goals_A_FT'] > sample['Goals_H_FT']).mean()
+    elif target == 'DRAW':
+        p = (sample['Goals_A_FT'] == sample['Goals_H_FT']).mean()
+    elif target == '1X':
+        p = (sample['Goals_H_FT'] >= sample['Goals_A_FT']).mean()
+    elif target == 'X2':
+        p = (sample['Goals_A_FT'] >= sample['Goals_H_FT']).mean()
+    else:
+        return n, None
+
+    return n, (round(float(p)*100, 1) if p is not None else None)
+
+
+
+########################################
 ####### Bloco 6 – Regras Híbridas ######
 ########################################
 def auto_recommendation_dynamic_winrate(row, history,
