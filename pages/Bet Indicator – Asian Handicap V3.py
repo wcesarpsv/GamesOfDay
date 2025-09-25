@@ -187,6 +187,50 @@ history["M_Diff"] = history["M_H"] - history["M_A"]
 games_today["M_Diff"] = games_today["M_H"] - games_today["M_A"]
 
 
+##################### BLOCO 5 – BUILD FEATURE MATRIX #####################
+def build_feature_matrix(df, leagues, blocks, fit_encoder=False, encoder=None):
+    dfs = []
+    for block_name, cols in blocks.items():
+        if block_name == "categorical": 
+            continue
+        available_cols = [c for c in cols if c in df.columns]
+        if available_cols:
+            dfs.append(df[available_cols])
+    if leagues is not None and not leagues.empty:
+        dfs.append(leagues)
+    cat_cols = [c for c in ["Dominant","League_Classification"] if c in df.columns]
+    if cat_cols:
+        if fit_encoder:
+            encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
+            encoded = encoder.fit_transform(df[cat_cols])
+        else:
+            encoded = encoder.transform(df[cat_cols])
+        encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(cat_cols), index=df.index)
+        dfs.append(encoded_df)
+    for col in ["Home_Band_Num","Away_Band_Num"]:
+        if col in df.columns: 
+            dfs.append(df[[col]])
+    X = pd.concat(dfs, axis=1)
+    return X, encoder
+
+# One-hot de ligas
+history_leagues = pd.get_dummies(history["League"], prefix="League")
+games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
+games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
+
+# Matrizes de treino
+X_ah_home, encoder_cat = build_feature_matrix(history, history_leagues, feature_blocks, fit_encoder=True)
+X_ah_away, _ = build_feature_matrix(history, history_leagues, feature_blocks, fit_encoder=False, encoder=encoder_cat)
+
+# Matrizes de previsão
+X_today_ah_home, _ = build_feature_matrix(games_today, games_today_leagues, feature_blocks, fit_encoder=False, encoder=encoder_cat)
+X_today_ah_home = X_today_ah_home.reindex(columns=X_ah_home.columns, fill_value=0)
+
+X_today_ah_away, _ = build_feature_matrix(games_today, games_today_leagues, feature_blocks, fit_encoder=False, encoder=encoder_cat)
+X_today_ah_away = X_today_ah_away.reindex(columns=X_ah_away.columns, fill_value=0)
+
+
+
 ##################### BLOCO 5 – SIDEBAR CONFIG #####################
 st.sidebar.header("⚙️ Settings")
 ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest", "XGBoost"])
