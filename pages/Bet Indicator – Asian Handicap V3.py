@@ -318,55 +318,16 @@ retrain = st.sidebar.checkbox("Retrain models",value=False)
 normalize_features = st.sidebar.checkbox("Normalize features (odds + strength)",value=False)
 
 
-##################### BLOCO 6 – TRAIN & EVALUATE #####################
-import zipfile
+##################### BLOCO 6 – TRAIN & EVALUATE (somente v3c) #####################
+import zipfile, io
 
-def train_and_evaluate(X, y, name):
-    safe_name = name.replace(" ", "")
-    safe_model = ml_model_choice.replace(" ", "")
-    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C_v3.pkl"
-    feature_cols = X.columns.tolist()
-
-    if not retrain:
-        loaded = load_model(filename)
-        if loaded:
-            model, cols = loaded
-            preds = model.predict(X)
-            probs = model.predict_proba(X)
-            res = {"Model": f"{name}_v3 (loaded)", "Accuracy": accuracy_score(y, preds),
-                   "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
-            return res, (model, cols, filename)
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
-    if normalize_features:
-        scaler = StandardScaler()
-        X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
-        X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
-
-    if ml_model_choice == "Random Forest":
-        model = RandomForestClassifier(n_estimators=500, max_depth=8, random_state=42)
-    else:
-        model = XGBClassifier(n_estimators=400, max_depth=6, learning_rate=0.05,
-                              subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
-                              use_label_encoder=False, random_state=42)
-
-    model.fit(X_train, y_train)
-    preds = model.predict(X_test)
-    probs = model.predict_proba(X_test)
-
-    res = {"Model": f"{name}_v3 (trained)", "Accuracy": accuracy_score(y_test, preds),
-           "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
-
-    save_model(model, feature_cols, filename)
-    return res, (model, feature_cols, filename)
-
-
-def train_and_evaluate_v2(X, y, name, use_calibration=True):
+def train_and_evaluate(X, y, name, use_calibration=True):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
     filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C_v3c.pkl"
     feature_cols = X.columns.tolist()
 
+    # 👉 Carregar modelo já treinado, se disponível
     if not retrain:
         loaded = load_model(filename)
         if loaded:
@@ -377,12 +338,15 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
                    "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
             return res, (model, cols, filename)
 
+    # 👉 Treinar do zero
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+
     if normalize_features:
         scaler = StandardScaler()
         X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
         X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
 
+    # Modelo base
     if ml_model_choice == "Random Forest":
         base_model = RandomForestClassifier(n_estimators=500, max_depth=None, class_weight="balanced",
                                             random_state=42, n_jobs=-1)
@@ -392,6 +356,7 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
                                    use_label_encoder=False, random_state=42,
                                    scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1)
 
+    # Calibração
     if use_calibration:
         try:
             model = CalibratedClassifierCV(estimator=base_model, method="sigmoid", cv=2)
@@ -399,10 +364,7 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
             model = CalibratedClassifierCV(base_estimator=base_model, method="sigmoid", cv=2)
         model.fit(X_train, y_train)
     else:
-        if ml_model_choice == "XGBoost":
-            base_model.fit(X_train, y_train, eval_set=[(X_test,y_test)], early_stopping_rounds=30, verbose=False)
-        else:
-            base_model.fit(X_train, y_train)
+        base_model.fit(X_train, y_train)
         model = base_model
 
     preds = model.predict(X_test)
@@ -415,7 +377,7 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
     return res, (model, feature_cols, filename)
 
 
-def offer_all_models_download(filenames):
+def offer_models_download(filenames):
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as zipf:
         for fname in filenames:
@@ -424,42 +386,40 @@ def offer_all_models_download(filenames):
                 zipf.write(path, arcname=os.path.basename(path))
     buffer.seek(0)
     st.sidebar.download_button(
-        label="⬇️ Download ALL Models (ZIP)",
+        label="⬇️ Download Calibrated Models (ZIP)",
         data=buffer,
-        file_name="AsianHandicap_v3_models.zip",
+        file_name="AsianHandicap_v3c_models.zip",
         mime="application/zip"
     )
 
 
-##################### BLOCO 7 – TRAINING MODELS (V3) #####################
+
+##################### BLOCO 7 – TRAINING MODELS (V3c apenas) #####################
 stats = []
 all_model_files = []
 
-res, model_ah_home_v3 = train_and_evaluate(X_ah_home, history["Target_AH_Home"], "AH_Home_v3")
-stats.append(res); all_model_files.append(model_ah_home_v3[2])
-
-res, model_ah_away_v3 = train_and_evaluate(X_ah_away, history["Target_AH_Away"], "AH_Away_v3")
-stats.append(res); all_model_files.append(model_ah_away_v3[2])
-
-res, model_ah_home_v3c = train_and_evaluate_v2(X_ah_home, history["Target_AH_Home"], "AH_Home_v3")
+# Home model
+res, model_ah_home_v3c = train_and_evaluate(X_ah_home, history["Target_AH_Home"], "AH_Home_v3")
 stats.append(res); all_model_files.append(model_ah_home_v3c[2])
 
-res, model_ah_away_v3c = train_and_evaluate_v2(X_ah_away, history["Target_AH_Away"], "AH_Away_v3")
+# Away model
+res, model_ah_away_v3c = train_and_evaluate(X_ah_away, history["Target_AH_Away"], "AH_Away_v3")
 stats.append(res); all_model_files.append(model_ah_away_v3c[2])
 
 # Mostrar métricas
 stats_df = pd.DataFrame(stats)[["Model","Accuracy","LogLoss","BrierScore"]]
-st.markdown("### 📊 Model Statistics (Validation) – v3")
+st.markdown("### 📊 Model Statistics (Validation) – v3c (Calibrated)")
 st.dataframe(stats_df, use_container_width=True)
 
-# Botão único para baixar todos os modelos juntos
-offer_all_models_download(all_model_files)
+# Botão para baixar os modelos calibrados
+offer_models_download(all_model_files)
 
 
 
-##################### BLOCO 8 – PREDICTIONS (V3) #####################
-model_ah_home, cols1 = model_ah_home_v3
-model_ah_away, cols2 = model_ah_away_v3
+
+##################### BLOCO 8 – PREDICTIONS (V3c) #####################
+model_ah_home, cols1, _ = model_ah_home_v3c
+model_ah_away, cols2, _ = model_ah_away_v3c
 
 X_today_ah_home = X_today_ah_home.reindex(columns=cols1, fill_value=0)
 X_today_ah_away = X_today_ah_away.reindex(columns=cols2, fill_value=0)
@@ -474,6 +434,7 @@ if not games_today.empty:
     probs_home = model_ah_home.predict_proba(X_today_ah_home)
     for cls, col in zip(model_ah_home.classes_, ["p_ah_home_no","p_ah_home_yes"]):
         games_today[col] = probs_home[:, cls]
+
     probs_away = model_ah_away.predict_proba(X_today_ah_away)
     for cls, col in zip(model_ah_away.classes_, ["p_ah_away_no","p_ah_away_yes"]):
         games_today[col] = probs_away[:, cls]
@@ -500,5 +461,6 @@ styled_df = (
     .applymap(lambda v: color_prob(v,"255,140,0"), subset=["p_ah_away_yes"])
 )
 
-st.markdown("### 📌 Predictions for Today's Matches – Asian Handicap (v3)")
+st.markdown("### 📌 Predictions for Today's Matches – Asian Handicap (v3c Calibrated)")
 st.dataframe(styled_df, use_container_width=True, height=800)
+
