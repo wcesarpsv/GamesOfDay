@@ -512,8 +512,7 @@ def train_and_evaluate_v2(X, y, name):
     else:
         base_model = XGBClassifier(
             n_estimators=300,
-            tree_method="gpu_hist",
-            predictor="gpu_predictor",
+            tree_method="hist",
             max_depth=5,
             learning_rate=0.1,
             subsample=0.8,
@@ -523,7 +522,7 @@ def train_and_evaluate_v2(X, y, name):
             random_state=42,
             scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1
         )
-# tree_method="hist",
+
     # ---------- Treino + Calibração ----------
     if calibration_choice == "none":
         base_model.fit(X_train, y_train)
