@@ -166,9 +166,7 @@ history["Target_AH_Home_strict"] = (history["Handicap_Home_Result"] == 1.0).asty
 
 
 ##################### BLOCO 4 – FEATURE ENGINEERING #####################
-# (mantido igual ao seu, com odds, strength, categorical, band weights, etc.)
-# ...
-# (nenhuma mudança necessária aqui além do que você já implementou)
+# (mantém o mesmo código de feature engineering que você já tinha: odds, momentum, bands, weights...)
 
 
 ##################### BLOCO 5 – SIDEBAR CONFIG #####################
@@ -191,7 +189,6 @@ def train_and_evaluate_v2(X, y, name):
     filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C_v3c.pkl"
     feature_cols = X.columns.tolist()
 
-    # ---------- Caso modelo já exista ----------
     if not retrain:
         loaded = load_model(filename)
         if loaded:
@@ -204,20 +201,15 @@ def train_and_evaluate_v2(X, y, name):
                 "LogLoss": log_loss(y, probs),
                 "BrierScore": brier_score_loss(y, probs[:, 1])
             }
-            return res, (model, cols, filename)   # ✅ corrigido para incluir filename
+            return res, (model, cols, filename)
 
-    # ---------- Train/Test split ----------
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, shuffle=False
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
-    # ---------- Normalização ----------
     if normalize_features:
         scaler = StandardScaler()
         X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
         X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
 
-    # ---------- Modelo Base ----------
     if ml_model_choice == "Random Forest":
         base_model = RandomForestClassifier(
             n_estimators=500,
@@ -240,7 +232,6 @@ def train_and_evaluate_v2(X, y, name):
             scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1
         )
 
-    # ---------- Treino + Calibração ----------
     if calibration_choice == "none":
         base_model.fit(X_train, y_train)
         model = base_model
@@ -259,7 +250,6 @@ def train_and_evaluate_v2(X, y, name):
             )
         model.fit(X_train, y_train)
 
-    # ---------- Avaliação ----------
     preds = model.predict(X_test)
     probs = model.predict_proba(X_test)
 
@@ -270,10 +260,8 @@ def train_and_evaluate_v2(X, y, name):
         "BrierScore": brier_score_loss(y_test, probs[:, 1])
     }
 
-    # ---------- Salvar modelo ----------
     save_model(model, feature_cols, filename)
     return res, (model, feature_cols, filename)
-
 
 
 ##################### BLOCO 7 – TRAINING MODELS #####################
@@ -282,25 +270,18 @@ all_model_files = []
 
 # --- Home model (sempre strict) ---
 y_home = history["Target_AH_Home_strict"]
-res, model_ah_home_v3c = train_and_evaluate_v2(
-    X_ah_home, y_home, "AH_Home_v3"
-)
+res, model_ah_home_v3c = train_and_evaluate_v2(X_ah_home, y_home, "AH_Home_v3")
 stats.append(res); all_model_files.append(model_ah_home_v3c[2])
 
 # --- Away model ---
-res, model_ah_away_v3c = train_and_evaluate_v2(
-    X_ah_away, history["Target_AH_Away"], "AH_Away_v3"
-)
+res, model_ah_away_v3c = train_and_evaluate_v2(X_ah_away, history["Target_AH_Away"], "AH_Away_v3")
 stats.append(res); all_model_files.append(model_ah_away_v3c[2])
 
-# --- Mostrar métricas (primeiro na tela) ---
 stats_df = pd.DataFrame(stats)[["Model","Accuracy","LogLoss","BrierScore"]]
 st.markdown("### 📊 Model Statistics (Validation) – v3c (Calibrated)")
 st.dataframe(stats_df, use_container_width=True)
 
-# --- Botão para baixar os modelos calibrados ---
 offer_models_download(all_model_files)
-
 
 
 ##################### BLOCO 8 – PREDICTIONS #####################
@@ -366,14 +347,13 @@ dist_away = history["Target_AH_Away"].value_counts(normalize=True).rename("Targe
 dist_df = pd.concat([dist_home_strict, dist_away], axis=1).fillna(0).T
 st.dataframe(dist_df.style.format("{:.2%}"), use_container_width=True)
 
+
 ##################### BLOCO 10 – HISTORICAL VALIDATION #####################
 st.markdown("### 📊 Historical Validation – Band Cross vs Handicap Result (per League)")
 
-# Garantir dados com targets
 band_eval = history.dropna(subset=["Target_AH_Home","Target_AH_Away"]).copy()
 band_eval["Band_Cross"] = band_eval["Home_Band"] + " vs " + band_eval["Away_Band"]
 
-# Agregar por Liga + Cruzamento
 league_band_summary = (
     band_eval.groupby(["League","Band_Cross"])
     .agg(
@@ -385,18 +365,15 @@ league_band_summary = (
     .reset_index()
 )
 
-# Converter winrates para percentual
 league_band_summary["Home_AH_Winrate"] = (league_band_summary["Home_AH_Winrate"]*100).round(1)
 league_band_summary["Away_AH_Winrate"] = (league_band_summary["Away_AH_Winrate"]*100).round(1)
 
-# Criar peso dinâmico apenas se houver pelo menos 10 jogos
 league_band_summary["Dynamic_Band_Weight"] = np.where(
     league_band_summary["Games"] >= 10,
     (league_band_summary["Home_AH_Winrate"] - league_band_summary["Away_AH_Winrate"]) / 100.0,
     np.nan
 ).round(2)
 
-# Mostrar tabela de validação (quarto na tela)
 st.dataframe(
     league_band_summary.sort_values(["League","Games"], ascending=[True,False]),
     use_container_width=True
