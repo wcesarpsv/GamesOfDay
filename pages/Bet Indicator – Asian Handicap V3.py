@@ -498,18 +498,19 @@ def train_and_evaluate_v2(X, y, name):
            "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
 
     save_model(model, feature_cols, filename)
-    return res, (model, feature_cols)
+    return res, (model, feature_cols, filename)
+
 
 ##################### BLOCO 7 – TRAINING MODELS (V3c apenas) #####################
 stats = []
 all_model_files = []
 
 # Home model
-res, model_ah_home_v3c = train_and_evaluate(X_ah_home, history["Target_AH_Home"], "AH_Home_v3")
+res, model_ah_home_v3c = train_and_evaluate_v2(X_ah_home, history["Target_AH_Home"], "AH_Home_v3")
 stats.append(res); all_model_files.append(model_ah_home_v3c[2])
 
 # Away model
-res, model_ah_away_v3c = train_and_evaluate(X_ah_away, history["Target_AH_Away"], "AH_Away_v3")
+res, model_ah_away_v3c = train_and_evaluate_v2(X_ah_away, history["Target_AH_Away"], "AH_Away_v3")
 stats.append(res); all_model_files.append(model_ah_away_v3c[2])
 
 # Mostrar métricas
