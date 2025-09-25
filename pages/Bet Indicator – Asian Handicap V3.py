@@ -450,8 +450,14 @@ normalize_features = st.sidebar.checkbox("Normalize features (odds + strength)",
 
 calibration_choice = st.sidebar.selectbox(
     "Calibration method",
-    ["sigmoid", "isotonic", "none"],  # opções
+    ["sigmoid", "isotonic", "none"],  
     index=0
+)
+
+target_home_choice = st.sidebar.radio(
+    "Target Home",
+    ["Default (>=0.5)", "Strict (==1 only)"],
+    index=1  # começa como estrito
 )
 
 
@@ -552,16 +558,23 @@ all_model_files = []
 
 # --- Diagnóstico das distribuições ---
 st.markdown("### 📊 Distribuição dos Targets (Home vs Away)")
-dist_home = history["Target_AH_Home"].value_counts(normalize=True).rename("Target_AH_Home (atual)")
+dist_home = history["Target_AH_Home"].value_counts(normalize=True).rename("Target_AH_Home (default)")
 dist_home_strict = history["Target_AH_Home_strict"].value_counts(normalize=True).rename("Target_AH_Home_strict")
 dist_away = history["Target_AH_Away"].value_counts(normalize=True).rename("Target_AH_Away")
 
 dist_df = pd.concat([dist_home, dist_home_strict, dist_away], axis=1).fillna(0).T
 st.dataframe(dist_df.style.format("{:.2%}"), use_container_width=True)
 
-# --- Home model (usar target estrito para evitar travamento nas probabilidades) ---
+# --- Home model: target definido pelo usuário ---
+if target_home_choice == "Strict (==1 only)":
+    y_home = history["Target_AH_Home_strict"]
+    st.info("ℹ️ Modelo Home treinado com **Target_AH_Home_strict** (vitória plena = 1).")
+else:
+    y_home = history["Target_AH_Home"]
+    st.info("ℹ️ Modelo Home treinado com **Target_AH_Home** (>=0.5 conta como vitória).")
+
 res, model_ah_home_v3c = train_and_evaluate_v2(
-    X_ah_home, history["Target_AH_Home_strict"], "AH_Home_v3"
+    X_ah_home, y_home, "AH_Home_v3"
 )
 stats.append(res); all_model_files.append(model_ah_home_v3c[2])
 
@@ -578,7 +591,6 @@ st.dataframe(stats_df, use_container_width=True)
 
 # --- Botão para baixar os modelos calibrados ---
 offer_models_download(all_model_files)
-
 
 
 
