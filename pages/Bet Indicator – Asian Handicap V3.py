@@ -318,7 +318,102 @@ normalize_features = st.sidebar.checkbox("Normalize features (odds + strength)",
 
 
 ##################### BLOCO 6 – TRAIN & EVALUATE #####################
-# (sem mudanças, apenas garante que nomes agora recebem *_v3.pkl)
+##################### BLOCO 6 – TRAIN & EVALUATE #####################
+def train_and_evaluate(X, y, name):
+    safe_name = name.replace(" ", "")
+    safe_model = ml_model_choice.replace(" ", "")
+    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C_v3.pkl"   # <<-- salvos como v3
+    feature_cols = X.columns.tolist()
+
+    if not retrain:
+        loaded = load_model(filename)
+        if loaded:
+            model, cols = loaded
+            preds = model.predict(X)
+            probs = model.predict_proba(X)
+            res = {"Model": f"{name}_v3", "Accuracy": accuracy_score(y, preds),
+                   "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
+            return res, (model, cols)
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+
+    if normalize_features:
+        scaler = StandardScaler()
+        X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
+        X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
+
+    if ml_model_choice == "Random Forest":
+        model = RandomForestClassifier(n_estimators=300, max_depth=8, random_state=42)
+    else:
+        model = XGBClassifier(n_estimators=400, max_depth=6, learning_rate=0.05,
+                              subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
+                              use_label_encoder=False, random_state=42)
+
+    model.fit(X_train, y_train)
+    preds = model.predict(X_test)
+    probs = model.predict_proba(X_test)
+
+    res = {"Model": f"{name}_v3", "Accuracy": accuracy_score(y_test, preds),
+           "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
+
+    save_model(model, feature_cols, filename)
+    return res, (model, feature_cols)
+
+
+def train_and_evaluate_v2(X, y, name, use_calibration=True):
+    safe_name = name.replace(" ", "")
+    safe_model = ml_model_choice.replace(" ", "")
+    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C_v3c.pkl"   # <<-- calibrados como v3c
+    feature_cols = X.columns.tolist()
+
+    if not retrain:
+        loaded = load_model(filename)
+        if loaded:
+            model, cols = loaded
+            preds = model.predict(X)
+            probs = model.predict_proba(X)
+            res = {"Model": f"{name}_v3c", "Accuracy": accuracy_score(y, preds),
+                   "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
+            return res, (model, cols)
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+
+    if normalize_features:
+        scaler = StandardScaler()
+        X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
+        X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
+
+    if ml_model_choice == "Random Forest":
+        base_model = RandomForestClassifier(n_estimators=500, max_depth=None, class_weight="balanced",
+                                            random_state=42, n_jobs=-1)
+    else:
+        base_model = XGBClassifier(n_estimators=1000, max_depth=5, learning_rate=0.1,
+                                   subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
+                                   use_label_encoder=False, random_state=42,
+                                   scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1)
+
+    if use_calibration:
+        try:
+            model = CalibratedClassifierCV(estimator=base_model, method="sigmoid", cv=2)
+        except TypeError:
+            model = CalibratedClassifierCV(base_estimator=base_model, method="sigmoid", cv=2)
+        model.fit(X_train, y_train)
+    else:
+        if ml_model_choice == "XGBoost":
+            base_model.fit(X_train, y_train, eval_set=[(X_test,y_test)], early_stopping_rounds=30, verbose=False)
+        else:
+            base_model.fit(X_train, y_train)
+        model = base_model
+
+    preds = model.predict(X_test)
+    probs = model.predict_proba(X_test)
+
+    res = {"Model": f"{name}_v3c", "Accuracy": accuracy_score(y_test, preds),
+           "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
+
+    save_model(model, feature_cols, filename)
+    return res, (model, feature_cols)
+
 
 
 ##################### BLOCO 7 – TRAINING MODELS (V3) #####################
