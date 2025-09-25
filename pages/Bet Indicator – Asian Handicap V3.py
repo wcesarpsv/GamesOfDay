@@ -253,9 +253,11 @@ def dominant_side(row, threshold=0.90):
 league_class = classify_leagues_variation(history)
 league_bands = compute_league_bands(history)
 
-for df in [history, games_today]:
-    df.merge(league_class, on="League", how="left")
-    df.merge(league_bands, on="League", how="left")
+# --- aplicar merges corretamente ---
+for name, df in [("history", history), ("games_today", games_today)]:
+    df = df.merge(league_class, on="League", how="left")
+    df = df.merge(league_bands, on="League", how="left")
+
     df["Home_Band"] = np.where(
         df["M_H"] <= df["Home_P20"], "Bottom 20%",
         np.where(df["M_H"] >= df["Home_P80"], "Top 20%", "Balanced")
@@ -268,14 +270,19 @@ for df in [history, games_today]:
     df["Home_Band_Num"] = df["Home_Band"].map({"Bottom 20%": 1, "Balanced": 2, "Top 20%": 3})
     df["Away_Band_Num"] = df["Away_Band"].map({"Bottom 20%": 1, "Balanced": 2, "Top 20%": 3})
 
-# --- Placeholder de Win_Probability e Games_Analyzed ---
-# (aqui você pode plugar a função real que calcula win probability)
+    if name == "history":
+        history = df
+    else:
+        games_today = df
+
+# --- Placeholders caso não existam ---
 if "Win_Probability" not in history.columns:
     history["Win_Probability"] = np.nan
     games_today["Win_Probability"] = np.nan
 if "Games_Analyzed" not in history.columns:
     history["Games_Analyzed"] = np.nan
     games_today["Games_Analyzed"] = np.nan
+
 
 
 ##################### BLOCO 4C – BUILD FEATURE MATRIX (V3) #####################
