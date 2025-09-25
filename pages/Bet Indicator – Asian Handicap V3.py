@@ -80,25 +80,37 @@ def offer_model_download(model, feature_cols, filename):
 
 def offer_models_download(model_files):
     """
-    Cria um botão no sidebar para baixar todos os .pkl em um único ZIP.
+    Cria um botão no sidebar para baixar todos os modelos (.pkl) em um único ZIP.
+    Pega direto da pasta Models para evitar ZIP vazio.
     """
     if not model_files:
+        st.sidebar.warning("Nenhum modelo disponível para download ainda.")
         return
 
+    # Garante que todos os arquivos apontem para a pasta Models
+    files_to_zip = [os.path.join(MODELS_FOLDER, os.path.basename(f)) for f in model_files]
+
+    # Filtra apenas os arquivos que realmente existem
+    files_to_zip = [f for f in files_to_zip if os.path.exists(f)]
+
+    if not files_to_zip:
+        st.sidebar.warning("Nenhum modelo salvo encontrado na pasta Models.")
+        return
+
+    # Cria ZIP em memória
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w") as zf:
-        for file in model_files:
-            if os.path.exists(file):
-                zf.write(file, os.path.basename(file))
+        for file in files_to_zip:
+            zf.write(file, os.path.basename(file))  # usa apenas o nome do arquivo
     zip_buffer.seek(0)
 
+    # Botão de download
     st.sidebar.download_button(
         label="⬇️ Download all models (ZIP)",
         data=zip_buffer,
         file_name="asian_handicap_models_v3c.zip",
         mime="application/zip"
     )
-
 
 
 ##################### BLOCO 3 – LOAD DATA + HANDICAP TARGET #####################
