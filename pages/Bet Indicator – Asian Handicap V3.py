@@ -597,8 +597,6 @@ st.dataframe(stats_df, use_container_width=True)
 offer_models_download(all_model_files)
 
 
-
-
 ##################### BLOCO 8 – PREDICTIONS (V3c + Band Weights) #####################
 
 model_ah_home, cols1, _ = model_ah_home_v3c
@@ -653,7 +651,8 @@ styled_df = (
 st.markdown("### 📌 Predictions for Today's Matches – Asian Handicap (v3c Calibrated + Band Weights)")
 st.dataframe(styled_df, use_container_width=True, height=800)
 
-##################### BLOCO EXTRA – DISTRIBUIÇÃO DOS TARGETS #####################
+
+##################### BLOCO 9 – DISTRIBUIÇÃO DOS TARGETS #####################
 st.markdown("### 📊 Distribuição dos Targets (Home vs Away)")
 
 dist_home_strict = history["Target_AH_Home_strict"].value_counts(normalize=True).rename("Target_AH_Home_strict")
@@ -661,5 +660,43 @@ dist_away = history["Target_AH_Away"].value_counts(normalize=True).rename("Targe
 
 dist_df = pd.concat([dist_home_strict, dist_away], axis=1).fillna(0).T
 st.dataframe(dist_df.style.format("{:.2%}"), use_container_width=True)
+
+
+##################### BLOCO 10 – HISTORICAL VALIDATION #####################
+st.markdown("### 📊 Historical Validation – Band Cross vs Handicap Result (per League)")
+
+# Garantir dados com targets
+band_eval = history.dropna(subset=["Target_AH_Home","Target_AH_Away"]).copy()
+band_eval["Band_Cross"] = band_eval["Home_Band"] + " vs " + band_eval["Away_Band"]
+
+# Agregar por Liga + Cruzamento
+league_band_summary = (
+    band_eval.groupby(["League","Band_Cross"])
+    .agg(
+        Games=("Target_AH_Home","count"),
+        Home_AH_Winrate=("Target_AH_Home","mean"),
+        Away_AH_Winrate=("Target_AH_Away","mean"),
+        Avg_BandDiff=("Band_Diff","mean")
+    )
+    .reset_index()
+)
+
+# Converter winrates para percentual
+league_band_summary["Home_AH_Winrate"] = (league_band_summary["Home_AH_Winrate"]*100).round(1)
+league_band_summary["Away_AH_Winrate"] = (league_band_summary["Away_AH_Winrate"]*100).round(1)
+
+# Criar peso dinâmico apenas se houver pelo menos 10 jogos
+league_band_summary["Dynamic_Band_Weight"] = np.where(
+    league_band_summary["Games"] >= 10,
+    (league_band_summary["Home_AH_Winrate"] - league_band_summary["Away_AH_Winrate"]) / 100.0,
+    np.nan
+).round(2)
+
+# Mostrar tabela de validação (quarto na tela)
+st.dataframe(
+    league_band_summary.sort_values(["League","Games"], ascending=[True,False]),
+    use_container_width=True
+)
+
 
 
