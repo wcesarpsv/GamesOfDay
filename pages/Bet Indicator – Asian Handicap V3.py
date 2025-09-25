@@ -319,6 +319,8 @@ normalize_features = st.sidebar.checkbox("Normalize features (odds + strength)",
 
 
 ##################### BLOCO 6 – TRAIN & EVALUATE #####################
+import zipfile
+
 def train_and_evaluate(X, y, name):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
@@ -333,7 +335,7 @@ def train_and_evaluate(X, y, name):
             probs = model.predict_proba(X)
             res = {"Model": f"{name}_v3 (loaded)", "Accuracy": accuracy_score(y, preds),
                    "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
-            return res, (model, cols)
+            return res, (model, cols, filename)
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
     if normalize_features:
@@ -356,9 +358,7 @@ def train_and_evaluate(X, y, name):
            "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
 
     save_model(model, feature_cols, filename)
-    offer_model_download(model, feature_cols, filename)  # << botão download
-
-    return res, (model, feature_cols)
+    return res, (model, feature_cols, filename)
 
 
 def train_and_evaluate_v2(X, y, name, use_calibration=True):
@@ -375,7 +375,7 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
             probs = model.predict_proba(X)
             res = {"Model": f"{name}_v3c (loaded)", "Accuracy": accuracy_score(y, preds),
                    "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
-            return res, (model, cols)
+            return res, (model, cols, filename)
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
     if normalize_features:
@@ -412,21 +412,49 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
            "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
 
     save_model(model, feature_cols, filename)
-    offer_model_download(model, feature_cols, filename)  # << botão download
+    return res, (model, feature_cols, filename)
 
-    return res, (model, feature_cols)
+
+def offer_all_models_download(filenames):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zipf:
+        for fname in filenames:
+            path = os.path.join(MODELS_FOLDER, fname)
+            if os.path.exists(path):
+                zipf.write(path, arcname=os.path.basename(path))
+    buffer.seek(0)
+    st.sidebar.download_button(
+        label="⬇️ Download ALL Models (ZIP)",
+        data=buffer,
+        file_name="AsianHandicap_v3_models.zip",
+        mime="application/zip"
+    )
 
 
 ##################### BLOCO 7 – TRAINING MODELS (V3) #####################
 stats = []
-res, model_ah_home_v3 = train_and_evaluate(X_ah_home, history["Target_AH_Home"], "AH_Home_v3"); stats.append(res)
-res, model_ah_away_v3 = train_and_evaluate(X_ah_away, history["Target_AH_Away"], "AH_Away_v3"); stats.append(res)
-res, model_ah_home_v3c = train_and_evaluate_v2(X_ah_home, history["Target_AH_Home"], "AH_Home_v3"); stats.append(res)
-res, model_ah_away_v3c = train_and_evaluate_v2(X_ah_away, history["Target_AH_Away"], "AH_Away_v3"); stats.append(res)
+all_model_files = []
 
+res, model_ah_home_v3 = train_and_evaluate(X_ah_home, history["Target_AH_Home"], "AH_Home_v3")
+stats.append(res); all_model_files.append(model_ah_home_v3[2])
+
+res, model_ah_away_v3 = train_and_evaluate(X_ah_away, history["Target_AH_Away"], "AH_Away_v3")
+stats.append(res); all_model_files.append(model_ah_away_v3[2])
+
+res, model_ah_home_v3c = train_and_evaluate_v2(X_ah_home, history["Target_AH_Home"], "AH_Home_v3")
+stats.append(res); all_model_files.append(model_ah_home_v3c[2])
+
+res, model_ah_away_v3c = train_and_evaluate_v2(X_ah_away, history["Target_AH_Away"], "AH_Away_v3")
+stats.append(res); all_model_files.append(model_ah_away_v3c[2])
+
+# Mostrar métricas
 stats_df = pd.DataFrame(stats)[["Model","Accuracy","LogLoss","BrierScore"]]
 st.markdown("### 📊 Model Statistics (Validation) – v3")
 st.dataframe(stats_df, use_container_width=True)
+
+# Botão único para baixar todos os modelos juntos
+offer_all_models_download(all_model_files)
+
 
 
 ##################### BLOCO 8 – PREDICTIONS (V3) #####################
