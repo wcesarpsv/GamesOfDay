@@ -595,6 +595,23 @@ stats_df = pd.DataFrame(stats)[["Model","Accuracy","LogLoss","BrierScore"]]
 st.markdown("### 📊 Model Statistics (Validation) – v3c (Calibrated)")
 st.dataframe(stats_df, use_container_width=True)
 
+# --- Importância das features ---
+st.markdown("### 🔍 Feature Importances (RF / XGB)")
+def show_feature_importance(model, feature_names, title):
+    try:
+        importances = model.feature_importances_
+        fi_df = pd.DataFrame({
+            "Feature": feature_names,
+            "Importance": importances
+        }).sort_values("Importance", ascending=False).head(20)
+        st.markdown(f"**{title}**")
+        st.dataframe(fi_df, use_container_width=True)
+    except Exception as e:
+        st.warning(f"Não foi possível calcular importância: {e}")
+
+show_feature_importance(model_ah_home_v3c[0], model_ah_home_v3c[1], "Top Features – Home")
+show_feature_importance(model_ah_away_v3c[0], model_ah_away_v3c[1], "Top Features – Away")
+
 # --- Botão para baixar os modelos calibrados ---
 offer_models_download(all_model_files)
 
@@ -634,7 +651,7 @@ cols_to_show = [
     "Odd_H","Odd_D","Odd_A",
     "Asian_Line_Display","Odd_H_Asi","Odd_A_Asi",
     "p_ah_home_yes","p_ah_away_yes",
-    "Band_Weight_Dynamic","Weight_Source"
+    "Band_Diff","Band_Weight","Band_Weight_Dynamic","Weight_Source"
 ]
 
 styled_df = (
@@ -644,15 +661,13 @@ styled_df = (
         "Asian_Line_Display":"{:.2f}",
         "Odd_H_Asi":"{:.2f}","Odd_A_Asi":"{:.2f}",
         "p_ah_home_yes":"{:.1%}","p_ah_away_yes":"{:.1%}",
-        "Band_Weight_Dynamic":"{:.2f}"
+        "Band_Diff":"{:.0f}","Band_Weight":"{:.2f}","Band_Weight_Dynamic":"{:.2f}"
     }, na_rep="—")
     .applymap(lambda v: color_prob(v,"0,200,0"), subset=["p_ah_home_yes"])
     .applymap(lambda v: color_prob(v,"255,140,0"), subset=["p_ah_away_yes"])
 )
 
-st.markdown("### 📌 Predictions for Today's Matches – Asian Handicap (v3c Calibrated + Band Weights)")
-st.info("ℹ️ O modelo **Home** foi treinado usando `Target_AH_Home_strict` (vitória plena = 1, demais = 0).")
+st.markdown(f"### 📌 Predictions for Today's Matches – Asian Handicap (v3c Calibrated + Band Weights) [{target_home_choice}]")
 st.dataframe(styled_df, use_container_width=True, height=800)
-
 
 
