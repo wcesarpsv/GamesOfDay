@@ -77,7 +77,6 @@ def offer_model_download(model, feature_cols, filename):
     )
 
 
-
 ##################### BLOCO 3 – LOAD DATA + HANDICAP TARGET #####################
 history = filter_leagues(load_all_games(GAMES_FOLDER))
 history = history.dropna(subset=["Goals_H_FT","Goals_A_FT","Asian_Line"]).copy()
@@ -312,12 +311,12 @@ X_today_ah_away = X_today_ah_away.reindex(columns=X_ah_away.columns, fill_value=
 numeric_cols = feature_blocks["odds"] + feature_blocks["strength"]
 numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
 
-
 ##################### BLOCO 5 – SIDEBAR CONFIG #####################
 st.sidebar.header("⚙️ Settings")
 ml_model_choice = st.sidebar.selectbox("Choose ML Model",["Random Forest","XGBoost"])
 retrain = st.sidebar.checkbox("Retrain models",value=False)
 normalize_features = st.sidebar.checkbox("Normalize features (odds + strength)",value=False)
+
 
 ##################### BLOCO 6 – TRAIN & EVALUATE #####################
 def train_and_evaluate(X, y, name):
@@ -332,11 +331,10 @@ def train_and_evaluate(X, y, name):
             model, cols = loaded
             preds = model.predict(X)
             probs = model.predict_proba(X)
-            res = {"Model": f"{name}_v3", "Accuracy": accuracy_score(y, preds),
+            res = {"Model": f"{name}_v3 (loaded)", "Accuracy": accuracy_score(y, preds),
                    "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
             return res, (model, cols)
 
-    # treino novo
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
     if normalize_features:
         scaler = StandardScaler()
@@ -354,13 +352,70 @@ def train_and_evaluate(X, y, name):
     preds = model.predict(X_test)
     probs = model.predict_proba(X_test)
 
-    res = {"Model": f"{name}_v3", "Accuracy": accuracy_score(y_test, preds),
+    res = {"Model": f"{name}_v3 (trained)", "Accuracy": accuracy_score(y_test, preds),
            "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
 
     save_model(model, feature_cols, filename)
-    offer_model_download(model, feature_cols, filename)  # <<--- botão download
+    offer_model_download(model, feature_cols, filename)  # << botão download
 
     return res, (model, feature_cols)
+
+
+def train_and_evaluate_v2(X, y, name, use_calibration=True):
+    safe_name = name.replace(" ", "")
+    safe_model = ml_model_choice.replace(" ", "")
+    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C_v3c.pkl"
+    feature_cols = X.columns.tolist()
+
+    if not retrain:
+        loaded = load_model(filename)
+        if loaded:
+            model, cols = loaded
+            preds = model.predict(X)
+            probs = model.predict_proba(X)
+            res = {"Model": f"{name}_v3c (loaded)", "Accuracy": accuracy_score(y, preds),
+                   "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
+            return res, (model, cols)
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+    if normalize_features:
+        scaler = StandardScaler()
+        X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
+        X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
+
+    if ml_model_choice == "Random Forest":
+        base_model = RandomForestClassifier(n_estimators=500, max_depth=None, class_weight="balanced",
+                                            random_state=42, n_jobs=-1)
+    else:
+        base_model = XGBClassifier(n_estimators=1000, max_depth=5, learning_rate=0.1,
+                                   subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
+                                   use_label_encoder=False, random_state=42,
+                                   scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1)
+
+    if use_calibration:
+        try:
+            model = CalibratedClassifierCV(estimator=base_model, method="sigmoid", cv=2)
+        except TypeError:
+            model = CalibratedClassifierCV(base_estimator=base_model, method="sigmoid", cv=2)
+        model.fit(X_train, y_train)
+    else:
+        if ml_model_choice == "XGBoost":
+            base_model.fit(X_train, y_train, eval_set=[(X_test,y_test)], early_stopping_rounds=30, verbose=False)
+        else:
+            base_model.fit(X_train, y_train)
+        model = base_model
+
+    preds = model.predict(X_test)
+    probs = model.predict_proba(X_test)
+
+    res = {"Model": f"{name}_v3c (trained)", "Accuracy": accuracy_score(y_test, preds),
+           "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
+
+    save_model(model, feature_cols, filename)
+    offer_model_download(model, feature_cols, filename)  # << botão download
+
+    return res, (model, feature_cols)
+
 
 ##################### BLOCO 7 – TRAINING MODELS (V3) #####################
 stats = []
