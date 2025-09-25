@@ -575,58 +575,27 @@ def train_and_evaluate_v2(X, y, name):
 stats = []
 all_model_files = []
 
-# --- Diagnóstico das distribuições ---
-st.markdown("### 📊 Distribuição dos Targets (Home vs Away)")
-dist_home = history["Target_AH_Home"].value_counts(normalize=True).rename("Target_AH_Home (default)")
-dist_home_strict = history["Target_AH_Home_strict"].value_counts(normalize=True).rename("Target_AH_Home_strict")
-dist_away = history["Target_AH_Away"].value_counts(normalize=True).rename("Target_AH_Away")
-
-dist_df = pd.concat([dist_home, dist_home_strict, dist_away], axis=1).fillna(0).T
-st.dataframe(dist_df.style.format("{:.2%}"), use_container_width=True)
-
-# --- Home model: target definido pelo usuário ---
-if target_home_choice == "Strict (==1 only)":
-    y_home = history["Target_AH_Home_strict"]
-    st.info("ℹ️ Modelo Home treinado com **Target_AH_Home_strict** (vitória plena = 1).")
-else:
-    y_home = history["Target_AH_Home"]
-    st.info("ℹ️ Modelo Home treinado com **Target_AH_Home** (>=0.5 conta como vitória).")
-
+# --- Home model (sempre strict) ---
+y_home = history["Target_AH_Home_strict"]
 res, model_ah_home_v3c = train_and_evaluate_v2(
     X_ah_home, y_home, "AH_Home_v3"
 )
 stats.append(res); all_model_files.append(model_ah_home_v3c[2])
 
-# --- Away model (mantém igual) ---
+# --- Away model ---
 res, model_ah_away_v3c = train_and_evaluate_v2(
     X_ah_away, history["Target_AH_Away"], "AH_Away_v3"
 )
 stats.append(res); all_model_files.append(model_ah_away_v3c[2])
 
-# --- Mostrar métricas ---
+# --- Mostrar métricas (primeiro na tela) ---
 stats_df = pd.DataFrame(stats)[["Model","Accuracy","LogLoss","BrierScore"]]
 st.markdown("### 📊 Model Statistics (Validation) – v3c (Calibrated)")
 st.dataframe(stats_df, use_container_width=True)
 
-# --- Importância das features ---
-st.markdown("### 🔍 Feature Importances (RF / XGB)")
-def show_feature_importance(model, feature_names, title):
-    try:
-        importances = model.feature_importances_
-        fi_df = pd.DataFrame({
-            "Feature": feature_names,
-            "Importance": importances
-        }).sort_values("Importance", ascending=False).head(20)
-        st.markdown(f"**{title}**")
-        st.dataframe(fi_df, use_container_width=True)
-    except Exception as e:
-        st.warning(f"Não foi possível calcular importância: {e}")
-
-show_feature_importance(model_ah_home_v3c[0], model_ah_home_v3c[1], "Top Features – Home")
-show_feature_importance(model_ah_away_v3c[0], model_ah_away_v3c[1], "Top Features – Away")
-
 # --- Botão para baixar os modelos calibrados ---
 offer_models_download(all_model_files)
+
 
 
 
@@ -680,7 +649,17 @@ styled_df = (
     .applymap(lambda v: color_prob(v,"255,140,0"), subset=["p_ah_away_yes"])
 )
 
-st.markdown(f"### 📌 Predictions for Today's Matches – Asian Handicap (v3c Calibrated + Band Weights) [{target_home_choice}]")
+# --- Mostrar previsões (segundo na tela) ---
+st.markdown("### 📌 Predictions for Today's Matches – Asian Handicap (v3c Calibrated + Band Weights)")
 st.dataframe(styled_df, use_container_width=True, height=800)
+
+##################### BLOCO EXTRA – DISTRIBUIÇÃO DOS TARGETS #####################
+st.markdown("### 📊 Distribuição dos Targets (Home vs Away)")
+
+dist_home_strict = history["Target_AH_Home_strict"].value_counts(normalize=True).rename("Target_AH_Home_strict")
+dist_away = history["Target_AH_Away"].value_counts(normalize=True).rename("Target_AH_Away")
+
+dist_df = pd.concat([dist_home_strict, dist_away], axis=1).fillna(0).T
+st.dataframe(dist_df.style.format("{:.2%}"), use_container_width=True)
 
 
