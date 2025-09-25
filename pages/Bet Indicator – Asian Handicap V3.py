@@ -167,7 +167,7 @@ history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if
 feature_blocks = {
     "odds": [
         
-        
+        "Odd_H","Odd_D","Odd_A","Odd_1X","Odd_X2","Odd_H_Asi","Odd_A_Asi"
         
     ],
     "strength": [
@@ -177,7 +177,7 @@ feature_blocks = {
     ],
     "categorical": [
         "Home_Band_Num","Away_Band_Num",
-        "Dominant","League_Classification"
+        "Dominant","League_Classification","Win_Probability","Games_Analyzed"
     ]
 }
 # "Odd_H","Odd_D","Odd_A","Odd_1X","Odd_X2","Odd_H_Asi","Odd_A_Asi"
