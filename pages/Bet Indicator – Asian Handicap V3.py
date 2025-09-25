@@ -146,7 +146,7 @@ history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
 history["Handicap_Home_Result"] = history.apply(lambda r: calc_handicap_result(r["Margin"], r["Asian_Line"], invert=False), axis=1)
 history["Handicap_Away_Result"] = history.apply(lambda r: calc_handicap_result(r["Margin"], r["Asian_Line"], invert=True), axis=1)
 
-# Target padrão e strict
+# Targets
 history["Target_AH_Home"] = history["Handicap_Home_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
 history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
 history["Target_AH_Home_strict"] = (history["Handicap_Home_Result"] == 1.0).astype(int)
@@ -165,8 +165,7 @@ feature_blocks = {
         "Dominant","League_Classification","Win_Probability","Games_Analyzed"
     ]
 }
-
-# Odds duplas
+# Odds derivadas
 def compute_double_chance_odds(df):
     df = df.copy()
     if set(["Odd_H", "Odd_D", "Odd_A"]).issubset(df.columns):
@@ -182,20 +181,101 @@ def compute_double_chance_odds(df):
 history = compute_double_chance_odds(history)
 games_today = compute_double_chance_odds(games_today)
 
-# Momentum
+# Diferença Momentum
 history["M_Diff"] = history["M_H"] - history["M_A"]
 games_today["M_Diff"] = games_today["M_H"] - games_today["M_A"]
+
+# Classificação ligas e bandas
+def classify_leagues_variation(history_df):
+    agg = (
+        history_df.groupby("League")
+        .agg(
+            M_H_Min=("M_H","min"), M_H_Max=("M_H","max"),
+            M_A_Min=("M_A","min"), M_A_Max=("M_A","max"),
+            Hist_Games=("M_H","count")
+        ).reset_index()
+    )
+    agg["Variation_Total"] = (agg["M_H_Max"] - agg["M_H_Min"]) + (agg["M_A_Max"] - agg["M_A_Min"])
+    def label(v):
+        if v > 6.0: return "High Variation"
+        if v >= 3.0: return "Medium Variation"
+        return "Low Variation"
+    agg["League_Classification"] = agg["Variation_Total"].apply(label)
+    return agg[["League","League_Classification","Variation_Total","Hist_Games"]]
+
+def compute_league_bands(history_df):
+    hist = history_df.copy()
+    hist["M_Diff"] = hist["M_H"] - hist["M_A"]
+    diff_q = (
+        hist.groupby("League")["M_Diff"]
+            .quantile([0.20,0.80]).unstack()
+            .rename(columns={0.2:"P20_Diff",0.8:"P80_Diff"})
+            .reset_index()
+    )
+    home_q = (
+        hist.groupby("League")["M_H"]
+            .quantile([0.20,0.80]).unstack()
+            .rename(columns={0.2:"Home_P20",0.8:"Home_P80"})
+            .reset_index()
+    )
+    away_q = (
+        hist.groupby("League")["M_A"]
+            .quantile([0.20,0.80]).unstack()
+            .rename(columns={0.2:"Away_P20",0.8:"Away_P80"})
+            .reset_index()
+    )
+    out = diff_q.merge(home_q,on="League",how="inner").merge(away_q,on="League",how="inner")
+    return out
+
+def dominant_side(row, threshold=0.90):
+    m_h, m_a = row["M_H"], row["M_A"]
+    if (m_h >= threshold) and (m_a <= -threshold):
+        return "Both extremes (Home↑ & Away↓)"
+    if (m_a >= threshold) and (m_h <= -threshold):
+        return "Both extremes (Away↑ & Home↓)"
+    if m_h >= threshold: return "Home strong"
+    if m_h <= -threshold: return "Home weak"
+    if m_a >= threshold: return "Away strong"
+    if m_a <= -threshold: return "Away weak"
+    return "Mixed / Neutral"
+
+league_class = classify_leagues_variation(history)
+league_bands = compute_league_bands(history)
+
+for name, df in [("history", history), ("games_today", games_today)]:
+    df = df.merge(league_class, on="League", how="left")
+    df = df.merge(league_bands, on="League", how="left")
+    df["Home_Band"] = np.where(
+        df["M_H"] <= df["Home_P20"], "Bottom 20%",
+        np.where(df["M_H"] >= df["Home_P80"], "Top 20%", "Balanced")
+    )
+    df["Away_Band"] = np.where(
+        df["M_A"] <= df["Away_P20"], "Bottom 20%",
+        np.where(df["M_A"] >= df["Away_P80"], "Top 20%", "Balanced")
+    )
+    df["Dominant"] = df.apply(dominant_side, axis=1)
+    df["Home_Band_Num"] = df["Home_Band"].map({"Bottom 20%":1,"Balanced":2,"Top 20%":3})
+    df["Away_Band_Num"] = df["Away_Band"].map({"Bottom 20%":1,"Balanced":2,"Top 20%":3})
+    if name == "history":
+        history = df
+    else:
+        games_today = df
+
+if "Win_Probability" not in history.columns:
+    history["Win_Probability"] = np.nan
+    games_today["Win_Probability"] = np.nan
+if "Games_Analyzed" not in history.columns:
+    history["Games_Analyzed"] = np.nan
+    games_today["Games_Analyzed"] = np.nan
 
 
 ##################### BLOCO 5 – BUILD FEATURE MATRIX #####################
 def build_feature_matrix(df, leagues, blocks, fit_encoder=False, encoder=None):
     dfs = []
     for block_name, cols in blocks.items():
-        if block_name == "categorical": 
-            continue
+        if block_name == "categorical": continue
         available_cols = [c for c in cols if c in df.columns]
-        if available_cols:
-            dfs.append(df[available_cols])
+        if available_cols: dfs.append(df[available_cols])
     if leagues is not None and not leagues.empty:
         dfs.append(leagues)
     cat_cols = [c for c in ["Dominant","League_Classification"] if c in df.columns]
@@ -208,49 +288,46 @@ def build_feature_matrix(df, leagues, blocks, fit_encoder=False, encoder=None):
         encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(cat_cols), index=df.index)
         dfs.append(encoded_df)
     for col in ["Home_Band_Num","Away_Band_Num"]:
-        if col in df.columns: 
-            dfs.append(df[[col]])
+        if col in df.columns: dfs.append(df[[col]])
     X = pd.concat(dfs, axis=1)
     return X, encoder
 
-# One-hot de ligas
 history_leagues = pd.get_dummies(history["League"], prefix="League")
 games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
 games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
 
-# Matrizes de treino
 X_ah_home, encoder_cat = build_feature_matrix(history, history_leagues, feature_blocks, fit_encoder=True)
 X_ah_away, _ = build_feature_matrix(history, history_leagues, feature_blocks, fit_encoder=False, encoder=encoder_cat)
 
-# Matrizes de previsão
 X_today_ah_home, _ = build_feature_matrix(games_today, games_today_leagues, feature_blocks, fit_encoder=False, encoder=encoder_cat)
 X_today_ah_home = X_today_ah_home.reindex(columns=X_ah_home.columns, fill_value=0)
 
 X_today_ah_away, _ = build_feature_matrix(games_today, games_today_leagues, feature_blocks, fit_encoder=False, encoder=encoder_cat)
 X_today_ah_away = X_today_ah_away.reindex(columns=X_ah_away.columns, fill_value=0)
 
+numeric_cols = feature_blocks["odds"] + feature_blocks["strength"]
+numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
 
 
-##################### BLOCO 5 – SIDEBAR CONFIG #####################
+##################### BLOCO 6 – SIDEBAR CONFIG #####################
 st.sidebar.header("⚙️ Settings")
 ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest", "XGBoost"])
 retrain = st.sidebar.checkbox("Retrain models", value=False)
 normalize_features = st.sidebar.checkbox("Normalize features (odds + strength)", value=False)
-
 calibration_choice = st.sidebar.selectbox(
-    "Calibration method",
-    ["sigmoid", "isotonic", "none"],
-    index=0
+    "Calibration method", ["sigmoid", "isotonic", "none"], index=0
 )
 
 
-##################### BLOCO 6 – TRAIN & EVALUATE #####################
+
+##################### BLOCO 7 – TRAIN & EVALUATE #####################
 def train_and_evaluate_v2(X, y, name):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
     filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C_v3c.pkl"
     feature_cols = X.columns.tolist()
 
+    # ---------- Caso modelo já exista ----------
     if not retrain:
         loaded = load_model(filename)
         if loaded:
@@ -265,15 +342,18 @@ def train_and_evaluate_v2(X, y, name):
             }
             return res, (model, cols, filename)
 
+    # ---------- Train/Test split ----------
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, shuffle=False
     )
 
+    # ---------- Normalização ----------
     if normalize_features:
         scaler = StandardScaler()
-        X_train.loc[:, feature_cols] = scaler.fit_transform(X_train[feature_cols])
-        X_test.loc[:, feature_cols] = scaler.transform(X_test[feature_cols])
+        X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
+        X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
 
+    # ---------- Modelo Base ----------
     if ml_model_choice == "Random Forest":
         base_model = RandomForestClassifier(
             n_estimators=500,
@@ -296,6 +376,7 @@ def train_and_evaluate_v2(X, y, name):
             scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1
         )
 
+    # ---------- Treino + Calibração ----------
     if calibration_choice == "none":
         base_model.fit(X_train, y_train)
         model = base_model
@@ -314,6 +395,7 @@ def train_and_evaluate_v2(X, y, name):
             )
         model.fit(X_train, y_train)
 
+    # ---------- Avaliação ----------
     preds = model.predict(X_test)
     probs = model.predict_proba(X_test)
 
@@ -324,25 +406,22 @@ def train_and_evaluate_v2(X, y, name):
         "BrierScore": brier_score_loss(y_test, probs[:, 1])
     }
 
+    # ---------- Salvar modelo ----------
     save_model(model, feature_cols, filename)
     return res, (model, feature_cols, filename)
 
 
-##################### BLOCO 7 – TRAINING MODELS (V3c apenas) #####################
+##################### BLOCO 8 – TRAINING MODELS #####################
 stats = []
 all_model_files = []
 
 # --- Home model (sempre strict) ---
 y_home = history["Target_AH_Home_strict"]
-res, model_ah_home_v3c = train_and_evaluate_v2(
-    X_ah_home, y_home, "AH_Home_v3"
-)
+res, model_ah_home_v3c = train_and_evaluate_v2(X_ah_home, y_home, "AH_Home_v3")
 stats.append(res); all_model_files.append(model_ah_home_v3c[2])
 
 # --- Away model ---
-res, model_ah_away_v3c = train_and_evaluate_v2(
-    X_ah_away, history["Target_AH_Away"], "AH_Away_v3"
-)
+res, model_ah_away_v3c = train_and_evaluate_v2(X_ah_away, history["Target_AH_Away"], "AH_Away_v3")
 stats.append(res); all_model_files.append(model_ah_away_v3c[2])
 
 # --- Mostrar métricas (primeiro na tela) ---
@@ -354,7 +433,7 @@ st.dataframe(stats_df, use_container_width=True)
 offer_models_download(all_model_files)
 
 
-##################### BLOCO 8 – PREDICTIONS (V3c + Band Weights) #####################
+##################### BLOCO 9 – PREDICTIONS #####################
 model_ah_home, cols1, _ = model_ah_home_v3c
 model_ah_away, cols2, _ = model_ah_away_v3c
 
@@ -363,9 +442,9 @@ X_today_ah_away = X_today_ah_away.reindex(columns=cols2, fill_value=0)
 
 if normalize_features:
     scaler = StandardScaler()
-    scaler.fit(X_ah_home[cols1])
-    X_today_ah_home[cols1] = scaler.transform(X_today_ah_home[cols1])
-    X_today_ah_away[cols2] = scaler.transform(X_today_ah_away[cols2])
+    scaler.fit(X_ah_home[numeric_cols])
+    X_today_ah_home[numeric_cols] = scaler.transform(X_today_ah_home[numeric_cols])
+    X_today_ah_away[numeric_cols] = scaler.transform(X_today_ah_away[numeric_cols])
 
 if not games_today.empty:
     probs_home = model_ah_home.predict_proba(X_today_ah_home)
@@ -381,13 +460,11 @@ def color_prob(val, color):
     alpha = float(np.clip(val,0,1))
     return f"background-color: rgba({color},{alpha:.2f})"
 
-# Seleção de colunas para exibição
 cols_to_show = [
     "Date","Time","League","Home","Away",
     "Odd_H","Odd_D","Odd_A",
     "Asian_Line_Display","Odd_H_Asi","Odd_A_Asi",
-    "p_ah_home_yes","p_ah_away_yes",
-    "Band_Diff","Band_Weight","Band_Weight_Dynamic","Weight_Source"
+    "p_ah_home_yes","p_ah_away_yes"
 ]
 
 styled_df = (
@@ -396,19 +473,17 @@ styled_df = (
         "Odd_H":"{:.2f}","Odd_D":"{:.2f}","Odd_A":"{:.2f}",
         "Asian_Line_Display":"{:.2f}",
         "Odd_H_Asi":"{:.2f}","Odd_A_Asi":"{:.2f}",
-        "p_ah_home_yes":"{:.1%}","p_ah_away_yes":"{:.1%}",
-        "Band_Diff":"{:.0f}","Band_Weight":"{:.2f}","Band_Weight_Dynamic":"{:.2f}"
+        "p_ah_home_yes":"{:.1%}","p_ah_away_yes":"{:.1%}"
     }, na_rep="—")
     .applymap(lambda v: color_prob(v,"0,200,0"), subset=["p_ah_home_yes"])
     .applymap(lambda v: color_prob(v,"255,140,0"), subset=["p_ah_away_yes"])
 )
 
-# --- Mostrar previsões (segundo na tela) ---
-st.markdown("### 📌 Predictions for Today's Matches – Asian Handicap (v3c Calibrated + Band Weights)")
+st.markdown("### 📌 Predictions for Today's Matches – Asian Handicap (v3c Calibrated)")
 st.dataframe(styled_df, use_container_width=True, height=800)
 
 
-##################### BLOCO 9 – DISTRIBUIÇÃO DOS TARGETS #####################
+##################### BLOCO 10 – DISTRIBUIÇÃO DOS TARGETS #####################
 st.markdown("### 📊 Distribuição dos Targets (Home vs Away)")
 
 dist_home_strict = history["Target_AH_Home_strict"].value_counts(normalize=True).rename("Target_AH_Home_strict")
@@ -418,14 +493,12 @@ dist_df = pd.concat([dist_home_strict, dist_away], axis=1).fillna(0).T
 st.dataframe(dist_df.style.format("{:.2%}"), use_container_width=True)
 
 
-##################### BLOCO 10 – HISTORICAL VALIDATION #####################
+##################### BLOCO 11 – HISTORICAL VALIDATION #####################
 st.markdown("### 📊 Historical Validation – Band Cross vs Handicap Result (per League)")
 
-# Garantir dados com targets
 band_eval = history.dropna(subset=["Target_AH_Home","Target_AH_Away"]).copy()
 band_eval["Band_Cross"] = band_eval["Home_Band"] + " vs " + band_eval["Away_Band"]
 
-# Agregar por Liga + Cruzamento
 league_band_summary = (
     band_eval.groupby(["League","Band_Cross"])
     .agg(
@@ -437,19 +510,16 @@ league_band_summary = (
     .reset_index()
 )
 
-# Converter winrates para percentual
 league_band_summary["Home_AH_Winrate"] = (league_band_summary["Home_AH_Winrate"]*100).round(1)
 league_band_summary["Away_AH_Winrate"] = (league_band_summary["Away_AH_Winrate"]*100).round(1)
-
-# Criar peso dinâmico apenas se houver pelo menos 10 jogos
 league_band_summary["Dynamic_Band_Weight"] = np.where(
     league_band_summary["Games"] >= 10,
     (league_band_summary["Home_AH_Winrate"] - league_band_summary["Away_AH_Winrate"]) / 100.0,
     np.nan
 ).round(2)
 
-# Mostrar tabela de validação (quarto na tela)
 st.dataframe(
     league_band_summary.sort_values(["League","Games"], ascending=[True,False]),
     use_container_width=True
 )
+
