@@ -165,6 +165,7 @@ feature_blocks = {
         "Dominant","League_Classification","Win_Probability","Games_Analyzed"
     ]
 }
+
 # Odds derivadas
 def compute_double_chance_odds(df):
     df = df.copy()
@@ -256,17 +257,23 @@ for name, df in [("history", history), ("games_today", games_today)]:
     df["Dominant"] = df.apply(dominant_side, axis=1)
     df["Home_Band_Num"] = df["Home_Band"].map({"Bottom 20%":1,"Balanced":2,"Top 20%":3})
     df["Away_Band_Num"] = df["Away_Band"].map({"Bottom 20%":1,"Balanced":2,"Top 20%":3})
+
+    # 👉 Agora criamos Band_Diff para ser usado depois
+    df["Band_Diff"] = df["Home_Band_Num"] - df["Away_Band_Num"]
+
     if name == "history":
         history = df
     else:
         games_today = df
 
+# Garantir colunas extras para não dar erro nos blocos seguintes
 if "Win_Probability" not in history.columns:
     history["Win_Probability"] = np.nan
     games_today["Win_Probability"] = np.nan
 if "Games_Analyzed" not in history.columns:
     history["Games_Analyzed"] = np.nan
     games_today["Games_Analyzed"] = np.nan
+
 
 
 ##################### BLOCO 5 – BUILD FEATURE MATRIX #####################
