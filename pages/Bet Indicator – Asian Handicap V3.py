@@ -340,78 +340,78 @@ if "Band_Diff" not in feature_blocks["strength"]:
     feature_blocks["strength"].extend(["Band_Diff", "Band_Weight"])
 
 
-##################### BLOCO EXTRA – BAND WEIGHT BY LEAGUE (with min games + fallback + source) #####################
+# ##################### BLOCO EXTRA – BAND WEIGHT BY LEAGUE (with min games + fallback + source) #####################
 
-st.markdown("### 📊 Historical Validation – Band Cross vs Handicap Result (per League)")
+# st.markdown("### 📊 Historical Validation – Band Cross vs Handicap Result (per League)")
 
-# Garantir dados com targets
-band_eval = history.dropna(subset=["Target_AH_Home","Target_AH_Away"]).copy()
-band_eval["Band_Cross"] = band_eval["Home_Band"] + " vs " + band_eval["Away_Band"]
+# # Garantir dados com targets
+# band_eval = history.dropna(subset=["Target_AH_Home","Target_AH_Away"]).copy()
+# band_eval["Band_Cross"] = band_eval["Home_Band"] + " vs " + band_eval["Away_Band"]
 
-# Agregar por Liga + Cruzamento
-league_band_summary = (
-    band_eval.groupby(["League","Band_Cross"])
-    .agg(
-        Games=("Target_AH_Home","count"),
-        Home_AH_Winrate=("Target_AH_Home","mean"),
-        Away_AH_Winrate=("Target_AH_Away","mean"),
-        Avg_BandDiff=("Band_Diff","mean")
-    )
-    .reset_index()
-)
+# # Agregar por Liga + Cruzamento
+# league_band_summary = (
+#     band_eval.groupby(["League","Band_Cross"])
+#     .agg(
+#         Games=("Target_AH_Home","count"),
+#         Home_AH_Winrate=("Target_AH_Home","mean"),
+#         Away_AH_Winrate=("Target_AH_Away","mean"),
+#         Avg_BandDiff=("Band_Diff","mean")
+#     )
+#     .reset_index()
+# )
 
-# Converter winrates para percentual
-league_band_summary["Home_AH_Winrate"] = (league_band_summary["Home_AH_Winrate"]*100).round(1)
-league_band_summary["Away_AH_Winrate"] = (league_band_summary["Away_AH_Winrate"]*100).round(1)
+# # Converter winrates para percentual
+# league_band_summary["Home_AH_Winrate"] = (league_band_summary["Home_AH_Winrate"]*100).round(1)
+# league_band_summary["Away_AH_Winrate"] = (league_band_summary["Away_AH_Winrate"]*100).round(1)
 
-# Criar peso dinâmico apenas se houver pelo menos 10 jogos
-league_band_summary["Dynamic_Band_Weight"] = np.where(
-    league_band_summary["Games"] >= 10,
-    (league_band_summary["Home_AH_Winrate"] - league_band_summary["Away_AH_Winrate"]) / 100.0,
-    np.nan
-).round(2)
+# # Criar peso dinâmico apenas se houver pelo menos 10 jogos
+# league_band_summary["Dynamic_Band_Weight"] = np.where(
+#     league_band_summary["Games"] >= 10,
+#     (league_band_summary["Home_AH_Winrate"] - league_band_summary["Away_AH_Winrate"]) / 100.0,
+#     np.nan
+# ).round(2)
 
-# Mostrar tabela de validação
-st.dataframe(
-    league_band_summary.sort_values(["League","Games"], ascending=[True,False]),
-    use_container_width=True
-)
+# # Mostrar tabela de validação
+# st.dataframe(
+#     league_band_summary.sort_values(["League","Games"], ascending=[True,False]),
+#     use_container_width=True
+# )
 
-# Criar dicionário {(League, Band_Cross): peso}
-band_weight_dict = {
-    (row["League"], row["Band_Cross"]): row["Dynamic_Band_Weight"]
-    for _, row in league_band_summary.iterrows()
-    if not pd.isna(row["Dynamic_Band_Weight"])
-}
+# # Criar dicionário {(League, Band_Cross): peso}
+# band_weight_dict = {
+#     (row["League"], row["Band_Cross"]): row["Dynamic_Band_Weight"]
+#     for _, row in league_band_summary.iterrows()
+#     if not pd.isna(row["Dynamic_Band_Weight"])
+# }
 
-# Fallback heurístico (do Bloco 4D)
-def band_weight_fallback(row):
-    if row["Home_Band"] == "Top 20%" and row["Away_Band"] == "Bottom 20%": return +1.5
-    if row["Home_Band"] == "Bottom 20%" and row["Away_Band"] == "Top 20%": return -1.5
-    if row["Home_Band"] == "Top 20%" and row["Away_Band"] == "Balanced": return +0.7
-    if row["Home_Band"] == "Balanced" and row["Away_Band"] == "Top 20%": return -0.7
-    if row["Home_Band"] == "Bottom 20%" and row["Away_Band"] == "Balanced": return -0.5
-    if row["Home_Band"] == "Balanced" and row["Away_Band"] == "Bottom 20%": return +0.5
-    return 0.0
+# # Fallback heurístico (do Bloco 4D)
+# def band_weight_fallback(row):
+#     if row["Home_Band"] == "Top 20%" and row["Away_Band"] == "Bottom 20%": return +1.5
+#     if row["Home_Band"] == "Bottom 20%" and row["Away_Band"] == "Top 20%": return -1.5
+#     if row["Home_Band"] == "Top 20%" and row["Away_Band"] == "Balanced": return +0.7
+#     if row["Home_Band"] == "Balanced" and row["Away_Band"] == "Top 20%": return -0.7
+#     if row["Home_Band"] == "Bottom 20%" and row["Away_Band"] == "Balanced": return -0.5
+#     if row["Home_Band"] == "Balanced" and row["Away_Band"] == "Bottom 20%": return +0.5
+#     return 0.0
 
-# Aplicar peso dinâmico com fallback e salvar a fonte
-def apply_dynamic_band_weight(row):
-    key = (row.get("League"), row.get("Home_Band") + " vs " + row.get("Away_Band"))
-    if key in band_weight_dict:
-        return band_weight_dict[key], "dynamic"
-    return band_weight_fallback(row), "fallback"
+# # Aplicar peso dinâmico com fallback e salvar a fonte
+# def apply_dynamic_band_weight(row):
+#     key = (row.get("League"), row.get("Home_Band") + " vs " + row.get("Away_Band"))
+#     if key in band_weight_dict:
+#         return band_weight_dict[key], "dynamic"
+#     return band_weight_fallback(row), "fallback"
 
-# Aplicar nos datasets
-history[["Band_Weight_Dynamic","Weight_Source"]] = history.apply(
-    apply_dynamic_band_weight, axis=1, result_type="expand"
-)
-games_today[["Band_Weight_Dynamic","Weight_Source"]] = games_today.apply(
-    apply_dynamic_band_weight, axis=1, result_type="expand"
-)
+# # Aplicar nos datasets
+# history[["Band_Weight_Dynamic","Weight_Source"]] = history.apply(
+#     apply_dynamic_band_weight, axis=1, result_type="expand"
+# )
+# games_today[["Band_Weight_Dynamic","Weight_Source"]] = games_today.apply(
+#     apply_dynamic_band_weight, axis=1, result_type="expand"
+# )
 
-# Adicionar feature ao bloco strength
-if "Band_Weight_Dynamic" not in feature_blocks["strength"]:
-    feature_blocks["strength"].append("Band_Weight_Dynamic")
+# # Adicionar feature ao bloco strength
+# if "Band_Weight_Dynamic" not in feature_blocks["strength"]:
+#     feature_blocks["strength"].append("Band_Weight_Dynamic")
 
 
 
