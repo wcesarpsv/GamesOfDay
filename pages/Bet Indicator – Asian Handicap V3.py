@@ -267,6 +267,111 @@ if "Games_Analyzed" not in history.columns:
     games_today["Games_Analyzed"] = np.nan
 
 
+##################### BLOCO 4D – FEATURE ENGINEERING: BAND WEIGHTS #####################
+
+# Diferença direta das bandas (já temos Home_Band_Num e Away_Band_Num)
+history["Band_Diff"] = history["Home_Band_Num"] - history["Away_Band_Num"]
+games_today["Band_Diff"] = games_today["Home_Band_Num"] - games_today["Away_Band_Num"]
+
+# Função para criar pesos heurísticos positivos/negativos
+def band_weight(row):
+    if row["Home_Band"] == "Top 20%" and row["Away_Band"] == "Bottom 20%":
+        return +1.5   # Forte pró Home
+    if row["Home_Band"] == "Bottom 20%" and row["Away_Band"] == "Top 20%":
+        return -1.5   # Forte pró Away
+    if row["Home_Band"] == "Top 20%" and row["Away_Band"] == "Balanced":
+        return +0.7   # Vantagem moderada pró Home
+    if row["Home_Band"] == "Balanced" and row["Away_Band"] == "Top 20%":
+        return -0.7   # Vantagem moderada pró Away
+    if row["Home_Band"] == "Bottom 20%" and row["Away_Band"] == "Balanced":
+        return -0.5   # Leve pró Away
+    if row["Home_Band"] == "Balanced" and row["Away_Band"] == "Bottom 20%":
+        return +0.5   # Leve pró Home
+    return 0
+
+history["Band_Weight"] = history.apply(band_weight, axis=1)
+games_today["Band_Weight"] = games_today.apply(band_weight, axis=1)
+
+# Adicionar no bloco de features
+if "Band_Diff" not in feature_blocks["strength"]:
+    feature_blocks["strength"].extend(["Band_Diff", "Band_Weight"])
+
+
+##################### BLOCO EXTRA – BAND WEIGHT BY LEAGUE (with min games + fallback + source) #####################
+
+st.markdown("### 📊 Historical Validation – Band Cross vs Handicap Result (per League)")
+
+# Garantir dados com targets
+band_eval = history.dropna(subset=["Target_AH_Home","Target_AH_Away"]).copy()
+band_eval["Band_Cross"] = band_eval["Home_Band"] + " vs " + band_eval["Away_Band"]
+
+# Agregar por Liga + Cruzamento
+league_band_summary = (
+    band_eval.groupby(["League","Band_Cross"])
+    .agg(
+        Games=("Target_AH_Home","count"),
+        Home_AH_Winrate=("Target_AH_Home","mean"),
+        Away_AH_Winrate=("Target_AH_Away","mean"),
+        Avg_BandDiff=("Band_Diff","mean")
+    )
+    .reset_index()
+)
+
+# Converter winrates para percentual
+league_band_summary["Home_AH_Winrate"] = (league_band_summary["Home_AH_Winrate"]*100).round(1)
+league_band_summary["Away_AH_Winrate"] = (league_band_summary["Away_AH_Winrate"]*100).round(1)
+
+# Criar peso dinâmico apenas se houver pelo menos 10 jogos
+league_band_summary["Dynamic_Band_Weight"] = np.where(
+    league_band_summary["Games"] >= 10,
+    (league_band_summary["Home_AH_Winrate"] - league_band_summary["Away_AH_Winrate"]) / 100.0,
+    np.nan
+).round(2)
+
+# Mostrar tabela de validação
+st.dataframe(
+    league_band_summary.sort_values(["League","Games"], ascending=[True,False]),
+    use_container_width=True
+)
+
+# Criar dicionário {(League, Band_Cross): peso}
+band_weight_dict = {
+    (row["League"], row["Band_Cross"]): row["Dynamic_Band_Weight"]
+    for _, row in league_band_summary.iterrows()
+    if not pd.isna(row["Dynamic_Band_Weight"])
+}
+
+# Fallback heurístico (do Bloco 4D)
+def band_weight_fallback(row):
+    if row["Home_Band"] == "Top 20%" and row["Away_Band"] == "Bottom 20%": return +1.5
+    if row["Home_Band"] == "Bottom 20%" and row["Away_Band"] == "Top 20%": return -1.5
+    if row["Home_Band"] == "Top 20%" and row["Away_Band"] == "Balanced": return +0.7
+    if row["Home_Band"] == "Balanced" and row["Away_Band"] == "Top 20%": return -0.7
+    if row["Home_Band"] == "Bottom 20%" and row["Away_Band"] == "Balanced": return -0.5
+    if row["Home_Band"] == "Balanced" and row["Away_Band"] == "Bottom 20%": return +0.5
+    return 0.0
+
+# Aplicar peso dinâmico com fallback e salvar a fonte
+def apply_dynamic_band_weight(row):
+    key = (row.get("League"), row.get("Home_Band") + " vs " + row.get("Away_Band"))
+    if key in band_weight_dict:
+        return band_weight_dict[key], "dynamic"
+    return band_weight_fallback(row), "fallback"
+
+# Aplicar nos datasets
+history[["Band_Weight_Dynamic","Weight_Source"]] = history.apply(
+    apply_dynamic_band_weight, axis=1, result_type="expand"
+)
+games_today[["Band_Weight_Dynamic","Weight_Source"]] = games_today.apply(
+    apply_dynamic_band_weight, axis=1, result_type="expand"
+)
+
+# Adicionar feature ao bloco strength
+if "Band_Weight_Dynamic" not in feature_blocks["strength"]:
+    feature_blocks["strength"].append("Band_Weight_Dynamic")
+
+
+
 ##################### BLOCO 4C – BUILD FEATURE MATRIX (V3) #####################
 def build_feature_matrix(df, leagues, blocks, fit_encoder=False, encoder=None):
     dfs = []
@@ -417,7 +522,8 @@ offer_models_download(all_model_files)
 
 
 
-##################### BLOCO 8 – PREDICTIONS (V3c) #####################
+##################### BLOCO 8 – PREDICTIONS (V3c + Band Weights) #####################
+
 model_ah_home, cols1, _ = model_ah_home_v3c
 model_ah_away, cols2, _ = model_ah_away_v3c
 
@@ -444,23 +550,29 @@ def color_prob(val, color):
     alpha = float(np.clip(val,0,1))
     return f"background-color: rgba({color},{alpha:.2f})"
 
+# Seleção de colunas para exibição
+cols_to_show = [
+    "Date","Time","League","Home","Away",
+    "Odd_H","Odd_D","Odd_A",
+    "Asian_Line_Display","Odd_H_Asi","Odd_A_Asi",
+    "p_ah_home_yes","p_ah_away_yes",
+    "Band_Weight_Dynamic","Weight_Source"
+]
+
 styled_df = (
-    games_today[[
-        "Date","Time","League","Home","Away",
-        "Odd_H","Odd_D","Odd_A",
-        "Asian_Line_Display","Odd_H_Asi","Odd_A_Asi",
-        "p_ah_home_yes","p_ah_away_yes"
-    ]]
+    games_today[cols_to_show]
     .style.format({
         "Odd_H":"{:.2f}","Odd_D":"{:.2f}","Odd_A":"{:.2f}",
         "Asian_Line_Display":"{:.2f}",
         "Odd_H_Asi":"{:.2f}","Odd_A_Asi":"{:.2f}",
-        "p_ah_home_yes":"{:.1%}","p_ah_away_yes":"{:.1%}"
+        "p_ah_home_yes":"{:.1%}","p_ah_away_yes":"{:.1%}",
+        "Band_Weight_Dynamic":"{:.2f}"
     }, na_rep="—")
     .applymap(lambda v: color_prob(v,"0,200,0"), subset=["p_ah_home_yes"])
     .applymap(lambda v: color_prob(v,"255,140,0"), subset=["p_ah_away_yes"])
 )
 
-st.markdown("### 📌 Predictions for Today's Matches – Asian Handicap (v3c Calibrated)")
+st.markdown("### 📌 Predictions for Today's Matches – Asian Handicap (v3c Calibrated + Band Weights)")
 st.dataframe(styled_df, use_container_width=True, height=800)
+
 
