@@ -550,20 +550,33 @@ def train_and_evaluate_v2(X, y, name):
 stats = []
 all_model_files = []
 
-# Home model
-res, model_ah_home_v3c = train_and_evaluate_v2(X_ah_home, history["Target_AH_Home"], "AH_Home_v3")
+# --- Diagnóstico das distribuições ---
+st.markdown("### 📊 Distribuição dos Targets (Home vs Away)")
+dist_home = history["Target_AH_Home"].value_counts(normalize=True).rename("Target_AH_Home (atual)")
+dist_home_strict = history["Target_AH_Home_strict"].value_counts(normalize=True).rename("Target_AH_Home_strict")
+dist_away = history["Target_AH_Away"].value_counts(normalize=True).rename("Target_AH_Away")
+
+dist_df = pd.concat([dist_home, dist_home_strict, dist_away], axis=1).fillna(0).T
+st.dataframe(dist_df.style.format("{:.2%}"), use_container_width=True)
+
+# --- Home model (usar target estrito para evitar travamento nas probabilidades) ---
+res, model_ah_home_v3c = train_and_evaluate_v2(
+    X_ah_home, history["Target_AH_Home_strict"], "AH_Home_v3"
+)
 stats.append(res); all_model_files.append(model_ah_home_v3c[2])
 
-# Away model
-res, model_ah_away_v3c = train_and_evaluate_v2(X_ah_away, history["Target_AH_Away"], "AH_Away_v3")
+# --- Away model (mantém igual) ---
+res, model_ah_away_v3c = train_and_evaluate_v2(
+    X_ah_away, history["Target_AH_Away"], "AH_Away_v3"
+)
 stats.append(res); all_model_files.append(model_ah_away_v3c[2])
 
-# Mostrar métricas
+# --- Mostrar métricas ---
 stats_df = pd.DataFrame(stats)[["Model","Accuracy","LogLoss","BrierScore"]]
 st.markdown("### 📊 Model Statistics (Validation) – v3c (Calibrated)")
 st.dataframe(stats_df, use_container_width=True)
 
-# Botão para baixar os modelos calibrados
+# --- Botão para baixar os modelos calibrados ---
 offer_models_download(all_model_files)
 
 
@@ -585,12 +598,12 @@ if normalize_features:
 
 if not games_today.empty:
     probs_home = model_ah_home.predict_proba(X_today_ah_home)
-    for cls, col in zip(model_ah_home.classes_, ["p_ah_home_no","p_ah_home_yes"]):
-        games_today[col] = probs_home[:, cls]
+    for idx, col in enumerate(["p_ah_home_no","p_ah_home_yes"]):
+        games_today[col] = probs_home[:, idx]
 
     probs_away = model_ah_away.predict_proba(X_today_ah_away)
-    for cls, col in zip(model_ah_away.classes_, ["p_ah_away_no","p_ah_away_yes"]):
-        games_today[col] = probs_away[:, cls]
+    for idx, col in enumerate(["p_ah_away_no","p_ah_away_yes"]):
+        games_today[col] = probs_away[:, idx]
 
 def color_prob(val, color):
     if pd.isna(val): return ""
@@ -620,6 +633,8 @@ styled_df = (
 )
 
 st.markdown("### 📌 Predictions for Today's Matches – Asian Handicap (v3c Calibrated + Band Weights)")
+st.info("ℹ️ O modelo **Home** foi treinado usando `Target_AH_Home_strict` (vitória plena = 1, demais = 0).")
 st.dataframe(styled_df, use_container_width=True, height=800)
+
 
 
