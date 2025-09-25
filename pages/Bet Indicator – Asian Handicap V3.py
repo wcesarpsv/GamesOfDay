@@ -310,7 +310,7 @@ numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
 ##################### BLOCO 5 – SIDEBAR CONFIG #####################
 st.sidebar.header("⚙️ Settings")
 ml_model_choice = st.sidebar.selectbox("Choose ML Model",["Random Forest","XGBoost"])
-ml_version_choice = st.sidebar.selectbox("Choose Model Version",["v1","v2","v3"])
+# ml_version_choice = st.sidebar.selectbox("Choose Model Version",["v1","v2","v3"])
 retrain = st.sidebar.checkbox("Retrain models",value=False)
 normalize_features = st.sidebar.checkbox("Normalize features (odds + strength)",value=False)
 
