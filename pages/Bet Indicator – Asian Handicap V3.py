@@ -499,7 +499,7 @@ def train_and_evaluate_v2(X, y, name):
         )
     else:
         base_model = XGBClassifier(
-            n_estimators=1000,
+            n_estimators=300,
             max_depth=5,
             learning_rate=0.1,
             subsample=0.8,
