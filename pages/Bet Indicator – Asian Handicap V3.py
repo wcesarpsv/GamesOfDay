@@ -143,7 +143,7 @@ history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if
 feature_blocks = {
     "odds": [
         
-        "Odd_H_Asi","Odd_A_Asi"
+        
         
     ],
     "strength": [
@@ -156,7 +156,7 @@ feature_blocks = {
         "Dominant","League_Classification"
     ]
 }
-# "Odd_H","Odd_D","Odd_A","Odd_1X","Odd_X2"
+# "Odd_H","Odd_D","Odd_A","Odd_1X","Odd_X2","Odd_H_Asi","Odd_A_Asi"
 
 ##################### BLOCO 4B – FEATURE ENGINEERING EXTRA #####################
 # --- Odds Double Chance (1X, X2) ---
