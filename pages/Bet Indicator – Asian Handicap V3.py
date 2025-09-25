@@ -255,22 +255,18 @@ if "Games_Analyzed" not in history.columns:
     games_today["Games_Analyzed"] = np.nan
 
 
-
 ##################### BLOCO 4C – BUILD FEATURE MATRIX (V3) #####################
 def build_feature_matrix(df, leagues, blocks, fit_encoder=False, encoder=None):
     dfs = []
 
-    # Odds + Strength
     for block_name, cols in blocks.items():
         if block_name == "categorical": continue
         available_cols = [c for c in cols if c in df.columns]
         if available_cols: dfs.append(df[available_cols])
 
-    # League OneHot
     if leagues is not None and not leagues.empty:
         dfs.append(leagues)
 
-    # Outras categóricas OneHot
     cat_cols = [c for c in ["Dominant","League_Classification"] if c in df.columns]
     if cat_cols:
         if fit_encoder:
@@ -281,14 +277,12 @@ def build_feature_matrix(df, leagues, blocks, fit_encoder=False, encoder=None):
         encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(cat_cols), index=df.index)
         dfs.append(encoded_df)
 
-    # Bands Num
     for col in ["Home_Band_Num","Away_Band_Num"]:
         if col in df.columns: dfs.append(df[[col]])
 
     X = pd.concat(dfs, axis=1)
     return X, encoder
 
-# Histórico (treino)
 history_leagues = pd.get_dummies(history["League"], prefix="League")
 games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
 games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
@@ -296,7 +290,6 @@ games_today_leagues = games_today_leagues.reindex(columns=history_leagues.column
 X_ah_home, encoder_cat = build_feature_matrix(history, history_leagues, feature_blocks, fit_encoder=True)
 X_ah_away, _ = build_feature_matrix(history, history_leagues, feature_blocks, fit_encoder=False, encoder=encoder_cat)
 
-# Jogos de hoje (predição)
 X_today_ah_home, _ = build_feature_matrix(games_today, games_today_leagues, feature_blocks, fit_encoder=False, encoder=encoder_cat)
 X_today_ah_home = X_today_ah_home.reindex(columns=X_ah_home.columns, fill_value=0)
 
@@ -310,10 +303,8 @@ numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
 ##################### BLOCO 5 – SIDEBAR CONFIG #####################
 st.sidebar.header("⚙️ Settings")
 ml_model_choice = st.sidebar.selectbox("Choose ML Model",["Random Forest","XGBoost"])
-# ml_version_choice = st.sidebar.selectbox("Choose Model Version",["v1","v2","v3"])
 retrain = st.sidebar.checkbox("Retrain models",value=False)
 normalize_features = st.sidebar.checkbox("Normalize features (odds + strength)",value=False)
-
 
 ##################### BLOCO 6 – TRAIN & EVALUATE #####################
 def train_and_evaluate(X, y, name):
@@ -421,20 +412,13 @@ res, model_ah_home_v3c = train_and_evaluate_v2(X_ah_home, history["Target_AH_Hom
 res, model_ah_away_v3c = train_and_evaluate_v2(X_ah_away, history["Target_AH_Away"], "AH_Away_v3"); stats.append(res)
 
 stats_df = pd.DataFrame(stats)[["Model","Accuracy","LogLoss","BrierScore"]]
-st.markdown("### 📊 Model Statistics (Validation) TOP – v3")
+st.markdown("### 📊 Model Statistics (Validation) – v3")
 st.dataframe(stats_df, use_container_width=True)
 
 
 ##################### BLOCO 8 – PREDICTIONS (V3) #####################
-if ml_version_choice == "v1":
-    model_ah_home, cols1 = model_ah_home_v1
-    model_ah_away, cols2 = model_ah_away_v1
-elif ml_version_choice == "v2":
-    model_ah_home, cols1 = model_ah_home_v2
-    model_ah_away, cols2 = model_ah_away_v2
-else:  # v3
-    model_ah_home, cols1 = model_ah_home_v3
-    model_ah_away, cols2 = model_ah_away_v3
+model_ah_home, cols1 = model_ah_home_v3
+model_ah_away, cols2 = model_ah_away_v3
 
 X_today_ah_home = X_today_ah_home.reindex(columns=cols1, fill_value=0)
 X_today_ah_away = X_today_ah_away.reindex(columns=cols2, fill_value=0)
@@ -475,5 +459,5 @@ styled_df = (
     .applymap(lambda v: color_prob(v,"255,140,0"), subset=["p_ah_away_yes"])
 )
 
-st.markdown(f"### 📌 Predictions for Today's Matches – Asian Handicap ({ml_version_choice})")
+st.markdown("### 📌 Predictions for Today's Matches – Asian Handicap (v3)")
 st.dataframe(styled_df, use_container_width=True, height=800)
