@@ -147,8 +147,6 @@ feature_blocks = {
 
 
 ##################### BLOCO 4B – FEATURE ENGINEERING EXTRA #####################
-##################### BLOCO 4B – FEATURE ENGINEERING EXTRA #####################
-
 # --- Odds Double Chance (1X, X2) ---
 def compute_double_chance_odds(df):
     df = df.copy()
@@ -318,7 +316,6 @@ normalize_features = st.sidebar.checkbox("Normalize features (odds + strength)",
 
 
 ##################### BLOCO 6 – TRAIN & EVALUATE #####################
-##################### BLOCO 6 – TRAIN & EVALUATE #####################
 def train_and_evaluate(X, y, name):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
@@ -343,7 +340,7 @@ def train_and_evaluate(X, y, name):
         X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
 
     if ml_model_choice == "Random Forest":
-        model = RandomForestClassifier(n_estimators=300, max_depth=8, random_state=42)
+        model = RandomForestClassifier(n_estimators=500, max_depth=8, random_state=42)
     else:
         model = XGBClassifier(n_estimators=400, max_depth=6, learning_rate=0.05,
                               subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
