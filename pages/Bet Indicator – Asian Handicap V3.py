@@ -167,7 +167,7 @@ history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if
 feature_blocks = {
     "odds": [
         
-        "Odd_H_Asi","Odd_A_Asi"
+        
         
     ],
     "strength": [
