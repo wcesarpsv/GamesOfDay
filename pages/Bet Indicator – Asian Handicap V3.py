@@ -147,8 +147,115 @@ feature_blocks = {
 
 
 ##################### BLOCO 4B – FEATURE ENGINEERING EXTRA #####################
-# (use o bloco corrigido que te mandei antes, com merges certos)
-# --- COLE AQUI O BLOCO 4B CORRIGIDO COMPLETO ---
+##################### BLOCO 4B – FEATURE ENGINEERING EXTRA #####################
+
+# --- Odds Double Chance (1X, X2) ---
+def compute_double_chance_odds(df):
+    df = df.copy()
+    if set(["Odd_H", "Odd_D", "Odd_A"]).issubset(df.columns):
+        probs = pd.DataFrame()
+        probs["p_H"] = 1 / df["Odd_H"]
+        probs["p_D"] = 1 / df["Odd_D"]
+        probs["p_A"] = 1 / df["Odd_A"]
+        probs = probs.div(probs.sum(axis=1), axis=0)
+        df["Odd_1X"] = 1 / (probs["p_H"] + probs["p_D"])
+        df["Odd_X2"] = 1 / (probs["p_A"] + probs["p_D"])
+    return df
+
+history = compute_double_chance_odds(history)
+games_today = compute_double_chance_odds(games_today)
+
+# --- Diferença de Momentum ---
+history["M_Diff"] = history["M_H"] - history["M_A"]
+games_today["M_Diff"] = games_today["M_H"] - games_today["M_A"]
+
+# --- Classificação de ligas e bandas ---
+def classify_leagues_variation(history_df):
+    agg = (
+        history_df.groupby("League")
+        .agg(
+            M_H_Min=("M_H","min"), M_H_Max=("M_H","max"),
+            M_A_Min=("M_A","min"), M_A_Max=("M_A","max"),
+            Hist_Games=("M_H","count")
+        ).reset_index()
+    )
+    agg["Variation_Total"] = (agg["M_H_Max"] - agg["M_H_Min"]) + (agg["M_A_Max"] - agg["M_A_Min"])
+    def label(v):
+        if v > 6.0: return "High Variation"
+        if v >= 3.0: return "Medium Variation"
+        return "Low Variation"
+    agg["League_Classification"] = agg["Variation_Total"].apply(label)
+    return agg[["League","League_Classification","Variation_Total","Hist_Games"]]
+
+def compute_league_bands(history_df):
+    hist = history_df.copy()
+    hist["M_Diff"] = hist["M_H"] - hist["M_A"]
+    diff_q = (
+        hist.groupby("League")["M_Diff"]
+            .quantile([0.20,0.80]).unstack()
+            .rename(columns={0.2:"P20_Diff",0.8:"P80_Diff"})
+            .reset_index()
+    )
+    home_q = (
+        hist.groupby("League")["M_H"]
+            .quantile([0.20,0.80]).unstack()
+            .rename(columns={0.2:"Home_P20",0.8:"Home_P80"})
+            .reset_index()
+    )
+    away_q = (
+        hist.groupby("League")["M_A"]
+            .quantile([0.20,0.80]).unstack()
+            .rename(columns={0.2:"Away_P20",0.8:"Away_P80"})
+            .reset_index()
+    )
+    out = diff_q.merge(home_q,on="League",how="inner").merge(away_q,on="League",how="inner")
+    return out
+
+def dominant_side(row, threshold=0.90):
+    m_h, m_a = row["M_H"], row["M_A"]
+    if (m_h >= threshold) and (m_a <= -threshold):
+        return "Both extremes (Home↑ & Away↓)"
+    if (m_a >= threshold) and (m_h <= -threshold):
+        return "Both extremes (Away↑ & Home↓)"
+    if m_h >= threshold: return "Home strong"
+    if m_h <= -threshold: return "Home weak"
+    if m_a >= threshold: return "Away strong"
+    if m_a <= -threshold: return "Away weak"
+    return "Mixed / Neutral"
+
+league_class = classify_leagues_variation(history)
+league_bands = compute_league_bands(history)
+
+# --- aplicar merges corretamente ---
+for name, df in [("history", history), ("games_today", games_today)]:
+    df = df.merge(league_class, on="League", how="left")
+    df = df.merge(league_bands, on="League", how="left")
+
+    df["Home_Band"] = np.where(
+        df["M_H"] <= df["Home_P20"], "Bottom 20%",
+        np.where(df["M_H"] >= df["Home_P80"], "Top 20%", "Balanced")
+    )
+    df["Away_Band"] = np.where(
+        df["M_A"] <= df["Away_P20"], "Bottom 20%",
+        np.where(df["M_A"] >= df["Away_P80"], "Top 20%", "Balanced")
+    )
+    df["Dominant"] = df.apply(dominant_side, axis=1)
+    df["Home_Band_Num"] = df["Home_Band"].map({"Bottom 20%":1,"Balanced":2,"Top 20%":3})
+    df["Away_Band_Num"] = df["Away_Band"].map({"Bottom 20%":1,"Balanced":2,"Top 20%":3})
+
+    if name == "history":
+        history = df
+    else:
+        games_today = df
+
+# --- Placeholders caso não existam ---
+if "Win_Probability" not in history.columns:
+    history["Win_Probability"] = np.nan
+    games_today["Win_Probability"] = np.nan
+if "Games_Analyzed" not in history.columns:
+    history["Games_Analyzed"] = np.nan
+    games_today["Games_Analyzed"] = np.nan
+
 
 
 ##################### BLOCO 4C – BUILD FEATURE MATRIX (V3) #####################
