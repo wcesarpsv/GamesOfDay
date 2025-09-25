@@ -78,6 +78,29 @@ def offer_model_download(model, feature_cols, filename):
     )
 
 
+def offer_models_download(model_files):
+    """
+    Cria um botão no sidebar para baixar todos os .pkl em um único ZIP.
+    """
+    if not model_files:
+        return
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zf:
+        for file in model_files:
+            if os.path.exists(file):
+                zf.write(file, os.path.basename(file))
+    zip_buffer.seek(0)
+
+    st.sidebar.download_button(
+        label="⬇️ Download all models (ZIP)",
+        data=zip_buffer,
+        file_name="asian_handicap_models_v3c.zip",
+        mime="application/zip"
+    )
+
+
+
 ##################### BLOCO 3 – LOAD DATA + HANDICAP TARGET #####################
 history = filter_leagues(load_all_games(GAMES_FOLDER))
 history = history.dropna(subset=["Goals_H_FT","Goals_A_FT","Asian_Line"]).copy()
@@ -439,40 +462,55 @@ def train_and_evaluate_v2(X, y, name):
     filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C_v3c.pkl"
     feature_cols = X.columns.tolist()
 
+    # ---------- Caso modelo já exista ----------
     if not retrain:
         loaded = load_model(filename)
         if loaded:
             model, cols = loaded
             preds = model.predict(X)
             probs = model.predict_proba(X)
-            res = {"Model": f"{name}_v3c (loaded)", "Accuracy": accuracy_score(y, preds),
-                   "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
-            return res, (model, cols)
+            res = {
+                "Model": f"{name}_v3c (loaded)",
+                "Accuracy": accuracy_score(y, preds),
+                "LogLoss": log_loss(y, probs),
+                "BrierScore": brier_score_loss(y, probs[:, 1])
+            }
+            return res, (model, cols, filename)   # ✅ corrigido para incluir filename
 
+    # ---------- Train/Test split ----------
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, shuffle=False
     )
 
+    # ---------- Normalização ----------
     if normalize_features:
         scaler = StandardScaler()
         X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
         X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
 
-    # ----------------- Base Model -----------------
+    # ---------- Modelo Base ----------
     if ml_model_choice == "Random Forest":
         base_model = RandomForestClassifier(
-            n_estimators=500, max_depth=None, class_weight="balanced",
-            random_state=42, n_jobs=-1
+            n_estimators=500,
+            max_depth=None,
+            class_weight="balanced",
+            random_state=42,
+            n_jobs=-1
         )
     else:
         base_model = XGBClassifier(
-            n_estimators=1000, max_depth=5, learning_rate=0.1,
-            subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
-            use_label_encoder=False, random_state=42,
+            n_estimators=1000,
+            max_depth=5,
+            learning_rate=0.1,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            eval_metric="logloss",
+            use_label_encoder=False,
+            random_state=42,
             scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1
         )
 
-    # ----------------- Treino + Calibração -----------------
+    # ---------- Treino + Calibração ----------
     if calibration_choice == "none":
         base_model.fit(X_train, y_train)
         model = base_model
@@ -491,15 +529,21 @@ def train_and_evaluate_v2(X, y, name):
             )
         model.fit(X_train, y_train)
 
-    # ----------------- Avaliação -----------------
+    # ---------- Avaliação ----------
     preds = model.predict(X_test)
     probs = model.predict_proba(X_test)
 
-    res = {"Model": f"{name}_v3c ({calibration_choice})", "Accuracy": accuracy_score(y_test, preds),
-           "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
+    res = {
+        "Model": f"{name}_v3c ({calibration_choice})",
+        "Accuracy": accuracy_score(y_test, preds),
+        "LogLoss": log_loss(y_test, probs),
+        "BrierScore": brier_score_loss(y_test, probs[:, 1])
+    }
 
+    # ---------- Salvar modelo ----------
     save_model(model, feature_cols, filename)
     return res, (model, feature_cols, filename)
+
 
 
 ##################### BLOCO 7 – TRAINING MODELS (V3c apenas) #####################
