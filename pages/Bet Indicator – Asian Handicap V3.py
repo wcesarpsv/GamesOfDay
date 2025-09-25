@@ -149,7 +149,7 @@ feature_blocks = {
     "strength": [
         "Diff_Power","M_H","M_A","M_Diff",
         "Diff_HT_P","M_HT_H","M_HT_A",
-        "Asian_Line_Display","Win_Probability","Games_Analyzed"
+        "Asian_Line_Display"
     ],
     "categorical": [
         "Home_Band_Num","Away_Band_Num",
@@ -157,6 +157,7 @@ feature_blocks = {
     ]
 }
 # "Odd_H","Odd_D","Odd_A","Odd_1X","Odd_X2","Odd_H_Asi","Odd_A_Asi"
+#"Win_Probability","Games_Analyzed"
 
 ##################### BLOCO 4B – FEATURE ENGINEERING EXTRA #####################
 # --- Odds Double Chance (1X, X2) ---
