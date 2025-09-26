@@ -437,30 +437,31 @@ offer_models_download(all_model_files_3c)
 
 
 
-##################### BLOCO 9 – PREDICTIONS (Bank Leverage 3C + Safe Probability) #####################
+##################### BLOCO 9 – PREDICTIONS (Bank Leverage 3C + Safe Probability + Filtro) #####################
 
-##################### FUNÇÃO AUXILIAR PARA COLORIR #####################
+# --- Função auxiliar para colorir células ---
 def color_prob(val, color):
     if pd.isna(val):
         return ""
     alpha = float(np.clip(val, 0, 1))
     return f"background-color: rgba({color},{alpha:.2f})"
 
-
-
+# --- Modelos carregados ---
 model_ah_home_3c, cols1_3c, _ = model_ah_home_3c
 model_ah_away_3c, cols2_3c, _ = model_ah_away_3c
 
 X_today_ah_home_3c = X_today_ah_home.reindex(columns=cols1_3c, fill_value=0)
 X_today_ah_away_3c = X_today_ah_away.reindex(columns=cols2_3c, fill_value=0)
 
+# --- Normalização se habilitada ---
 if normalize_features:
     scaler = StandardScaler()
-    scaler.fit(X_ah_home_clean[numeric_cols])  # ✅ usa versão limpa
+    scaler.fit(X_ah_home_clean[numeric_cols])  # usa versão sem NaN
     X_today_ah_home_3c[numeric_cols] = scaler.transform(X_today_ah_home_3c[numeric_cols])
     X_today_ah_away_3c[numeric_cols] = scaler.transform(X_today_ah_away_3c[numeric_cols])
 
 if not games_today.empty:
+    # --- Probabilidades ---
     probs_home_3c = model_ah_home_3c.predict_proba(X_today_ah_home_3c)
     probs_away_3c = model_ah_away_3c.predict_proba(X_today_ah_away_3c)
 
@@ -470,33 +471,44 @@ if not games_today.empty:
     for idx, col in enumerate(["p_away_loss","p_away_push","p_away_win"]):
         games_today[col] = probs_away_3c[:, idx]
 
-    # 🔹 Probabilidade de não perder (Win + Push)
+    # 🔹 Safe Probability = Push + Win
     games_today["p_home_safe"] = games_today["p_home_push"] + games_today["p_home_win"]
     games_today["p_away_safe"] = games_today["p_away_push"] + games_today["p_away_win"]
 
-cols_to_show_3c = [
-    "Date","Time","League","Home","Away",
-    "Asian_Line_Display","Odd_H","Odd_D","Odd_A",
-    "p_home_loss","p_home_push","p_home_win","p_home_safe",
-    "p_away_loss","p_away_push","p_away_win","p_away_safe"
-]
+    # --- Slider de filtro na sidebar ---
+    min_safe = st.sidebar.slider("🎯 Safe Probability mínima (%)", 50, 100, 90, step=1)
+    threshold = min_safe / 100
 
-styled_df_3c = (
-    games_today[cols_to_show_3c]
-    .style.format({
-        "Asian_Line_Display":"{:.2f}",
-        "Odd_H":"{:.2f}","Odd_D":"{:.2f}","Odd_A":"{:.2f}",
-        "p_home_loss":"{:.1%}","p_home_push":"{:.1%}","p_home_win":"{:.1%}","p_home_safe":"{:.1%}",
-        "p_away_loss":"{:.1%}","p_away_push":"{:.1%}","p_away_win":"{:.1%}","p_away_safe":"{:.1%}"
-    }, na_rep="—")
-    .applymap(lambda v: color_prob(v,"200,0,0"), subset=["p_home_loss","p_away_loss"])
-    .applymap(lambda v: color_prob(v,"255,215,0"), subset=["p_home_push","p_away_push"])
-    .applymap(lambda v: color_prob(v,"0,200,0"), subset=["p_home_win","p_away_win"])
-    .applymap(lambda v: color_prob(v,"0,0,255"), subset=["p_home_safe","p_away_safe"])
-)
+    filtered_games = games_today[
+        (games_today["p_home_safe"] >= threshold) | (games_today["p_away_safe"] >= threshold)
+    ].copy()
 
-st.markdown("### 📌 Predictions for Today's Matches – Bank Leverage (3 Classes + Safe Probability)")
-st.dataframe(styled_df_3c, use_container_width=True, height=800)
+    # --- Colunas para exibição ---
+    cols_to_show_3c = [
+        "Date","Time","League","Home","Away","Asian_Line_Display",
+        "Odd_H","Odd_D","Odd_A",
+        "p_home_loss","p_home_push","p_home_win","p_home_safe",
+        "p_away_loss","p_away_push","p_away_win","p_away_safe"
+    ]
+
+    styled_df_3c = (
+        filtered_games[cols_to_show_3c]
+        .style.format({
+            "Asian_Line_Display":"{:.2f}",
+            "Odd_H":"{:.2f}","Odd_D":"{:.2f}","Odd_A":"{:.2f}",
+            "p_home_loss":"{:.1%}","p_home_push":"{:.1%}","p_home_win":"{:.1%}","p_home_safe":"{:.1%}",
+            "p_away_loss":"{:.1%}","p_away_push":"{:.1%}","p_away_win":"{:.1%}","p_away_safe":"{:.1%}"
+        }, na_rep="—")
+        .applymap(lambda v: color_prob(v,"200,0,0"), subset=["p_home_loss","p_away_loss"])
+        .applymap(lambda v: color_prob(v,"255,215,0"), subset=["p_home_push","p_away_push"])
+        .applymap(lambda v: color_prob(v,"0,200,0"), subset=["p_home_win","p_away_win"])
+        .applymap(lambda v: color_prob(v,"0,0,255"), subset=["p_home_safe","p_away_safe"])
+    )
+
+    # --- Mostrar tabela ---
+    st.markdown(f"### 📌 Predictions – Bank Leverage (3 Classes + Safe Probability ≥ {min_safe}%)")
+    st.dataframe(styled_df_3c, use_container_width=True, height=800)
+
 
 
 
