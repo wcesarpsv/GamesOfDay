@@ -438,6 +438,16 @@ offer_models_download(all_model_files_3c)
 
 
 ##################### BLOCO 9 – PREDICTIONS (Bank Leverage 3C + Safe Probability) #####################
+
+##################### FUNÇÃO AUXILIAR PARA COLORIR #####################
+def color_prob(val, color):
+    if pd.isna(val):
+        return ""
+    alpha = float(np.clip(val, 0, 1))
+    return f"background-color: rgba({color},{alpha:.2f})"
+
+
+
 model_ah_home_3c, cols1_3c, _ = model_ah_home_3c
 model_ah_away_3c, cols2_3c, _ = model_ah_away_3c
 
