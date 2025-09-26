@@ -327,15 +327,16 @@ calibration_choice = st.sidebar.selectbox(
 
 
 
-##################### BLOCO 7 – TRAIN & EVALUATE (Bank Leverage 3C) #####################
+##################### BLOCO 7 – TRAIN & EVALUATE (Bank Leverage 3C – inteligente) #####################
 def train_and_evaluate_3c(X, y, name):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
     filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_3C_BankLeverage.pkl"
     feature_cols = X.columns.tolist()
 
-    # ---------- Caso modelo já exista ----------
-    if not retrain:
+    # ---------- Se já existe modelo salvo ----------
+    path = os.path.join(MODELS_FOLDER, filename)
+    if os.path.exists(path) and not retrain:
         loaded = load_model(filename)
         if loaded:
             model, cols = loaded
@@ -347,7 +348,7 @@ def train_and_evaluate_3c(X, y, name):
             }
             return res, (model, cols, filename)
 
-    # ---------- Train/Test split ----------
+    # ---------- Caso precise treinar (primeira vez ou retrain) ----------
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, shuffle=False
     )
@@ -381,27 +382,24 @@ def train_and_evaluate_3c(X, y, name):
         )
 
     # ---------- Treino ----------
-    if calibration_choice == "none":
-        base_model.fit(X_train, y_train)
-        model = base_model
-    else:
-        # CalibratedClassifierCV não funciona bem com multiclasse -> usamos direto
-        base_model.fit(X_train, y_train)
-        model = base_model
+    base_model.fit(X_train, y_train)
+    model = base_model
 
     # ---------- Avaliação ----------
     preds = model.predict(X_test)
     probs = model.predict_proba(X_test)
 
     res = {
-        "Model": f"{name}_3C_BankLeverage",
+        "Model": f"{name}_3C_BankLeverage (trained)",
         "Accuracy": accuracy_score(y_test, preds),
         "LogLoss": log_loss(y_test, probs)
     }
 
     # ---------- Salvar modelo ----------
     save_model(model, feature_cols, filename)
+
     return res, (model, feature_cols, filename)
+
 
 
 ##################### BLOCO 8 – TRAINING MODELS (Bank Leverage 3C) #####################
@@ -437,7 +435,7 @@ offer_models_download(all_model_files_3c)
 
 
 
-##################### BLOCO 9 – PREDICTIONS (Bank Leverage 3C + Safe Probability + Filtro) #####################
+##################### BLOCO 9 – PREDICTIONS (Bank Leverage 3C + Loss Filter) #####################
 
 # --- Função auxiliar para colorir células ---
 def color_prob(val, color):
@@ -475,12 +473,12 @@ if not games_today.empty:
     games_today["p_home_safe"] = games_today["p_home_push"] + games_today["p_home_win"]
     games_today["p_away_safe"] = games_today["p_away_push"] + games_today["p_away_win"]
 
-    # --- Slider de filtro na sidebar ---
-    min_safe = st.sidebar.slider("🎯 Safe Probability mínima (%)", 50, 100, 90, step=1)
-    threshold = min_safe / 100
+    # --- Slider de filtro (Loss mínimo) ---
+    min_loss = st.sidebar.slider("🚨 Loss Probability mínima (%)", 50, 100, 60, step=1)
+    threshold = min_loss / 100
 
     filtered_games = games_today[
-        (games_today["p_home_safe"] >= threshold) | (games_today["p_away_safe"] >= threshold)
+        (games_today["p_home_loss"] >= threshold) | (games_today["p_away_loss"] >= threshold)
     ].copy()
 
     # --- Colunas para exibição ---
@@ -499,17 +497,15 @@ if not games_today.empty:
             "p_home_loss":"{:.1%}","p_home_push":"{:.1%}","p_home_win":"{:.1%}","p_home_safe":"{:.1%}",
             "p_away_loss":"{:.1%}","p_away_push":"{:.1%}","p_away_win":"{:.1%}","p_away_safe":"{:.1%}"
         }, na_rep="—")
-        .applymap(lambda v: color_prob(v,"200,0,0"), subset=["p_home_loss","p_away_loss"])
-        .applymap(lambda v: color_prob(v,"255,215,0"), subset=["p_home_push","p_away_push"])
-        .applymap(lambda v: color_prob(v,"0,200,0"), subset=["p_home_win","p_away_win"])
-        .applymap(lambda v: color_prob(v,"0,0,255"), subset=["p_home_safe","p_away_safe"])
+        .applymap(lambda v: color_prob(v,"200,0,0"), subset=["p_home_loss","p_away_loss"])   # 🔴 Loss
+        .applymap(lambda v: color_prob(v,"255,215,0"), subset=["p_home_push","p_away_push"]) # 🟡 Push
+        .applymap(lambda v: color_prob(v,"0,200,0"), subset=["p_home_win","p_away_win"])     # 🟢 Win
+        .applymap(lambda v: color_prob(v,"0,0,255"), subset=["p_home_safe","p_away_safe"])  # 🔵 Safe
     )
 
     # --- Mostrar tabela ---
-    st.markdown(f"### 📌 Predictions – Bank Leverage (3 Classes + Safe Probability ≥ {min_safe}%)")
+    st.markdown(f"### 📌 Predictions – Bank Leverage (Loss Probability ≥ {min_loss}%)")
     st.dataframe(styled_df_3c, use_container_width=True, height=800)
-
-
 
 
 
