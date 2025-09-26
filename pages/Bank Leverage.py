@@ -410,12 +410,20 @@ all_model_files_3c = []
 
 # --- Home model (3 classes) ---
 y_home_3c = history["Handicap_Home_Result"].map({0.0:0, 0.5:1, 1.0:2})
-res, model_ah_home_3c = train_and_evaluate_3c(X_ah_home, y_home_3c, "AH_Home_v3")
+mask_home = y_home_3c.notna()
+X_ah_home_clean = X_ah_home.loc[mask_home]
+y_home_3c = y_home_3c.loc[mask_home].astype(int)
+
+res, model_ah_home_3c = train_and_evaluate_3c(X_ah_home_clean, y_home_3c, "AH_Home_v3")
 stats_3c.append(res); all_model_files_3c.append(model_ah_home_3c[2])
 
 # --- Away model (3 classes) ---
 y_away_3c = history["Handicap_Away_Result"].map({0.0:0, 0.5:1, 1.0:2})
-res, model_ah_away_3c = train_and_evaluate_3c(X_ah_away, y_away_3c, "AH_Away_v3")
+mask_away = y_away_3c.notna()
+X_ah_away_clean = X_ah_away.loc[mask_away]
+y_away_3c = y_away_3c.loc[mask_away].astype(int)
+
+res, model_ah_away_3c = train_and_evaluate_3c(X_ah_away_clean, y_away_3c, "AH_Away_v3")
 stats_3c.append(res); all_model_files_3c.append(model_ah_away_3c[2])
 
 # --- Mostrar métricas ---
@@ -428,6 +436,7 @@ offer_models_download(all_model_files_3c)
 
 
 
+
 ##################### BLOCO 9 – PREDICTIONS (Bank Leverage 3C + Safe Probability) #####################
 model_ah_home_3c, cols1_3c, _ = model_ah_home_3c
 model_ah_away_3c, cols2_3c, _ = model_ah_away_3c
@@ -437,7 +446,7 @@ X_today_ah_away_3c = X_today_ah_away.reindex(columns=cols2_3c, fill_value=0)
 
 if normalize_features:
     scaler = StandardScaler()
-    scaler.fit(X_ah_home[numeric_cols])
+    scaler.fit(X_ah_home_clean[numeric_cols])  # ✅ usa versão limpa
     X_today_ah_home_3c[numeric_cols] = scaler.transform(X_today_ah_home_3c[numeric_cols])
     X_today_ah_away_3c[numeric_cols] = scaler.transform(X_today_ah_away_3c[numeric_cols])
 
@@ -478,6 +487,7 @@ styled_df_3c = (
 
 st.markdown("### 📌 Predictions for Today's Matches – Bank Leverage (3 Classes + Safe Probability)")
 st.dataframe(styled_df_3c, use_container_width=True, height=800)
+
 
 
 
