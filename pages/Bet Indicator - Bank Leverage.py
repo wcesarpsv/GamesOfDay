@@ -327,7 +327,7 @@ calibration_choice = st.sidebar.selectbox(
 
 
 
-##################### BLOCO 7 – TRAIN & EVALUATE (Bank Leverage 3C – inteligente) #####################
+##################### BLOCO 7 – TRAIN & EVALUATE (Bank Leverage 3C – corrigido) #####################
 def train_and_evaluate_3c(X, y, name):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
@@ -342,9 +342,17 @@ def train_and_evaluate_3c(X, y, name):
             model, cols = loaded
             preds = model.predict(X)
             probs = model.predict_proba(X)
+
+            # ✅ Sempre retorna Model, Accuracy e LogLoss
+            try:
+                logloss_val = log_loss(y, probs)
+            except Exception:
+                logloss_val = np.nan
+
             res = {
                 "Model": f"{name}_3C_BankLeverage (loaded)",
-                "Accuracy": accuracy_score(y, preds)
+                "Accuracy": accuracy_score(y, preds),
+                "LogLoss": logloss_val
             }
             return res, (model, cols, filename)
 
