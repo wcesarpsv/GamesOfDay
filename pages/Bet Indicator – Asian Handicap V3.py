@@ -363,7 +363,7 @@ def train_and_evaluate_v2(X, y, name):
     # ---------- Modelo Base ----------
     if ml_model_choice == "Random Forest":
         base_model = RandomForestClassifier(
-            n_estimators=500,
+            n_estimators=600,
             max_depth=None,
             class_weight="balanced",
             random_state=42,
