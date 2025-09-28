@@ -617,19 +617,18 @@ def highlight_row(row):
     Define cor da linha baseada no status do jogo e acerto da aposta.
     - Verde: aposta correta
     - Vermelho: aposta errada
-    - Cinza: jogo ainda não finalizado
+    - Sem cor: jogo ainda não finalizado
     """
-    # Jogo ainda sem resultado
-    if pd.isna(row['Goals_H_Today']) or pd.isna(row['Goals_A_Today']):
-        return ['background-color: #e2e3e5'] * len(row)  # Cinza claro
+    # Só pinta se já tivermos resultado e aposta feita
+    if pd.notna(row['Goals_H_Today']) and pd.notna(row['Goals_A_Today']):
+        if row['Auto_Correct'] is True:
+            return ['background-color: #d4edda'] * len(row)  # Verde claro
+        elif row['Auto_Correct'] is False:
+            return ['background-color: #f8d7da'] * len(row)  # Vermelho claro
 
-    # Avaliação para Auto_Recommendation
-    if row['Auto_Correct'] is True:
-        return ['background-color: #d4edda'] * len(row)  # Verde claro
-    elif row['Auto_Correct'] is False:
-        return ['background-color: #f8d7da'] * len(row)  # Vermelho claro
+    # Caso não tenha resultado ainda, sem cor
+    return [''] * len(row)
 
-    return [''] * len(row)  # Sem destaque
 
 # Colunas que queremos mostrar na tabela
 cols_to_show = [
