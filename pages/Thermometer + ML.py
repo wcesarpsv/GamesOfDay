@@ -108,34 +108,46 @@ if os.path.exists(livescore_file):
     results_df = pd.read_csv(livescore_file)
 
     # Conferir se as colunas essenciais existem
-    required_cols = ['game_id', 'status', 'home_goal', 'away_goal']
+    required_cols = [
+        'game_id', 'status', 'home_goal', 'away_goal',
+        'home_ht_goal', 'away_ht_goal',
+        'home_corners', 'away_corners',
+        'home_yellow', 'away_yellow',
+        'home_red', 'away_red'
+    ]
     missing_cols = [col for col in required_cols if col not in results_df.columns]
     
     if missing_cols:
         st.error(f"O arquivo {livescore_file} está faltando estas colunas: {missing_cols}")
     else:
-        # Filtrar apenas jogos finalizados (status = FT)
-        results_df = results_df[results_df['status'] == 'FT'].copy()
-
-        # Fazer o merge pelo Id ↔ game_id
+        # === Merge seguro para evitar duplicatas ===
         games_today = games_today.merge(
-            results_df[['game_id', 'home_goal', 'away_goal']],
+            results_df,
             left_on='Id',
             right_on='game_id',
-            how='left'
+            how='left',
+            suffixes=('', '_RAW')
         )
 
-        # Atualizar nomes padronizados
-        games_today.rename(columns={
-            'home_goal': 'Goals_H_Today',
-            'away_goal': 'Goals_A_Today'
-        }, inplace=True)
+        # ===============================================
+        # 3) Padronizar as colunas principais de gols
+        # ===============================================
+        games_today['Goals_H_Today'] = games_today['home_goal']
+        games_today['Goals_A_Today'] = games_today['away_goal']
 
-        # Remover coluna auxiliar que veio do merge
-        games_today.drop(columns=['game_id'], inplace=True, errors='ignore')
+        # ===============================================
+        # 4) Garantir que só jogos finalizados tenham gols
+        # ===============================================
+        games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
+
+        # ===============================================
+        # 5) Debug opcional – visualizar merge
+        # ===============================================
+        st.write("Amostra após merge LiveScore:",
+                 games_today[['Id', 'status', 'Goals_H_Today', 'Goals_A_Today']].head(10))
+
 else:
     st.warning(f"Nenhum arquivo de resultados encontrado em: {livescore_file}")
-
 
 
 
