@@ -16,12 +16,32 @@ from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
 st.set_page_config(page_title="Today's Picks - Momentum Thermometer + ML", layout="wide")
 st.title("📊 Momentum Thermometer + ML Prototype")
 
+# =========================================
+# CSS para corrigir overlay branco/cinza
+# =========================================
+custom_css = """
+<style>
+/* Remove a camada branca/cinza do Streamlit DataFrame */
+[data-testid="stDataFrame"] div[data-testid="stVerticalBlock"] {
+    background-color: transparent !important;
+}
+
+/* Força as cores aplicadas pelo pandas.style aparecerem */
+[data-testid="stDataFrame"] table tbody tr td {
+    background-color: inherit !important;
+}
+</style>
+"""
+st.markdown(custom_css, unsafe_allow_html=True)
+
+# Configurações principais
 GAMES_FOLDER = "GamesDay"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa","afc"]
 
 M_DIFF_MARGIN = 0.30
 POWER_MARGIN = 10
 DOMINANT_THRESHOLD = 0.90
+
 
 
 ########################################
