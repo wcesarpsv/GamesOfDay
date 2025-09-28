@@ -17,30 +17,45 @@ st.set_page_config(page_title="Today's Picks - Momentum Thermometer + ML", layou
 st.title("📊 Momentum Thermometer + ML Prototype")
 
 # =========================================
-# CSS para corrigir overlay branco/cinza
+# CSS – Remover fundo branco e linhas zebra
 # =========================================
 custom_css = """
 <style>
-/* Remove faixas brancas (zebra striping) do DataFrame */
+/* Remove faixas alternadas (zebra striping) */
 [data-testid="stDataFrame"] table tbody tr {
     background-color: transparent !important;
 }
 
-/* Remove bordas internas e garante que o highlight tenha prioridade */
+/* Remove qualquer cor que o Streamlit tente aplicar nas células */
 [data-testid="stDataFrame"] table tbody tr td {
+    background-color: transparent !important;
+    color: inherit !important;
     border: none !important;
-    background-color: inherit !important;
 }
 
-/* Garante que apenas as cores aplicadas pelo highlight_row sejam usadas */
-[data-testid="stDataFrame"] table tbody tr * {
-    background-color: inherit !important;
+/* Remove sombras ou overlays que possam ficar por cima */
+[data-testid="stDataFrame"] * {
+    background-color: transparent !important;
+    box-shadow: none !important;
+}
+
+/* Força o Pandas Style a ter prioridade máxima */
+table {
+    background-color: transparent !important;
+}
+
+thead tr th {
+    background-color: #222 !important; /* Fundo do cabeçalho mais escuro */
+    color: #fff !important;            /* Texto branco no cabeçalho */
+    border: none !important;
 }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
+# =========================================
 # Configurações principais
+# =========================================
 GAMES_FOLDER = "GamesDay"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa", "afc"]
 
