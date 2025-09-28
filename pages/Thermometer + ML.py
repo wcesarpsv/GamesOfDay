@@ -89,15 +89,15 @@ today_str = datetime.today().strftime("%Y-%m-%d")
 livescore_folder = "LiveScore"
 livescore_file = os.path.join(livescore_folder, f"Resultados_RAW_{today_str}.csv")
 
-# Garante que as colunas de gols existam
+# Ensure goal columns exist
 if 'Goals_H_Today' not in games_today.columns:
     games_today['Goals_H_Today'] = np.nan
 if 'Goals_A_Today' not in games_today.columns:
     games_today['Goals_A_Today'] = np.nan
 
-# Merge com arquivo LiveScore
+# Merge with LiveScore file
 if os.path.exists(livescore_file):
-    st.info(f"Arquivo de resultados encontrado: {livescore_file}")
+    st.info(f"LiveScore file found: {livescore_file}")
     results_df = pd.read_csv(livescore_file)
 
     required_cols = [
@@ -110,7 +110,7 @@ if os.path.exists(livescore_file):
     missing_cols = [col for col in required_cols if col not in results_df.columns]
     
     if missing_cols:
-        st.error(f"O arquivo {livescore_file} está faltando estas colunas: {missing_cols}")
+        st.error(f"The file {livescore_file} is missing these columns: {missing_cols}")
     else:
         games_today = games_today.merge(
             results_df,
@@ -120,15 +120,14 @@ if os.path.exists(livescore_file):
             suffixes=('', '_RAW')
         )
 
-        # Atualiza gols somente para jogos finalizados
+        # Update goals only for finished games
         games_today['Goals_H_Today'] = games_today['home_goal']
         games_today['Goals_A_Today'] = games_today['away_goal']
         games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
 
-        st.write("Amostra após merge LiveScore:",
-                 games_today[['Id', 'status', 'Goals_H_Today', 'Goals_A_Today']].head(10))
 else:
-    st.warning(f"Nenhum arquivo de resultados encontrado em: {livescore_file}")
+    st.warning(f"No LiveScore results file found in: {livescore_file}")
+
 
 
 ########################################
