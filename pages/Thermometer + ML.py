@@ -24,18 +24,25 @@ st.title("📊 Momentum Thermometer + ML Prototype")
 # =========================================
 custom_css = """
 <style>
-[data-testid="stDataFrame"] * {
+/* Remove todas as faixas brancas padrão */
+[data-testid="stDataFrame"] table tbody tr {
     background-color: transparent !important;
-    color: inherit !important;
 }
 
+/* Remove bordas internas que geram linhas */
 [data-testid="stDataFrame"] table tbody tr td {
+    border: none !important;
     background-color: inherit !important;
-    color: inherit !important;
+}
+
+/* Garante que apenas as cores do highlight serão usadas */
+[data-testid="stDataFrame"] table tbody tr * {
+    background-color: inherit !important;
 }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
+
 
 
 # Configurações principais
