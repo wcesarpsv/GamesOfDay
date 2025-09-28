@@ -631,43 +631,10 @@ st.markdown("### Performance Machine Learning (ML)")
 st.json(summary_ml)
 
 
-
 ########################################
 ##### Bloco 9 – Exibição com Cores #####
 ########################################
-
-def highlight_row(row):
-    """
-    Define cor da linha baseada no status do jogo e acerto da aposta.
-    - Verde: aposta correta
-    - Vermelho: aposta errada
-    - Transparente: jogo ainda não finalizado
-    """
-    # Apenas jogos finalizados têm cor
-    if pd.notna(row['Goals_H_Today']) and pd.notna(row['Goals_A_Today']):
-        if row['Auto_Correct'] is True:
-            return ['background-color: #d4edda'] * len(row)  # Verde claro
-        elif row['Auto_Correct'] is False:
-            return ['background-color: #f8d7da'] * len(row)  # Vermelho claro
-
-    # Fundo transparente (não branco!)
-    return ['background-color: transparent'] * len(row)
-
-
-
-
-# Colunas que queremos mostrar na tabela
-cols_to_show = [
-    'Date', 'Time', 'League', 'Home', 'Away',
-    'Goals_H_Today', 'Goals_A_Today',
-    'Auto_Recommendation', 'ML_Recommendation',
-    'Auto_Correct', 'ML_Correct',
-    'Profit_Auto', 'Profit_ML'
-]
-
-# Exibir tabela no Streamlit
-st.subheader("📊 Jogos do Dia – Auto vs ML")
-st.dataframe(
+styled_df = (
     games_today[cols_to_show]
     .style.apply(highlight_row, axis=1)
     .format({
@@ -675,7 +642,10 @@ st.dataframe(
         'Goals_A_Today': '{:.0f}',
         'Profit_Auto': '{:.2f}',
         'Profit_ML': '{:.2f}'
-    }),
-    use_container_width=True,
-    height=800
+    })
 )
+
+# Converte o styled DataFrame para HTML e aplica diretamente no Streamlit
+st.subheader("📊 Jogos do Dia – Auto vs ML")
+st.markdown(styled_df.to_html(), unsafe_allow_html=True)
+
