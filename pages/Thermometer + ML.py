@@ -19,23 +19,20 @@ st.title("📊 Momentum Thermometer + ML Prototype")
 # =========================================
 # CSS para corrigir overlay branco/cinza
 # =========================================
-# =========================================
-# CSS para remover overlay branco/cinza
-# =========================================
 custom_css = """
 <style>
-/* Remove todas as faixas brancas padrão */
+/* Remove faixas brancas (zebra striping) do DataFrame */
 [data-testid="stDataFrame"] table tbody tr {
     background-color: transparent !important;
 }
 
-/* Remove bordas internas que geram linhas */
+/* Remove bordas internas e garante que o highlight tenha prioridade */
 [data-testid="stDataFrame"] table tbody tr td {
     border: none !important;
     background-color: inherit !important;
 }
 
-/* Garante que apenas as cores do highlight serão usadas */
+/* Garante que apenas as cores aplicadas pelo highlight_row sejam usadas */
 [data-testid="stDataFrame"] table tbody tr * {
     background-color: inherit !important;
 }
@@ -43,15 +40,14 @@ custom_css = """
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-
-
 # Configurações principais
 GAMES_FOLDER = "GamesDay"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa","afc"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa", "afc"]
 
 M_DIFF_MARGIN = 0.30
 POWER_MARGIN = 10
 DOMINANT_THRESHOLD = 0.90
+
 
 
 
