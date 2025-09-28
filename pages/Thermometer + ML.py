@@ -627,7 +627,7 @@ def highlight_row(row):
             return ['background-color: #f8d7da'] * len(row)  # Vermelho claro
 
     # Caso não tenha resultado ainda, sem cor
-    return [''] * len(row)
+    return [None] * len(row)
 
 
 # Colunas que queremos mostrar na tabela
