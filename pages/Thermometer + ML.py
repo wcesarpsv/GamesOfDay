@@ -617,17 +617,18 @@ def highlight_row(row):
     Define cor da linha baseada no status do jogo e acerto da aposta.
     - Verde: aposta correta
     - Vermelho: aposta errada
-    - Nenhuma cor: jogo ainda não finalizado
+    - Transparente: jogo ainda não finalizado
     """
-    # Só pinta se já tivermos resultado
+    # Apenas jogos finalizados têm cor
     if pd.notna(row['Goals_H_Today']) and pd.notna(row['Goals_A_Today']):
         if row['Auto_Correct'] is True:
             return ['background-color: #d4edda'] * len(row)  # Verde claro
         elif row['Auto_Correct'] is False:
             return ['background-color: #f8d7da'] * len(row)  # Vermelho claro
 
-    # Retorna None para não aplicar estilo
-    return [None] * len(row)
+    # Fundo transparente (não branco!)
+    return ['background-color: transparent'] * len(row)
+
 
 
 
