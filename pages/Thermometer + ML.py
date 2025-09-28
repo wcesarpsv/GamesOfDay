@@ -534,35 +534,48 @@ games_today["ML_Recommendation"] = [
 
 
 ########################################
-####### Bloco 9 – Exibição Final #######
+##### Bloco 9 – Exibição com Cores #####
 ########################################
+
+def highlight_row(row):
+    """
+    Define cor da linha baseada no status do jogo e acerto da aposta.
+    - Verde: aposta correta
+    - Vermelho: aposta errada
+    - Cinza: jogo ainda não finalizado
+    """
+    # Jogo ainda sem resultado
+    if pd.isna(row['Goals_H_Today']) or pd.isna(row['Goals_A_Today']):
+        return ['background-color: #e2e3e5'] * len(row)  # Cinza claro
+
+    # Avaliação para Auto_Recommendation
+    if row['Auto_Correct'] is True:
+        return ['background-color: #d4edda'] * len(row)  # Verde claro
+    elif row['Auto_Correct'] is False:
+        return ['background-color: #f8d7da'] * len(row)  # Vermelho claro
+
+    return [''] * len(row)  # Sem destaque
+
+# Colunas que queremos mostrar na tabela
 cols_to_show = [
-    'Date','Time','League','Home','Away',
-    'Auto_Recommendation','Win_Probability',
-    'ML_Recommendation',
-    'ML_Proba_Home','ML_Proba_Draw','ML_Proba_Away'
+    'Date', 'Time', 'League', 'Home', 'Away',
+    'Goals_H_Today', 'Goals_A_Today',
+    'Auto_Recommendation', 'ML_Recommendation',
+    'Auto_Correct', 'ML_Correct',
+    'Profit_Auto', 'Profit_ML'
 ]
 
-available_cols = [c for c in cols_to_show if c in games_today.columns]
-
-if "Auto_Recommendation" in games_today and "ML_Recommendation" in games_today:
-    games_today["Agreement"] = np.where(
-        games_today["Auto_Recommendation"] == games_today["ML_Recommendation"],
-        "✅",
-        "⚠️"
-    )
-    if "Agreement" not in available_cols:
-        available_cols.insert(6, "Agreement")
-
-st.subheader("📊 Regras vs ML")
+# Exibir tabela no Streamlit
+st.subheader("📊 Jogos do Dia – Auto vs ML")
 st.dataframe(
-    games_today[available_cols]
-    .style.format({
-        'Win_Probability':'{:.1f}%',
-        'ML_Proba_Home':'{:.2f}',
-        'ML_Proba_Draw':'{:.2f}',
-        'ML_Proba_Away':'{:.2f}'
+    games_today[cols_to_show]
+    .style.apply(highlight_row, axis=1)
+    .format({
+        'Goals_H_Today': '{:.0f}',
+        'Goals_A_Today': '{:.0f}',
+        'Profit_Auto': '{:.2f}',
+        'Profit_ML': '{:.2f}'
     }),
     use_container_width=True,
-    height=1200  # tabela maior
+    height=800
 )
