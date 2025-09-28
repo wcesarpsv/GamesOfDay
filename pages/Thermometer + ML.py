@@ -696,7 +696,7 @@ cols_to_show = [
     'Profit_Auto', 'Profit_ML'
 ]
 
-# Gera o DataFrame estilizado
+# Gera DataFrame estilizado
 styled_df = (
     games_today[cols_to_show]
     .style.apply(highlight_row, axis=1)
@@ -708,6 +708,10 @@ styled_df = (
     })
 )
 
-# Exibir como HTML no Streamlit (mantendo as cores)
+# =========================================
+# Exibir usando st.write em vez de st.markdown
+# =========================================
+# O st.write com pandas style já entende o CSS e evita overlay branco
 st.subheader("📊 Jogos do Dia – Auto vs ML")
-st.markdown(styled_df.to_html(), unsafe_allow_html=True)
+st.write(styled_df)
+
