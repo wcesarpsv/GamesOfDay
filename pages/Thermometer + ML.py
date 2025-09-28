@@ -417,7 +417,7 @@ def calculate_profit(rec, result, odds_row):
     elif 'Back Draw' in rec:
         odd = odds_row.get('Odd_D', np.nan)
         return odd - 1 if result == "Draw" else -1
-        elif '1X' in rec:
+    elif '1X' in rec:
         odd = odds_row.get('Odd_1X', np.nan)
         return odd - 1 if result in ["Home", "Draw"] else -1
     elif 'X2' in rec:
