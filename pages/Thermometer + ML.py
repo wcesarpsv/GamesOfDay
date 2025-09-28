@@ -21,33 +21,51 @@ st.title("📊 Momentum Thermometer + ML Prototype")
 # =========================================
 custom_css = """
 <style>
-/* Remove faixas alternadas (zebra striping) */
+/* Remove all background colors from Streamlit dataframes */
+[data-testid="stDataFrame"] div[data-testid="stDataFrameContainer"] > div {
+    background-color: transparent !important;
+}
+
+[data-testid="stDataFrame"] table {
+    background-color: transparent !important;
+}
+
 [data-testid="stDataFrame"] table tbody tr {
     background-color: transparent !important;
 }
 
-/* Remove qualquer cor que o Streamlit tente aplicar nas células */
 [data-testid="stDataFrame"] table tbody tr td {
     background-color: transparent !important;
     color: inherit !important;
     border: none !important;
 }
 
-/* Remove sombras ou overlays que possam ficar por cima */
-[data-testid="stDataFrame"] * {
-    background-color: transparent !important;
-    box-shadow: none !important;
-}
-
-/* Força o Pandas Style a ter prioridade máxima */
-table {
-    background-color: transparent !important;
-}
-
-thead tr th {
-    background-color: #222 !important; /* Fundo do cabeçalho mais escuro */
-    color: #fff !important;            /* Texto branco no cabeçalho */
+[data-testid="stDataFrame"] table thead tr th {
+    background-color: #222 !important;
+    color: #fff !important;
     border: none !important;
+}
+
+/* Remove zebra striping and hover effects */
+[data-testid="stDataFrame"] table tbody tr:nth-child(even) {
+    background-color: transparent !important;
+}
+
+[data-testid="stDataFrame"] table tbody tr:nth-child(odd) {
+    background-color: transparent !important;
+}
+
+[data-testid="stDataFrame"] table tbody tr:hover {
+    background-color: transparent !important;
+}
+
+/* Target specific Streamlit containers that might have background */
+.stDataFrame {
+    background-color: transparent !important;
+}
+
+div[data-testid="stDataFrameContainer"] {
+    background-color: transparent !important;
 }
 </style>
 """
