@@ -151,114 +151,6 @@ else:
 
 
 
-########################################
-##### Bloco 4C – Avaliar Resultados ####
-########################################
-
-# 1) Determinar resultado real (apenas se já temos gols preenchidos)
-def determine_result(row):
-    if pd.isna(row['Goals_H_Today']) or pd.isna(row['Goals_A_Today']):
-        return None
-    if row['Goals_H_Today'] > row['Goals_A_Today']:
-        return "Home"
-    elif row['Goals_H_Today'] < row['Goals_A_Today']:
-        return "Away"
-    else:
-        return "Draw"
-
-games_today['Result_Today'] = games_today.apply(determine_result, axis=1)
-
-# 2) Função para avaliar se a recomendação acertou
-def check_recommendation(rec, result):
-    if pd.isna(rec) or result is None or rec == '❌ Avoid':
-        return None  # Não considerar
-    rec = str(rec)
-
-    if 'Back Home' in rec:
-        return result == "Home"
-    elif 'Back Away' in rec:
-        return result == "Away"
-    elif 'Back Draw' in rec:
-        return result == "Draw"
-    elif '1X' in rec:
-        return result in ["Home", "Draw"]
-    elif 'X2' in rec:
-        return result in ["Away", "Draw"]
-    else:
-        return None
-
-# Avaliar acertos separadamente
-games_today['Auto_Correct'] = games_today.apply(
-    lambda r: check_recommendation(r['Auto_Recommendation'], r['Result_Today']), axis=1
-)
-games_today['ML_Correct'] = games_today.apply(
-    lambda r: check_recommendation(r['ML_Recommendation'], r['Result_Today']), axis=1
-)
-
-# 3) Função para calcular profit de acordo com a odd usada
-def calculate_profit(rec, result, odds_row):
-    if pd.isna(rec) or result is None or rec == '❌ Avoid':
-        return 0  # Não apostou, profit 0
-    rec = str(rec)
-
-    # Selecionar odd correta
-    if 'Back Home' in rec:
-        odd = odds_row.get('Odd_H', np.nan)
-        return odd - 1 if result == "Home" else -1
-    elif 'Back Away' in rec:
-        odd = odds_row.get('Odd_A', np.nan)
-        return odd - 1 if result == "Away" else -1
-    elif 'Back Draw' in rec:
-        odd = odds_row.get('Odd_D', np.nan)
-        return odd - 1 if result == "Draw" else -1
-    elif '1X' in rec:
-        odd = odds_row.get('Odd_1X', np.nan)
-        return odd - 1 if result in ["Home", "Draw"] else -1
-    elif 'X2' in rec:
-        odd = odds_row.get('Odd_X2', np.nan)
-        return odd - 1 if result in ["Away", "Draw"] else -1
-    else:
-        return 0
-
-# Calcular profit separadamente para Auto e ML
-games_today['Profit_Auto'] = games_today.apply(
-    lambda r: calculate_profit(r['Auto_Recommendation'], r['Result_Today'], r), axis=1
-)
-games_today['Profit_ML'] = games_today.apply(
-    lambda r: calculate_profit(r['ML_Recommendation'], r['Result_Today'], r), axis=1
-)
-
-# 4) Resumo agregado
-finished_games = games_today.dropna(subset=['Result_Today'])
-
-def summary_stats(df, prefix):
-    # Apenas apostas feitas (não considerar ❌ Avoid)
-    bets = df[df[f'{prefix}_Correct'].notna()]
-    total_bets = len(bets)
-    correct_bets = bets[f'{prefix}_Correct'].sum()
-    winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
-    total_profit = bets[f'Profit_{prefix}'].sum()
-
-    return {
-        "Total Jogos": len(df),
-        "Apostas Feitas": total_bets,
-        "Acertos": correct_bets,
-        "Winrate (%)": round(winrate, 2),
-        "Profit Total": round(total_profit, 2)
-    }
-
-summary_auto = summary_stats(finished_games, "Auto")
-summary_ml = summary_stats(finished_games, "ML")
-
-# 5) Mostrar resumo no Streamlit
-st.subheader("📈 Resumo do Dia")
-st.markdown("### Performance Auto Recommendation (Regras)")
-st.json(summary_auto)
-
-st.markdown("### Performance Machine Learning (ML)")
-st.json(summary_ml)
-
-
 
 ########################################
 ####### Bloco 5 – Features Extras ######
@@ -603,6 +495,117 @@ games_today["ML_Recommendation"] = [
                                  threshold=threshold)
     for _, row in games_today.iterrows()
 ]
+
+
+########################################
+##### Bloco 8B – Avaliar Resultados ####
+########################################
+
+# 1) Determinar resultado real (apenas se já temos gols preenchidos)
+def determine_result(row):
+    try:
+        gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
+        ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
+    except (ValueError, TypeError):
+        return None
+
+    if pd.isna(gh) or pd.isna(ga):
+        return None
+    if gh > ga:
+        return "Home"
+    elif gh < ga:
+        return "Away"
+    else:
+        return "Draw"
+
+games_today['Result_Today'] = games_today.apply(determine_result, axis=1)
+
+# 2) Função para avaliar se a recomendação acertou
+def check_recommendation(rec, result):
+    if pd.isna(rec) or result is None or rec == '❌ Avoid':
+        return None
+    rec = str(rec)
+
+    if 'Back Home' in rec:
+        return result == "Home"
+    elif 'Back Away' in rec:
+        return result == "Away"
+    elif 'Back Draw' in rec:
+        return result == "Draw"
+    elif '1X' in rec:
+        return result in ["Home", "Draw"]
+    elif 'X2' in rec:
+        return result in ["Away", "Draw"]
+    else:
+        return None
+
+# Avaliar acertos separadamente
+games_today['Auto_Correct'] = games_today.apply(
+    lambda r: check_recommendation(r['Auto_Recommendation'], r['Result_Today']), axis=1
+)
+games_today['ML_Correct'] = games_today.apply(
+    lambda r: check_recommendation(r['ML_Recommendation'], r['Result_Today']), axis=1
+)
+
+# 3) Função para calcular profit
+def calculate_profit(rec, result, odds_row):
+    if pd.isna(rec) or result is None or rec == '❌ Avoid':
+        return 0
+    rec = str(rec)
+
+    if 'Back Home' in rec:
+        odd = odds_row.get('Odd_H', np.nan)
+        return odd - 1 if result == "Home" else -1
+    elif 'Back Away' in rec:
+        odd = odds_row.get('Odd_A', np.nan)
+        return odd - 1 if result == "Away" else -1
+    elif 'Back Draw' in rec:
+        odd = odds_row.get('Odd_D', np.nan)
+        return odd - 1 if result == "Draw" else -1
+    elif '1X' in rec:
+        odd = odds_row.get('Odd_1X', np.nan)
+        return odd - 1 if result in ["Home", "Draw"] else -1
+    elif 'X2' in rec:
+        odd = odds_row.get('Odd_X2', np.nan)
+        return odd - 1 if result in ["Away", "Draw"] else -1
+    return 0
+
+# Calcular profit separadamente
+games_today['Profit_Auto'] = games_today.apply(
+    lambda r: calculate_profit(r['Auto_Recommendation'], r['Result_Today'], r), axis=1
+)
+games_today['Profit_ML'] = games_today.apply(
+    lambda r: calculate_profit(r['ML_Recommendation'], r['Result_Today'], r), axis=1
+)
+
+# 4) Resumo agregado
+finished_games = games_today.dropna(subset=['Result_Today'])
+
+def summary_stats(df, prefix):
+    bets = df[df[f'{prefix}_Correct'].notna()]
+    total_bets = len(bets)
+    correct_bets = bets[f'{prefix}_Correct'].sum()
+    winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
+    total_profit = bets[f'Profit_{prefix}'].sum()
+
+    return {
+        "Total Jogos": len(df),
+        "Apostas Feitas": total_bets,
+        "Acertos": int(correct_bets),
+        "Winrate (%)": round(winrate, 2),
+        "Profit Total": round(total_profit, 2)
+    }
+
+summary_auto = summary_stats(finished_games, "Auto")
+summary_ml = summary_stats(finished_games, "ML")
+
+st.subheader("📈 Resumo do Dia")
+st.markdown("### Performance Auto Recommendation (Regras)")
+st.json(summary_auto)
+
+st.markdown("### Performance Machine Learning (ML)")
+st.json(summary_ml)
+
 
 
 ########################################
