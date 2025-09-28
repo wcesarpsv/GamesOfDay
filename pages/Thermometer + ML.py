@@ -79,6 +79,66 @@ if history.empty:
     st.warning("No valid historical data found.")
     st.stop()
 
+
+########################################
+####### Bloco 4B – LiveScore Merge #####
+########################################
+from datetime import datetime
+
+# === Detectar data de hoje para nome do arquivo ===
+today_str = datetime.today().strftime("%Y-%m-%d")
+livescore_folder = "LiveScore"
+livescore_file = os.path.join(livescore_folder, f"Resultados_RAW_{today_str}.csv")
+
+# ===============================================
+# 1) Garante que as colunas de gols existam
+# ===============================================
+if 'Goals_H_Today' not in games_today.columns:
+    games_today['Goals_H_Today'] = np.nan
+if 'Goals_A_Today' not in games_today.columns:
+    games_today['Goals_A_Today'] = np.nan
+
+# ===============================================
+# 2) Carregar e integrar resultados do arquivo RAW
+# ===============================================
+if os.path.exists(livescore_file):
+    st.info(f"Arquivo de resultados encontrado: {livescore_file}")
+    
+    # Carregar resultados
+    results_df = pd.read_csv(livescore_file)
+
+    # Conferir se as colunas essenciais existem
+    required_cols = ['game_id', 'status', 'home_goal', 'away_goal']
+    missing_cols = [col for col in required_cols if col not in results_df.columns]
+    
+    if missing_cols:
+        st.error(f"O arquivo {livescore_file} está faltando estas colunas: {missing_cols}")
+    else:
+        # Filtrar apenas jogos finalizados (status = FT)
+        results_df = results_df[results_df['status'] == 'FT'].copy()
+
+        # Fazer o merge pelo Id ↔ game_id
+        games_today = games_today.merge(
+            results_df[['game_id', 'home_goal', 'away_goal']],
+            left_on='Id',
+            right_on='game_id',
+            how='left'
+        )
+
+        # Atualizar nomes padronizados
+        games_today.rename(columns={
+            'home_goal': 'Goals_H_Today',
+            'away_goal': 'Goals_A_Today'
+        }, inplace=True)
+
+        # Remover coluna auxiliar que veio do merge
+        games_today.drop(columns=['game_id'], inplace=True, errors='ignore')
+else:
+    st.warning(f"Nenhum arquivo de resultados encontrado em: {livescore_file}")
+
+
+
+
 ########################################
 ##### Bloco 4C – Avaliar Resultados ####
 ########################################
