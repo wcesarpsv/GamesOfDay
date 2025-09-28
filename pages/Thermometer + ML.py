@@ -19,20 +19,24 @@ st.title("📊 Momentum Thermometer + ML Prototype")
 # =========================================
 # CSS para corrigir overlay branco/cinza
 # =========================================
+# =========================================
+# CSS para remover overlay branco/cinza
+# =========================================
 custom_css = """
 <style>
-/* Remove a camada branca/cinza do Streamlit DataFrame */
-[data-testid="stDataFrame"] div[data-testid="stVerticalBlock"] {
+[data-testid="stDataFrame"] * {
     background-color: transparent !important;
+    color: inherit !important;
 }
 
-/* Força as cores aplicadas pelo pandas.style aparecerem */
 [data-testid="stDataFrame"] table tbody tr td {
     background-color: inherit !important;
+    color: inherit !important;
 }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
+
 
 # Configurações principais
 GAMES_FOLDER = "GamesDay"
