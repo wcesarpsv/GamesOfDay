@@ -246,14 +246,21 @@ games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
 ########################################
 ####### Bloco 6 – Auto Recommendation ##
 ########################################
-def auto_recommendation(row):
+def auto_recommendation(row,
+                        diff_mid_lo=0.20, diff_mid_hi=0.80,
+                        diff_mid_hi_highvar=0.75, power_gate=1, power_gate_highvar=5):
+
     band_home = row.get('Home_Band')
     band_away = row.get('Away_Band')
     dominant  = row.get('Dominant')
     diff_m    = row.get('M_Diff')
     diff_pow  = row.get('Diff_Power')
+    league_cls= row.get('League_Classification', 'Medium Variation')
+    m_a       = row.get('M_A')
+    m_h       = row.get('M_H')
     odd_d     = row.get('Odd_D')
 
+    # 1) Strong edges -> Direct Back
     if band_home == 'Top 20%' and band_away == 'Bottom 20%':
         return '🟢 Back Home'
     if band_home == 'Bottom 20%' and band_away == 'Top 20%':
@@ -266,17 +273,40 @@ def auto_recommendation(row):
         if diff_m is not None and diff_m <= -0.90:
             return '🟪 X2 (Away/Draw)'
 
-    if (band_home == 'Balanced') and (band_away == 'Balanced') and (diff_m is not None and diff_pow is not None):
-        if diff_m >= 0.20 and diff_m < 0.80 and diff_pow >= 1:
-            return '🟦 1X (Home/Draw)'
-        if diff_m <= -0.20 and diff_m > -0.80 and diff_pow <= -1:
-            return '🟪 X2 (Away/Draw)'
+    # 2) Both Balanced (with thresholds)
+    if (band_home == 'Balanced') and (band_away == 'Balanced') and (diff_m is not None) and (diff_pow is not None):
+        if league_cls == 'High Variation':
+            if (diff_m >= 0.45 and diff_m < diff_mid_hi_highvar and diff_pow >= power_gate_highvar):
+                return '🟦 1X (Home/Draw)'
+            if (diff_m <= -0.45 and diff_m > -diff_mid_hi_highvar and diff_pow <= -power_gate_highvar):
+                return '🟪 X2 (Away/Draw)'
+        else:
+            if (diff_m >= diff_mid_lo and diff_m < diff_mid_hi and diff_pow >= power_gate):
+                return '🟦 1X (Home/Draw)'
+            if (diff_m <= -diff_mid_lo and diff_m > -diff_mid_hi and diff_pow <= -power_gate):
+                return '🟪 X2 (Away/Draw)'
 
-    if (odd_d is not None and 2.5 <= odd_d <= 6.0):
-        return '⚪ Back Draw'
+    # 3) Balanced vs Bottom20%
+    if (band_home == 'Balanced') and (band_away == 'Bottom 20%'):
+        return '🟦 1X (Home/Draw)'
+    if (band_away == 'Balanced') and (band_home == 'Bottom 20%'):
+        return '🟪 X2 (Away/Draw)'
 
+    # 4) Top20% vs Balanced
+    if (band_home == 'Top 20%') and (band_away == 'Balanced'):
+        return '🟦 1X (Home/Draw)'
+    if (band_away == 'Top 20%') and (band_home == 'Balanced'):
+        return '🟪 X2 (Away/Draw)'
+
+    # 5) Filtro Draw (novo)
+    if (odd_d is not None and 2.5 <= odd_d <= 6.0) and (diff_pow is not None and -10 <= diff_pow <= 10):
+        if (m_h is not None and 0 <= m_h <= 1) or (m_a is not None and 0 <= m_a <= 0.5):
+            return '⚪ Back Draw'
+
+    # 6) Fallback
     return '❌ Avoid'
 
+# Aplicar recomendação
 games_today['Auto_Recommendation'] = games_today.apply(lambda r: auto_recommendation(r), axis=1)
 
 
@@ -331,21 +361,34 @@ model.fit(X, y)
 ########################################
 ####### Bloco 8 – Apply ML to Today ####
 ########################################
-threshold = st.sidebar.slider("ML Threshold for Direct Win (%)", min_value=50, max_value=80, value=65, step=1) / 100.0
+threshold = st.sidebar.slider(
+    "ML Threshold for Direct Win (%)", 
+    min_value=50, max_value=80, value=65, step=1
+) / 100.0
 
 def ml_recommendation_from_proba(p_home, p_draw, p_away, threshold=0.65):
     if p_home >= threshold:
         return "🟢 Back Home"
     elif p_away >= threshold:
         return "🟠 Back Away"
-    elif p_draw > 0.35:
-        return "⚪ Back Draw"
     else:
-        return "❌ Avoid"
+        sum_home_draw = p_home + p_draw
+        sum_away_draw = p_away + p_draw
+        if abs(p_home - p_away) < 0.05 and p_draw > 0.35:
+            return "⚪ Back Draw"
+        elif sum_home_draw > sum_away_draw:
+            return "🟦 1X (Home/Draw)"
+        elif sum_away_draw > sum_home_draw:
+            return "🟪 X2 (Away/Draw)"
+        else:
+            return "❌ Avoid"
 
 X_today = games_today[features_raw].copy()
-if 'Home_Band' in X_today: X_today['Home_Band_Num'] = X_today['Home_Band'].map(BAND_MAP)
-if 'Away_Band' in X_today: X_today['Away_Band_Num'] = X_today['Away_Band'].map(BAND_MAP)
+
+if 'Home_Band' in X_today: 
+    X_today['Home_Band_Num'] = X_today['Home_Band'].map(BAND_MAP)
+if 'Away_Band' in X_today: 
+    X_today['Away_Band_Num'] = X_today['Away_Band'].map(BAND_MAP)
 
 if cat_cols:
     encoded_today = encoder.transform(X_today[cat_cols])
@@ -353,13 +396,18 @@ if cat_cols:
     X_today = pd.concat([X_today.drop(columns=cat_cols).reset_index(drop=True),
                          encoded_today_df.reset_index(drop=True)], axis=1)
 
+ml_preds = model.predict(X_today)
 ml_proba = model.predict_proba(X_today)
+
 games_today["ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
 games_today["ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
 games_today["ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
 
 games_today["ML_Recommendation"] = [
-    ml_recommendation_from_proba(row["ML_Proba_Home"], row["ML_Proba_Draw"], row["ML_Proba_Away"], threshold)
+    ml_recommendation_from_proba(row["ML_Proba_Home"], 
+                                 row["ML_Proba_Draw"], 
+                                 row["ML_Proba_Away"],
+                                 threshold=threshold)
     for _, row in games_today.iterrows()
 ]
 
