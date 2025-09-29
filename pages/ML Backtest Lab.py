@@ -432,60 +432,60 @@ def build_X(df, fit_encoder=False, encoder=None, cat_cols=None):
 
     return X_out, encoder, cat_cols
 
-# ########################################
-# # BLOCO 8 – TREINO, PREDIÇÃO, CALIBRAÇÃO
-# ########################################
-# def make_model(choice, params):
-#     if choice == "Random Forest":
-#         return RandomForestClassifier(random_state=42, n_jobs=-1, **params)
-#     if choice == "Logistic Regression":
-#         return LogisticRegression(random_state=42, **params)
-#     if choice == "XGBoost" and XGB_AVAILABLE:
-#         return XGBClassifier(random_state=42, eval_metric="logloss", **params)
-#     if choice == "LightGBM" and LGBM_AVAILABLE:
-#         return LGBMClassifier(random_state=42, **params)
-#     raise ValueError("Modelo não suportado/indisponível no ambiente.")
+########################################
+# BLOCO 8 – TREINO, PREDIÇÃO, CALIBRAÇÃO
+########################################
+def make_model(choice, params):
+    if choice == "Random Forest":
+        return RandomForestClassifier(random_state=42, n_jobs=-1, **params)
+    if choice == "Logistic Regression":
+        return LogisticRegression(random_state=42, **params)
+    if choice == "XGBoost" and XGB_AVAILABLE:
+        return XGBClassifier(random_state=42, eval_metric="logloss", **params)
+    if choice == "LightGBM" and LGBM_AVAILABLE:
+        return LGBMClassifier(random_state=42, **params)
+    raise ValueError("Modelo não suportado/indisponível no ambiente.")
 
-# with st.spinner("Treinando modelo..."):
-#     base_model = make_model(model_choice, params)
-#     if apply_calibration:
-#         model = CalibratedClassifierCV(base_model, cv=5, method='isotonic')
-#     else:
-#         model = base_model
-#     model.fit(X_train, y_train)
+with st.spinner("Treinando modelo..."):
+    base_model = make_model(model_choice, params)
+    if apply_calibration:
+        model = CalibratedClassifierCV(base_model, cv=5, method='isotonic')
+    else:
+        model = base_model
+    model.fit(X_train, y_train)
 
-# proba_test = model.predict_proba(X_test) if hasattr(model, "predict_proba") else None
-# pred_test  = model.predict(X_test)
+proba_test = model.predict_proba(X_test) if hasattr(model, "predict_proba") else None
+pred_test  = model.predict(X_test)
 
-# classes_ = list(model.classes_)
-# # Mapear probabilidades por classe
-# def p(cls):
-#     if proba_test is None: return np.zeros(len(X_test))
-#     idx = classes_.index(cls) if cls in classes_ else None
-#     return proba_test[:, idx] if idx is not None else np.zeros(len(X_test))
+classes_ = list(model.classes_)
+# Mapear probabilidades por classe
+def p(cls):
+    if proba_test is None: return np.zeros(len(X_test))
+    idx = classes_.index(cls) if cls in classes_ else None
+    return proba_test[:, idx] if idx is not None else np.zeros(len(X_test))
 
-# test_df = test_df.copy()
-# test_df["ML_Proba_Home"] = p("Home")
-# test_df["ML_Proba_Draw"] = p("Draw")
-# test_df["ML_Proba_Away"] = p("Away")
-# test_df["ML_Pred"] = pred_test
+test_df = test_df.copy()
+test_df["ML_Proba_Home"] = p("Home")
+test_df["ML_Proba_Draw"] = p("Draw")
+test_df["ML_Proba_Away"] = p("Away")
+test_df["ML_Pred"] = pred_test
 
-# # Recomendação a partir das probabilidades
-# st.subheader("🎯 Limiar para Back direto")
-# threshold = st.slider("Threshold (%) para Back Home/Away", 50, 85, 65, step=1) / 100.0
+# Recomendação a partir das probabilidades
+st.subheader("🎯 Limiar para Back direto")
+threshold = st.slider("Threshold (%) para Back Home/Away", 50, 85, 65, step=1) / 100.0
 
-# def ml_rec_from_proba(row, thr=0.65):
-#     ph, pd_, pa = row['ML_Proba_Home'], row['ML_Proba_Draw'], row['ML_Proba_Away']
-#     if ph >= thr: return "🟢 Back Home"
-#     if pa >= thr: return "🟠 Back Away"
-#     sum_hd, sum_ad = ph + pd_, pa + pd_
-#     if abs(ph - pa) < 0.05 and pd_ > 0.35:
-#         return "⚪ Back Draw"
-#     if sum_hd > sum_ad:  return "🟦 1X (Home/Draw)"
-#     if sum_ad > sum_hd:  return "🟪 X2 (Away/Draw)"
-#     return "❌ Avoid"
+def ml_rec_from_proba(row, thr=0.65):
+    ph, pd_, pa = row['ML_Proba_Home'], row['ML_Proba_Draw'], row['ML_Proba_Away']
+    if ph >= thr: return "🟢 Back Home"
+    if pa >= thr: return "🟠 Back Away"
+    sum_hd, sum_ad = ph + pd_, pa + pd_
+    if abs(ph - pa) < 0.05 and pd_ > 0.35:
+        return "⚪ Back Draw"
+    if sum_hd > sum_ad:  return "🟦 1X (Home/Draw)"
+    if sum_ad > sum_hd:  return "🟪 X2 (Away/Draw)"
+    return "❌ Avoid"
 
-# test_df["ML_Recommendation"] = test_df.apply(ml_rec_from_proba, axis=1, thr=threshold)
+test_df["ML_Recommendation"] = test_df.apply(ml_rec_from_proba, axis=1, thr=threshold)
 
 
 ########################################
