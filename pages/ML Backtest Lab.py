@@ -578,11 +578,20 @@ test_df['League'] = test_df['League'].astype(str).str.strip().str.lower()
 league_class['League'] = league_class['League'].astype(str).str.strip().str.lower()
 league_bands['League'] = league_bands['League'].astype(str).str.strip().str.lower()
 
-st.write("Ligas em test_df:", sorted(test_df['League'].unique().tolist()))
-st.write("Ligas em league_bands:", sorted(league_bands['League'].unique().tolist()))
+# ==== DEBUG ANTES DO MERGE ====
+st.write("Colunas em test_df:", list(test_df.columns))
+st.write("Colunas em league_bands:", list(league_bands.columns))
 
-intersec = set(test_df['League']).intersection(set(league_bands['League']))
-st.write("Interseção de ligas (esperado > 0):", intersec)
+if 'League' in test_df.columns:
+    st.write("Valores únicos em test_df['League']:", sorted(test_df['League'].dropna().unique().tolist()))
+else:
+    st.error("❌ 'League' NÃO existe em test_df")
+
+if 'League' in league_bands.columns:
+    st.write("Valores únicos em league_bands['League']:", sorted(league_bands['League'].dropna().unique().tolist()))
+else:
+    st.error("❌ 'League' NÃO existe em league_bands")
+
 
 
 # Merge (classificação de liga é útil; bands só se existir)
