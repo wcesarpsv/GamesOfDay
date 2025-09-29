@@ -570,52 +570,32 @@ if show_debug:
 
 
 ########################################
-# BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT (CORRIGIDO)
+# BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT (FINAL SIMPLIFICADO)
 ########################################
 
-# Padronizar nomes das ligas
+# Garantir que ligas estão padronizadas
 test_df['League'] = test_df['League'].astype(str).str.strip().str.lower()
 league_class['League'] = league_class['League'].astype(str).str.strip().str.lower()
 league_bands['League'] = league_bands['League'].astype(str).str.strip().str.lower()
-
-# Debug antes do merge
-st.write("DEBUG - Ligas únicas test_df:", sorted(test_df['League'].unique().tolist()))
-st.write("DEBUG - Ligas únicas league_bands:", sorted(league_bands['League'].unique().tolist()))
-st.write("DEBUG - Colunas league_bands:", list(league_bands.columns))
 
 # Merge seguro
 test_df = test_df.merge(league_class, on='League', how='left', suffixes=("", "_lc"))
 test_df = test_df.merge(league_bands, on='League', how='left', suffixes=("", "_lb"))
 
-# Debug após merge
-st.write("DEBUG - Colunas após merge:", list(test_df.columns))
-st.write("DEBUG - Linhas com NaN nos percentis:",
-         test_df[test_df[['Home_P20','Home_P80','Away_P20','Away_P80']].isna().any(axis=1)].head())
+# Garantir colunas numéricas corretas
+BAND_MAP = {"Bottom 20%": 1, "Balanced": 2, "Top 20%": 3}
 
-# Garantir colunas essenciais
-required_cols = ['Home_P20', 'Home_P80', 'Away_P20', 'Away_P80']
-missing_cols = [col for col in required_cols if col not in test_df.columns]
-if missing_cols:
-    st.error(f"❌ Colunas ausentes no test_df após merge: {missing_cols}")
-    st.stop()
+# Criar bandas numéricas direto
+test_df['Home_Band_Num'] = test_df['Home_Band_Num'].fillna(2).astype(int)
+test_df['Away_Band_Num'] = test_df['Away_Band_Num'].fillna(2).astype(int)
 
-# Classificação segura
-def classify_band(value, low, high):
-    if pd.isna(value) or pd.isna(low) or pd.isna(high):
-        return "Balanced"
-    if value <= low: return "Bottom 20%"
-    if value >= high: return "Top 20%"
-    return "Balanced"
-
-# Aplicar classificação
+# Calcular Diff
 test_df['M_Diff'] = test_df['M_H'] - test_df['M_A']
-test_df['Home_Band'] = test_df.apply(lambda row: classify_band(row['M_H'], row['Home_P20'], row['Home_P80']), axis=1)
-test_df['Away_Band'] = test_df.apply(lambda row: classify_band(row['M_A'], row['Away_P20'], row['Away_P80']), axis=1)
 
 # Dominant
 test_df['Dominant'] = test_df.apply(dominant_side, axis=1)
 
-# Recomendações
+# Recomendações automáticas (baseadas nos valores numéricos)
 if compare_rules:
     test_df['Auto_Recommendation'] = test_df.apply(auto_recommendation, axis=1)
 else:
@@ -628,7 +608,6 @@ test_df['Profit_Auto'] = test_df.apply(lambda r: calculate_profit(r['Auto_Recomm
 # Acertos
 test_df['ML_Correct'] = test_df.apply(lambda r: check_recommendation(r['ML_Recommendation'], r['Result']), axis=1)
 test_df['Auto_Correct'] = test_df.apply(lambda r: check_recommendation(r['Auto_Recommendation'], r['Result']), axis=1)
-
 
 ########################################
 # BLOCO 10 – MÉTRICAS & SUMÁRIOS
