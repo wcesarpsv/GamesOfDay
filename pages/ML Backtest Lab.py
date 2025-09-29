@@ -381,111 +381,178 @@ save_csv = st.checkbox("Salvar previsões (CSV)", value=False)
 st.divider()
 
 ########################################
-# BLOCO 7 – FEATURES & ENCODER
+# BLOCO 7 – Ajustado: Função build_X
 ########################################
-st.header("🧩 Features & Treino")
-
-# Lista flexível de features (usa só o que existir)
-features_raw = [
-    'M_H','M_A','Diff_Power','M_Diff',
-    'Home_Band','Away_Band','Dominant','League_Classification',
-    'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2',
-    'EV','Games_Analyzed'
-]
-features_raw = [f for f in features_raw if f in history.columns]
-
-BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
-
 def build_X(df, fit_encoder=False, encoder=None, cat_cols=None):
-    X = df.copy()
-    # Garantir colunas ausentes
+    """
+    Prepara o dataframe de entrada (X) para treino ou teste:
+    - Garante que todas as colunas de features existam
+    - Faz mapeamento de bandas para valores numéricos
+    - Aplica OneHotEncoder nas colunas categóricas
+    - Retorna dataframe final somente com valores numéricos
+    """
+    # Garantir todas as features presentes
     for col in features_raw:
-        if col not in X.columns:
-            X[col] = np.nan
-    X = X[features_raw].copy()
+        if col not in df.columns:
+            df[col] = np.nan
 
+    X = df[features_raw].copy()
+
+    # Mapear Home_Band e Away_Band
     if 'Home_Band' in X.columns:
         X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
     if 'Away_Band' in X.columns:
         X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
 
-    # Categóricas para OneHot
+    # Identificar colunas categóricas
     if cat_cols is None:
         cat_cols = [c for c in ['Dominant','League_Classification'] if c in X.columns]
+
+    # Fit ou Transform do encoder
     if fit_encoder:
         encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
         encoded = encoder.fit_transform(X[cat_cols]) if cat_cols else np.zeros((len(X),0))
     else:
-        encoded = encoder.transform(X[cat_cols]) if (cat_cols and encoder) else np.zeros((len(X),0))
+        encoded = encoder.transform(X[cat_cols]) if (encoder and cat_cols) else np.zeros((len(X),0))
 
-    encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(cat_cols)) if encoded.size else pd.DataFrame(index=X.index)
+    # Converter para dataframe
+    encoded_df = (
+        pd.DataFrame(encoded, columns=encoder.get_feature_names_out(cat_cols), index=X.index)
+        if encoded.size else pd.DataFrame(index=X.index)
+    )
+
+    # Combinar numéricas + one-hot
     X_num = X.drop(columns=cat_cols, errors='ignore').reset_index(drop=True)
-    X_out = pd.concat([X_num, encoded_df.reset_index(drop=True)], axis=1)
+    encoded_df = encoded_df.reset_index(drop=True)
+    X_out = pd.concat([X_num, encoded_df], axis=1)
+
+    # Garantir apenas valores numéricos e sem NaN
+    X_out = X_out.apply(pd.to_numeric, errors='coerce')
+    X_out.fillna(0, inplace=True)
+
     return X_out, encoder, cat_cols
 
-with st.spinner("Preparando features..."):
-    X_train, enc, cat_cols = build_X(train_df, fit_encoder=True)
-    y_train = train_df['Result'].astype(str)
+# ########################################
+# # BLOCO 8 – TREINO, PREDIÇÃO, CALIBRAÇÃO
+# ########################################
+# def make_model(choice, params):
+#     if choice == "Random Forest":
+#         return RandomForestClassifier(random_state=42, n_jobs=-1, **params)
+#     if choice == "Logistic Regression":
+#         return LogisticRegression(random_state=42, **params)
+#     if choice == "XGBoost" and XGB_AVAILABLE:
+#         return XGBClassifier(random_state=42, eval_metric="logloss", **params)
+#     if choice == "LightGBM" and LGBM_AVAILABLE:
+#         return LGBMClassifier(random_state=42, **params)
+#     raise ValueError("Modelo não suportado/indisponível no ambiente.")
 
-    X_test, _, _ = build_X(test_df, fit_encoder=False, encoder=enc, cat_cols=cat_cols)
-    y_test = test_df['Result'].astype(str)
+# with st.spinner("Treinando modelo..."):
+#     base_model = make_model(model_choice, params)
+#     if apply_calibration:
+#         model = CalibratedClassifierCV(base_model, cv=5, method='isotonic')
+#     else:
+#         model = base_model
+#     model.fit(X_train, y_train)
 
-st.success(f"X_train: {X_train.shape} | X_test: {X_test.shape}")
+# proba_test = model.predict_proba(X_test) if hasattr(model, "predict_proba") else None
+# pred_test  = model.predict(X_test)
+
+# classes_ = list(model.classes_)
+# # Mapear probabilidades por classe
+# def p(cls):
+#     if proba_test is None: return np.zeros(len(X_test))
+#     idx = classes_.index(cls) if cls in classes_ else None
+#     return proba_test[:, idx] if idx is not None else np.zeros(len(X_test))
+
+# test_df = test_df.copy()
+# test_df["ML_Proba_Home"] = p("Home")
+# test_df["ML_Proba_Draw"] = p("Draw")
+# test_df["ML_Proba_Away"] = p("Away")
+# test_df["ML_Pred"] = pred_test
+
+# # Recomendação a partir das probabilidades
+# st.subheader("🎯 Limiar para Back direto")
+# threshold = st.slider("Threshold (%) para Back Home/Away", 50, 85, 65, step=1) / 100.0
+
+# def ml_rec_from_proba(row, thr=0.65):
+#     ph, pd_, pa = row['ML_Proba_Home'], row['ML_Proba_Draw'], row['ML_Proba_Away']
+#     if ph >= thr: return "🟢 Back Home"
+#     if pa >= thr: return "🟠 Back Away"
+#     sum_hd, sum_ad = ph + pd_, pa + pd_
+#     if abs(ph - pa) < 0.05 and pd_ > 0.35:
+#         return "⚪ Back Draw"
+#     if sum_hd > sum_ad:  return "🟦 1X (Home/Draw)"
+#     if sum_ad > sum_hd:  return "🟪 X2 (Away/Draw)"
+#     return "❌ Avoid"
+
+# test_df["ML_Recommendation"] = test_df.apply(ml_rec_from_proba, axis=1, thr=threshold)
+
 
 ########################################
-# BLOCO 8 – TREINO, PREDIÇÃO, CALIBRAÇÃO
+# SUBBLOCO 8A – Limpeza antes do treino
 ########################################
-def make_model(choice, params):
-    if choice == "Random Forest":
-        return RandomForestClassifier(random_state=42, n_jobs=-1, **params)
-    if choice == "Logistic Regression":
-        return LogisticRegression(random_state=42, **params)
-    if choice == "XGBoost" and XGB_AVAILABLE:
-        return XGBClassifier(random_state=42, eval_metric="logloss", **params)
-    if choice == "LightGBM" and LGBM_AVAILABLE:
-        return LGBMClassifier(random_state=42, **params)
-    raise ValueError("Modelo não suportado/indisponível no ambiente.")
+st.subheader("🔍 Pré-validação dos dados antes do treino")
 
+# Remover qualquer linha com NaN em X_train
+mask = ~X_train.isnull().any(axis=1)
+X_train = X_train.loc[mask].copy()
+y_train = y_train.loc[mask].copy()
+
+# Garantir tipos numéricos
+X_train = X_train.apply(pd.to_numeric, errors='coerce')
+X_test = X_test.apply(pd.to_numeric, errors='coerce')
+
+# Validar shapes
+st.write("Dimensões finais após limpeza:")
+st.write("X_train:", X_train.shape)
+st.write("y_train:", y_train.shape)
+
+# Conferir se os dados estão alinhados
+if len(X_train) != len(y_train):
+    st.error(f"Desalinhamento detectado! X_train tem {len(X_train)} linhas e y_train tem {len(y_train)} linhas.")
+    st.stop()
+
+# Conferir tipos de cada coluna
+st.write("Tipos de dados em X_train:")
+st.write(X_train.dtypes)
+
+########################################
+# SUBBLOCO 8B – Treinamento seguro
+########################################
 with st.spinner("Treinando modelo..."):
     base_model = make_model(model_choice, params)
+    
     if apply_calibration:
         model = CalibratedClassifierCV(base_model, cv=5, method='isotonic')
     else:
         model = base_model
-    model.fit(X_train, y_train)
 
-proba_test = model.predict_proba(X_test) if hasattr(model, "predict_proba") else None
-pred_test  = model.predict(X_test)
+    try:
+        model.fit(X_train, y_train)
+        st.success("Treinamento concluído com sucesso!")
+    except ValueError as e:
+        st.error("Erro durante o treinamento. Confira detalhes abaixo:")
+        st.code(str(e))
+        st.stop()
 
-classes_ = list(model.classes_)
-# Mapear probabilidades por classe
-def p(cls):
-    if proba_test is None: return np.zeros(len(X_test))
-    idx = classes_.index(cls) if cls in classes_ else None
-    return proba_test[:, idx] if idx is not None else np.zeros(len(X_test))
 
-test_df = test_df.copy()
-test_df["ML_Proba_Home"] = p("Home")
-test_df["ML_Proba_Draw"] = p("Draw")
-test_df["ML_Proba_Away"] = p("Away")
-test_df["ML_Pred"] = pred_test
+########################################
+# SUBBLOCO 8C – Debug opcional
+########################################
+show_debug = st.checkbox("Mostrar debug detalhado dos dados", value=False)
 
-# Recomendação a partir das probabilidades
-st.subheader("🎯 Limiar para Back direto")
-threshold = st.slider("Threshold (%) para Back Home/Away", 50, 85, 65, step=1) / 100.0
+if show_debug:
+    st.write("Primeiras linhas de X_train:")
+    st.dataframe(X_train.head(20))
+    
+    st.write("Primeiras linhas de y_train:")
+    st.dataframe(y_train.head(20))
+    
+    st.write("Valores únicos por coluna:")
+    for col in X_train.columns:
+        st.write(col, X_train[col].unique()[:10])
 
-def ml_rec_from_proba(row, thr=0.65):
-    ph, pd_, pa = row['ML_Proba_Home'], row['ML_Proba_Draw'], row['ML_Proba_Away']
-    if ph >= thr: return "🟢 Back Home"
-    if pa >= thr: return "🟠 Back Away"
-    sum_hd, sum_ad = ph + pd_, pa + pd_
-    if abs(ph - pa) < 0.05 and pd_ > 0.35:
-        return "⚪ Back Draw"
-    if sum_hd > sum_ad:  return "🟦 1X (Home/Draw)"
-    if sum_ad > sum_hd:  return "🟪 X2 (Away/Draw)"
-    return "❌ Avoid"
 
-test_df["ML_Recommendation"] = test_df.apply(ml_rec_from_proba, axis=1, thr=threshold)
 
 ########################################
 # BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT
