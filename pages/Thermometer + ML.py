@@ -85,7 +85,11 @@ if history.empty:
 ########################################
 ####### Bloco 4B – LiveScore Merge #####
 ########################################
-today_str = datetime.today().strftime("%Y-%m-%d")
+import pytz
+toronto_tz = pytz.timezone("America/Toronto")
+today_local = datetime.now(toronto_tz)
+today_str = today_local.strftime("%Y-%m-%d")
+
 livescore_folder = "LiveScore"
 livescore_file = os.path.join(livescore_folder, f"Resultados_RAW_{today_str}.csv")
 
