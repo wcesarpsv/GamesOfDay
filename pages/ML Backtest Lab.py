@@ -594,7 +594,7 @@ if show_debug:
 
 
 ########################################
-# BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT (CORRIGIDO)
+# BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT (FINAL)
 ########################################
 
 # Garantir que league_class e league_bands não estão vazios
@@ -606,14 +606,25 @@ if league_bands.empty:
     st.error("❌ league_bands está vazio. Não foi possível calcular os percentis das ligas.")
     st.stop()
 
-# Mostrar debug opcional
-st.write("DEBUG - Colunas atuais do test_df antes do merge:", test_df.columns.tolist())
-st.write("DEBUG - Shape league_bands:", league_bands.shape)
-st.write("DEBUG - league_bands sample:", league_bands.head())
+# === Filtrar league_bands para remover ligas com dados incompletos ===
+league_bands_clean = league_bands.dropna(subset=['Home_P20', 'Home_P80', 'Away_P20', 'Away_P80']).copy()
 
-# Merge de classificações no test_df
+if league_bands_clean.empty:
+    st.error("❌ Nenhuma liga possui dados suficientes para calcular os bands.")
+    st.stop()
+
+# Mostrar debug opcional
+st.write("DEBUG - Shape league_bands (limpo):", league_bands_clean.shape)
+st.write("DEBUG - league_bands_clean sample:", league_bands_clean.head())
+
+# === Merge apenas com ligas válidas ===
 test_df = test_df.merge(league_class, on='League', how='left')
-test_df = test_df.merge(league_bands, on='League', how='left')
+test_df = test_df.merge(league_bands_clean, on='League', how='inner')  # inner garante apenas ligas válidas
+
+# Se após o merge não sobrar nenhum jogo, parar
+if test_df.empty:
+    st.error("❌ Nenhum jogo no test_df pertence a ligas com dados válidos para bands.")
+    st.stop()
 
 # Garantir que as colunas essenciais existem após o merge
 required_cols = ['Home_P20', 'Home_P80', 'Away_P20', 'Away_P80']
