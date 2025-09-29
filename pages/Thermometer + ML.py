@@ -56,42 +56,40 @@ def prepare_history(df):
 
 
 ########################################
-####### Bloco 4 – Carregar Dados #######
+####### Bloco 4 – Load Data ############
 ########################################
+
 files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
 files = sorted(files)
+
 if not files:
     st.warning("No CSV files found in GamesDay folder.")
     st.stop()
 
 options = files[-2:] if len(files) >= 2 else files
-selected_file = st.selectbox("Select matchday file:", options, index=len(options)-1)
+selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
 
+# Load games of the selected day
 games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
 games_today = filter_leagues(games_today)
 
-# Só jogos sem resultado final
+# Only unfinished games
 if 'Goals_H_FT' in games_today.columns:
     games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
 
-# Carrega histórico
-all_games = filter_leagues(load_all_games(GAMES_FOLDER))
-history = prepare_history(all_games)
-if history.empty:
-    st.warning("No valid historical data found.")
-    st.stop()
-
+# Extract date from filename (YYYY-MM-DD)
+import re
+date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
+if date_match:
+    selected_date_str = date_match.group(0)
+else:
+    selected_date_str = today_local.strftime("%Y-%m-%d")
 
 ########################################
 ####### Bloco 4B – LiveScore Merge #####
 ########################################
-import pytz
-toronto_tz = pytz.timezone("America/Toronto")
-today_local = datetime.now(toronto_tz)
-today_str = today_local.strftime("%Y-%m-%d")
-
 livescore_folder = "LiveScore"
-livescore_file = os.path.join(livescore_folder, f"Resultados_RAW_{today_str}.csv")
+livescore_file = os.path.join(livescore_folder, f"Resultados_RAW_{selected_date_str}.csv")
 
 # Ensure goal columns exist
 if 'Goals_H_Today' not in games_today.columns:
@@ -99,7 +97,7 @@ if 'Goals_H_Today' not in games_today.columns:
 if 'Goals_A_Today' not in games_today.columns:
     games_today['Goals_A_Today'] = np.nan
 
-# Merge with LiveScore file
+# Merge with the correct LiveScore file
 if os.path.exists(livescore_file):
     st.info(f"LiveScore file found: {livescore_file}")
     results_df = pd.read_csv(livescore_file)
@@ -128,9 +126,8 @@ if os.path.exists(livescore_file):
         games_today['Goals_H_Today'] = games_today['home_goal']
         games_today['Goals_A_Today'] = games_today['away_goal']
         games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
-
 else:
-    st.warning(f"No LiveScore results file found in: {livescore_file}")
+    st.warning(f"No LiveScore results file found for selected date: {selected_date_str}")
 
 
 
