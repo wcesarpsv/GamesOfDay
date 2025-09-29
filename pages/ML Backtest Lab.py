@@ -590,11 +590,8 @@ if show_debug:
 
 
 
-
-
-
 ########################################
-# BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT (FINAL)
+# BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT (CORRIGIDO FINAL)
 ########################################
 
 # Garantir que league_class e league_bands não estão vazios
@@ -606,27 +603,38 @@ if league_bands.empty:
     st.error("❌ league_bands está vazio. Não foi possível calcular os percentis das ligas.")
     st.stop()
 
-# === Filtrar league_bands para remover ligas com dados incompletos ===
+# === 1) Padronizar nomes das ligas para evitar incompatibilidades ===
+test_df['League'] = test_df['League'].astype(str).str.strip().str.lower()
+league_class['League'] = league_class['League'].astype(str).str.strip().str.lower()
+league_bands['League'] = league_bands['League'].astype(str).str.strip().str.lower()
+
+# Debug inicial para identificar diferenças
+st.write("DEBUG - Ligas no test_df (padronizadas):", sorted(test_df['League'].unique().tolist()))
+st.write("DEBUG - Ligas no league_bands (padronizadas):", sorted(league_bands['League'].unique().tolist()))
+
+# === 2) Filtrar league_bands para remover ligas com dados incompletos ===
 league_bands_clean = league_bands.dropna(subset=['Home_P20', 'Home_P80', 'Away_P20', 'Away_P80']).copy()
 
 if league_bands_clean.empty:
-    st.error("❌ Nenhuma liga possui dados suficientes para calcular os bands.")
+    st.error("❌ Nenhuma liga possui dados suficientes para calcular os bands (percentis).")
     st.stop()
 
-# Mostrar debug opcional
-st.write("DEBUG - Shape league_bands (limpo):", league_bands_clean.shape)
-st.write("DEBUG - league_bands_clean sample:", league_bands_clean.head())
+st.write("DEBUG - Shape league_bands_clean:", league_bands_clean.shape)
+st.write("DEBUG - Exemplo league_bands_clean:", league_bands_clean.head())
 
-# === Merge apenas com ligas válidas ===
-test_df = test_df.merge(league_class, on='League', how='left')
-test_df = test_df.merge(league_bands_clean, on='League', how='inner')  # inner garante apenas ligas válidas
+# === 3) Manter apenas jogos de ligas que possuem dados no league_bands_clean ===
+valid_leagues = league_bands_clean['League'].unique()
+test_df = test_df[test_df['League'].isin(valid_leagues)].copy()
 
-# Se após o merge não sobrar nenhum jogo, parar
 if test_df.empty:
-    st.error("❌ Nenhum jogo no test_df pertence a ligas com dados válidos para bands.")
+    st.error("❌ Nenhum jogo do test_df corresponde a ligas com bands válidos. Verifique o histórico.")
     st.stop()
 
-# Garantir que as colunas essenciais existem após o merge
+# === 4) Merge seguro ===
+test_df = test_df.merge(league_class, on='League', how='left')
+test_df = test_df.merge(league_bands_clean, on='League', how='left')
+
+# Garantir que as colunas essenciais existem
 required_cols = ['Home_P20', 'Home_P80', 'Away_P20', 'Away_P80']
 missing_cols = [col for col in required_cols if col not in test_df.columns]
 
@@ -634,29 +642,29 @@ if missing_cols:
     st.error(f"❌ Colunas ausentes no test_df após merge: {missing_cols}")
     st.stop()
 
-# Calcular M_Diff
+# === 5) Calcular M_Diff e bandas ===
 test_df['M_Diff'] = test_df['M_H'] - test_df['M_A']
 
-# Definir bandas de Home e Away
 test_df['Home_Band'] = np.where(
     test_df['M_H'] <= test_df['Home_P20'], 'Bottom 20%',
     np.where(test_df['M_H'] >= test_df['Home_P80'], 'Top 20%', 'Balanced')
 )
+
 test_df['Away_Band'] = np.where(
     test_df['M_A'] <= test_df['Away_P20'], 'Bottom 20%',
     np.where(test_df['M_A'] >= test_df['Away_P80'], 'Top 20%', 'Balanced')
 )
 
-# Definir Dominant Side
+# === 6) Definir Dominant Side ===
 test_df['Dominant'] = test_df.apply(dominant_side, axis=1)
 
-# Aplicar recomendação de regras se habilitado
+# === 7) Aplicar recomendações automáticas ===
 if compare_rules:
     test_df['Auto_Recommendation'] = test_df.apply(auto_recommendation, axis=1)
 else:
     test_df['Auto_Recommendation'] = np.nan
 
-# Calcular lucros de ML e Auto
+# === 8) Calcular lucros ===
 test_df['Profit_ML'] = test_df.apply(
     lambda r: calculate_profit(r['ML_Recommendation'], r['Result'], r), axis=1
 )
@@ -664,7 +672,7 @@ test_df['Profit_Auto'] = test_df.apply(
     lambda r: calculate_profit(r['Auto_Recommendation'], r['Result'], r), axis=1
 )
 
-# Marcar acertos/erros
+# === 9) Marcar acertos/erros ===
 test_df['ML_Correct'] = test_df.apply(
     lambda r: check_recommendation(r['ML_Recommendation'], r['Result']), axis=1
 )
