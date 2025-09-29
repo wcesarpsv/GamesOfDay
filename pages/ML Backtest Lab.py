@@ -594,13 +594,39 @@ if show_debug:
 
 
 ########################################
-# BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT
+# BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT (CORRIGIDO)
 ########################################
-# Preparar insumos de regras no conjunto de teste (usa quantis calculados no histórico)
+
+# Garantir que league_class e league_bands não estão vazios
+if league_class.empty:
+    st.error("❌ league_class está vazio. Não foi possível calcular a variação das ligas.")
+    st.stop()
+
+if league_bands.empty:
+    st.error("❌ league_bands está vazio. Não foi possível calcular os percentis das ligas.")
+    st.stop()
+
+# Mostrar debug opcional
+st.write("DEBUG - Colunas atuais do test_df antes do merge:", test_df.columns.tolist())
+st.write("DEBUG - Shape league_bands:", league_bands.shape)
+st.write("DEBUG - league_bands sample:", league_bands.head())
+
+# Merge de classificações no test_df
 test_df = test_df.merge(league_class, on='League', how='left')
 test_df = test_df.merge(league_bands, on='League', how='left')
 
+# Garantir que as colunas essenciais existem após o merge
+required_cols = ['Home_P20', 'Home_P80', 'Away_P20', 'Away_P80']
+missing_cols = [col for col in required_cols if col not in test_df.columns]
+
+if missing_cols:
+    st.error(f"❌ Colunas ausentes no test_df após merge: {missing_cols}")
+    st.stop()
+
+# Calcular M_Diff
 test_df['M_Diff'] = test_df['M_H'] - test_df['M_A']
+
+# Definir bandas de Home e Away
 test_df['Home_Band'] = np.where(
     test_df['M_H'] <= test_df['Home_P20'], 'Bottom 20%',
     np.where(test_df['M_H'] >= test_df['Home_P80'], 'Top 20%', 'Balanced')
@@ -609,21 +635,32 @@ test_df['Away_Band'] = np.where(
     test_df['M_A'] <= test_df['Away_P20'], 'Bottom 20%',
     np.where(test_df['M_A'] >= test_df['Away_P80'], 'Top 20%', 'Balanced')
 )
+
+# Definir Dominant Side
 test_df['Dominant'] = test_df.apply(dominant_side, axis=1)
 
+# Aplicar recomendação de regras se habilitado
 if compare_rules:
     test_df['Auto_Recommendation'] = test_df.apply(auto_recommendation, axis=1)
 else:
     test_df['Auto_Recommendation'] = np.nan
 
-# Resultado verdadeiro (já temos em history/test_df)
-# Lucros
-test_df['Profit_ML'] = test_df.apply(lambda r: calculate_profit(r['ML_Recommendation'], r['Result'], r), axis=1)
-test_df['Profit_Auto'] = test_df.apply(lambda r: calculate_profit(r['Auto_Recommendation'], r['Result'], r), axis=1)
+# Calcular lucros de ML e Auto
+test_df['Profit_ML'] = test_df.apply(
+    lambda r: calculate_profit(r['ML_Recommendation'], r['Result'], r), axis=1
+)
+test_df['Profit_Auto'] = test_df.apply(
+    lambda r: calculate_profit(r['Auto_Recommendation'], r['Result'], r), axis=1
+)
 
-# Correção (acerto/erro)
-test_df['ML_Correct'] = test_df.apply(lambda r: check_recommendation(r['ML_Recommendation'], r['Result']), axis=1)
-test_df['Auto_Correct'] = test_df.apply(lambda r: check_recommendation(r['Auto_Recommendation'], r['Result']), axis=1)
+# Marcar acertos/erros
+test_df['ML_Correct'] = test_df.apply(
+    lambda r: check_recommendation(r['ML_Recommendation'], r['Result']), axis=1
+)
+test_df['Auto_Correct'] = test_df.apply(
+    lambda r: check_recommendation(r['Auto_Recommendation'], r['Result']), axis=1
+)
+
 
 ########################################
 # BLOCO 10 – MÉTRICAS & SUMÁRIOS
