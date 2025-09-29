@@ -573,92 +573,61 @@ if show_debug:
 # BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT (CORRIGIDO)
 ########################################
 
-# Garantir que league_class e league_bands não estão vazios
-if league_class.empty:
-    st.error("❌ league_class está vazio. Não foi possível calcular a variação das ligas.")
-    st.stop()
-
-if league_bands.empty:
-    st.error("❌ league_bands está vazio. Não foi possível calcular os percentis das ligas.")
-    st.stop()
-
-# === 1) Padronizar nomes das ligas ===
+# Padronizar nomes das ligas
 test_df['League'] = test_df['League'].astype(str).str.strip().str.lower()
 league_class['League'] = league_class['League'].astype(str).str.strip().str.lower()
 league_bands['League'] = league_bands['League'].astype(str).str.strip().str.lower()
 
-st.write("DEBUG - Colunas atuais do test_df antes do merge:", list(test_df.columns))
-st.write("DEBUG - Shape league_bands:", league_bands.shape)
-st.write("DEBUG - league_bands sample:", league_bands.head())
+# Debug antes do merge
+st.write("DEBUG - Ligas únicas test_df:", sorted(test_df['League'].unique().tolist()))
+st.write("DEBUG - Ligas únicas league_bands:", sorted(league_bands['League'].unique().tolist()))
+st.write("DEBUG - Colunas league_bands:", list(league_bands.columns))
 
-# === 2) Merge seguro ===
-test_df = test_df.merge(league_class, on='League', how='left', suffixes=("", "_dup"))
-test_df = test_df.merge(league_bands, on='League', how='left', suffixes=("", "_dup"))
+# Merge seguro
+test_df = test_df.merge(league_class, on='League', how='left', suffixes=("", "_lc"))
+test_df = test_df.merge(league_bands, on='League', how='left', suffixes=("", "_lb"))
 
-# === 3) Remover duplicadas com sufixo _dup ===
-dup_cols = [c for c in test_df.columns if c.endswith('_dup')]
-if dup_cols:
-    st.warning(f"⚠️ Removendo colunas duplicadas: {dup_cols}")
-    test_df.drop(columns=dup_cols, inplace=True)
+# Debug após merge
+st.write("DEBUG - Colunas após merge:", list(test_df.columns))
+st.write("DEBUG - Linhas com NaN nos percentis:",
+         test_df[test_df[['Home_P20','Home_P80','Away_P20','Away_P80']].isna().any(axis=1)].head())
 
-# === 4) Garantir colunas essenciais ===
+# Garantir colunas essenciais
 required_cols = ['Home_P20', 'Home_P80', 'Away_P20', 'Away_P80']
 missing_cols = [col for col in required_cols if col not in test_df.columns]
 if missing_cols:
     st.error(f"❌ Colunas ausentes no test_df após merge: {missing_cols}")
     st.stop()
 
-# === 5) Função segura para classificar bands ===
+# Classificação segura
 def classify_band(value, low, high):
     if pd.isna(value) or pd.isna(low) or pd.isna(high):
         return "Balanced"
-    if value <= low:
-        return "Bottom 20%"
-    elif value >= high:
-        return "Top 20%"
+    if value <= low: return "Bottom 20%"
+    if value >= high: return "Top 20%"
     return "Balanced"
 
-# === 6) Aplicar classificação ===
+# Aplicar classificação
 test_df['M_Diff'] = test_df['M_H'] - test_df['M_A']
-test_df['Home_Band'] = test_df.apply(
-    lambda row: classify_band(row['M_H'], row['Home_P20'], row['Home_P80']),
-    axis=1
-)
-test_df['Away_Band'] = test_df.apply(
-    lambda row: classify_band(row['M_A'], row['Away_P20'], row['Away_P80']),
-    axis=1
-)
+test_df['Home_Band'] = test_df.apply(lambda row: classify_band(row['M_H'], row['Home_P20'], row['Home_P80']), axis=1)
+test_df['Away_Band'] = test_df.apply(lambda row: classify_band(row['M_A'], row['Away_P20'], row['Away_P80']), axis=1)
 
-# Debug para confirmar se a classificação está correta
-st.write("DEBUG - Bands após classificação:",
-         test_df[['League','M_H','Home_P20','Home_P80','Home_Band',
-                  'M_A','Away_P20','Away_P80','Away_Band']].head(20))
-
-# === 7) Definir Dominant Side ===
+# Dominant
 test_df['Dominant'] = test_df.apply(dominant_side, axis=1)
 
-# === 8) Aplicar recomendações automáticas ===
+# Recomendações
 if compare_rules:
     test_df['Auto_Recommendation'] = test_df.apply(auto_recommendation, axis=1)
 else:
     test_df['Auto_Recommendation'] = np.nan
 
-# === 9) Calcular lucros ===
-test_df['Profit_ML'] = test_df.apply(
-    lambda r: calculate_profit(r['ML_Recommendation'], r['Result'], r), axis=1
-)
-test_df['Profit_Auto'] = test_df.apply(
-    lambda r: calculate_profit(r['Auto_Recommendation'], r['Result'], r), axis=1
-)
+# Lucros
+test_df['Profit_ML'] = test_df.apply(lambda r: calculate_profit(r['ML_Recommendation'], r['Result'], r), axis=1)
+test_df['Profit_Auto'] = test_df.apply(lambda r: calculate_profit(r['Auto_Recommendation'], r['Result'], r), axis=1)
 
-# === 10) Marcar acertos/erros ===
-test_df['ML_Correct'] = test_df.apply(
-    lambda r: check_recommendation(r['ML_Recommendation'], r['Result']), axis=1
-)
-test_df['Auto_Correct'] = test_df.apply(
-    lambda r: check_recommendation(r['Auto_Recommendation'], r['Result']), axis=1
-)
-
+# Acertos
+test_df['ML_Correct'] = test_df.apply(lambda r: check_recommendation(r['ML_Recommendation'], r['Result']), axis=1)
+test_df['Auto_Correct'] = test_df.apply(lambda r: check_recommendation(r['Auto_Recommendation'], r['Result']), axis=1)
 
 
 ########################################
