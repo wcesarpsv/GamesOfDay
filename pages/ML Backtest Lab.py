@@ -578,6 +578,13 @@ test_df['League'] = test_df['League'].astype(str).str.strip().str.lower()
 league_class['League'] = league_class['League'].astype(str).str.strip().str.lower()
 league_bands['League'] = league_bands['League'].astype(str).str.strip().str.lower()
 
+st.write("Ligas em test_df:", sorted(test_df['League'].unique().tolist()))
+st.write("Ligas em league_bands:", sorted(league_bands['League'].unique().tolist()))
+
+intersec = set(test_df['League']).intersection(set(league_bands['League']))
+st.write("Interseção de ligas (esperado > 0):", intersec)
+
+
 # Merge (classificação de liga é útil; bands só se existir)
 test_df = test_df.merge(league_class, on='League', how='left', suffixes=("", "_lc"))
 if not league_bands.empty:
