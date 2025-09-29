@@ -570,32 +570,59 @@ if show_debug:
 
 
 ########################################
-# BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT (FINAL SIMPLIFICADO)
+# BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT (ROBUSTO, SEM DEPENDER DE P20/P80)
 ########################################
 
-# Garantir que ligas estão padronizadas
+# Padronizar ligas
 test_df['League'] = test_df['League'].astype(str).str.strip().str.lower()
 league_class['League'] = league_class['League'].astype(str).str.strip().str.lower()
 league_bands['League'] = league_bands['League'].astype(str).str.strip().str.lower()
 
-# Merge seguro
+# Merge (classificação de liga é útil; bands só se existir)
 test_df = test_df.merge(league_class, on='League', how='left', suffixes=("", "_lc"))
-test_df = test_df.merge(league_bands, on='League', how='left', suffixes=("", "_lb"))
+if not league_bands.empty:
+    test_df = test_df.merge(league_bands, on='League', how='left', suffixes=("", "_lb"))
 
-# Garantir colunas numéricas corretas
+# ---- Bands: usar *_Num se existir; caso contrário, derivar; não travar se P20/P80 faltar
 BAND_MAP = {"Bottom 20%": 1, "Balanced": 2, "Top 20%": 3}
+REV_MAP  = {1: "Bottom 20%", 2: "Balanced", 3: "Top 20%"}
 
-# Criar bandas numéricas direto
-test_df['Home_Band_Num'] = test_df['Home_Band_Num'].fillna(2).astype(int)
-test_df['Away_Band_Num'] = test_df['Away_Band_Num'].fillna(2).astype(int)
+def classify_band(value, low, high):
+    if pd.isna(value) or pd.isna(low) or pd.isna(high): return "Balanced"
+    if value <= low:  return "Bottom 20%"
+    if value >= high: return "Top 20%"
+    return "Balanced"
 
-# Calcular Diff
+# Home
+if 'Home_Band_Num' not in test_df.columns:
+    if 'Home_Band' in test_df.columns:
+        test_df['Home_Band_Num'] = test_df['Home_Band'].map(BAND_MAP).fillna(2).astype(int)
+    elif {'Home_P20','Home_P80'}.issubset(test_df.columns):
+        test_df['Home_Band'] = test_df.apply(lambda r: classify_band(r.get('M_H'), r.get('Home_P20'), r.get('Home_P80')), axis=1)
+        test_df['Home_Band_Num'] = test_df['Home_Band'].map(BAND_MAP).fillna(2).astype(int)
+    else:
+        test_df['Home_Band_Num'] = 2
+# Away
+if 'Away_Band_Num' not in test_df.columns:
+    if 'Away_Band' in test_df.columns:
+        test_df['Away_Band_Num'] = test_df['Away_Band'].map(BAND_MAP).fillna(2).astype(int)
+    elif {'Away_P20','Away_P80'}.issubset(test_df.columns):
+        test_df['Away_Band'] = test_df.apply(lambda r: classify_band(r.get('M_A'), r.get('Away_P20'), r.get('Away_P80')), axis=1)
+        test_df['Away_Band_Num'] = test_df['Away_Band'].map(BAND_MAP).fillna(2).astype(int)
+    else:
+        test_df['Away_Band_Num'] = 2
+
+# (Opcional) reconstruir labels textuais para exibição
+if 'Home_Band' not in test_df.columns:
+    test_df['Home_Band'] = test_df['Home_Band_Num'].map(REV_MAP)
+if 'Away_Band' not in test_df.columns:
+    test_df['Away_Band'] = test_df['Away_Band_Num'].map(REV_MAP)
+
+# Calcular M_Diff e Dominant
 test_df['M_Diff'] = test_df['M_H'] - test_df['M_A']
-
-# Dominant
 test_df['Dominant'] = test_df.apply(dominant_side, axis=1)
 
-# Recomendações automáticas (baseadas nos valores numéricos)
+# Recomendações (regras)
 if compare_rules:
     test_df['Auto_Recommendation'] = test_df.apply(auto_recommendation, axis=1)
 else:
@@ -608,6 +635,7 @@ test_df['Profit_Auto'] = test_df.apply(lambda r: calculate_profit(r['Auto_Recomm
 # Acertos
 test_df['ML_Correct'] = test_df.apply(lambda r: check_recommendation(r['ML_Recommendation'], r['Result']), axis=1)
 test_df['Auto_Correct'] = test_df.apply(lambda r: check_recommendation(r['Auto_Recommendation'], r['Result']), axis=1)
+
 
 ########################################
 # BLOCO 10 – MÉTRICAS & SUMÁRIOS
