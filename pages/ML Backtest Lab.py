@@ -51,7 +51,7 @@ Este laboratório permite:
 st.divider()
 
 ########################################
-# BLOCO 3 – HELPERS DE DADOS
+# BLOCO 3 – HELPERS DE DADOS (CORRIGIDO)
 ########################################
 def load_all_games(folder):
     if not os.path.exists(folder):
@@ -76,12 +76,15 @@ def filter_leagues(df):
     return df[~df['League'].astype(str).str.lower().str.contains(pattern, na=False)].copy()
 
 def prepare_history(df):
-    # Requer gols finais para ter rótulo
+    # Padroniza League para evitar problemas no merge
+    df['League'] = df['League'].astype(str).str.strip().str.lower()
+
     required = ['Goals_H_FT', 'Goals_A_FT', 'M_H', 'M_A', 'League']
     for col in required:
         if col not in df.columns:
             st.error(f"Coluna obrigatória ausente no histórico: {col}")
             return pd.DataFrame()
+
     out = df.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
     # Garantir 'Date'
     if 'Date' in out.columns:
@@ -90,39 +93,13 @@ def prepare_history(df):
         out['Date'] = pd.NaT
     return out
 
-def compute_double_chance_odds(df):
-    for c in ['Odd_H','Odd_D','Odd_A']:
-        if c not in df.columns: df[c] = np.nan
-    probs = pd.DataFrame()
-    probs['p_H'] = 1 / df['Odd_H']
-    probs['p_D'] = 1 / df['Odd_D']
-    probs['p_A'] = 1 / df['Odd_A']
-    probs = probs.div(probs.sum(axis=1), axis=0)
-    df['Odd_1X'] = 1 / (probs['p_H'] + probs['p_D'])
-    df['Odd_X2'] = 1 / (probs['p_A'] + probs['p_D'])
-    return df
-
-def classify_leagues_variation(history_df):
-    hist = history_df.copy()
-    agg = (
-        hist.groupby('League')
-        .agg(
-            M_H_Min=('M_H','min'), M_H_Max=('M_H','max'),
-            M_A_Min=('M_A','min'), M_A_Max=('M_A','max'),
-            Hist_Games=('M_H','count')
-        ).reset_index()
-    )
-    agg['Variation_Total'] = (agg['M_H_Max'] - agg['M_H_Min']) + (agg['M_A_Max'] - agg['M_A_Min'])
-    def label(v):
-        if v > 6.0: return "High Variation"
-        if v >= 3.0: return "Medium Variation"
-        return "Low Variation"
-    agg['League_Classification'] = agg['Variation_Total'].apply(label)
-    return agg[['League','League_Classification','Variation_Total','Hist_Games']]
-
 def compute_league_bands(history_df):
+    # Filtra ligas com menos de 10 jogos
+    history_df = history_df.groupby('League').filter(lambda x: len(x) >= 10)
     hist = history_df.copy()
     hist['M_Diff'] = hist['M_H'] - hist['M_A']
+
+    # Calcula quantis por liga
     diff_q = (
         hist.groupby('League')['M_Diff']
             .quantile([0.20, 0.80]).unstack()
@@ -141,6 +118,7 @@ def compute_league_bands(history_df):
             .rename(columns={0.2:'Away_P20', 0.8:'Away_P80'})
             .reset_index()
     )
+
     out = diff_q.merge(home_q, on='League', how='inner').merge(away_q, on='League', how='inner')
     return out
 
@@ -156,6 +134,7 @@ def dominant_side(row, threshold=DOMINANT_THRESHOLD):
     if m_a >= threshold: return "Away strong"
     if m_a <= -threshold: return "Away weak"
     return "Mixed / Neutral"
+
 
 ########################################
 # BLOCO 4 – REGRAS (AUTO RECOMMENDATION)
@@ -591,7 +570,7 @@ if show_debug:
 
 
 ########################################
-# BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT (CORRIGIDO FINAL)
+# BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT (CORRIGIDO)
 ########################################
 
 # Garantir que league_class e league_bands não estão vazios
@@ -612,39 +591,48 @@ st.write("DEBUG - Colunas atuais do test_df antes do merge:", list(test_df.colum
 st.write("DEBUG - Shape league_bands:", league_bands.shape)
 st.write("DEBUG - league_bands sample:", league_bands.head())
 
-# === 2) Merge seguro, evitando duplicatas ===
+# === 2) Merge seguro ===
 test_df = test_df.merge(league_class, on='League', how='left', suffixes=("", "_dup"))
 test_df = test_df.merge(league_bands, on='League', how='left', suffixes=("", "_dup"))
 
-# === 3) Remover colunas duplicadas que terminam com '_dup' ===
+# === 3) Remover duplicadas com sufixo _dup ===
 dup_cols = [c for c in test_df.columns if c.endswith('_dup')]
 if dup_cols:
-    st.warning(f"⚠️ Removendo colunas duplicadas após merge: {dup_cols}")
+    st.warning(f"⚠️ Removendo colunas duplicadas: {dup_cols}")
     test_df.drop(columns=dup_cols, inplace=True)
 
-# === 4) Garantir que as colunas essenciais existem ===
+# === 4) Garantir colunas essenciais ===
 required_cols = ['Home_P20', 'Home_P80', 'Away_P20', 'Away_P80']
 missing_cols = [col for col in required_cols if col not in test_df.columns]
-
 if missing_cols:
     st.error(f"❌ Colunas ausentes no test_df após merge: {missing_cols}")
     st.stop()
 
-# === 5) Preencher NaN se necessário ===
-test_df[required_cols] = test_df[required_cols].fillna(0)
+# === 5) Função segura para classificar bands ===
+def classify_band(value, low, high):
+    if pd.isna(value) or pd.isna(low) or pd.isna(high):
+        return "Balanced"
+    if value <= low:
+        return "Bottom 20%"
+    elif value >= high:
+        return "Top 20%"
+    return "Balanced"
 
-# === 6) Calcular M_Diff e bandas ===
+# === 6) Aplicar classificação ===
 test_df['M_Diff'] = test_df['M_H'] - test_df['M_A']
-
-test_df['Home_Band'] = np.where(
-    test_df['M_H'] <= test_df['Home_P20'], 'Bottom 20%',
-    np.where(test_df['M_H'] >= test_df['Home_P80'], 'Top 20%', 'Balanced')
+test_df['Home_Band'] = test_df.apply(
+    lambda row: classify_band(row['M_H'], row['Home_P20'], row['Home_P80']),
+    axis=1
+)
+test_df['Away_Band'] = test_df.apply(
+    lambda row: classify_band(row['M_A'], row['Away_P20'], row['Away_P80']),
+    axis=1
 )
 
-test_df['Away_Band'] = np.where(
-    test_df['M_A'] <= test_df['Away_P20'], 'Bottom 20%',
-    np.where(test_df['M_A'] >= test_df['Away_P80'], 'Top 20%', 'Balanced')
-)
+# Debug para confirmar se a classificação está correta
+st.write("DEBUG - Bands após classificação:",
+         test_df[['League','M_H','Home_P20','Home_P80','Home_Band',
+                  'M_A','Away_P20','Away_P80','Away_Band']].head(20))
 
 # === 7) Definir Dominant Side ===
 test_df['Dominant'] = test_df.apply(dominant_side, axis=1)
