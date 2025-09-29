@@ -519,8 +519,8 @@ def summary_stats(df, prefix):
 summary_auto = summary_stats(finished_games, "Auto")
 summary_ml = summary_stats(finished_games, "ML")
 
-st.subheader("📈 Resumo do Dia")
-st.markdown("### Performance Auto Recommendation (Regras)")
+st.subheader("📈 Summary's Day")
+st.markdown("### Performance Auto Recommendation (Rules)")
 st.json(summary_auto)
 
 st.markdown("### Performance Machine Learning (ML)")
@@ -541,7 +541,7 @@ cols_to_show = [
 
 available_cols = [c for c in cols_to_show if c in games_today.columns]
 
-st.subheader("📊 Jogos do Dia – Auto vs ML")
+st.subheader("📊 Games – Rules vs ML")
 st.dataframe(
     games_today[available_cols]
     .style.format({
