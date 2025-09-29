@@ -37,7 +37,7 @@ st.title("⚡ ML Backtest Lab – Regras x ML")
 ########################################
 GAMES_FOLDER = "GamesDay"
 LIVESCORE_FOLDER = "LiveScore"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa", "afc"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa", "afc","nordeste"]
 DOMINANT_THRESHOLD = 0.90
 
 # Aparência/UX
