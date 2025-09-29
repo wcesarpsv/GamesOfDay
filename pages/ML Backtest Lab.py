@@ -432,30 +432,27 @@ def build_X(df, fit_encoder=False, encoder=None, cat_cols=None):
 
     return X_out, encoder, cat_cols
 
+st.write("DEBUG - Tipo X_train:", type(X_train))
+st.write("DEBUG - Shape X_train:", X_train.shape if isinstance(X_train, pd.DataFrame) else "Não é DataFrame")
+
 
 ########################################
 # SUBBLOCO 8A – Limpeza antes do treino
 ########################################
+if 'X_train' not in locals() or not isinstance(X_train, pd.DataFrame):
+    st.error("Erro crítico: X_train não foi criado. Confira o build_X e os dados de treino.")
+    st.stop()
+
+if X_train.empty:
+    st.error("Erro crítico: X_train está vazio. Sem dados para treinar o modelo.")
+    st.stop()
+
 st.subheader("🔍 Pré-validação dos dados antes do treino")
 
-# Remover linhas com NaN em X_train
 mask = ~X_train.isnull().any(axis=1)
 X_train = X_train.loc[mask].copy()
 y_train = y_train.loc[mask].copy()
 
-# Garantir tipos numéricos
-X_train = X_train.apply(pd.to_numeric, errors='coerce')
-X_test = X_test.apply(pd.to_numeric, errors='coerce')
-
-# Validar shapes
-st.write("Dimensões finais após limpeza:")
-st.write("X_train:", X_train.shape)
-st.write("y_train:", y_train.shape)
-
-# Conferir se os dados estão alinhados
-if len(X_train) != len(y_train):
-    st.error(f"Desalinhamento detectado! X_train tem {len(X_train)} linhas e y_train tem {len(y_train)} linhas.")
-    st.stop()
 
 ########################################
 # SUBBLOCO 8B – Treinamento seguro
