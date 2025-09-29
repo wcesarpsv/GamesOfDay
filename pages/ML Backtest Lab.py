@@ -381,8 +381,23 @@ save_csv = st.checkbox("Salvar previsões (CSV)", value=False)
 st.divider()
 
 ########################################
-# BLOCO 7 – Ajustado: Função build_X
+# BLOCO 7 – Ajustado: Features e build_X
 ########################################
+
+# Lista de features usadas no modelo
+features_raw = [
+    'M_H','M_A','Diff_Power','M_Diff',
+    'Home_Band','Away_Band','Dominant','League_Classification',
+    'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2',
+    'EV','Games_Analyzed'
+]
+# Garante que só ficam features existentes no DataFrame
+features_raw = [f for f in features_raw if f in history.columns]
+
+# Mapeamento de bandas
+BAND_MAP = {"Bottom 20%": 1, "Balanced": 2, "Top 20%": 3}
+
+# Função para preparar X e y
 def build_X(df, fit_encoder=False, encoder=None, cat_cols=None):
     """
     Prepara o dataframe de entrada (X) para treino ou teste:
@@ -391,7 +406,7 @@ def build_X(df, fit_encoder=False, encoder=None, cat_cols=None):
     - Aplica OneHotEncoder nas colunas categóricas
     - Retorna dataframe final somente com valores numéricos
     """
-    # Garantir todas as features presentes
+    # Garante que todas as features existem no df
     for col in features_raw:
         if col not in df.columns:
             df[col] = np.nan
@@ -408,7 +423,7 @@ def build_X(df, fit_encoder=False, encoder=None, cat_cols=None):
     if cat_cols is None:
         cat_cols = [c for c in ['Dominant','League_Classification'] if c in X.columns]
 
-    # Fit ou Transform do encoder
+    # OneHotEncoder
     if fit_encoder:
         encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
         encoded = encoder.fit_transform(X[cat_cols]) if cat_cols else np.zeros((len(X),0))
@@ -432,26 +447,52 @@ def build_X(df, fit_encoder=False, encoder=None, cat_cols=None):
 
     return X_out, encoder, cat_cols
 
-st.write("DEBUG - Tipo X_train:", type(X_train))
-st.write("DEBUG - Shape X_train:", X_train.shape if isinstance(X_train, pd.DataFrame) else "Não é DataFrame")
+########################################
+# BLOCO 7B – Criação de X_train, X_test, y_train
+########################################
+
+# Target
+y_train = train_df['Result'].copy()
+y_test = test_df['Result'].copy()
+
+# Criar X_train e X_test
+X_train, encoder, cat_cols = build_X(train_df, fit_encoder=True)
+X_test, _, _ = build_X(test_df, fit_encoder=False, encoder=encoder, cat_cols=cat_cols)
+
+# Debug opcional
+st.write("DEBUG - X_train shape:", X_train.shape)
+st.write("DEBUG - X_test shape:", X_test.shape)
+st.write("DEBUG - y_train shape:", y_train.shape)
 
 
 ########################################
-# SUBBLOCO 8A – Limpeza antes do treino
+# BLOCO 8A – Validação inicial
 ########################################
-if 'X_train' not in locals() or not isinstance(X_train, pd.DataFrame):
-    st.error("Erro crítico: X_train não foi criado. Confira o build_X e os dados de treino.")
+
+if X_train.empty or y_train.empty:
+    st.error("Erro crítico: X_train ou y_train estão vazios. Sem dados para treinar o modelo.")
     st.stop()
 
-if X_train.empty:
-    st.error("Erro crítico: X_train está vazio. Sem dados para treinar o modelo.")
-    st.stop()
-
-st.subheader("🔍 Pré-validação dos dados antes do treino")
-
+# Remover linhas com NaN
 mask = ~X_train.isnull().any(axis=1)
 X_train = X_train.loc[mask].copy()
 y_train = y_train.loc[mask].copy()
+
+
+########################################
+# FUNÇÃO make_model
+########################################
+def make_model(choice, params):
+    if choice == "Random Forest":
+        return RandomForestClassifier(random_state=42, n_jobs=-1, **params)
+    if choice == "Logistic Regression":
+        return LogisticRegression(random_state=42, **params)
+    if choice == "XGBoost" and XGB_AVAILABLE:
+        return XGBClassifier(random_state=42, eval_metric="logloss", **params)
+    if choice == "LightGBM" and LGBM_AVAILABLE:
+        return LGBMClassifier(random_state=42, **params)
+    raise ValueError("Modelo não suportado ou não disponível")
+
 
 
 ########################################
