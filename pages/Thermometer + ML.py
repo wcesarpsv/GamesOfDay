@@ -66,24 +66,37 @@ if not files:
     st.warning("No CSV files found in GamesDay folder.")
     st.stop()
 
+# Últimos dois arquivos (Hoje e Ontem)
 options = files[-2:] if len(files) >= 2 else files
 selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
 
-# Load games of the selected day
+# Carregar os jogos do dia selecionado
 games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
 games_today = filter_leagues(games_today)
 
-# Only unfinished games
+# Apenas jogos sem placar final
 if 'Goals_H_FT' in games_today.columns:
     games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
 
-# Extract date from filename (YYYY-MM-DD)
+# Carregar todos os arquivos para formar o histórico
+all_games = load_all_games(GAMES_FOLDER)
+all_games = filter_leagues(all_games)
+
+# Preparar histórico (somente jogos finalizados e com as colunas obrigatórias)
+history = prepare_history(all_games)
+
+if history.empty:
+    st.error("No valid historical data found. Check if the CSV files have all required columns.")
+    st.stop()
+
+# Extrair a data do arquivo selecionado (YYYY-MM-DD)
 import re
 date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
 if date_match:
     selected_date_str = date_match.group(0)
 else:
-    selected_date_str = today_local.strftime("%Y-%m-%d")
+    selected_date_str = datetime.now().strftime("%Y-%m-%d")
+
 
 ########################################
 ####### Bloco 4B – LiveScore Merge #####
