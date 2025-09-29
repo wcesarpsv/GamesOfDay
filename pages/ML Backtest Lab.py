@@ -290,7 +290,7 @@ def calculate_profit(rec, result, odds_row):
     return 0.0
 
 ########################################
-# BLOCO 5 – UI: DADOS & BACKTEST (CORRIGIDO)
+# BLOCO 5 – UI: DADOS & BACKTEST (CORRIGIDO COM PERÍODO DE TESTE)
 ########################################
 st.header("📂 Dados & Backtest")
 
@@ -316,7 +316,7 @@ if missing_cols:
     st.stop()
 
 all_games = filter_leagues(all_games)
-all_games = compute_double_chance_odds(all_games)  # AGORA A FUNÇÃO EXISTE
+all_games = compute_double_chance_odds(all_games)
 
 # Parse de datas
 if 'Date' in all_games.columns:
@@ -330,7 +330,7 @@ if history.empty:
     st.stop()
 
 # Bands e variação por liga (derivados do histórico)
-league_class = classify_leagues_variation(history)  # AGORA A FUNÇÃO EXISTE
+league_class = classify_leagues_variation(history)
 league_bands = compute_league_bands(history)
 
 # Merge em history
@@ -345,7 +345,7 @@ if 'Home_P20' in history.columns and 'Home_P80' in history.columns:
         np.where(history['M_H'] >= history['Home_P80'], 'Top 20%', 'Balanced')
     )
 else:
-    history['Home_Band'] = 'Balanced'  # Valor padrão se bands não existirem
+    history['Home_Band'] = 'Balanced'
 
 if 'Away_P20' in history.columns and 'Away_P80' in history.columns:
     history['Away_Band'] = np.where(
@@ -358,7 +358,7 @@ else:
 history['Dominant'] = history.apply(dominant_side, axis=1)
 history['Result'] = history.apply(map_result, axis=1)
 
-# Intervalo de backtest
+# Intervalo de backtest - SISTEMA CORRIGIDO
 valid_dates = history['Date'].dropna()
 if valid_dates.empty:
     st.error("❌ Nenhuma data válida encontrada nos dados.")
@@ -366,26 +366,45 @@ if valid_dates.empty:
 
 min_d, max_d = valid_dates.min(), valid_dates.max()
 
-colA, colB = st.columns(2)
-with colA:
-    start_date = st.date_input("Data inicial (treino)", value=min_d.date())
-with colB:
-    end_date = st.date_input("Data final (teste)", value=max_d.date())
+st.subheader("🗓️ Períodos de Treino e Teste")
 
-if start_date and end_date and start_date > end_date:
-    st.error("❌ A data inicial deve ser anterior ou igual à data final.")
+colA, colB, colC = st.columns(3)
+with colA:
+    st.markdown("**📅 Período de Treino**")
+    train_start_date = st.date_input("Início do treino", value=(max_d - timedelta(days=180)).date())
+    train_end_date = st.date_input("Fim do treino", value=(max_d - timedelta(days=30)).date())
+    
+with colB:
+    st.markdown("**🧪 Período de Teste**")
+    test_start_date = st.date_input("Início do teste", value=(max_d - timedelta(days=29)).date())
+    test_end_date = st.date_input("Fim do teste", value=max_d.date())
+    
+with colC:
+    st.markdown("**⚙️ Configuração**")
+    lookback_days = st.number_input("Dias de lookback para features", 30, 400, 120, 
+                                   help="Quantos dias anteriores usar para calcular features como média móvel")
+
+# Validações de datas
+train_start_dt = pd.to_datetime(train_start_date)
+train_end_dt = pd.to_datetime(train_end_date)
+test_start_dt = pd.to_datetime(test_start_date)
+test_end_dt = pd.to_datetime(test_end_date)
+
+if train_start_dt >= train_end_dt:
+    st.error("❌ Data inicial do treino deve ser anterior à data final do treino.")
     st.stop()
 
-# Convert para datetime
-start_dt = pd.to_datetime(start_date)
-end_dt = pd.to_datetime(end_date)
+if test_start_dt >= test_end_dt:
+    st.error("❌ Data inicial do teste deve ser anterior à data final do teste.")
+    st.stop()
 
-# Split por data (simples): treino = < end_date - N dias | teste = <= end_date
-lookback_days = st.number_input("Tamanho do período de treino (dias) antes da data final", 14, 400, 60)
-train_start_dt = (end_dt - timedelta(days=int(lookback_days)))
+if train_end_dt >= test_start_dt:
+    st.error("❌ Período de treino deve terminar antes do período de teste.")
+    st.stop()
 
-train_mask = (history['Date'] >= train_start_dt) & (history['Date'] < end_dt)
-test_mask = (history['Date'] == end_dt)  # Apenas jogos do dia final
+# Split por período - SISTEMA CORRIGIDO
+train_mask = (history['Date'] >= train_start_dt) & (history['Date'] <= train_end_dt)
+test_mask = (history['Date'] >= test_start_dt) & (history['Date'] <= test_end_dt)
 
 train_df = history[train_mask].copy()
 test_df = history[test_mask].copy()
@@ -393,14 +412,25 @@ test_df = history[test_mask].copy()
 # VALIDAÇÃO CRÍTICA: garantir que temos dados
 if train_df.empty:
     st.error("❌ Nenhum dado para treino no período selecionado.")
+    st.info(f"Datas disponíveis: {min_d.date()} a {max_d.date()}")
     st.stop()
 
 if test_df.empty:
-    st.warning("⚠️ Nenhum dado para teste na data final. Usando últimos dados disponíveis.")
-    # Buscar últimos jogos disponíveis
-    test_df = history[history['Date'] == history['Date'].max()].copy()
+    st.error("❌ Nenhum dado para teste no período selecionado.")
+    st.info(f"Datas disponíveis: {min_d.date()} a {max_d.date()}")
+    st.stop()
 
-st.info(f"✅ Treino: {train_df.shape[0]} jogos | Teste: {test_df.shape[0]} jogos")
+# Estatísticas dos períodos
+train_days = (train_end_dt - train_start_dt).days
+test_days = (test_end_dt - test_start_dt).days
+
+st.success(f"""
+✅ **Divisão de dados configurada:**
+- **Treino:** {train_start_date} a {train_end_date} ({train_days} dias, {train_df.shape[0]} jogos)
+- **Teste:** {test_start_date} a {test_end_date} ({test_days} dias, {test_df.shape[0]} jogos)
+- **Lookback:** {lookback_days} dias para features
+""")
+
 
 ########################################
 # BLOCO 6 – UI: MODELO & HIPERPARÂMETROS
@@ -447,7 +477,7 @@ save_csv = st.checkbox("Salvar previsões (CSV)", value=False)
 st.divider()
 
 ########################################
-# BLOCO 7 – Ajustado: Features e build_X (CORRIGIDO)
+# BLOCO 7 – Ajustado: Features e build_X (ATUALIZADO)
 ########################################
 
 # Lista de features usadas no modelo
@@ -489,9 +519,9 @@ def build_X(df, fit_encoder=False, encoder=None, cat_cols=None):
     if cat_cols is None:
         cat_cols = [c for c in ['Dominant','League_Classification'] if c in X.columns]
 
-    # OneHotEncoder - CORREÇÃO DA LÓGICA
+    # OneHotEncoder
     if fit_encoder:
-        if cat_cols:  # Só criar encoder se houver colunas categóricas
+        if cat_cols:
             encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
             encoded = encoder.fit_transform(X[cat_cols])
         else:
