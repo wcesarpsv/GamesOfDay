@@ -1,5 +1,5 @@
 ########################################
-# BLOCO 1 – IMPORTS & CONFIG
+# BLOCO 1 – IMPORTS & CONFIG (CORRIGIDO)
 ########################################
 import streamlit as st
 import pandas as pd
@@ -137,6 +137,59 @@ def dominant_side(row, threshold=DOMINANT_THRESHOLD):
 
 
 ########################################
+# BLOCO 3.5 – FUNÇÕES AUSENTES (NOVO)
+########################################
+
+def compute_double_chance_odds(df):
+    """Calcula odds para dupla chance 1X e X2"""
+    df = df.copy()
+    if 'Odd_H' in df.columns and 'Odd_D' in df.columns:
+        # Fórmula correta para odds de dupla chance
+        df['Odd_1X'] = 1 / (1/df['Odd_H'] + 1/df['Odd_D'])
+    else:
+        df['Odd_1X'] = np.nan
+        
+    if 'Odd_A' in df.columns and 'Odd_D' in df.columns:
+        df['Odd_X2'] = 1 / (1/df['Odd_A'] + 1/df['Odd_D'])
+    else:
+        df['Odd_X2'] = np.nan
+        
+    return df
+
+def classify_leagues_variation(history_df):
+    """Classifica ligas por nível de variação dos momentos"""
+    if history_df.empty:
+        return pd.DataFrame(columns=['League', 'League_Classification'])
+    
+    variation_data = []
+    for league in history_df['League'].unique():
+        league_data = history_df[history_df['League'] == league]
+        if len(league_data) < 5:  # Mínimo de jogos para análise
+            continue
+            
+        # Calcula variação dos momentos
+        var_home = league_data['M_H'].std()
+        var_away = league_data['M_A'].std()
+        avg_var = (var_home + var_away) / 2
+        
+        # Classificação baseada em quartis
+        if pd.isna(avg_var):
+            classification = 'Medium Variation'
+        elif avg_var > 0.7:
+            classification = 'High Variation'
+        elif avg_var > 0.4:
+            classification = 'Medium Variation'
+        else:
+            classification = 'Low Variation'
+            
+        variation_data.append({
+            'League': league, 
+            'League_Classification': classification
+        })
+    
+    return pd.DataFrame(variation_data) if variation_data else pd.DataFrame(columns=['League', 'League_Classification'])
+
+########################################
 # BLOCO 4 – REGRAS (AUTO RECOMMENDATION)
 ########################################
 def auto_recommendation(row,
@@ -237,7 +290,7 @@ def calculate_profit(rec, result, odds_row):
     return 0.0
 
 ########################################
-# BLOCO 5 – UI: DADOS & BACKTEST
+# BLOCO 5 – UI: DADOS & BACKTEST (CORRIGIDO)
 ########################################
 st.header("📂 Dados & Backtest")
 
@@ -255,8 +308,15 @@ if all_games.empty:
     st.warning("Sem dados para análise. Carregue/garanta CSVs em 'GamesDay'.")
     st.stop()
 
+# VALIDAÇÃO DE COLUNAS OBRIGATÓRIAS
+required_cols = ['M_H', 'M_A', 'Goals_H_FT', 'Goals_A_FT', 'League']
+missing_cols = [col for col in required_cols if col not in all_games.columns]
+if missing_cols:
+    st.error(f"❌ Colunas obrigatórias faltando: {missing_cols}")
+    st.stop()
+
 all_games = filter_leagues(all_games)
-all_games = compute_double_chance_odds(all_games)
+all_games = compute_double_chance_odds(all_games)  # AGORA A FUNÇÃO EXISTE
 
 # Parse de datas
 if 'Date' in all_games.columns:
@@ -270,50 +330,77 @@ if history.empty:
     st.stop()
 
 # Bands e variação por liga (derivados do histórico)
-league_class = classify_leagues_variation(history)
+league_class = classify_leagues_variation(history)  # AGORA A FUNÇÃO EXISTE
 league_bands = compute_league_bands(history)
 
 # Merge em history
 history = history.merge(league_class, on='League', how='left')
 history = history.merge(league_bands, on='League', how='left')
 history['M_Diff'] = history['M_H'] - history['M_A']
-history['Home_Band'] = np.where(
-    history['M_H'] <= history['Home_P20'], 'Bottom 20%',
-    np.where(history['M_H'] >= history['Home_P80'], 'Top 20%', 'Balanced')
-)
-history['Away_Band'] = np.where(
-    history['M_A'] <= history['Away_P20'], 'Bottom 20%',
-    np.where(history['M_A'] >= history['Away_P80'], 'Top 20%', 'Balanced')
-)
+
+# Garantir que as colunas de bands existem antes de usá-las
+if 'Home_P20' in history.columns and 'Home_P80' in history.columns:
+    history['Home_Band'] = np.where(
+        history['M_H'] <= history['Home_P20'], 'Bottom 20%',
+        np.where(history['M_H'] >= history['Home_P80'], 'Top 20%', 'Balanced')
+    )
+else:
+    history['Home_Band'] = 'Balanced'  # Valor padrão se bands não existirem
+
+if 'Away_P20' in history.columns and 'Away_P80' in history.columns:
+    history['Away_Band'] = np.where(
+        history['M_A'] <= history['Away_P20'], 'Bottom 20%',
+        np.where(history['M_A'] >= history['Away_P80'], 'Top 20%', 'Balanced')
+    )
+else:
+    history['Away_Band'] = 'Balanced'
+
 history['Dominant'] = history.apply(dominant_side, axis=1)
 history['Result'] = history.apply(map_result, axis=1)
 
 # Intervalo de backtest
 valid_dates = history['Date'].dropna()
-min_d, max_d = (valid_dates.min(), valid_dates.max()) if not valid_dates.empty else (None, None)
+if valid_dates.empty:
+    st.error("❌ Nenhuma data válida encontrada nos dados.")
+    st.stop()
+
+min_d, max_d = valid_dates.min(), valid_dates.max()
 
 colA, colB = st.columns(2)
 with colA:
-    start_date = st.date_input("Data inicial (treino)", value=min_d.date() if min_d else None)
+    start_date = st.date_input("Data inicial (treino)", value=min_d.date())
 with colB:
-    end_date = st.date_input("Data final (teste)", value=max_d.date() if max_d else None)
+    end_date = st.date_input("Data final (teste)", value=max_d.date())
 
 if start_date and end_date and start_date > end_date:
-    st.error("A data inicial deve ser anterior ou igual à data final.")
+    st.error("❌ A data inicial deve ser anterior ou igual à data final.")
     st.stop()
+
+# Convert para datetime
+start_dt = pd.to_datetime(start_date)
+end_dt = pd.to_datetime(end_date)
 
 # Split por data (simples): treino = < end_date - N dias | teste = <= end_date
 lookback_days = st.number_input("Tamanho do período de treino (dias) antes da data final", 14, 400, 60)
-end_dt = pd.to_datetime(end_date) if end_date else max_d
 train_start_dt = (end_dt - timedelta(days=int(lookback_days)))
 
 train_mask = (history['Date'] >= train_start_dt) & (history['Date'] < end_dt)
-test_mask  = (history['Date'] == end_dt)
+test_mask = (history['Date'] == end_dt)  # Apenas jogos do dia final
 
 train_df = history[train_mask].copy()
-test_df  = history[test_mask].copy()
+test_df = history[test_mask].copy()
 
-st.info(f"Treino: {train_df.shape[0]} jogos | Teste (data={end_dt.date() if end_dt else 'N/A'}): {test_df.shape[0]} jogos")
+# VALIDAÇÃO CRÍTICA: garantir que temos dados
+if train_df.empty:
+    st.error("❌ Nenhum dado para treino no período selecionado.")
+    st.stop()
+
+if test_df.empty:
+    st.warning("⚠️ Nenhum dado para teste na data final. Usando últimos dados disponíveis.")
+    # Buscar últimos jogos disponíveis
+    test_df = history[history['Date'] == history['Date'].max()].copy()
+
+st.info(f"✅ Treino: {train_df.shape[0]} jogos | Teste: {test_df.shape[0]} jogos")
 
 ########################################
 # BLOCO 6 – UI: MODELO & HIPERPARÂMETROS
@@ -360,7 +447,7 @@ save_csv = st.checkbox("Salvar previsões (CSV)", value=False)
 st.divider()
 
 ########################################
-# BLOCO 7 – Ajustado: Features e build_X
+# BLOCO 7 – Ajustado: Features e build_X (CORRIGIDO)
 ########################################
 
 # Lista de features usadas no modelo
@@ -394,26 +481,37 @@ def build_X(df, fit_encoder=False, encoder=None, cat_cols=None):
 
     # Mapear Home_Band e Away_Band
     if 'Home_Band' in X.columns:
-        X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
+        X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP).fillna(2).astype(int)
     if 'Away_Band' in X.columns:
-        X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
+        X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP).fillna(2).astype(int)
 
     # Identificar colunas categóricas
     if cat_cols is None:
         cat_cols = [c for c in ['Dominant','League_Classification'] if c in X.columns]
 
-    # OneHotEncoder
+    # OneHotEncoder - CORREÇÃO DA LÓGICA
     if fit_encoder:
-        encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
-        encoded = encoder.fit_transform(X[cat_cols]) if cat_cols else np.zeros((len(X),0))
+        if cat_cols:  # Só criar encoder se houver colunas categóricas
+            encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
+            encoded = encoder.fit_transform(X[cat_cols])
+        else:
+            encoder = None
+            encoded = np.zeros((len(X), 0))
     else:
-        encoded = encoder.transform(X[cat_cols]) if (encoder and cat_cols) else np.zeros((len(X),0))
+        if encoder and cat_cols:
+            encoded = encoder.transform(X[cat_cols])
+        else:
+            encoded = np.zeros((len(X), 0))
 
     # Converter para dataframe
-    encoded_df = (
-        pd.DataFrame(encoded, columns=encoder.get_feature_names_out(cat_cols), index=X.index)
-        if encoded.size else pd.DataFrame(index=X.index)
-    )
+    if encoded.size > 0 and encoder is not None:
+        encoded_df = pd.DataFrame(
+            encoded, 
+            columns=encoder.get_feature_names_out(cat_cols), 
+            index=X.index
+        )
+    else:
+        encoded_df = pd.DataFrame(index=X.index)
 
     # Combinar numéricas + one-hot
     X_num = X.drop(columns=cat_cols, errors='ignore').reset_index(drop=True)
@@ -570,63 +668,73 @@ if show_debug:
 
 
 ########################################
-# BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT (ROBUSTO, SEM DEPENDER DE P20/P80)
+# BLOCO 9 – COMPARAÇÃO COM REGRAS & PROFIT (CORRIGIDO)
 ########################################
+
+# Garantir que temos dados para teste
+if test_df.empty:
+    st.error("❌ Nenhum dado disponível para teste.")
+    st.stop()
 
 # Padronizar ligas
 test_df['League'] = test_df['League'].astype(str).str.strip().str.lower()
 league_class['League'] = league_class['League'].astype(str).str.strip().str.lower()
 league_bands['League'] = league_bands['League'].astype(str).str.strip().str.lower()
 
-# ==== DEBUG ANTES DO MERGE ====
-st.write("Colunas em test_df:", list(test_df.columns))
-st.write("Colunas em league_bands:", list(league_bands.columns))
-
-if 'League' in test_df.columns:
-    st.write("Valores únicos em test_df['League']:", sorted(test_df['League'].dropna().unique().tolist()))
-else:
-    st.error("❌ 'League' NÃO existe em test_df")
-
-if 'League' in league_bands.columns:
-    st.write("Valores únicos em league_bands['League']:", sorted(league_bands['League'].dropna().unique().tolist()))
-else:
-    st.error("❌ 'League' NÃO existe em league_bands")
-
-
-
 # Merge (classificação de liga é útil; bands só se existir)
 test_df = test_df.merge(league_class, on='League', how='left', suffixes=("", "_lc"))
+
+# VERIFICAR MERGE COM LEAGUE_BANDS ANTES DE USAR
 if not league_bands.empty:
+    ligas_antes = len(test_df)
     test_df = test_df.merge(league_bands, on='League', how='left', suffixes=("", "_lb"))
+    ligas_depois = len(test_df)
+    
+    if ligas_depois == 0:
+        st.warning("⚠️ Merge com league_bands removeu todos os dados. Usando apenas classificações.")
+        # Recriar test_df sem o merge problemático
+        test_df = history[test_mask].copy()
+        test_df = test_df.merge(league_class, on='League', how='left')
 
 # ---- Bands: usar *_Num se existir; caso contrário, derivar; não travar se P20/P80 faltar
-BAND_MAP = {"Bottom 20%": 1, "Balanced": 2, "Top 20%": 3}
 REV_MAP  = {1: "Bottom 20%", 2: "Balanced", 3: "Top 20%"}
 
 def classify_band(value, low, high):
-    if pd.isna(value) or pd.isna(low) or pd.isna(high): return "Balanced"
-    if value <= low:  return "Bottom 20%"
-    if value >= high: return "Top 20%"
+    if pd.isna(value) or pd.isna(low) or pd.isna(high): 
+        return "Balanced"
+    if value <= low:  
+        return "Bottom 20%"
+    if value >= high: 
+        return "Top 20%"
     return "Balanced"
 
-# Home
+# Home Band - LÓGICA CORRIGIDA
 if 'Home_Band_Num' not in test_df.columns:
     if 'Home_Band' in test_df.columns:
         test_df['Home_Band_Num'] = test_df['Home_Band'].map(BAND_MAP).fillna(2).astype(int)
     elif {'Home_P20','Home_P80'}.issubset(test_df.columns):
-        test_df['Home_Band'] = test_df.apply(lambda r: classify_band(r.get('M_H'), r.get('Home_P20'), r.get('Home_P80')), axis=1)
+        test_df['Home_Band'] = test_df.apply(
+            lambda r: classify_band(r.get('M_H'), r.get('Home_P20'), r.get('Home_P80')), 
+            axis=1
+        )
         test_df['Home_Band_Num'] = test_df['Home_Band'].map(BAND_MAP).fillna(2).astype(int)
     else:
         test_df['Home_Band_Num'] = 2
-# Away
+        test_df['Home_Band'] = "Balanced"
+
+# Away Band - LÓGICA CORRIGIDA  
 if 'Away_Band_Num' not in test_df.columns:
     if 'Away_Band' in test_df.columns:
         test_df['Away_Band_Num'] = test_df['Away_Band'].map(BAND_MAP).fillna(2).astype(int)
     elif {'Away_P20','Away_P80'}.issubset(test_df.columns):
-        test_df['Away_Band'] = test_df.apply(lambda r: classify_band(r.get('M_A'), r.get('Away_P20'), r.get('Away_P80')), axis=1)
+        test_df['Away_Band'] = test_df.apply(
+            lambda r: classify_band(r.get('M_A'), r.get('Away_P20'), r.get('Away_P80')), 
+            axis=1
+        )
         test_df['Away_Band_Num'] = test_df['Away_Band'].map(BAND_MAP).fillna(2).astype(int)
     else:
         test_df['Away_Band_Num'] = 2
+        test_df['Away_Band'] = "Balanced"
 
 # (Opcional) reconstruir labels textuais para exibição
 if 'Home_Band' not in test_df.columns:
@@ -634,9 +742,16 @@ if 'Home_Band' not in test_df.columns:
 if 'Away_Band' not in test_df.columns:
     test_df['Away_Band'] = test_df['Away_Band_Num'].map(REV_MAP)
 
-# Calcular M_Diff e Dominant
-test_df['M_Diff'] = test_df['M_H'] - test_df['M_A']
+# Calcular M_Diff e Dominant (garantir que existem)
+if 'M_Diff' not in test_df.columns:
+    test_df['M_Diff'] = test_df['M_H'] - test_df['M_A']
+    
 test_df['Dominant'] = test_df.apply(dominant_side, axis=1)
+
+# VALIDAÇÃO FINAL ANTES DE PROSSEGUIR
+if test_df.empty:
+    st.error("❌ Nenhum dado disponível após preparação.")
+    st.stop()
 
 # Recomendações (regras)
 if compare_rules:
@@ -652,6 +767,7 @@ test_df['Profit_Auto'] = test_df.apply(lambda r: calculate_profit(r['Auto_Recomm
 test_df['ML_Correct'] = test_df.apply(lambda r: check_recommendation(r['ML_Recommendation'], r['Result']), axis=1)
 test_df['Auto_Correct'] = test_df.apply(lambda r: check_recommendation(r['Auto_Recommendation'], r['Result']), axis=1)
 
+st.success(f"✅ Dados preparados: {len(test_df)} jogos para análise")
 
 ########################################
 # BLOCO 10 – MÉTRICAS & SUMÁRIOS
