@@ -770,7 +770,7 @@ test_df['Auto_Correct'] = test_df.apply(lambda r: check_recommendation(r['Auto_R
 st.success(f"✅ Dados preparados: {len(test_df)} jogos para análise")
 
 ########################################
-# BLOCO 10 – MÉTRICAS & SUMÁRIOS
+# BLOCO 10 – MÉTRICAS & SUMÁRIOS (CORRIGIDO COM GOLS)
 ########################################
 st.header("📈 Métricas do Teste (na data selecionada)")
 
@@ -847,8 +847,6 @@ with colv2:
     show_calib = st.checkbox("Gráfico de calibração (Home)", value=True)
 with colv3:
     show_feat_imp = st.checkbox("Importância das features (se disponível)", value=False)
-    # Espaço p/ multi-model no futuro
-    # show_compare_models = st.checkbox("Comparar múltiplos modelos", value=False)
 
 ########################################
 # BLOCO 12 – GRÁFICOS
@@ -892,10 +890,11 @@ def plot_calibration_curve(prob, outcomes, title, n_bins=10):
     ax.legend()
     st.pyplot(fig)
 
-# Tabela
+# Tabela - CORRIGIDO PARA INCLUIR GOLS
 if show_table:
     cols_to_show = [
         'Date','League','Home','Away',
+        'Goals_H_FT', 'Goals_A_FT',  # GOLS ADICIONADOS AQUI
         'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2',
         'Result',
         'Auto_Recommendation','ML_Recommendation',
@@ -903,7 +902,7 @@ if show_table:
         'ML_Proba_Home','ML_Proba_Draw','ML_Proba_Away'
     ]
     available_cols = [c for c in cols_to_show if c in test_df.columns]
-    st.subheader("📋 Tabela – Teste (regras x ML)")
+    st.subheader("📋 Tabela – Teste (regras x ML) - COM GOLS")
     st.dataframe(
         test_df[available_cols]
         .style.format({
@@ -911,6 +910,7 @@ if show_table:
             'Odd_1X':'{:.2f}','Odd_X2':'{:.2f}',
             'Profit_Auto':'{:.2f}','Profit_ML':'{:.2f}',
             'ML_Proba_Home':'{:.2f}','ML_Proba_Draw':'{:.2f}','ML_Proba_Away':'{:.2f}',
+            'Goals_H_FT':'{:.0f}','Goals_A_FT':'{:.0f}',  # FORMATO PARA GOLS
         }),
         use_container_width=True, height=600
     )
@@ -949,6 +949,7 @@ if show_feat_imp and hasattr(getattr(model, 'base_estimator_', model), "feature_
         st.info("O modelo não expõe 'feature_importances_'.")
 elif show_feat_imp:
     st.info("Importância de features disponível apenas para árvores (RF/XGB/LGBM).")
+
 
 ########################################
 # BLOCO 13 – EXPORT
