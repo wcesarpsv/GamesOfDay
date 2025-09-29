@@ -362,9 +362,12 @@ if cat_cols:
                    encoded_df.reset_index(drop=True)], axis=1)
 
 model = RandomForestClassifier(
-    n_estimators=500,
-    max_depth=15,
-    class_weight="balanced",
+    n_estimators=800,
+    max_depth=12,
+    min_samples_split=10,
+    min_samples_leaf=4,
+    max_features='sqrt',
+    class_weight='balanced_subsample',
     random_state=42,
     n_jobs=-1
 )
