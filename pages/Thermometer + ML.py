@@ -390,7 +390,7 @@ def ml_recommendation_from_proba(p_home, p_draw, p_away, threshold=0.65):
     else:
         sum_home_draw = p_home + p_draw
         sum_away_draw = p_away + p_draw
-        if abs(p_home - p_away) < 0.05 and p_draw > 0.35:
+        if abs(p_home - p_away) < 0.05 and p_draw > 0.50:
             return "⚪ Back Draw"
         elif sum_home_draw > sum_away_draw:
             return "🟦 1X (Home/Draw)"
