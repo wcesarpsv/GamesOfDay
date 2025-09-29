@@ -519,7 +519,7 @@ def summary_stats(df, prefix):
 summary_auto = summary_stats(finished_games, "Auto")
 summary_ml = summary_stats(finished_games, "ML")
 
-st.subheader("📈 Summary's Day")
+st.subheader("📈 Day's Summary")
 st.markdown("### Performance Auto Recommendation (Rules)")
 st.json(summary_auto)
 
