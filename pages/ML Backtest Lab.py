@@ -466,17 +466,27 @@ st.write("DEBUG - y_train shape:", y_train.shape)
 
 
 ########################################
-# BLOCO 8A – Validação inicial
+# BLOCO 8A – Validação inicial corrigido
 ########################################
 
 if X_train.empty or y_train.empty:
     st.error("Erro crítico: X_train ou y_train estão vazios. Sem dados para treinar o modelo.")
     st.stop()
 
-# Remover linhas com NaN
+# Garante que y_train esteja alinhado com X_train
+y_train = y_train.reset_index(drop=True)
+
+# Criar a máscara para remover linhas com NaN
 mask = ~X_train.isnull().any(axis=1)
+
+# Aplicar a máscara
 X_train = X_train.loc[mask].copy()
 y_train = y_train.loc[mask].copy()
+
+# Debug
+st.write("DEBUG pós-limpeza - X_train:", X_train.shape)
+st.write("DEBUG pós-limpeza - y_train:", y_train.shape)
+
 
 
 ########################################
