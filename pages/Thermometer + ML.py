@@ -376,6 +376,14 @@ if cat_cols:
 classes = ["Home", "Draw", "Away"]
 y_bin = label_binarize(y, classes=classes)
 
+# ... (your previous data preparation code remains the same) ...
+
+from sklearn.preprocessing import OneHotEncoder # <- Add the missing import
+
+# =====================================
+# Treino do modelo calibrado isotônico (Approach Corrected)
+# =====================================
+
 base_model = RandomForestClassifier(
     n_estimators=800,
     max_depth=12,
@@ -387,28 +395,18 @@ base_model = RandomForestClassifier(
     n_jobs=-1
 )
 
-# Treina 1 calibrador para cada classe (One-vs-Rest)
-calibrators = []
-for i, cls in enumerate(classes):
-    y_binary = y_bin[:, i]  # binário: essa classe vs resto
-    clf = CalibratedClassifierCV(
-        base_estimator=base_model,
-        method="isotonic",
-        cv=5
-    )
-    clf.fit(X, y_binary)
-    calibrators.append(clf)
+# Apply calibration directly to the multi-class model
+calibrated_model = CalibratedClassifierCV(
+    base_estimator=base_model,
+    method="isotonic",
+    cv=5,
+    ensemble=True # This is the default and ensures proper validation
+)
 
-# Função para prever probabilidades calibradas
-def predict_proba_isotonic(X_new):
-    probs = np.column_stack([
-        calibrators[i].predict_proba(X_new)[:, 1] for i in range(len(classes))
-    ])
-    # Normaliza para garantir soma = 1
-    return probs / probs.sum(axis=1, keepdims=True)
+calibrated_model.fit(X, y) # Use the original multi-class target 'y'
 
-# Exemplo de uso:
-# probs_calibradas = predict_proba_isotonic(X)
+# To get calibrated probabilities, use the model directly
+probs_calibradas = calibrated_model.predict_proba(X)
 
 
 
