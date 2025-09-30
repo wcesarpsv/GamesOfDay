@@ -326,6 +326,11 @@ games_today['Auto_Recommendation'] = games_today.apply(lambda r: auto_recommenda
 ########################################
 ####### Bloco 7 – Train ML Model #######
 ########################################
+from sklearn.preprocessing import label_binarize
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.ensemble import RandomForestClassifier
+import numpy as np
+
 history = history.dropna(subset=['Goals_H_FT','Goals_A_FT'])
 
 def map_result(row):
@@ -365,7 +370,12 @@ if cat_cols:
     X = pd.concat([X.drop(columns=cat_cols).reset_index(drop=True),
                    encoded_df.reset_index(drop=True)], axis=1)
 
-# Modelo base
+# =====================================
+# Treino do modelo calibrado isotônico
+# =====================================
+classes = ["Home", "Draw", "Away"]
+y_bin = label_binarize(y, classes=classes)
+
 base_model = RandomForestClassifier(
     n_estimators=800,
     max_depth=12,
@@ -377,16 +387,28 @@ base_model = RandomForestClassifier(
     n_jobs=-1
 )
 
-# Isotonic em esquema One-vs-Rest
-from sklearn.calibration import CalibratedClassifierCV
-from sklearn.multiclass import OneVsRestClassifier
+# Treina 1 calibrador para cada classe (One-vs-Rest)
+calibrators = []
+for i, cls in enumerate(classes):
+    y_binary = y_bin[:, i]  # binário: essa classe vs resto
+    clf = CalibratedClassifierCV(
+        base_estimator=base_model,
+        method="isotonic",
+        cv=5
+    )
+    clf.fit(X, y_binary)
+    calibrators.append(clf)
 
-model = OneVsRestClassifier(
-    CalibratedClassifierCV(base_estimator=base_model, method="isotonic", cv=5)
-)
+# Função para prever probabilidades calibradas
+def predict_proba_isotonic(X_new):
+    probs = np.column_stack([
+        calibrators[i].predict_proba(X_new)[:, 1] for i in range(len(classes))
+    ])
+    # Normaliza para garantir soma = 1
+    return probs / probs.sum(axis=1, keepdims=True)
 
-# Treinamento já calibrado
-model.fit(X, y)
+# Exemplo de uso:
+# probs_calibradas = predict_proba_isotonic(X)
 
 
 
