@@ -280,10 +280,10 @@ kelly_fraction = st.sidebar.slider("Kelly Fraction ML", 0.1, 1.0, 0.25, 0.05, he
 min_stake = st.sidebar.number_input("Minimum Stake ML", 1, 50, 1, 1, help="Stake mínimo por aposta individual")
 max_stake = st.sidebar.number_input("Maximum Stake ML", 10, 500, 100, 10, help="Stake máximo por aposta individual")
 
-# Resumo ML Principal
+# Resumo ML Principal - CORRIGIDO
 st.sidebar.markdown("---")
 st.sidebar.markdown("""
-<div style="background-color: #e6f3ff; padding: 10px; border-radius: 5px; border-left: 4px solid #1890ff;">
+<div style="background-color: #e6f3ff; padding: 10px; border-radius: 5px; border-left: 4px solid #1890ff; margin: 10px 0;">
 <small><strong>🎯 ML Principal</strong><br>
 • Apostas individuais com edge comprovado<br>
 • Kelly determina stake ideal<br>
@@ -449,10 +449,10 @@ parlay_bankroll = st.sidebar.number_input("Parlay Bankroll", 50, 5000, 200, 50, 
 min_parlay_prob = st.sidebar.slider("Min Probability Parlay", 0.50, 0.70, 0.50, 0.01, help="Probabilidade mínima para considerar jogo no parlay")
 max_parlay_suggestions = st.sidebar.slider("Max Parlay Suggestions", 1, 10, 5, 1, help="Número máximo de sugestões de parlay")
 
-# Resumo Parlay System
+# Resumo Parlay System - CORRIGIDO
 st.sidebar.markdown("---")
 st.sidebar.markdown("""
-<div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; border-left: 4px solid #722ed1;">
+<div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; border-left: 4px solid #722ed1; margin: 10px 0;">
 <small><strong>🎰 Parlay System</strong><br>
 • Combina jogos sem edge individual<br>
 • Busca EV positivo em combinações<br>
@@ -570,7 +570,6 @@ parlay_suggestions = generate_parlay_suggestions(
     games_today, parlay_bankroll, min_parlay_prob, max_parlay_suggestions
 )
 
-
 ########################################
 ##### Bloco 11 – Performance Summary ###
 ########################################
@@ -618,10 +617,10 @@ summary_ml = summary_stats_ml(finished_games)
 ##### Bloco 12 – Display Results #######
 ########################################
 
-# SEÇÃO 3: RESUMO GERAL
+# SEÇÃO 3: RESUMO GERAL - CORRIGIDO
 st.sidebar.header("📊 System Summary")
 st.sidebar.markdown(f"""
-<div style="background-color: #f6ffed; padding: 10px; border-radius: 5px; border-left: 4px solid #52c41a;">
+<div style="background-color: #f6ffed; padding: 10px; border-radius: 5px; border-left: 4px solid #52c41a; margin: 10px 0;">
 <small><strong>⚙️ Configuração Atual</strong><br>
 • <strong>ML Bankroll:</strong> ${bankroll:,}<br>
 • <strong>Parlay Bankroll:</strong> ${parlay_bankroll:,}<br>
