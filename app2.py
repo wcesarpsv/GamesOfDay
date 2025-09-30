@@ -12,7 +12,7 @@ DATA_FOLDER = "GamesDay"
 st.set_page_config(page_title="Data-Driven Football Insights", layout="wide")
 st.title("🔮 Data-Driven Football Insights")
 
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copa", "copas", "uefa", "nordeste", "afc"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copa", "copas", "uefa", "nordeste", "afc","trophy"]
 
 
 # ########################################################
@@ -275,6 +275,7 @@ except pd.errors.EmptyDataError:
     st.error(f"❌ The file `{filename}` is empty or contains no valid data.")
 except Exception as e:
     st.error(f"⚠️ Unexpected error: {e}")
+
 
 
 
