@@ -451,14 +451,8 @@ max_parlay_suggestions = st.sidebar.slider("Max Parlay Suggestions", 1, 10, 5, 1
 
 # Resumo Parlay System - CORRIGIDO
 st.sidebar.markdown("---")
-st.sidebar.markdown("""
-<div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; border-left: 4px solid #722ed1; margin: 10px 0;">
-<small><strong>🎰 Parlay System</strong><br>
-• Combina jogos sem edge individual<br>
-• Busca EV positivo em combinações<br>
-• Bankroll separado do principal</small>
-</div>
-""", unsafe_allow_html=True)
+st.sidebar.markdown("**🎰 Parlay System**")
+st.sidebar.markdown("• Combina jogos sem edge individual  \n• Busca EV positivo em combinações  \n• Bankroll separado do principal")
 
 def calculate_parlay_odds(games_list, games_df):
     total_prob = 1.0
