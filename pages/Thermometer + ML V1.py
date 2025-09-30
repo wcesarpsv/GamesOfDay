@@ -19,7 +19,7 @@ st.title("📊 Momentum Thermometer + ML Prototype")
 
 # Configurações principais
 GAMES_FOLDER = "GamesDay"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa", "afc"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa", "afc","trophy"]
 
 M_DIFF_MARGIN = 0.30
 POWER_MARGIN = 10
