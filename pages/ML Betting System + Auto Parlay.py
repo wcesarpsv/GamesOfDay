@@ -461,20 +461,18 @@ def calculate_parlay_odds(games_list, games_df):
             'game': f"{game['Home']} vs {game['Away']}",
             'bet': bet_type,
             'prob': prob,
-            'odds': round(odds, 2)  # 🔥 2 casas decimais
+            'odds': round(odds, 2)
         })
     
     expected_value = total_prob * total_odds - 1
-    return total_prob, round(total_odds, 2), expected_value, game_details  # 🔥 2 casas decimais
+    return total_prob, round(total_odds, 2), expected_value, game_details
 
 def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, max_suggestions=5):
-    # 🔥 FILTRAR APENAS JOGOS DE HOJE
+    # Filtrar apenas jogos de hoje
     today = datetime.now().strftime("%Y-%m-%d")
     games_today_filtered = games_df[games_df['Date'] == today].copy()
     
     eligible_games = []
-    
-    st.sidebar.write(f"🔍 Debug Parlay:")
     
     for idx, row in games_today_filtered.iterrows():
         kelly_zero = row['Kelly_Stake_ML'] == 0
@@ -501,17 +499,10 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
         # Se tem Kelly = 0 e pelo menos uma opção com prob > min_prob
         if kelly_zero and options:
             # Escolher a opção com maior expected value
-            best_option = max(options, key=lambda x: (x[1] * x[2] - 1))  # Maior EV
+            best_option = max(options, key=lambda x: (x[1] * x[2] - 1))
             bet_type, prob, odds = best_option
             
-            eligible_games.append((idx, bet_type, prob, round(odds, 2)))  # 🔥 2 casas decimais
-    
-    st.sidebar.write(f"Jogos elegíveis HOJE: {len(eligible_games)}")
-    
-    # DEBUG: Mostrar os jogos elegíveis
-    for i, (idx, bet_type, prob, odds) in enumerate(eligible_games):
-        game = games_today_filtered.loc[idx]
-        st.sidebar.write(f"  {i+1}. {game['Home']} vs {game['Away']} - {bet_type} (Prob: {prob:.1%}, Odd: {odds})")
+            eligible_games.append((idx, bet_type, prob, round(odds, 2)))
     
     parlay_suggestions = []
     
@@ -522,9 +513,7 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
             games_list = [(game[0], game[1]) for game in combo]
             prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
             
-            st.sidebar.write(f"Parlay 2-legs: Prob={prob:.1%}, Odds={odds}, EV={ev:.1%}")
-            
-            # Critérios realistas mas não muito restritivos
+            # Critérios realistas
             if prob > 0.25 and odds > 1.80 and ev > -0.05:
                 stake = min(parlay_bankroll * 0.04, parlay_bankroll * 0.06 * prob)
                 stake = round(stake, 2)
@@ -547,8 +536,6 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
                 games_list = [(game[0], game[1]) for game in combo]
                 prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
                 
-                st.sidebar.write(f"Parlay 3-legs: Prob={prob:.1%}, Odds={odds}, EV={ev:.1%}")
-                
                 if prob > 0.15 and odds > 2.50 and ev > -0.10:
                     stake = min(parlay_bankroll * 0.03, parlay_bankroll * 0.04 * prob)
                     stake = round(stake, 2)
@@ -565,10 +552,8 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
                             'details': details
                         })
     
-    # Ordenar por Expected Value (mais importante)
+    # Ordenar por Expected Value
     parlay_suggestions.sort(key=lambda x: x['ev'], reverse=True)
-    
-    st.sidebar.write(f"Sugestões geradas: {len(parlay_suggestions)}")
     
     return parlay_suggestions[:max_suggestions]
 
@@ -576,7 +561,6 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
 parlay_suggestions = generate_parlay_suggestions(
     games_today, parlay_bankroll, min_parlay_prob, max_parlay_suggestions
 )
-
 
 ########################################
 ##### Bloco 11 – Performance Summary ###
