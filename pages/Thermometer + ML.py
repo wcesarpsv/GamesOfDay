@@ -377,16 +377,17 @@ base_model = RandomForestClassifier(
     n_jobs=-1
 )
 
-# Modelo calibrado (Isotonic)
+# Isotonic em esquema One-vs-Rest
 from sklearn.calibration import CalibratedClassifierCV
-model = CalibratedClassifierCV(
-    base_estimator=base_model,
-    method="isotonic",
-    cv=5
+from sklearn.multiclass import OneVsRestClassifier
+
+model = OneVsRestClassifier(
+    CalibratedClassifierCV(base_estimator=base_model, method="isotonic", cv=5)
 )
 
-# Treinamento já com calibração
+# Treinamento já calibrado
 model.fit(X, y)
+
 
 
 ########################################
