@@ -613,70 +613,84 @@ def make_model(choice, params):
 
 
 ########################################
-# SUBBLOCO 8B – Treinamento seguro
-########################################
-with st.spinner("Treinando modelo..."):
-    base_model = make_model(model_choice, params)
-    
-    if apply_calibration:
-        model = CalibratedClassifierCV(base_model, cv=5, method='isotonic')
-    else:
-        model = base_model
-
-    try:
-        model.fit(X_train, y_train)
-        st.success("Treinamento concluído com sucesso!")
-    except ValueError as e:
-        st.error("Erro durante o treinamento. Confira detalhes abaixo:")
-        st.code(str(e))
-        st.stop()
-
-########################################
-# SUBBLOCO 8D – Predição e Recomendações
+# SUBBLOCO 8B – Treinamento seguro (com botão)
 ########################################
 
-# Geração de probabilidades e predições
-proba_test = model.predict_proba(X_test) if hasattr(model, "predict_proba") else None
-pred_test = model.predict(X_test)
+# Botão para executar o treinamento
+if st.button("🚀 Rodar Treinamento / Teste"):
+    with st.spinner("Treinando modelo..."):
+        base_model = make_model(model_choice, params)
 
-classes_ = list(model.classes_)
+        if apply_calibration:
+            model = CalibratedClassifierCV(base_model, cv=5, method='isotonic')
+        else:
+            model = base_model
 
-# Função auxiliar para pegar probabilidades por classe
-def p(cls):
-    if proba_test is None: 
-        return np.zeros(len(X_test))
-    idx = classes_.index(cls) if cls in classes_ else None
-    return proba_test[:, idx] if idx is not None else np.zeros(len(X_test))
+        try:
+            model.fit(X_train, y_train)
+            st.success("Treinamento concluído com sucesso!")
 
-# Copiar test_df e adicionar colunas
-test_df = test_df.copy()
-test_df["ML_Proba_Home"] = p("Home")
-test_df["ML_Proba_Draw"] = p("Draw")
-test_df["ML_Proba_Away"] = p("Away")
-test_df["ML_Pred"] = pred_test
+            # Guardar o modelo no session_state para usar depois
+            st.session_state["trained_model"] = model
+        except ValueError as e:
+            st.error("Erro durante o treinamento. Confira detalhes abaixo:")
+            st.code(str(e))
+            st.stop()
 
-# Ajuste do limiar para decisão
-st.subheader("🎯 Limiar para Back direto")
-threshold = st.slider("Threshold (%) para Back Home/Away", 50, 85, 65, step=1) / 100.0
 
-# Função de recomendação baseada nas probabilidades
-def ml_rec_from_proba(row, thr=0.65):
-    ph, pd_, pa = row['ML_Proba_Home'], row['ML_Proba_Draw'], row['ML_Proba_Away']
-    if ph >= thr:
-        return "🟢 Back Home"
-    if pa >= thr:
-        return "🟠 Back Away"
-    sum_hd, sum_ad = ph + pd_, pa + pd_
-    if abs(ph - pa) < 0.05 and pd_ > 0.35:
-        return "⚪ Back Draw"
-    if sum_hd > sum_ad:
-        return "🟦 1X (Home/Draw)"
-    if sum_ad > sum_hd:
-        return "🟪 X2 (Away/Draw)"
-    return "❌ Avoid"
+########################################
+# SUBBLOCO 8D – Predição e Recomendações (ajustado)
+########################################
 
-# Aplicar a recomendação
-test_df["ML_Recommendation"] = test_df.apply(ml_rec_from_proba, axis=1, thr=threshold)
+if "trained_model" in st.session_state:
+    model = st.session_state["trained_model"]
+
+    # Geração de probabilidades e predições
+    proba_test = model.predict_proba(X_test) if hasattr(model, "predict_proba") else None
+    pred_test = model.predict(X_test)
+
+    classes_ = list(model.classes_)
+
+    # Função auxiliar para pegar probabilidades por classe
+    def p(cls):
+        if proba_test is None: 
+            return np.zeros(len(X_test))
+        idx = classes_.index(cls) if cls in classes_ else None
+        return proba_test[:, idx] if idx is not None else np.zeros(len(X_test))
+
+    # Copiar test_df e adicionar colunas
+    test_df = test_df.copy()
+    test_df["ML_Proba_Home"] = p("Home")
+    test_df["ML_Proba_Draw"] = p("Draw")
+    test_df["ML_Proba_Away"] = p("Away")
+    test_df["ML_Pred"] = pred_test
+
+    # Ajuste do limiar para decisão
+    st.subheader("🎯 Limiar para Back direto")
+    threshold = st.slider("Threshold (%) para Back Home/Away", 50, 85, 65, step=1) / 100.0
+
+    # Função de recomendação baseada nas probabilidades
+    def ml_rec_from_proba(row, thr=0.65):
+        ph, pd_, pa = row['ML_Proba_Home'], row['ML_Proba_Draw'], row['ML_Proba_Away']
+        if ph >= thr:
+            return "🟢 Back Home"
+        if pa >= thr:
+            return "🟠 Back Away"
+        sum_hd, sum_ad = ph + pd_, pa + pd_
+        if abs(ph - pa) < 0.05 and pd_ > 0.35:
+            return "⚪ Back Draw"
+        if sum_hd > sum_ad:
+            return "🟦 1X (Home/Draw)"
+        if sum_ad > sum_hd:
+            return "🟪 X2 (Away/Draw)"
+        return "❌ Avoid"
+
+    # Aplicar a recomendação
+    test_df["ML_Recommendation"] = test_df.apply(ml_rec_from_proba, axis=1, thr=threshold)
+
+else:
+    st.warning("⚠️ Treine o modelo primeiro clicando no botão acima.")
+
 
 
 ########################################
