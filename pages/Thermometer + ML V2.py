@@ -107,10 +107,9 @@ else:
 livescore_folder = "LiveScore"
 livescore_file = os.path.join(livescore_folder, f"Resultados_RAW_{selected_date_str}.csv")
 
-if 'Goals_H_Today' not in games_today.columns:
-    games_today['Goals_H_Today'] = np.nan
-if 'Goals_A_Today' not in games_today.columns:
-    games_today['Goals_A_Today'] = np.nan
+# Inicializar colunas de gols
+games_today['Goals_H_Today'] = np.nan
+games_today['Goals_A_Today'] = np.nan
 
 if os.path.exists(livescore_file):
     st.info(f"LiveScore file found: {livescore_file}")
@@ -127,6 +126,7 @@ if os.path.exists(livescore_file):
             how='left',
             suffixes=('', '_RAW')
         )
+        # Atualizar gols apenas para jogos finalizados
         games_today['Goals_H_Today'] = games_today['home_goal']
         games_today['Goals_A_Today'] = games_today['away_goal']
         games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
@@ -303,7 +303,129 @@ games_today['Kelly_Stake_ML'] = games_today.apply(get_kelly_stake_ml, axis=1)
 
 
 ########################################
-#### Bloco 9 – Auto Parlay System ######
+##### Bloco 9 – Result Tracking ########
+########################################
+def determine_result(row):
+    try:
+        gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
+        ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
+    except (ValueError, TypeError):
+        return None
+
+    if pd.isna(gh) or pd.isna(ga):
+        return None
+    if gh > ga:
+        return "Home"
+    elif gh < ga:
+        return "Away"
+    else:
+        return "Draw"
+
+games_today['Result_Today'] = games_today.apply(determine_result, axis=1)
+
+def check_recommendation(rec, result):
+    if pd.isna(rec) or result is None or rec == '❌ Avoid':
+        return None
+    rec = str(rec)
+    if 'Back Home' in rec:
+        return result == "Home"
+    elif 'Back Away' in rec:
+        return result == "Away"
+    elif 'Back Draw' in rec:
+        return result == "Draw"
+    elif '1X' in rec:
+        return result in ["Home", "Draw"]
+    elif 'X2' in rec:
+        return result in ["Away", "Draw"]
+    return None
+
+games_today['ML_Correct'] = games_today.apply(lambda r: check_recommendation(r['ML_Recommendation'], r['Result_Today']), axis=1)
+
+def calculate_profit(rec, result, odds_row):
+    if pd.isna(rec) or result is None or rec == '❌ Avoid':
+        return 0
+    rec = str(rec)
+    if 'Back Home' in rec:
+        odd = odds_row.get('Odd_H', np.nan)
+        return odd - 1 if result == "Home" else -1
+    elif 'Back Away' in rec:
+        odd = odds_row.get('Odd_A', np.nan)
+        return odd - 1 if result == "Away" else -1
+    elif 'Back Draw' in rec:
+        odd = odds_row.get('Odd_D', np.nan)
+        return odd - 1 if result == "Draw" else -1
+    elif '1X' in rec:
+        odd = odds_row.get('Odd_1X', np.nan)
+        return odd - 1 if result in ["Home", "Draw"] else -1
+    elif 'X2' in rec:
+        odd = odds_row.get('Odd_X2', np.nan)
+        return odd - 1 if result in ["Away", "Draw"] else -1
+    return 0
+
+def calculate_profit_with_kelly(rec, result, odds_row, ml_probabilities):
+    if pd.isna(rec) or result is None or rec == '❌ Avoid':
+        return 0, 0
+    
+    rec = str(rec)
+    stake_fixed = 1
+    
+    if 'Back Home' in rec:
+        odd = odds_row.get('Odd_H', np.nan)
+        stake_kelly = kelly_stake(ml_probabilities.get('Home', 0.5), odd, bankroll, kelly_fraction, min_stake, max_stake)
+        profit_fixed = odd - 1 if result == "Home" else -1
+        profit_kelly = (odd - 1) * stake_kelly if result == "Home" else -stake_kelly
+        
+    elif 'Back Away' in rec:
+        odd = odds_row.get('Odd_A', np.nan)
+        stake_kelly = kelly_stake(ml_probabilities.get('Away', 0.5), odd, bankroll, kelly_fraction, min_stake, max_stake)
+        profit_fixed = odd - 1 if result == "Away" else -1
+        profit_kelly = (odd - 1) * stake_kelly if result == "Away" else -stake_kelly
+        
+    elif 'Back Draw' in rec:
+        odd = odds_row.get('Odd_D', np.nan)
+        stake_kelly = kelly_stake(ml_probabilities.get('Draw', 0.5), odd, bankroll, kelly_fraction, min_stake, max_stake)
+        profit_fixed = odd - 1 if result == "Draw" else -1
+        profit_kelly = (odd - 1) * stake_kelly if result == "Draw" else -stake_kelly
+        
+    elif '1X' in rec:
+        odd = odds_row.get('Odd_1X', np.nan)
+        prob = ml_probabilities.get('Home', 0) + ml_probabilities.get('Draw', 0)
+        stake_kelly = kelly_stake(prob, odd, bankroll, kelly_fraction, min_stake, max_stake)
+        profit_fixed = odd - 1 if result in ["Home", "Draw"] else -1
+        profit_kelly = (odd - 1) * stake_kelly if result in ["Home", "Draw"] else -stake_kelly
+        
+    elif 'X2' in rec:
+        odd = odds_row.get('Odd_X2', np.nan)
+        prob = ml_probabilities.get('Away', 0) + ml_probabilities.get('Draw', 0)
+        stake_kelly = kelly_stake(prob, odd, bankroll, kelly_fraction, min_stake, max_stake)
+        profit_fixed = odd - 1 if result in ["Away", "Draw"] else -1
+        profit_kelly = (odd - 1) * stake_kelly if result in ["Away", "Draw"] else -stake_kelly
+        
+    else:
+        return 0, 0
+    
+    return profit_fixed, profit_kelly
+
+# Calcular profits
+games_today['Profit_ML_Fixed'] = games_today.apply(
+    lambda r: calculate_profit(r['ML_Recommendation'], r['Result_Today'], r), axis=1
+)
+
+games_today[['Profit_ML_Fixed', 'Profit_ML_Kelly']] = games_today.apply(
+    lambda r: calculate_profit_with_kelly(
+        r['ML_Recommendation'], 
+        r['Result_Today'], 
+        r,
+        {'Home': r.get('ML_Proba_Home', 0.5), 
+         'Draw': r.get('ML_Proba_Draw', 0.5), 
+         'Away': r.get('ML_Proba_Away', 0.5)}
+    ), 
+    axis=1, result_type='expand'
+)
+
+
+########################################
+#### Bloco 10 – Auto Parlay System #####
 ########################################
 st.sidebar.subheader("Parlay System Parameters")
 parlay_bankroll = st.sidebar.number_input("Parlay Bankroll", 50, 5000, 200, 50)
@@ -400,21 +522,74 @@ parlay_suggestions = generate_parlay_suggestions(
 
 
 ########################################
-##### Bloco 10 – Display Results #######
+##### Bloco 11 – Performance Summary ###
 ########################################
+finished_games = games_today.dropna(subset=['Result_Today'])
+
+def summary_stats_ml(df):
+    bets = df[df['ML_Correct'].notna()]
+    total_bets = len(bets)
+    correct_bets = bets['ML_Correct'].sum()
+    winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
+    
+    # Fixed stake profits
+    total_profit_fixed = bets['Profit_ML_Fixed'].sum()
+    roi_fixed = (total_profit_fixed / total_bets) * 100 if total_bets > 0 else 0
+    
+    # Kelly stake profits
+    total_profit_kelly = bets['Profit_ML_Kelly'].sum()
+    total_stake_kelly = bets['Kelly_Stake_ML'].sum()
+    roi_kelly = (total_profit_kelly / total_stake_kelly) * 100 if total_stake_kelly > 0 else 0
+    
+    # Average stake sizes
+    avg_stake_kelly = bets['Kelly_Stake_ML'].mean() if total_bets > 0 else 0
+    
+    # Kelly bets made
+    kelly_bets = bets[bets['Kelly_Stake_ML'] > 0]
+
+    return {
+        "Total Games": len(df),
+        "Bets Made": total_bets,
+        "Correct": int(correct_bets),
+        "Winrate (%)": round(winrate, 2),
+        "Profit Fixed (Stake=1)": round(total_profit_fixed, 2),
+        "ROI Fixed (%)": round(roi_fixed, 2),
+        "Profit Kelly": round(total_profit_kelly, 2),
+        "Total Stake Kelly": round(total_stake_kelly, 2),
+        "ROI Kelly (%)": round(roi_kelly, 2),
+        "Avg Kelly Stake": round(avg_stake_kelly, 2),
+        "Kelly Bets Made": len(kelly_bets)
+    }
+
+summary_ml = summary_stats_ml(finished_games)
+
+
+########################################
+##### Bloco 12 – Display Results #######
+########################################
+st.header("📈 Day's Summary - Machine Learning Performance")
+st.json(summary_ml)
+
 st.header("🎯 Machine Learning Recommendations")
 
 # Mostrar Kelly stakes e recomendações ML
 cols_to_show = [
-    'Time', 'League', 'Home', 'Away', 'ML_Recommendation', 'Kelly_Stake_ML',
-    'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away', 'Odd_H', 'Odd_D', 'Odd_A'
+    'Time', 'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today',
+    'ML_Recommendation', 'ML_Correct', 'Kelly_Stake_ML',
+    'Profit_ML_Fixed', 'Profit_ML_Kelly',
+    'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away', 
+    'Odd_H', 'Odd_D', 'Odd_A'
 ]
 
 available_cols = [c for c in cols_to_show if c in games_today.columns]
 
 st.dataframe(
     games_today[available_cols].style.format({
+        'Goals_H_Today': '{:.0f}',
+        'Goals_A_Today': '{:.0f}',
         'Kelly_Stake_ML': '{:.2f}',
+        'Profit_ML_Fixed': '{:.2f}',
+        'Profit_ML_Kelly': '{:.2f}',
         'ML_Proba_Home': '{:.3f}',
         'ML_Proba_Draw': '{:.3f}',
         'ML_Proba_Away': '{:.3f}',
