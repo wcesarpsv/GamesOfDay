@@ -720,6 +720,11 @@ if test_df.empty:
     st.error("❌ Nenhum dado disponível para teste.")
     st.stop()
 
+# Só prosseguir se já tiver modelo treinado e recomendações ML
+if "trained_model" not in st.session_state or "ML_Recommendation" not in test_df.columns:
+    st.warning("⚠️ Treine o modelo clicando no botão acima para ver métricas e lucros.")
+    st.stop()
+
 # Padronizar ligas
 test_df['League'] = test_df['League'].astype(str).str.strip().str.lower()
 league_class['League'] = league_class['League'].astype(str).str.strip().str.lower()
@@ -752,7 +757,7 @@ def classify_band(value, low, high):
         return "Top 20%"
     return "Balanced"
 
-# Home Band - LÓGICA CORRIGIDA
+# Home Band
 if 'Home_Band_Num' not in test_df.columns:
     if 'Home_Band' in test_df.columns:
         test_df['Home_Band_Num'] = test_df['Home_Band'].map(BAND_MAP).fillna(2).astype(int)
@@ -766,7 +771,7 @@ if 'Home_Band_Num' not in test_df.columns:
         test_df['Home_Band_Num'] = 2
         test_df['Home_Band'] = "Balanced"
 
-# Away Band - LÓGICA CORRIGIDA  
+# Away Band
 if 'Away_Band_Num' not in test_df.columns:
     if 'Away_Band' in test_df.columns:
         test_df['Away_Band_Num'] = test_df['Away_Band'].map(BAND_MAP).fillna(2).astype(int)
@@ -780,22 +785,17 @@ if 'Away_Band_Num' not in test_df.columns:
         test_df['Away_Band_Num'] = 2
         test_df['Away_Band'] = "Balanced"
 
-# (Opcional) reconstruir labels textuais para exibição
+# Labels textuais para exibição
 if 'Home_Band' not in test_df.columns:
     test_df['Home_Band'] = test_df['Home_Band_Num'].map(REV_MAP)
 if 'Away_Band' not in test_df.columns:
     test_df['Away_Band'] = test_df['Away_Band_Num'].map(REV_MAP)
 
-# Calcular M_Diff e Dominant (garantir que existem)
+# Calcular M_Diff e Dominant
 if 'M_Diff' not in test_df.columns:
     test_df['M_Diff'] = test_df['M_H'] - test_df['M_A']
     
 test_df['Dominant'] = test_df.apply(dominant_side, axis=1)
-
-# VALIDAÇÃO FINAL ANTES DE PROSSEGUIR
-if test_df.empty:
-    st.error("❌ Nenhum dado disponível após preparação.")
-    st.stop()
 
 # Recomendações (regras)
 if compare_rules:
@@ -812,6 +812,7 @@ test_df['ML_Correct'] = test_df.apply(lambda r: check_recommendation(r['ML_Recom
 test_df['Auto_Correct'] = test_df.apply(lambda r: check_recommendation(r['Auto_Recommendation'], r['Result']), axis=1)
 
 st.success(f"✅ Dados preparados: {len(test_df)} jogos para análise")
+
 
 ########################################
 # BLOCO 10 – MÉTRICAS & SUMÁRIOS (CORRIGIDO COM GOLS)
