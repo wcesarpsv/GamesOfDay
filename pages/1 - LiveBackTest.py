@@ -11,7 +11,7 @@ st.title("🔮 Live Backtest – 1X2")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 🔒 Internal league filter (NOT shown in UI)
-EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "UEFA", "Friendly", "Super Cup"]
+EXCLUDED_LEAGUE_KEYWORDS = ["Cup", "Copa", "Copas", "UEFA", "Friendly", "Super Cup","trophy"]
 _EXC_PATTERN = re.compile("|".join(map(re.escape, EXCLUDED_LEAGUE_KEYWORDS)), flags=re.IGNORECASE) if EXCLUDED_LEAGUE_KEYWORDS else None
 
 # ──────────────────────────────────────────────────────────────────────────────
