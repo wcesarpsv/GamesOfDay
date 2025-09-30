@@ -923,6 +923,13 @@ with colv3:
     show_feat_imp = st.checkbox("Importância das features (se disponível)", value=False)
 
 ########################################
+# BLOCO 11B – Confusion Matrix
+########################################
+show_cm = st.checkbox("Mostrar Confusion Matrix", value=False)
+
+
+
+########################################
 # BLOCO 12 – GRÁFICOS
 ########################################
 def plot_roi(df, profit_col, title):
@@ -1023,6 +1030,40 @@ if show_feat_imp and hasattr(getattr(model, 'base_estimator_', model), "feature_
         st.info("O modelo não expõe 'feature_importances_'.")
 elif show_feat_imp:
     st.info("Importância de features disponível apenas para árvores (RF/XGB/LGBM).")
+
+
+def plot_conf_matrix(y_true, y_pred, labels=["Home","Draw","Away"]):
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    fig, ax = plt.subplots(figsize=(5,4))
+    im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+    ax.figure.colorbar(im, ax=ax)
+    
+    # Títulos e eixos
+    ax.set(
+        xticks=np.arange(cm.shape[1]),
+        yticks=np.arange(cm.shape[0]),
+        xticklabels=labels, yticklabels=labels,
+        ylabel="Resultado Real",
+        xlabel="Resultado Previsto",
+        title="Matriz de Confusão"
+    )
+    
+    # Colocar os números em cada célula
+    fmt = "d"
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], fmt),
+                    ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    
+    st.pyplot(fig)
+
+# Exibir apenas se ativado
+if show_cm:
+    st.subheader("🔲 Matriz de Confusão")
+    plot_conf_matrix(test_df['Result'], test_df['ML_Pred'])
+
 
 
 ########################################
