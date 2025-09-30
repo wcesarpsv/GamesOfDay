@@ -461,18 +461,22 @@ def calculate_parlay_odds(games_list, games_df):
             'game': f"{game['Home']} vs {game['Away']}",
             'bet': bet_type,
             'prob': prob,
-            'odds': odds
+            'odds': round(odds, 2)  # 🔥 2 casas decimais
         })
     
     expected_value = total_prob * total_odds - 1
-    return total_prob, total_odds, expected_value, game_details
+    return total_prob, round(total_odds, 2), expected_value, game_details  # 🔥 2 casas decimais
 
 def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, max_suggestions=5):
+    # 🔥 FILTRAR APENAS JOGOS DE HOJE
+    today = datetime.now().strftime("%Y-%m-%d")
+    games_today_filtered = games_df[games_df['Date'] == today].copy()
+    
     eligible_games = []
     
     st.sidebar.write(f"🔍 Debug Parlay:")
     
-    for idx, row in games_df.iterrows():
+    for idx, row in games_today_filtered.iterrows():
         kelly_zero = row['Kelly_Stake_ML'] == 0
         
         # Verificar todas as opções de aposta com probabilidade suficiente
@@ -500,37 +504,37 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
             best_option = max(options, key=lambda x: (x[1] * x[2] - 1))  # Maior EV
             bet_type, prob, odds = best_option
             
-            eligible_games.append((idx, bet_type, prob, odds))
+            eligible_games.append((idx, bet_type, prob, round(odds, 2)))  # 🔥 2 casas decimais
     
-    st.sidebar.write(f"Jogos elegíveis: {len(eligible_games)}")
+    st.sidebar.write(f"Jogos elegíveis HOJE: {len(eligible_games)}")
     
     # DEBUG: Mostrar os jogos elegíveis
     for i, (idx, bet_type, prob, odds) in enumerate(eligible_games):
-        game = games_df.loc[idx]
+        game = games_today_filtered.loc[idx]
         st.sidebar.write(f"  {i+1}. {game['Home']} vs {game['Away']} - {bet_type} (Prob: {prob:.1%}, Odd: {odds})")
     
     parlay_suggestions = []
     
     # Se temos pelo menos 2 jogos elegíveis, gerar parlays
     if len(eligible_games) >= 2:
-        # Parlays de 2 legs - critérios MUITO flexíveis para teste
+        # Parlays de 2 legs
         for combo in itertools.combinations(eligible_games, 2):
-            games_list = [(game[0], game[1]) for game in combo]  # (index, bet_type)
-            prob, odds, ev, details = calculate_parlay_odds(games_list, games_df)
+            games_list = [(game[0], game[1]) for game in combo]
+            prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
             
-            st.sidebar.write(f"Parlay 2-legs: Prob={prob:.1%}, Odds={odds:.2f}, EV={ev:.1%}")
+            st.sidebar.write(f"Parlay 2-legs: Prob={prob:.1%}, Odds={odds}, EV={ev:.1%}")
             
-            # Critérios MUITO flexíveis apenas para testar
-            if prob > 0.15 and odds > 1.50:  # Apenas para ver se funciona
-                stake = min(parlay_bankroll * 0.05, parlay_bankroll * 0.08 * prob)
+            # Critérios realistas mas não muito restritivos
+            if prob > 0.25 and odds > 1.80 and ev > -0.05:
+                stake = min(parlay_bankroll * 0.04, parlay_bankroll * 0.06 * prob)
                 stake = round(stake, 2)
                 
-                if stake >= 1:  # Stake mínimo de $1 apenas para teste
+                if stake >= 5:
                     parlay_suggestions.append({
                         'type': '2-Leg Parlay',
                         'games': games_list,
                         'probability': prob,
-                        'odds': round(odds, 2),
+                        'odds': odds,
                         'ev': ev,
                         'stake': stake,
                         'potential_win': round(stake * odds - stake, 2),
@@ -541,28 +545,28 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
         if len(eligible_games) >= 3:
             for combo in itertools.combinations(eligible_games, 3):
                 games_list = [(game[0], game[1]) for game in combo]
-                prob, odds, ev, details = calculate_parlay_odds(games_list, games_df)
+                prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
                 
-                st.sidebar.write(f"Parlay 3-legs: Prob={prob:.1%}, Odds={odds:.2f}, EV={ev:.1%}")
+                st.sidebar.write(f"Parlay 3-legs: Prob={prob:.1%}, Odds={odds}, EV={ev:.1%}")
                 
-                if prob > 0.10 and odds > 2.00:
-                    stake = min(parlay_bankroll * 0.03, parlay_bankroll * 0.05 * prob)
+                if prob > 0.15 and odds > 2.50 and ev > -0.10:
+                    stake = min(parlay_bankroll * 0.03, parlay_bankroll * 0.04 * prob)
                     stake = round(stake, 2)
                     
-                    if stake >= 1:
+                    if stake >= 5:
                         parlay_suggestions.append({
                             'type': '3-Leg Parlay',
                             'games': games_list,
                             'probability': prob,
-                            'odds': round(odds, 2),
+                            'odds': odds,
                             'ev': ev,
                             'stake': stake,
                             'potential_win': round(stake * odds - stake, 2),
                             'details': details
                         })
     
-    # Ordenar por probabilidade (mais importante para parlays)
-    parlay_suggestions.sort(key=lambda x: x['probability'], reverse=True)
+    # Ordenar por Expected Value (mais importante)
+    parlay_suggestions.sort(key=lambda x: x['ev'], reverse=True)
     
     st.sidebar.write(f"Sugestões geradas: {len(parlay_suggestions)}")
     
@@ -627,7 +631,7 @@ st.header("🎯 Machine Learning Recommendations")
 
 # Mostrar Kelly stakes e recomendações ML
 cols_to_show = [
-    'Time', 'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today',
+    'Date', 'Time', 'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today',
     'ML_Recommendation', 'ML_Correct', 'Kelly_Stake_ML',
     'Profit_ML_Fixed', 'Profit_ML_Kelly',
     'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away', 
@@ -664,11 +668,3 @@ if parlay_suggestions:
                 st.write(f"• {detail['game']} - {detail['bet']} (Prob: {detail['prob']:.1%}, Odd: {detail['odds']})")
 else:
     st.info("No profitable parlay suggestions found for today.")
-
-st.sidebar.info(f"""
-**System Parameters:**
-- ML Bankroll: ${bankroll:,}
-- Parlay Bankroll: ${parlay_bankroll:,}
-- Kelly Fraction: {kelly_fraction}
-- Min Parlay Prob: {min_parlay_prob:.0%}
-""")
