@@ -429,7 +429,7 @@ games_today[['Profit_ML_Fixed', 'Profit_ML_Kelly']] = games_today.apply(
 ########################################
 st.sidebar.subheader("Parlay System Parameters")
 parlay_bankroll = st.sidebar.number_input("Parlay Bankroll", 50, 5000, 200, 50)
-min_parlay_prob = st.sidebar.slider("Min Probability for Parlay", 0.50, 0.70, 0.52, 0.01)  # Reduzido para 52%
+min_parlay_prob = st.sidebar.slider("Min Probability for Parlay", 0.50, 0.70, 0.50, 0.01)
 max_parlay_suggestions = st.sidebar.slider("Max Suggestions", 1, 10, 5, 1)
 
 def calculate_parlay_odds(games_list, games_df):
@@ -448,6 +448,12 @@ def calculate_parlay_odds(games_list, games_df):
         elif bet_type == 'Draw':
             prob = game['ML_Proba_Draw']
             odds = game['Odd_D']
+        elif bet_type == '1X':
+            prob = game['ML_Proba_Home'] + game['ML_Proba_Draw']
+            odds = game['Odd_1X']
+        elif bet_type == 'X2':
+            prob = game['ML_Proba_Away'] + game['ML_Proba_Draw']
+            odds = game['Odd_X2']
         
         total_prob *= prob
         total_odds *= odds
@@ -461,89 +467,104 @@ def calculate_parlay_odds(games_list, games_df):
     expected_value = total_prob * total_odds - 1
     return total_prob, total_odds, expected_value, game_details
 
-def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.52, max_suggestions=5):
+def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, max_suggestions=5):
     eligible_games = []
     
-    # DEBUG: Mostrar quantos jogos têm Kelly = 0 e prob > min_prob
     st.sidebar.write(f"🔍 Debug Parlay:")
     
     for idx, row in games_df.iterrows():
         kelly_zero = row['Kelly_Stake_ML'] == 0
-        home_eligible = row['ML_Proba_Home'] > min_prob
-        away_eligible = row['ML_Proba_Away'] > min_prob
-        draw_eligible = row['ML_Proba_Draw'] > min_prob
         
-        if kelly_zero and (home_eligible or away_eligible or draw_eligible):
-            # Determinar o melhor tipo de aposta baseado na maior probabilidade
-            probs = {
-                'Home': row['ML_Proba_Home'],
-                'Away': row['ML_Proba_Away'], 
-                'Draw': row['ML_Proba_Draw']
-            }
-            best_bet = max(probs, key=probs.get)
+        # Verificar todas as opções de aposta com probabilidade suficiente
+        options = []
+        
+        # Home
+        if row['ML_Proba_Home'] > min_prob:
+            options.append(('Home', row['ML_Proba_Home'], row['Odd_H']))
+        # Away  
+        if row['ML_Proba_Away'] > min_prob:
+            options.append(('Away', row['ML_Proba_Away'], row['Odd_A']))
+        # Draw
+        if row['ML_Proba_Draw'] > min_prob:
+            options.append(('Draw', row['ML_Proba_Draw'], row['Odd_D']))
+        # Double Chance 1X
+        if (row['ML_Proba_Home'] + row['ML_Proba_Draw']) > min_prob:
+            options.append(('1X', row['ML_Proba_Home'] + row['ML_Proba_Draw'], row['Odd_1X']))
+        # Double Chance X2
+        if (row['ML_Proba_Away'] + row['ML_Proba_Draw']) > min_prob:
+            options.append(('X2', row['ML_Proba_Away'] + row['ML_Proba_Draw'], row['Odd_X2']))
+        
+        # Se tem Kelly = 0 e pelo menos uma opção com prob > min_prob
+        if kelly_zero and options:
+            # Escolher a opção com maior expected value
+            best_option = max(options, key=lambda x: (x[1] * x[2] - 1))  # Maior EV
+            bet_type, prob, odds = best_option
             
-            if best_bet == 'Home':
-                eligible_games.append((idx, 'Home', row['ML_Proba_Home'], row['Odd_H']))
-            elif best_bet == 'Away':
-                eligible_games.append((idx, 'Away', row['ML_Proba_Away'], row['Odd_A']))
-            elif best_bet == 'Draw':
-                eligible_games.append((idx, 'Draw', row['ML_Proba_Draw'], row['Odd_D']))
+            eligible_games.append((idx, bet_type, prob, odds))
     
     st.sidebar.write(f"Jogos elegíveis: {len(eligible_games)}")
     
+    # DEBUG: Mostrar os jogos elegíveis
+    for i, (idx, bet_type, prob, odds) in enumerate(eligible_games):
+        game = games_df.loc[idx]
+        st.sidebar.write(f"  {i+1}. {game['Home']} vs {game['Away']} - {bet_type} (Prob: {prob:.1%}, Odd: {odds})")
+    
     parlay_suggestions = []
     
-    # Parlays de 2 legs - critérios mais flexíveis
-    for combo in itertools.combinations(eligible_games, 2):
-        games_list = [(game[0], game[1]) for game in combo]
-        prob, odds, ev, details = calculate_parlay_odds(games_list, games_df)
-        
-        # Critérios mais flexíveis para parlays
-        if prob > 0.20 and odds > 1.80 and ev > -0.10:  # Reduzido threshold
-            stake = min(parlay_bankroll * 0.04, parlay_bankroll * 0.06 * prob)  # Stake um pouco maior
-            stake = round(stake, 2)
+    # Se temos pelo menos 2 jogos elegíveis, gerar parlays
+    if len(eligible_games) >= 2:
+        # Parlays de 2 legs - critérios MUITO flexíveis para teste
+        for combo in itertools.combinations(eligible_games, 2):
+            games_list = [(game[0], game[1]) for game in combo]  # (index, bet_type)
+            prob, odds, ev, details = calculate_parlay_odds(games_list, games_df)
             
-            if stake >= 5:  # Stake mínimo de $5
-                parlay_suggestions.append({
-                    'type': '2-Leg Parlay',
-                    'games': games_list,
-                    'probability': prob,
-                    'odds': round(odds, 2),
-                    'ev': ev,
-                    'stake': stake,
-                    'potential_win': round(stake * odds - stake, 2),
-                    'details': details
-                })
-    
-    # Parlays de 3 legs - critérios ainda mais flexíveis
-    for combo in itertools.combinations(eligible_games, 3):
-        games_list = [(game[0], game[1]) for game in combo]
-        prob, odds, ev, details = calculate_parlay_odds(games_list, games_df)
-        
-        if prob > 0.12 and odds > 2.50 and ev > -0.15:  # Critérios bem flexíveis
-            stake = min(parlay_bankroll * 0.03, parlay_bankroll * 0.04 * prob)
-            stake = round(stake, 2)
+            st.sidebar.write(f"Parlay 2-legs: Prob={prob:.1%}, Odds={odds:.2f}, EV={ev:.1%}")
             
-            if stake >= 5:
-                parlay_suggestions.append({
-                    'type': '3-Leg Parlay',
-                    'games': games_list,
-                    'probability': prob,
-                    'odds': round(odds, 2),
-                    'ev': ev,
-                    'stake': stake,
-                    'potential_win': round(stake * odds - stake, 2),
-                    'details': details
-                })
+            # Critérios MUITO flexíveis apenas para testar
+            if prob > 0.15 and odds > 1.50:  # Apenas para ver se funciona
+                stake = min(parlay_bankroll * 0.05, parlay_bankroll * 0.08 * prob)
+                stake = round(stake, 2)
+                
+                if stake >= 1:  # Stake mínimo de $1 apenas para teste
+                    parlay_suggestions.append({
+                        'type': '2-Leg Parlay',
+                        'games': games_list,
+                        'probability': prob,
+                        'odds': round(odds, 2),
+                        'ev': ev,
+                        'stake': stake,
+                        'potential_win': round(stake * odds - stake, 2),
+                        'details': details
+                    })
+        
+        # Parlays de 3 legs (se tivermos pelo menos 3 jogos)
+        if len(eligible_games) >= 3:
+            for combo in itertools.combinations(eligible_games, 3):
+                games_list = [(game[0], game[1]) for game in combo]
+                prob, odds, ev, details = calculate_parlay_odds(games_list, games_df)
+                
+                st.sidebar.write(f"Parlay 3-legs: Prob={prob:.1%}, Odds={odds:.2f}, EV={ev:.1%}")
+                
+                if prob > 0.10 and odds > 2.00:
+                    stake = min(parlay_bankroll * 0.03, parlay_bankroll * 0.05 * prob)
+                    stake = round(stake, 2)
+                    
+                    if stake >= 1:
+                        parlay_suggestions.append({
+                            'type': '3-Leg Parlay',
+                            'games': games_list,
+                            'probability': prob,
+                            'odds': round(odds, 2),
+                            'ev': ev,
+                            'stake': stake,
+                            'potential_win': round(stake * odds - stake, 2),
+                            'details': details
+                        })
     
-    # Ordenar por Expected Value (mais importante) e depois por probabilidade
-    parlay_suggestions.sort(key=lambda x: (x['ev'], x['probability']), reverse=True)
+    # Ordenar por probabilidade (mais importante para parlays)
+    parlay_suggestions.sort(key=lambda x: x['probability'], reverse=True)
     
-    # DEBUG: Mostrar informações das sugestões
-    if parlay_suggestions:
-        st.sidebar.write(f"Sugestões geradas: {len(parlay_suggestions)}")
-        for i, p in enumerate(parlay_suggestions[:3]):
-            st.sidebar.write(f"#{i+1} EV: {p['ev']:.1%} Prob: {p['probability']:.1%}")
+    st.sidebar.write(f"Sugestões geradas: {len(parlay_suggestions)}")
     
     return parlay_suggestions[:max_suggestions]
 
@@ -551,6 +572,7 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.52, ma
 parlay_suggestions = generate_parlay_suggestions(
     games_today, parlay_bankroll, min_parlay_prob, max_parlay_suggestions
 )
+
 
 ########################################
 ##### Bloco 11 – Performance Summary ###
