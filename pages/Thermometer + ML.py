@@ -349,10 +349,14 @@ features_raw = [f for f in features_raw if f in history.columns]
 X = history[features_raw].copy()
 y = history['Result']
 
+# Map bands
 BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
-if 'Home_Band' in X: X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
-if 'Away_Band' in X: X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
+if 'Home_Band' in X: 
+    X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
+if 'Away_Band' in X: 
+    X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
 
+# Encode categorical vars
 cat_cols = [c for c in ['Dominant','League_Classification'] if c in X]
 encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
 if cat_cols:
@@ -361,7 +365,8 @@ if cat_cols:
     X = pd.concat([X.drop(columns=cat_cols).reset_index(drop=True),
                    encoded_df.reset_index(drop=True)], axis=1)
 
-model = RandomForestClassifier(
+# Modelo base
+base_model = RandomForestClassifier(
     n_estimators=800,
     max_depth=12,
     min_samples_split=10,
@@ -371,6 +376,16 @@ model = RandomForestClassifier(
     random_state=42,
     n_jobs=-1
 )
+
+# Modelo calibrado (Isotonic)
+from sklearn.calibration import CalibratedClassifierCV
+model = CalibratedClassifierCV(
+    base_estimator=base_model,
+    method="isotonic",
+    cv=5
+)
+
+# Treinamento já com calibração
 model.fit(X, y)
 
 
