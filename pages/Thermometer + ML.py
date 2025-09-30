@@ -326,7 +326,7 @@ games_today['Auto_Recommendation'] = games_today.apply(lambda r: auto_recommenda
 ########################################
 ####### Bloco 7 – Train ML Model #######
 ########################################
-from sklearn.preprocessing import label_binarize
+from sklearn.preprocessing import label_binarize, OneHotEncoder
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 import numpy as np
@@ -376,14 +376,6 @@ if cat_cols:
 classes = ["Home", "Draw", "Away"]
 y_bin = label_binarize(y, classes=classes)
 
-# ... (your previous data preparation code remains the same) ...
-
-from sklearn.preprocessing import OneHotEncoder # <- Add the missing import
-
-# =====================================
-# Treino do modelo calibrado isotônico (Approach Corrected)
-# =====================================
-
 base_model = RandomForestClassifier(
     n_estimators=800,
     max_depth=12,
@@ -400,15 +392,13 @@ calibrated_model = CalibratedClassifierCV(
     base_estimator=base_model,
     method="isotonic",
     cv=5,
-    ensemble=True # This is the default and ensures proper validation
+    ensemble=True  # This uses proper cross-validation to prevent data leakage
 )
 
-calibrated_model.fit(X, y) # Use the original multi-class target 'y'
+calibrated_model.fit(X, y)  # Use the original multi-class target 'y'
 
-# To get calibrated probabilities, use the model directly
-probs_calibradas = calibrated_model.predict_proba(X)
-
-
+# The model is now ready for predictions
+# You can use calibrated_model.predict_proba(X) directly
 
 ########################################
 ####### Bloco 8 – Apply ML to Today ####
@@ -448,12 +438,12 @@ if cat_cols:
     X_today = pd.concat([X_today.drop(columns=cat_cols).reset_index(drop=True),
                          encoded_today_df.reset_index(drop=True)], axis=1)
 
-ml_preds = model.predict(X_today)
-ml_proba = model.predict_proba(X_today)
+ml_preds = calibrated_model.predict(X_today)
+ml_proba = calibrated_model.predict_proba(X_today)
 
-games_today["ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
-games_today["ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
-games_today["ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
+games_today["ML_Proba_Home"] = ml_proba[:, list(calibrated_model.classes_).index("Home")]
+games_today["ML_Proba_Draw"] = ml_proba[:, list(calibrated_model.classes_).index("Draw")]
+games_today["ML_Proba_Away"] = ml_proba[:, list(calibrated_model.classes_).index("Away")]
 
 games_today["ML_Recommendation"] = [
     ml_recommendation_from_proba(row["ML_Proba_Home"], 
@@ -462,7 +452,6 @@ games_today["ML_Recommendation"] = [
                                  threshold=threshold)
     for _, row in games_today.iterrows()
 ]
-
 
 ########################################
 ##### Bloco 8B – Avaliar Resultados ####
