@@ -271,11 +271,25 @@ games_today["ML_Recommendation"] = [
 ########################################
 ##### Bloco 8 – Kelly Criterion ########
 ########################################
-st.sidebar.subheader("Kelly Criterion Parameters")
-bankroll = st.sidebar.number_input("Bankroll Size", 100, 10000, 1000, 100)
-kelly_fraction = st.sidebar.slider("Kelly Fraction", 0.1, 1.0, 0.25, 0.05)
-min_stake = st.sidebar.number_input("Minimum Stake", 1, 50, 1, 1)
-max_stake = st.sidebar.number_input("Maximum Stake", 10, 500, 100, 10)
+
+# SEÇÃO 1: PARÂMETROS ML PRINCIPAL
+st.sidebar.header("🎯 ML Principal System")
+
+bankroll = st.sidebar.number_input("ML Bankroll Size", 100, 10000, 1000, 100, help="Bankroll para apostas individuais do ML")
+kelly_fraction = st.sidebar.slider("Kelly Fraction ML", 0.1, 1.0, 0.25, 0.05, help="Fração do Kelly para apostas individuais (mais conservador = menor)")
+min_stake = st.sidebar.number_input("Minimum Stake ML", 1, 50, 1, 1, help="Stake mínimo por aposta individual")
+max_stake = st.sidebar.number_input("Maximum Stake ML", 10, 500, 100, 10, help="Stake máximo por aposta individual")
+
+# Resumo ML Principal
+st.sidebar.markdown("---")
+st.sidebar.markdown("""
+<div style="background-color: #e6f3ff; padding: 10px; border-radius: 5px; border-left: 4px solid #1890ff;">
+<small><strong>🎯 ML Principal</strong><br>
+• Apostas individuais com edge comprovado<br>
+• Kelly determina stake ideal<br>
+• Foco em valor a longo prazo</small>
+</div>
+""", unsafe_allow_html=True)
 
 def kelly_stake(probability, odds, bankroll=1000, kelly_fraction=0.25, min_stake=1, max_stake=100):
     if pd.isna(probability) or pd.isna(odds) or odds <= 1 or probability <= 0: return 0
@@ -427,10 +441,24 @@ games_today[['Profit_ML_Fixed', 'Profit_ML_Kelly']] = games_today.apply(
 ########################################
 #### Bloco 10 – Auto Parlay System #####
 ########################################
-st.sidebar.subheader("Parlay System Parameters")
-parlay_bankroll = st.sidebar.number_input("Parlay Bankroll", 50, 5000, 200, 50)
-min_parlay_prob = st.sidebar.slider("Min Probability for Parlay", 0.50, 0.70, 0.50, 0.01)
-max_parlay_suggestions = st.sidebar.slider("Max Suggestions", 1, 10, 5, 1)
+
+# SEÇÃO 2: PARÂMETROS PARLAY
+st.sidebar.header("🎰 Parlay System")
+
+parlay_bankroll = st.sidebar.number_input("Parlay Bankroll", 50, 5000, 200, 50, help="Bankroll separado para parlays")
+min_parlay_prob = st.sidebar.slider("Min Probability Parlay", 0.50, 0.70, 0.50, 0.01, help="Probabilidade mínima para considerar jogo no parlay")
+max_parlay_suggestions = st.sidebar.slider("Max Parlay Suggestions", 1, 10, 5, 1, help="Número máximo de sugestões de parlay")
+
+# Resumo Parlay System
+st.sidebar.markdown("---")
+st.sidebar.markdown("""
+<div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; border-left: 4px solid #722ed1;">
+<small><strong>🎰 Parlay System</strong><br>
+• Combina jogos sem edge individual<br>
+• Busca EV positivo em combinações<br>
+• Bankroll separado do principal</small>
+</div>
+""", unsafe_allow_html=True)
 
 def calculate_parlay_odds(games_list, games_df):
     total_prob = 1.0
@@ -477,82 +505,62 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
     for idx, row in games_today_filtered.iterrows():
         kelly_zero = row['Kelly_Stake_ML'] == 0
         
-        # Verificar todas as opções de aposta com probabilidade suficiente
-        options = []
-        
-        # Home
-        if row['ML_Proba_Home'] > min_prob:
-            options.append(('Home', row['ML_Proba_Home'], row['Odd_H']))
-        # Away  
-        if row['ML_Proba_Away'] > min_prob:
-            options.append(('Away', row['ML_Proba_Away'], row['Odd_A']))
-        # Draw
-        if row['ML_Proba_Draw'] > min_prob:
-            options.append(('Draw', row['ML_Proba_Draw'], row['Odd_D']))
-        # Double Chance 1X
-        if (row['ML_Proba_Home'] + row['ML_Proba_Draw']) > min_prob:
-            options.append(('1X', row['ML_Proba_Home'] + row['ML_Proba_Draw'], row['Odd_1X']))
-        # Double Chance X2
-        if (row['ML_Proba_Away'] + row['ML_Proba_Draw']) > min_prob:
-            options.append(('X2', row['ML_Proba_Away'] + row['ML_Proba_Draw'], row['Odd_X2']))
-        
-        # Se tem Kelly = 0 e pelo menos uma opção com prob > min_prob
-        if kelly_zero and options:
-            # Escolher a opção com maior expected value
-            best_option = max(options, key=lambda x: (x[1] * x[2] - 1))
-            bet_type, prob, odds = best_option
+        # 🔥 NOVA LÓGICA: Usar a recomendação do ML (não a maior prob)
+        if kelly_zero and row['ML_Recommendation'] != '❌ Avoid':
+            rec = row['ML_Recommendation']
             
-            eligible_games.append((idx, bet_type, prob, round(odds, 2)))
+            if 'Back Home' in rec:
+                prob = row['ML_Proba_Home']
+                odds = row['Odd_H']
+                bet_type = 'Home'
+            elif 'Back Away' in rec:
+                prob = row['ML_Proba_Away'] 
+                odds = row['Odd_A']
+                bet_type = 'Away'
+            elif 'Back Draw' in rec:
+                prob = row['ML_Proba_Draw']
+                odds = row['Odd_D']
+                bet_type = 'Draw'
+            elif '1X' in rec:
+                prob = row['ML_Proba_Home'] + row['ML_Proba_Draw']
+                odds = row['Odd_1X']
+                bet_type = '1X'
+            elif 'X2' in rec:
+                prob = row['ML_Proba_Away'] + row['ML_Proba_Draw']
+                odds = row['Odd_X2']
+                bet_type = 'X2'
+            else:
+                continue
+            
+            # Só adicionar se atender critério mínimo de probabilidade
+            if prob > min_prob:
+                eligible_games.append((idx, bet_type, prob, round(odds, 2)))
     
     parlay_suggestions = []
     
-    # Se temos pelo menos 2 jogos elegíveis, gerar parlays
-    if len(eligible_games) >= 2:
-        # Parlays de 2 legs
-        for combo in itertools.combinations(eligible_games, 2):
-            games_list = [(game[0], game[1]) for game in combo]
-            prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
-            
-            # Critérios realistas
-            if prob > 0.25 and odds > 1.80 and ev > -0.05:
-                stake = min(parlay_bankroll * 0.04, parlay_bankroll * 0.06 * prob)
-                stake = round(stake, 2)
-                
-                if stake >= 5:
-                    parlay_suggestions.append({
-                        'type': '2-Leg Parlay',
-                        'games': games_list,
-                        'probability': prob,
-                        'odds': odds,
-                        'ev': ev,
-                        'stake': stake,
-                        'potential_win': round(stake * odds - stake, 2),
-                        'details': details
-                    })
+    # Parlays de 2 legs - FOCAR EM EV POSITIVO
+    for combo in itertools.combinations(eligible_games, 2):
+        games_list = [(game[0], game[1]) for game in combo]
+        prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
         
-        # Parlays de 3 legs (se tivermos pelo menos 3 jogos)
-        if len(eligible_games) >= 3:
-            for combo in itertools.combinations(eligible_games, 3):
-                games_list = [(game[0], game[1]) for game in combo]
-                prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
-                
-                if prob > 0.15 and odds > 2.50 and ev > -0.10:
-                    stake = min(parlay_bankroll * 0.03, parlay_bankroll * 0.04 * prob)
-                    stake = round(stake, 2)
-                    
-                    if stake >= 5:
-                        parlay_suggestions.append({
-                            'type': '3-Leg Parlay',
-                            'games': games_list,
-                            'probability': prob,
-                            'odds': odds,
-                            'ev': ev,
-                            'stake': stake,
-                            'potential_win': round(stake * odds - stake, 2),
-                            'details': details
-                        })
+        # 🔥 CRITÉRIO PRINCIPAL: EV POSITIVO
+        if ev > 0 and prob > 0.20 and odds > 1.80:
+            stake = min(parlay_bankroll * 0.05, parlay_bankroll * 0.08 * prob)
+            stake = round(stake, 2)
+            
+            if stake >= 5:
+                parlay_suggestions.append({
+                    'type': '2-Leg Parlay',
+                    'games': games_list,
+                    'probability': prob,
+                    'odds': odds,
+                    'ev': ev,
+                    'stake': stake,
+                    'potential_win': round(stake * odds - stake, 2),
+                    'details': details
+                })
     
-    # Ordenar por Expected Value
+    # Ordenar por Expected Value (mais importante)
     parlay_suggestions.sort(key=lambda x: x['ev'], reverse=True)
     
     return parlay_suggestions[:max_suggestions]
@@ -561,6 +569,7 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
 parlay_suggestions = generate_parlay_suggestions(
     games_today, parlay_bankroll, min_parlay_prob, max_parlay_suggestions
 )
+
 
 ########################################
 ##### Bloco 11 – Performance Summary ###
@@ -608,6 +617,19 @@ summary_ml = summary_stats_ml(finished_games)
 ########################################
 ##### Bloco 12 – Display Results #######
 ########################################
+
+# SEÇÃO 3: RESUMO GERAL
+st.sidebar.header("📊 System Summary")
+st.sidebar.markdown(f"""
+<div style="background-color: #f6ffed; padding: 10px; border-radius: 5px; border-left: 4px solid #52c41a;">
+<small><strong>⚙️ Configuração Atual</strong><br>
+• <strong>ML Bankroll:</strong> ${bankroll:,}<br>
+• <strong>Parlay Bankroll:</strong> ${parlay_bankroll:,}<br>
+• <strong>Kelly Fraction:</strong> {kelly_fraction}<br>
+• <strong>Min Prob Parlay:</strong> {min_parlay_prob:.0%}</small>
+</div>
+""", unsafe_allow_html=True)
+
 st.header("📈 Day's Summary - Machine Learning Performance")
 st.json(summary_ml)
 
