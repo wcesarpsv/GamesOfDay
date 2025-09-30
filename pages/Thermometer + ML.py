@@ -389,9 +389,9 @@ base_model = RandomForestClassifier(
 
 # Apply calibration directly to the multi-class model
 calibrated_model = CalibratedClassifierCV(
-    base_estimator=base_model,
+    estimator=base_model,
     method="isotonic",
-    cv=5,
+    cv=3,
     ensemble=True  # This uses proper cross-validation to prevent data leakage
 )
 
