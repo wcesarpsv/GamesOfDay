@@ -900,6 +900,11 @@ summary.update({
     "MCC": round(mcc_val, 4)
 })
 
+# Mostrar novamente o resumo atualizado
+st.subheader("📊 Resumo de Métricas (com extras)")
+st.json(summary)
+
+
 
 
 
