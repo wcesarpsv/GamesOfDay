@@ -606,14 +606,12 @@ summary_ml = summary_stats_ml(finished_games)
 ########################################
 
 # SEÇÃO 3: RESUMO GERAL - CORRIGIDO
-st.sidebar.markdown("---")
-st.sidebar.markdown("**📊 System Summary**")
-st.sidebar.markdown(f"""
-• **ML Bankroll:** ${bankroll:,}  
-• **Parlay Bankroll:** ${parlay_bankroll:,}  
-• **Kelly Fraction:** {kelly_fraction}  
-• **Min Prob Parlay:** {min_parlay_prob:.0%}
-""")
+with st.sidebar.container():
+    st.markdown("**📊 System Summary**")
+    st.markdown(f"• **ML Bankroll:** ${bankroll:,}")
+    st.markdown(f"• **Parlay Bankroll:** ${parlay_bankroll:,}")
+    st.markdown(f"• **Kelly Fraction:** {kelly_fraction}")
+    st.markdown(f"• **Min Prob Parlay:** {min_parlay_prob:.0%}")
 
 st.header("📈 Day's Summary - Machine Learning Performance")
 st.json(summary_ml)
