@@ -155,6 +155,8 @@ if os.path.exists(livescore_file):
 else:
     st.warning(f"No LiveScore results file found for selected date: {selected_date_str}")
 
+
+
 ########################################
 ####### Bloco 5 – Features Extras ######
 ########################################
