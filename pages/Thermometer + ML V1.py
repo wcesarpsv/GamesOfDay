@@ -815,11 +815,11 @@ available_cols = [c for c in cols_to_show if c in games_today.columns]
 st.subheader("📊 Games – Rules vs ML (Fixed vs Kelly Staking)")
 st.dataframe(
     games_today[available_cols]
-    # .style.format({
-        'Goals_H_Today': '{:.0f}',
-        'Goals_A_Today': '{:.0f}',
-        'Home_Red': '{:.0f}',
-        'Away_Red': '{:.0f}',
+    # # .style.format({
+    #     'Goals_H_Today': '{:.0f}',
+    #     'Goals_A_Today': '{:.0f}',
+    #     'Home_Red': '{:.0f}',
+    #     'Away_Red': '{:.0f}',
         'Profit_Auto_Fixed': '{:.2f}',
         'Profit_Auto_Kelly': '{:.2f}',
         'Profit_ML_Fixed': '{:.2f}',
