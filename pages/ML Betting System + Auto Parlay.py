@@ -282,14 +282,8 @@ max_stake = st.sidebar.number_input("Maximum Stake ML", 10, 500, 100, 10, help="
 
 # Resumo ML Principal - CORRIGIDO
 st.sidebar.markdown("---")
-st.sidebar.markdown("""
-<div style="background-color: #e6f3ff; padding: 10px; border-radius: 5px; border-left: 4px solid #1890ff; margin: 10px 0;">
-<small><strong>🎯 ML Principal</strong><br>
-• Apostas individuais com edge comprovado<br>
-• Kelly determina stake ideal<br>
-• Foco em valor a longo prazo</small>
-</div>
-""", unsafe_allow_html=True)
+st.sidebar.markdown("**🎯 ML Principal**")
+st.sidebar.markdown("• Apostas individuais com edge comprovado  \n• Kelly determina stake ideal  \n• Foco em valor a longo prazo")
 
 def kelly_stake(probability, odds, bankroll=1000, kelly_fraction=0.25, min_stake=1, max_stake=100):
     if pd.isna(probability) or pd.isna(odds) or odds <= 1 or probability <= 0: return 0
@@ -612,16 +606,14 @@ summary_ml = summary_stats_ml(finished_games)
 ########################################
 
 # SEÇÃO 3: RESUMO GERAL - CORRIGIDO
-st.sidebar.header("📊 System Summary")
+st.sidebar.markdown("---")
+st.sidebar.markdown("**📊 System Summary**")
 st.sidebar.markdown(f"""
-<div style="background-color: #f6ffed; padding: 10px; border-radius: 5px; border-left: 4px solid #52c41a; margin: 10px 0;">
-<small><strong>⚙️ Configuração Atual</strong><br>
-• <strong>ML Bankroll:</strong> ${bankroll:,}<br>
-• <strong>Parlay Bankroll:</strong> ${parlay_bankroll:,}<br>
-• <strong>Kelly Fraction:</strong> {kelly_fraction}<br>
-• <strong>Min Prob Parlay:</strong> {min_parlay_prob:.0%}</small>
-</div>
-""", unsafe_allow_html=True)
+• **ML Bankroll:** ${bankroll:,}  
+• **Parlay Bankroll:** ${parlay_bankroll:,}  
+• **Kelly Fraction:** {kelly_fraction}  
+• **Min Prob Parlay:** {min_parlay_prob:.0%}
+""")
 
 st.header("📈 Day's Summary - Machine Learning Performance")
 st.json(summary_ml)
