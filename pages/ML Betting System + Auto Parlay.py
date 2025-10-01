@@ -666,9 +666,11 @@ st.sidebar.markdown(f"""
 **⚙️ Configuração Atual**  
 • **ML Bankroll:** ${bankroll:,}  
 • **Parlay Bankroll:** ${parlay_bankroll:,}  
+• **Super Parlay Stake:** ${super_parlay_stake}  
 • **Kelly Fraction:** {kelly_fraction}  
 • **Min Prob Parlay:** {min_parlay_prob:.0%}  
-• **Parlay Legs:** {min_parlay_legs}-{max_parlay_legs}  🔥 NOVO
+• **Parlay Legs:** {min_parlay_legs}-{max_parlay_legs}  
+• **Super Parlay Target:** {target_super_odds}  
 """)
 
 st.header("📈 Day's Summary - Machine Learning Performance")
@@ -724,3 +726,145 @@ if parlay_suggestions:
                 st.write(f"• {detail['game']} - {detail['bet']} (Prob: {detail['prob']:.1%}, Odd: {detail['odds']})")
 else:
     st.info("No profitable parlay suggestions found for today.")
+
+
+
+########################################
+##### Bloco 13 – SUPER PARLAY OF THE DAY #
+########################################
+
+# SEÇÃO 4: SUPER PARLAY
+st.sidebar.header("🎉 SUPER PARLAY OF THE DAY")
+
+super_parlay_stake = st.sidebar.number_input("Super Parlay Stake", 1, 10, 2, 1, help="Stake fixo para o Super Parlay (aposta divertida)")
+target_super_odds = st.sidebar.slider("Target Odds", 20, 100, 50, 5, help="Odd alvo para o Super Parlay")
+
+# Resumo Super Parlay
+st.sidebar.markdown("---")
+st.sidebar.markdown("**🎉 SUPER PARLAY**")
+st.sidebar.markdown("• Combina as maiores probabilidades  \n• Odd alvo: ~50  \n• Aposta divertida ($2-5)  \n• Ideal para compartilhar")
+
+def generate_super_parlay(games_df, target_odds=50, max_games=8):
+    """Gera um SUPER PARLAY com as maiores probabilidades até atingir a odd alvo"""
+    
+    # Filtrar apenas jogos de hoje com recomendação
+    games_today = games_df[games_df['ML_Recommendation'] != '❌ Avoid'].copy()
+    
+    if len(games_today) < 3:
+        return None
+    
+    # Criar lista de todas as probabilidades disponíveis
+    all_bets = []
+    
+    for idx, row in games_today.iterrows():
+        rec = row['ML_Recommendation']
+        
+        if 'Back Home' in rec:
+            prob = row['ML_Proba_Home']
+            odds = row['Odd_H']
+            bet_type = 'Home'
+        elif 'Back Away' in rec:
+            prob = row['ML_Proba_Away']
+            odds = row['Odd_A']
+            bet_type = 'Away'
+        elif 'Back Draw' in rec:
+            prob = row['ML_Proba_Draw']
+            odds = row['Odd_D']
+            bet_type = 'Draw'
+        elif '1X' in rec:
+            prob = row['ML_Proba_Home'] + row['ML_Proba_Draw']
+            odds = row['Odd_1X']
+            bet_type = '1X'
+        elif 'X2' in rec:
+            prob = row['ML_Proba_Away'] + row['ML_Proba_Draw']
+            odds = row['Odd_X2']
+            bet_type = 'X2'
+        else:
+            continue
+        
+        all_bets.append({
+            'game_idx': idx,
+            'bet_type': bet_type,
+            'probability': prob,
+            'odds': odds,
+            'game': f"{row['Home']} vs {row['Away']}",
+            'league': row['League']
+        })
+    
+    # Ordenar por probabilidade (maior primeiro)
+    all_bets.sort(key=lambda x: x['probability'], reverse=True)
+    
+    # Selecionar combinação que mais se aproxima da odd alvo
+    best_combination = []
+    current_odds = 1.0
+    current_prob = 1.0
+    
+    for bet in all_bets[:max_games]:  # Limitar a 8 jogos no máximo
+        if current_odds * bet['odds'] <= target_odds * 1.5:  # Não ultrapassar muito a odd alvo
+            best_combination.append(bet)
+            current_odds *= bet['odds']
+            current_prob *= bet['probability']
+            
+            # Parar quando atingir ou ultrapassar a odd alvo
+            if current_odds >= target_odds:
+                break
+    
+    # Calcular estatísticas finais
+    if len(best_combination) >= 3:  # Mínimo de 3 legs
+        expected_value = current_prob * current_odds - 1
+        potential_win = super_parlay_stake * current_odds - super_parlay_stake
+        
+        return {
+            'type': f'SUPER PARLAY ({len(best_combination)} legs)',
+            'games': [(bet['game_idx'], bet['bet_type']) for bet in best_combination],
+            'probability': current_prob,
+            'odds': round(current_odds, 2),
+            'ev': expected_value,
+            'stake': super_parlay_stake,
+            'potential_win': round(potential_win, 2),
+            'details': [{
+                'game': bet['game'],
+                'bet': bet['bet_type'],
+                'prob': bet['probability'],
+                'odds': round(bet['odds'], 2),
+                'league': bet['league']
+            } for bet in best_combination]
+        }
+    
+    return None
+
+# Gerar SUPER PARLAY
+super_parlay = generate_super_parlay(games_today, target_super_odds)
+
+# 🔥 NOVO: Adicionar esta parte no final do Bloco 12, ANTES do fechamento
+st.header("🎉 SUPER PARLAY OF THE DAY")
+
+if super_parlay:
+    # Display especial para o SUPER PARLAY
+    st.success("🔥 **SPECIAL OF THE DAY!** 🔥")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Probabilidade", f"{super_parlay['probability']:.1%}")
+    with col2:
+        st.metric("Odds", f"{super_parlay['odds']:.2f}")
+    with col3:
+        st.metric("Potencial", f"${super_parlay['potential_win']:.2f}")
+    
+    st.write(f"**Stake Recomendado:** ${super_parlay['stake']} | **Expected Value:** {super_parlay['ev']:+.1%}")
+    
+    # Mostrar jogos em formato mais visual
+    st.subheader("🎯 Jogos Selecionados:")
+    for i, detail in enumerate(super_parlay['details'], 1):
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.write(f"**{i}. {detail['game']}** ({detail['league']})")
+        with col2:
+            st.write(f"**{detail['bet']}** (Odd: {detail['odds']})")
+    
+    # Botão para compartilhar (simulado)
+    st.markdown("---")
+    st.markdown("**📱 Compartilhe este Super Parlay!**")
+    
+else:
+    st.info("Não foi possível gerar um Super Parlay hoje. Tente ajustar a odd alvo ou aguarde mais jogos.")
