@@ -532,7 +532,7 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
         prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
         
         # 🔥 CRITÉRIO PRINCIPAL: EV POSITIVO
-        if ev > 0 and prob > 0.20 and odds > 1.80:
+        if ev > 0 and prob > 0.20 and odds > 1.70:
             stake = min(parlay_bankroll * 0.05, parlay_bankroll * 0.08 * prob)
             stake = round(stake, 2)
             
