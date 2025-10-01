@@ -856,6 +856,29 @@ if parlay_suggestions:
 else:
     st.info("No profitable parlay suggestions found for today.")
 
+
+
+st.header("🎰 Auto Parlay Recommendations")
+
+if parlay_suggestions:
+    # Mostrar estatísticas dos parlays
+    legs_count = {}
+    for parlay in parlay_suggestions:
+        leg_type = parlay['type']
+        legs_count[leg_type] = legs_count.get(leg_type, 0) + 1
+    
+    stats_text = " | ".join([f"{count}x {leg}" for leg, count in legs_count.items()])
+    st.success(f"📊 Distribuição: {stats_text}")
+    
+    for i, parlay in enumerate(parlay_suggestions):
+        with st.expander(f"#{i+1} {parlay['type']} - Prob: {parlay['probability']:.1%} | Odds: {parlay['odds']} | EV: {parlay['ev']:+.1%}"):
+            st.write(f"**Stake Sugerido:** ${parlay['stake']} | **Potencial:** ${parlay['potential_win']}")
+            
+            for detail in parlay['details']:
+                st.write(f"• {detail['game']} - {detail['bet']} (Prob: {detail['prob']:.1%}, Odd: {detail['odds']})")
+else:
+    st.info("No profitable parlay suggestions found for today.")
+
 # 🔥🔥🔥 SUPER PARLAY SECTION - AGORA AQUI! 🔥🔥🔥
 st.header("🎉 SUPER PARLAY OF THE DAY")
 
