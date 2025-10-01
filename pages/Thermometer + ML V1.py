@@ -114,9 +114,6 @@ if 'Goals_A_Today' not in games_today.columns:
 if os.path.exists(livescore_file):
     st.info(f"LiveScore file found: {livescore_file}")
     results_df = pd.read_csv(livescore_file)
-
-    # FILTER OUT CANCELED AND POSTPONED GAMES
-    results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
     
     required_cols = [
         'game_id', 'status', 'home_goal', 'away_goal',
@@ -138,14 +135,23 @@ if os.path.exists(livescore_file):
             suffixes=('', '_RAW')
         )
 
-        # Update goals only for finished games
-        games_today['Goals_H_Today'] = games_today['home_goal']
-        games_today['Goals_A_Today'] = games_today['away_goal']
-        games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
+        # Update goals - show "C" for Canceled, "P" for Postponed
+        games_today['Goals_H_Today'] = np.where(
+            games_today['status'] == 'Cancel', 'C',
+            np.where(games_today['status'] == 'Postp.', 'P', games_today['home_goal'])
+        )
+        games_today['Goals_A_Today'] = np.where(
+            games_today['status'] == 'Cancel', 'C',
+            np.where(games_today['status'] == 'Postp.', 'P', games_today['away_goal'])
+        )
         
-        # ADD RED CARD COLUMNS
-        games_today['Home_Red'] = games_today['home_red']
-        games_today['Away_Red'] = games_today['away_red']
+        # ADD RED CARD COLUMNS - show "-" for Canceled/Postponed
+        games_today['Home_Red'] = np.where(
+            games_today['status'].isin(['Cancel', 'Postp.']), '-', games_today['home_red']
+        )
+        games_today['Away_Red'] = np.where(
+            games_today['status'].isin(['Cancel', 'Postp.']), '-', games_today['away_red']
+        )
 else:
     st.warning(f"No LiveScore results file found for selected date: {selected_date_str}")
 
