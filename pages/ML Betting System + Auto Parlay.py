@@ -810,6 +810,7 @@ st.dataframe(
         'Odd_A': '{:.2f}'
     }),
     use_container_width=True
+    height=1200
 
 
 )
@@ -834,7 +835,7 @@ if parlay_suggestions:
                 st.write(f"• {detail['game']} - {detail['bet']} (Prob: {detail['prob']:.1%}, Odd: {detail['odds']})")
 else:
     st.info("No profitable parlay suggestions found for today.")
-    height=1200
+    
     
 
 # 🔥🔥🔥 SUPER PARLAY SECTION - AGORA AQUI! 🔥🔥🔥
