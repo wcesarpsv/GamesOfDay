@@ -504,325 +504,59 @@ games_today['Profit_ML'] = games_today.apply(
 ########################################
 finished_games = games_today.dropna(subset=['Result_Today'])
 
-def kelly_stake(probability, odds, bankroll=1000, kelly_fraction=0.25, min_stake=1, max_stake=100):
-    """
-    Calculate Kelly Criterion stake size with practical limits
-    """
-    if pd.isna(probability) or pd.isna(odds) or odds <= 1 or probability <= 0:
-        return 0
-    
-    # Calculate edge and recommended stake fraction
-    edge = probability * odds - 1
-    if edge <= 0:
-        return 0
-    
-    # Full Kelly fraction
-    full_kelly_fraction = edge / (odds - 1)
-    
-    # Apply fractional Kelly and convert to absolute stake
-    fractional_kelly = full_kelly_fraction * kelly_fraction
-    recommended_stake = fractional_kelly * bankroll
-    
-    # Apply practical limits
-    if recommended_stake < min_stake:
-        return 0  # Don't bet if below minimum
-    elif recommended_stake > max_stake:
-        return max_stake
-    else:
-        return round(recommended_stake, 2)
-
-def calculate_profit_with_kelly(rec, result, odds_row, ml_probabilities, bankroll=1000, kelly_fraction=0.25, min_stake=1, max_stake=100):
-    """
-    Calculate profit using Kelly Criterion stake sizing with practical limits
-    """
-    if pd.isna(rec) or result is None or rec == '❌ Avoid':
-        return 0, 0
-    
-    rec = str(rec)
-    stake_fixed = 1  # Your original fixed stake
-    
-    # Determine bet type and get relevant probability
-    if 'Back Home' in rec:
-        odd = odds_row.get('Odd_H', np.nan)
-        prob = ml_probabilities.get('Home', 0.5)
-        stake_kelly = kelly_stake(prob, odd, bankroll, kelly_fraction, min_stake, max_stake)
-        profit_fixed = odd - 1 if result == "Home" else -1
-        profit_kelly = (odd - 1) * stake_kelly if result == "Home" else -stake_kelly
-        
-    elif 'Back Away' in rec:
-        odd = odds_row.get('Odd_A', np.nan)
-        prob = ml_probabilities.get('Away', 0.5)
-        stake_kelly = kelly_stake(prob, odd, bankroll, kelly_fraction, min_stake, max_stake)
-        profit_fixed = odd - 1 if result == "Away" else -1
-        profit_kelly = (odd - 1) * stake_kelly if result == "Away" else -stake_kelly
-        
-    elif 'Back Draw' in rec:
-        odd = odds_row.get('Odd_D', np.nan)
-        prob = ml_probabilities.get('Draw', 0.5)
-        stake_kelly = kelly_stake(prob, odd, bankroll, kelly_fraction, min_stake, max_stake)
-        profit_fixed = odd - 1 if result == "Draw" else -1
-        profit_kelly = (odd - 1) * stake_kelly if result == "Draw" else -stake_kelly
-        
-    elif '1X' in rec:
-        odd = odds_row.get('Odd_1X', np.nan)
-        prob = ml_probabilities.get('Home', 0) + ml_probabilities.get('Draw', 0)
-        stake_kelly = kelly_stake(prob, odd, bankroll, kelly_fraction, min_stake, max_stake)
-        profit_fixed = odd - 1 if result in ["Home", "Draw"] else -1
-        profit_kelly = (odd - 1) * stake_kelly if result in ["Home", "Draw"] else -stake_kelly
-        
-    elif 'X2' in rec:
-        odd = odds_row.get('Odd_X2', np.nan)
-        prob = ml_probabilities.get('Away', 0) + ml_probabilities.get('Draw', 0)
-        stake_kelly = kelly_stake(prob, odd, bankroll, kelly_fraction, min_stake, max_stake)
-        profit_fixed = odd - 1 if result in ["Away", "Draw"] else -1
-        profit_kelly = (odd - 1) * stake_kelly if result in ["Away", "Draw"] else -stake_kelly
-        
-    else:
-        return 0, 0
-    
-    return profit_fixed, profit_kelly
-
-# Add Kelly parameters in sidebar
-st.sidebar.subheader("Kelly Criterion Parameters")
-
-bankroll = st.sidebar.number_input(
-    "Bankroll Size", 
-    min_value=100, max_value=10000, value=1000, step=100,
-    help="Total bankroll for Kelly stake calculation"
-)
-
-kelly_fraction = st.sidebar.slider(
-    "Kelly Fraction", 
-    min_value=0.1, max_value=1.0, value=0.25, step=0.05,
-    help="Fraction of full Kelly stake to use (lower = more conservative)"
-)
-
-min_stake = st.sidebar.number_input(
-    "Minimum Stake", 
-    min_value=1, max_value=50, value=1, step=1,
-    help="Minimum stake amount per bet"
-)
-
-max_stake = st.sidebar.number_input(
-    "Maximum Stake", 
-    min_value=10, max_value=500, value=100, step=10,
-    help="Maximum stake amount per bet"
-)
-
-# Calculate profits for both methods
-games_today['Profit_Auto_Fixed'] = games_today.apply(
-    lambda r: calculate_profit(r['Auto_Recommendation'], r['Result_Today'], r), axis=1
-)
-games_today['Profit_ML_Fixed'] = games_today.apply(
-    lambda r: calculate_profit(r['ML_Recommendation'], r['Result_Today'], r), axis=1
-)
-
-# Calculate Kelly profits
-games_today[['Profit_Auto_Fixed', 'Profit_Auto_Kelly']] = games_today.apply(
-    lambda r: calculate_profit_with_kelly(
-        r['Auto_Recommendation'], 
-        r['Result_Today'], 
-        r,
-        {'Home': r.get('ML_Proba_Home', 0.5), 
-         'Draw': r.get('ML_Proba_Draw', 0.5), 
-         'Away': r.get('ML_Proba_Away', 0.5)},
-        bankroll, kelly_fraction, min_stake, max_stake
-    ), 
-    axis=1, result_type='expand'
-)
-
-games_today[['Profit_ML_Fixed', 'Profit_ML_Kelly']] = games_today.apply(
-    lambda r: calculate_profit_with_kelly(
-        r['ML_Recommendation'], 
-        r['Result_Today'], 
-        r,
-        {'Home': r.get('ML_Proba_Home', 0.5), 
-         'Draw': r.get('ML_Proba_Draw', 0.5), 
-         'Away': r.get('ML_Proba_Away', 0.5)},
-        bankroll, kelly_fraction, min_stake, max_stake
-    ), 
-    axis=1, result_type='expand'
-)
-
-# Add Kelly stake columns for transparency
-def get_kelly_stake_only(rec, odds_row, ml_probabilities, bankroll=1000, kelly_fraction=0.25, min_stake=1, max_stake=100):
-    """Get only the Kelly stake amount for display"""
-    if pd.isna(rec) or rec == '❌ Avoid':
-        return 0
-    
-    rec = str(rec)
-    
-    if 'Back Home' in rec:
-        odd = odds_row.get('Odd_H', np.nan)
-        prob = ml_probabilities.get('Home', 0.5)
-        return kelly_stake(prob, odd, bankroll, kelly_fraction, min_stake, max_stake)
-        
-    elif 'Back Away' in rec:
-        odd = odds_row.get('Odd_A', np.nan)
-        prob = ml_probabilities.get('Away', 0.5)
-        return kelly_stake(prob, odd, bankroll, kelly_fraction, min_stake, max_stake)
-        
-    elif 'Back Draw' in rec:
-        odd = odds_row.get('Odd_D', np.nan)
-        prob = ml_probabilities.get('Draw', 0.5)
-        return kelly_stake(prob, odd, bankroll, kelly_fraction, min_stake, max_stake)
-        
-    elif '1X' in rec:
-        odd = odds_row.get('Odd_1X', np.nan)
-        prob = ml_probabilities.get('Home', 0) + ml_probabilities.get('Draw', 0)
-        return kelly_stake(prob, odd, bankroll, kelly_fraction, min_stake, max_stake)
-        
-    elif 'X2' in rec:
-        odd = odds_row.get('Odd_X2', np.nan)
-        prob = ml_probabilities.get('Away', 0) + ml_probabilities.get('Draw', 0)
-        return kelly_stake(prob, odd, bankroll, kelly_fraction, min_stake, max_stake)
-        
-    return 0
-
-games_today['Kelly_Stake_Auto'] = games_today.apply(
-    lambda r: get_kelly_stake_only(
-        r['Auto_Recommendation'], 
-        r,
-        {'Home': r.get('ML_Proba_Home', 0.5), 
-         'Draw': r.get('ML_Proba_Draw', 0.5), 
-         'Away': r.get('ML_Proba_Away', 0.5)},
-        bankroll, kelly_fraction, min_stake, max_stake
-    ), 
-    axis=1
-)
-
-games_today['Kelly_Stake_ML'] = games_today.apply(
-    lambda r: get_kelly_stake_only(
-        r['ML_Recommendation'], 
-        r,
-        {'Home': r.get('ML_Proba_Home', 0.5), 
-         'Draw': r.get('ML_Proba_Draw', 0.5), 
-         'Away': r.get('ML_Proba_Away', 0.5)},
-        bankroll, kelly_fraction, min_stake, max_stake
-    ), 
-    axis=1
-)
-
-########################################
-##### Bloco 8D – Resumo Agregado Expandido ###
-########################################
-finished_games = games_today.dropna(subset=['Result_Today'])
-
-def summary_stats_comprehensive(df, prefix):
+def summary_stats(df, prefix):
     bets = df[df[f'{prefix}_Correct'].notna()]
     total_bets = len(bets)
     correct_bets = bets[f'{prefix}_Correct'].sum()
     winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
-    
-    # Fixed stake profits
-    total_profit_fixed = bets[f'Profit_{prefix}_Fixed'].sum()
-    roi_fixed = (total_profit_fixed / total_bets) * 100 if total_bets > 0 else 0
-    
-    # Kelly stake profits
-    total_profit_kelly = bets[f'Profit_{prefix}_Kelly'].sum()
-    total_stake_kelly = bets[f'Kelly_Stake_{prefix}'].sum()
-    roi_kelly = (total_profit_kelly / total_stake_kelly) * 100 if total_stake_kelly > 0 else 0
-    
-    # Average stake sizes
-    avg_stake_kelly = bets[f'Kelly_Stake_{prefix}'].mean() if total_bets > 0 else 0
-    
-    # Risk metrics for Kelly
-    kelly_bets = bets[bets[f'Kelly_Stake_{prefix}'] > 0]
-    avg_edge = "N/A"
-    if len(kelly_bets) > 0:
-        # Calculate average edge for Kelly bets
-        edges = []
-        for _, bet in kelly_bets.iterrows():
-            rec = bet[f'{prefix}_Recommendation']
-            if 'Back Home' in rec:
-                prob = bet.get('ML_Proba_Home', 0.5)
-                odds = bet.get('Odd_H', 1)
-            elif 'Back Away' in rec:
-                prob = bet.get('ML_Proba_Away', 0.5)
-                odds = bet.get('Odd_A', 1)
-            elif 'Back Draw' in rec:
-                prob = bet.get('ML_Proba_Draw', 0.5)
-                odds = bet.get('Odd_D', 1)
-            elif '1X' in rec:
-                prob = bet.get('ML_Proba_Home', 0) + bet.get('ML_Proba_Draw', 0)
-                odds = bet.get('Odd_1X', 1)
-            elif 'X2' in rec:
-                prob = bet.get('ML_Proba_Away', 0) + bet.get('ML_Proba_Draw', 0)
-                odds = bet.get('Odd_X2', 1)
-            else:
-                continue
-            edges.append(prob * odds - 1)
-        avg_edge = round(np.mean(edges) * 100, 2) if edges else "N/A"
+    total_profit = bets[f'Profit_{prefix}'].sum()
 
     return {
         "Total Jogos": len(df),
         "Apostas Feitas": total_bets,
         "Acertos": int(correct_bets),
         "Winrate (%)": round(winrate, 2),
-        "Profit Fixed (Stake=1)": round(total_profit_fixed, 2),
-        "ROI Fixed (%)": round(roi_fixed, 2),
-        "Profit Kelly": round(total_profit_kelly, 2),
-        "Total Stake Kelly": round(total_stake_kelly, 2),
-        "ROI Kelly (%)": round(roi_kelly, 2),
-        "Avg Kelly Stake": round(avg_stake_kelly, 2),
-        "Kelly Bets Made": len(kelly_bets),
-        "Avg Edge (%)": avg_edge
+        "Profit Total": round(total_profit, 2)
     }
 
-summary_auto_comprehensive = summary_stats_comprehensive(finished_games, "Auto")
-summary_ml_comprehensive = summary_stats_comprehensive(finished_games, "ML")
+summary_auto = summary_stats(finished_games, "Auto")
+summary_ml = summary_stats(finished_games, "ML")
 
-st.subheader("📈 Day's Summary - Fixed vs Kelly Staking")
-col1, col2 = st.columns(2)
+st.subheader("📈 Day's Summary")
+st.markdown("### Performance Auto Recommendation (Rules)")
+st.json(summary_auto)
 
-with col1:
-    st.markdown("### Performance Auto Recommendation")
-    st.json(summary_auto_comprehensive)
+st.markdown("### Performance Machine Learning (ML)")
+st.json(summary_ml)
 
-with col2:
-    st.markdown("### Performance Machine Learning")
-    st.json(summary_ml_comprehensive)
-
-# Display Kelly parameters being used
-st.info(f"""
-**Kelly Parameters:** Bankroll = ${bankroll:,} | Kelly Fraction = {kelly_fraction} | Min Stake = ${min_stake} | Max Stake = ${max_stake}
-""")
 
 ########################################
-##### Bloco 9 – Exibição Final Expandida ###
+##### Bloco 9 – Exibição Final #########
 ########################################
 cols_to_show = [
     'Date', 'Time', 'League', 'Home', 'Away',
     'Goals_H_Today', 'Goals_A_Today',
     'Auto_Recommendation', 'ML_Recommendation',
     'Auto_Correct', 'ML_Correct',
-    'Profit_Auto_Fixed', 'Profit_Auto_Kelly', 'Kelly_Stake_Auto',
-    'Profit_ML_Fixed', 'Profit_ML_Kelly', 'Kelly_Stake_ML',
-    'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away',
-    'Odd_H', 'Odd_D', 'Odd_A'  # Added odds for transparency
+    'Profit_Auto', 'Profit_ML',
+    'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away'
 ]
 
 available_cols = [c for c in cols_to_show if c in games_today.columns]
 
-st.subheader("📊 Games – Rules vs ML (Fixed vs Kelly Staking)")
+st.subheader("📊 Games – Rules vs ML")
 st.dataframe(
     games_today[available_cols]
     .style.format({
         'Goals_H_Today': '{:.0f}',
         'Goals_A_Today': '{:.0f}',
-        'Profit_Auto_Fixed': '{:.2f}',
-        'Profit_Auto_Kelly': '{:.2f}',
-        'Profit_ML_Fixed': '{:.2f}',
-        'Profit_ML_Kelly': '{:.2f}',
-        'Kelly_Stake_Auto': '{:.2f}',
-        'Kelly_Stake_ML': '{:.2f}',
-        'ML_Proba_Home': '{:.3f}',
-        'ML_Proba_Draw': '{:.3f}',
-        'ML_Proba_Away': '{:.3f}',
-        'Odd_H': '{:.2f}',
-        'Odd_D': '{:.2f}', 
-        'Odd_A': '{:.2f}'
+        'Profit_Auto': '{:.2f}',
+        'Profit_ML': '{:.2f}',
+        'ML_Proba_Home': '{:.2f}',
+        'ML_Proba_Draw': '{:.2f}',
+        'ML_Proba_Away': '{:.2f}'
     }),
     use_container_width=True,
     height=1200
 )
+
