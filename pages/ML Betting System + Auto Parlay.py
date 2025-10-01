@@ -490,10 +490,8 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
     eligible_games = []
     
     for idx, row in games_today_filtered.iterrows():
-        # 🔥 NOVA REGRA: Incluir jogos com baixo stake Kelly também
-        kelly_low = row['Kelly_Stake_ML'] <= 10  # Stake baixo ou zero
-        
-        if kelly_low and row['ML_Recommendation'] != '❌ Avoid':
+        # 🔥 REGRA MUITO MAIS FLEXÍVEL: Incluir TODOS os jogos com recomendação
+        if row['ML_Recommendation'] != '❌ Avoid':
             rec = row['ML_Recommendation']
             
             if 'Back Home' in rec:
@@ -524,23 +522,25 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
             else:
                 continue
             
-            # 🔥 CRITÉRIO MELHORADO: Probabilidade E edge individual
-            if prob > min_prob and edge > -0.10:  # Permite pequeno edge negativo
+            # 🔥 CRITÉRIO MUITO MAIS FLEXÍVEL: Apenas probabilidade mínima
+            if prob > min_prob:
                 eligible_games.append((idx, bet_type, prob, round(odds, 2), edge))
+    
+    st.info(f"🎯 Jogos elegíveis para parlays: {len(eligible_games)}")
     
     parlay_suggestions = []
     
-    # Parlays de 2 legs
+    # Parlays de 2 legs - CRITÉRIOS MAIS FLEXÍVEIS
     for combo in itertools.combinations(eligible_games, 2):
         games_list = [(game[0], game[1]) for game in combo]
         prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
         
-        # 🔥 CRITÉRIOS MELHORADOS
-        if ev > 0.02:  # EV mínimo de 2%
-            stake = min(parlay_bankroll * 0.08, parlay_bankroll * 0.12 * prob)  # Stake mais agressivo
+        # 🔥 CRITÉRIOS MUITO MAIS FLEXÍVEIS
+        if ev > -0.10:  # Permite EV levemente negativo
+            stake = min(parlay_bankroll * 0.06, parlay_bankroll * 0.10 * max(prob, 0.3))
             stake = round(stake, 2)
             
-            if stake >= 5:
+            if stake >= 2:  # Stake mínimo reduzido
                 parlay_suggestions.append({
                     'type': '2-Leg Parlay',
                     'games': games_list,
@@ -552,16 +552,16 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
                     'details': details
                 })
     
-    # 🔥 ADICIONAR: Parlays de 3 legs também
+    # Parlays de 3 legs - CRITÉRIOS MAIS FLEXÍVEIS
     for combo in itertools.combinations(eligible_games, 3):
         games_list = [(game[0], game[1]) for game in combo]
         prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
         
-        if ev > 0.05 and prob > 0.15 and odds > 2.50:  # Critérios mais flexíveis
-            stake = min(parlay_bankroll * 0.05, parlay_bankroll * 0.08 * prob)
+        if ev > -0.15 and prob > 0.10:  # Critérios muito flexíveis
+            stake = min(parlay_bankroll * 0.04, parlay_bankroll * 0.07 * max(prob, 0.2))
             stake = round(stake, 2)
             
-            if stake >= 5:
+            if stake >= 2:
                 parlay_suggestions.append({
                     'type': '3-Leg Parlay',
                     'games': games_list,
@@ -575,6 +575,8 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
     
     # Ordenar por Expected Value
     parlay_suggestions.sort(key=lambda x: x['ev'], reverse=True)
+    
+    st.info(f"🎰 Parlays gerados: {len(parlay_suggestions)}")
     
     return parlay_suggestions[:max_suggestions]
 
