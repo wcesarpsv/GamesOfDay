@@ -809,7 +809,8 @@ st.dataframe(
         'Odd_D': '{:.2f}',
         'Odd_A': '{:.2f}'
     }),
-    use_container_width=True
+    use_container_width=True,
+    height=1200
 
 
 )
