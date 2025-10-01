@@ -115,6 +115,9 @@ if os.path.exists(livescore_file):
     st.info(f"LiveScore file found: {livescore_file}")
     results_df = pd.read_csv(livescore_file)
 
+    # FILTER OUT CANCELED AND POSTPONED GAMES
+    results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
+    
     required_cols = [
         'game_id', 'status', 'home_goal', 'away_goal',
         'home_ht_goal', 'away_ht_goal',
@@ -139,10 +142,12 @@ if os.path.exists(livescore_file):
         games_today['Goals_H_Today'] = games_today['home_goal']
         games_today['Goals_A_Today'] = games_today['away_goal']
         games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
+        
+        # ADD RED CARD COLUMNS
+        games_today['Home_Red'] = games_today['home_red']
+        games_today['Away_Red'] = games_today['away_red']
 else:
     st.warning(f"No LiveScore results file found for selected date: {selected_date_str}")
-
-
 
 ########################################
 ####### Bloco 5 – Features Extras ######
@@ -794,6 +799,7 @@ st.info(f"""
 cols_to_show = [
     'Date', 'Time', 'League', 'Home', 'Away',
     'Goals_H_Today', 'Goals_A_Today',
+    'Home_Red', 'Away_Red',
     'Auto_Recommendation', 'ML_Recommendation',
     'Auto_Correct', 'ML_Correct',
     'Profit_Auto_Fixed', 'Profit_Auto_Kelly', 'Kelly_Stake_Auto',
