@@ -111,7 +111,7 @@ history = history[(history["Goals_H_FT"] <= 3) & (history["Goals_A_FT"] <= 3)].c
 history["Diff_M"] = history["M_H"] - history["M_A"]
 games_today["Diff_M"] = games_today["M_H"] - games_today["M_A"]
 
-features_score = ["Odd_H", "Odd_D", "Odd_A", "Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P"]
+features_score = ["Odd_H", "Odd_D", "Odd_A", "Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P","OU_Total"]
 
 history_leagues = pd.get_dummies(history["League"], prefix="League")
 games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
