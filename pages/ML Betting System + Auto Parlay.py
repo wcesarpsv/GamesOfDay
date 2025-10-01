@@ -657,79 +657,6 @@ summary_ml = summary_stats_ml(finished_games)
 
 
 ########################################
-##### Bloco 12 – Display Results #######
-########################################
-
-# SEÇÃO 3: RESUMO GERAL - ATUALIZADO
-st.sidebar.header("📊 System Summary")
-st.sidebar.markdown(f"""
-**⚙️ Configuração Atual**  
-• **ML Bankroll:** ${bankroll:,}  
-• **Parlay Bankroll:** ${parlay_bankroll:,}  
-• **Super Parlay Stake:** ${super_parlay_stake}  
-• **Kelly Fraction:** {kelly_fraction}  
-• **Min Prob Parlay:** {min_parlay_prob:.0%}  
-• **Parlay Legs:** {min_parlay_legs}-{max_parlay_legs}  
-• **Super Parlay Target:** {target_super_odds}  
-""")
-
-st.header("📈 Day's Summary - Machine Learning Performance")
-st.json(summary_ml)
-
-st.header("🎯 Machine Learning Recommendations")
-
-# Mostrar Kelly stakes e recomendações ML
-cols_to_show = [
-    'Date', 'Time', 'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today',
-    'ML_Recommendation', 'ML_Correct', 'Kelly_Stake_ML',
-    'Profit_ML_Fixed', 'Profit_ML_Kelly',
-    'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away', 
-    'Odd_H', 'Odd_D', 'Odd_A'
-]
-
-available_cols = [c for c in cols_to_show if c in games_today.columns]
-
-st.dataframe(
-    games_today[available_cols].style.format({
-        'Goals_H_Today': '{:.0f}',
-        'Goals_A_Today': '{:.0f}',
-        'Kelly_Stake_ML': '{:.2f}',
-        'Profit_ML_Fixed': '{:.2f}',
-        'Profit_ML_Kelly': '{:.2f}',
-        'ML_Proba_Home': '{:.3f}',
-        'ML_Proba_Draw': '{:.3f}',
-        'ML_Proba_Away': '{:.3f}',
-        'Odd_H': '{:.2f}',
-        'Odd_D': '{:.2f}',
-        'Odd_A': '{:.2f}'
-    }),
-    use_container_width=True
-)
-
-st.header("🎰 Auto Parlay Recommendations")
-
-if parlay_suggestions:
-    # 🔥 NOVO: Mostrar estatísticas dos parlays
-    legs_count = {}
-    for parlay in parlay_suggestions:
-        leg_type = parlay['type']
-        legs_count[leg_type] = legs_count.get(leg_type, 0) + 1
-    
-    stats_text = " | ".join([f"{count}x {leg}" for leg, count in legs_count.items()])
-    st.success(f"📊 Distribuição: {stats_text}")
-    
-    for i, parlay in enumerate(parlay_suggestions):
-        with st.expander(f"#{i+1} {parlay['type']} - Prob: {parlay['probability']:.1%} | Odds: {parlay['odds']} | EV: {parlay['ev']:+.1%}"):
-            st.write(f"**Stake Sugerido:** ${parlay['stake']} | **Potencial:** ${parlay['potential_win']}")
-            
-            for detail in parlay['details']:
-                st.write(f"• {detail['game']} - {detail['bet']} (Prob: {detail['prob']:.1%}, Odd: {detail['odds']})")
-else:
-    st.info("No profitable parlay suggestions found for today.")
-
-
-
-########################################
 ##### Bloco 13 – SUPER PARLAY OF THE DAY #
 ########################################
 
@@ -868,3 +795,79 @@ if super_parlay:
     
 else:
     st.info("Não foi possível gerar um Super Parlay hoje. Tente ajustar a odd alvo ou aguarde mais jogos.")
+
+
+
+
+########################################
+##### Bloco 12 – Display Results #######
+########################################
+
+# SEÇÃO 3: RESUMO GERAL - ATUALIZADO
+st.sidebar.header("📊 System Summary")
+st.sidebar.markdown(f"""
+**⚙️ Configuração Atual**  
+• **ML Bankroll:** ${bankroll:,}  
+• **Parlay Bankroll:** ${parlay_bankroll:,}  
+• **Super Parlay Stake:** ${super_parlay_stake}  
+• **Kelly Fraction:** {kelly_fraction}  
+• **Min Prob Parlay:** {min_parlay_prob:.0%}  
+• **Parlay Legs:** {min_parlay_legs}-{max_parlay_legs}  
+• **Super Parlay Target:** {target_super_odds}  
+""")
+
+st.header("📈 Day's Summary - Machine Learning Performance")
+st.json(summary_ml)
+
+st.header("🎯 Machine Learning Recommendations")
+
+# Mostrar Kelly stakes e recomendações ML
+cols_to_show = [
+    'Date', 'Time', 'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today',
+    'ML_Recommendation', 'ML_Correct', 'Kelly_Stake_ML',
+    'Profit_ML_Fixed', 'Profit_ML_Kelly',
+    'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away', 
+    'Odd_H', 'Odd_D', 'Odd_A'
+]
+
+available_cols = [c for c in cols_to_show if c in games_today.columns]
+
+st.dataframe(
+    games_today[available_cols].style.format({
+        'Goals_H_Today': '{:.0f}',
+        'Goals_A_Today': '{:.0f}',
+        'Kelly_Stake_ML': '{:.2f}',
+        'Profit_ML_Fixed': '{:.2f}',
+        'Profit_ML_Kelly': '{:.2f}',
+        'ML_Proba_Home': '{:.3f}',
+        'ML_Proba_Draw': '{:.3f}',
+        'ML_Proba_Away': '{:.3f}',
+        'Odd_H': '{:.2f}',
+        'Odd_D': '{:.2f}',
+        'Odd_A': '{:.2f}'
+    }),
+    use_container_width=True
+)
+
+st.header("🎰 Auto Parlay Recommendations")
+
+if parlay_suggestions:
+    # 🔥 NOVO: Mostrar estatísticas dos parlays
+    legs_count = {}
+    for parlay in parlay_suggestions:
+        leg_type = parlay['type']
+        legs_count[leg_type] = legs_count.get(leg_type, 0) + 1
+    
+    stats_text = " | ".join([f"{count}x {leg}" for leg, count in legs_count.items()])
+    st.success(f"📊 Distribuição: {stats_text}")
+    
+    for i, parlay in enumerate(parlay_suggestions):
+        with st.expander(f"#{i+1} {parlay['type']} - Prob: {parlay['probability']:.1%} | Odds: {parlay['odds']} | EV: {parlay['ev']:+.1%}"):
+            st.write(f"**Stake Sugerido:** ${parlay['stake']} | **Potencial:** ${parlay['potential_win']}")
+            
+            for detail in parlay['details']:
+                st.write(f"• {detail['game']} - {detail['bet']} (Prob: {detail['prob']:.1%}, Odd: {detail['odds']})")
+else:
+    st.info("No profitable parlay suggestions found for today.")
+
+
