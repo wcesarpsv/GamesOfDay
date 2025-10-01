@@ -609,8 +609,8 @@ parlay_suggestions = generate_parlay_suggestions(
     parlay_bankroll, 
     min_parlay_prob, 
     max_parlay_suggestions,
-    min_parlay_legs,  # 🔥 NOVO
-    max_parlay_legs   # 🔥 NOVO
+    min_parlay_legs,
+    max_parlay_legs
 )
 
 ########################################
@@ -655,9 +655,8 @@ def summary_stats_ml(df):
 
 summary_ml = summary_stats_ml(finished_games)
 
-
 ########################################
-##### Bloco 13 – SUPER PARLAY OF THE DAY #
+##### Bloco 12 – SUPER PARLAY OF THE DAY #
 ########################################
 
 # SEÇÃO 4: SUPER PARLAY
@@ -760,11 +759,11 @@ def generate_super_parlay(games_df, target_odds=50, max_games=8):
     
     return None
 
-
-
+# Gerar SUPER PARLAY
+super_parlay = generate_super_parlay(games_today, target_super_odds)
 
 ########################################
-##### Bloco 12 – Display Results #######
+##### Bloco 13 – Display Results #######
 ########################################
 
 # SEÇÃO 3: RESUMO GERAL - ATUALIZADO
@@ -812,51 +811,6 @@ st.dataframe(
     }),
     use_container_width=True
 )
-
-st.header("🎰 Auto Parlay Recommendations")
-
-if parlay_suggestions:
-    # 🔥 NOVO: Mostrar estatísticas dos parlays
-    legs_count = {}
-    for parlay in parlay_suggestions:
-        leg_type = parlay['type']
-        legs_count[leg_type] = legs_count.get(leg_type, 0) + 1
-    
-    stats_text = " | ".join([f"{count}x {leg}" for leg, count in legs_count.items()])
-    st.success(f"📊 Distribuição: {stats_text}")
-    
-    for i, parlay in enumerate(parlay_suggestions):
-        with st.expander(f"#{i+1} {parlay['type']} - Prob: {parlay['probability']:.1%} | Odds: {parlay['odds']} | EV: {parlay['ev']:+.1%}"):
-            st.write(f"**Stake Sugerido:** ${parlay['stake']} | **Potencial:** ${parlay['potential_win']}")
-            
-            for detail in parlay['details']:
-                st.write(f"• {detail['game']} - {detail['bet']} (Prob: {detail['prob']:.1%}, Odd: {detail['odds']})")
-else:
-    st.info("No profitable parlay suggestions found for today.")
-
-
-st.header("🎰 Auto Parlay Recommendations")
-
-if parlay_suggestions:
-    # Mostrar estatísticas dos parlays
-    legs_count = {}
-    for parlay in parlay_suggestions:
-        leg_type = parlay['type']
-        legs_count[leg_type] = legs_count.get(leg_type, 0) + 1
-    
-    stats_text = " | ".join([f"{count}x {leg}" for leg, count in legs_count.items()])
-    st.success(f"📊 Distribuição: {stats_text}")
-    
-    for i, parlay in enumerate(parlay_suggestions):
-        with st.expander(f"#{i+1} {parlay['type']} - Prob: {parlay['probability']:.1%} | Odds: {parlay['odds']} | EV: {parlay['ev']:+.1%}"):
-            st.write(f"**Stake Sugerido:** ${parlay['stake']} | **Potencial:** ${parlay['potential_win']}")
-            
-            for detail in parlay['details']:
-                st.write(f"• {detail['game']} - {detail['bet']} (Prob: {detail['prob']:.1%}, Odd: {detail['odds']})")
-else:
-    st.info("No profitable parlay suggestions found for today.")
-
-
 
 st.header("🎰 Auto Parlay Recommendations")
 
@@ -911,5 +865,7 @@ if super_parlay:
     
 else:
     st.info("Não foi possível gerar um Super Parlay hoje. Tente ajustar a odd alvo ou aguarde mais jogos.")
+
+
 
 
