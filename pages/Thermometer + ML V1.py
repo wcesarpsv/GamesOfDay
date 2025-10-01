@@ -115,9 +115,6 @@ if os.path.exists(livescore_file):
     st.info(f"LiveScore file found: {livescore_file}")
     results_df = pd.read_csv(livescore_file)
 
-    # FILTER OUT CANCELED AND POSTPONED GAMES
-    results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
-    
     required_cols = [
         'game_id', 'status', 'home_goal', 'away_goal',
         'home_ht_goal', 'away_ht_goal',
@@ -142,10 +139,6 @@ if os.path.exists(livescore_file):
         games_today['Goals_H_Today'] = games_today['home_goal']
         games_today['Goals_A_Today'] = games_today['away_goal']
         games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
-        
-        # ADD RED CARD COLUMNS
-        games_today['Home_Red'] = games_today['home_red']
-        games_today['Away_Red'] = games_today['away_red']
 else:
     st.warning(f"No LiveScore results file found for selected date: {selected_date_str}")
 
@@ -802,7 +795,6 @@ cols_to_show = [
     'Date', 'Time', 'League', 'Home', 'Away',
     'Goals_H_Today', 'Goals_A_Today',
     'Auto_Recommendation', 'ML_Recommendation',
-    'Home_Red', 'Away_Red',
     'Auto_Correct', 'ML_Correct',
     'Profit_Auto_Fixed', 'Profit_Auto_Kelly', 'Kelly_Stake_Auto',
     'Profit_ML_Fixed', 'Profit_ML_Kelly', 'Kelly_Stake_ML',
@@ -815,11 +807,9 @@ available_cols = [c for c in cols_to_show if c in games_today.columns]
 st.subheader("📊 Games – Rules vs ML (Fixed vs Kelly Staking)")
 st.dataframe(
     games_today[available_cols]
-    # # .style.format({
-    #     'Goals_H_Today': '{:.0f}',
-    #     'Goals_A_Today': '{:.0f}',
-    #     'Home_Red': '{:.0f}',
-    #     'Away_Red': '{:.0f}',
+    .style.format({
+        'Goals_H_Today': '{:.0f}',
+        'Goals_A_Today': '{:.0f}',
         'Profit_Auto_Fixed': '{:.2f}',
         'Profit_Auto_Kelly': '{:.2f}',
         'Profit_ML_Fixed': '{:.2f}',
