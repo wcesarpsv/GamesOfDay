@@ -135,14 +135,16 @@ if os.path.exists(livescore_file):
             suffixes=('', '_RAW')
         )
 
-        # Update goals - show "C" for Canceled, "P" for Postponed
+        # Update goals - convert to string to handle mixed types
         games_today['Goals_H_Today'] = np.where(
             games_today['status'] == 'Cancel', 'C',
-            np.where(games_today['status'] == 'Postp.', 'P', games_today['home_goal'])
+            np.where(games_today['status'] == 'Postp.', 'P', 
+                   games_today['home_goal'].astype(str))
         )
         games_today['Goals_A_Today'] = np.where(
             games_today['status'] == 'Cancel', 'C',
-            np.where(games_today['status'] == 'Postp.', 'P', games_today['away_goal'])
+            np.where(games_today['status'] == 'Postp.', 'P', 
+                   games_today['away_goal'].astype(str))
         )
         
         # ADD RED CARD COLUMNS - show "-" for Canceled/Postponed
@@ -154,8 +156,6 @@ if os.path.exists(livescore_file):
         )
 else:
     st.warning(f"No LiveScore results file found for selected date: {selected_date_str}")
-
-
 
 ########################################
 ####### Bloco 5 – Features Extras ######
