@@ -816,8 +816,8 @@ st.subheader("📊 Games – Rules vs ML (Fixed vs Kelly Staking)")
 st.dataframe(
     games_today[available_cols]
     # .style.format({
-        # 'Goals_H_Today': '{:.0f}',
-        # 'Goals_A_Today': '{:.0f}',
+        'Goals_H_Today': '{:.0f}',
+        'Goals_A_Today': '{:.0f}',
         'Home_Red': '{:.0f}',
         'Away_Red': '{:.0f}',
         'Profit_Auto_Fixed': '{:.2f}',
