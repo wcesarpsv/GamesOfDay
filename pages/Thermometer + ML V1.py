@@ -799,8 +799,8 @@ st.info(f"""
 cols_to_show = [
     'Date', 'Time', 'League', 'Home', 'Away',
     'Goals_H_Today', 'Goals_A_Today',
-    'Home_Red', 'Away_Red',
     'Auto_Recommendation', 'ML_Recommendation',
+    'Home_Red', 'Away_Red',
     'Auto_Correct', 'ML_Correct',
     'Profit_Auto_Fixed', 'Profit_Auto_Kelly', 'Kelly_Stake_Auto',
     'Profit_ML_Fixed', 'Profit_ML_Kelly', 'Kelly_Stake_ML',
