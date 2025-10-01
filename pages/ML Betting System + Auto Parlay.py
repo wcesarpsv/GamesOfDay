@@ -866,6 +866,8 @@ if super_parlay:
 else:
     st.info("Não foi possível gerar um Super Parlay hoje. Tente ajustar a odd alvo ou aguarde mais jogos.")
 
+    height=1200
+
 
 
 
