@@ -760,42 +760,6 @@ def generate_super_parlay(games_df, target_odds=50, max_games=8):
     
     return None
 
-# Gerar SUPER PARLAY
-super_parlay = generate_super_parlay(games_today, target_super_odds)
-
-# 🔥 NOVO: Adicionar esta parte no final do Bloco 12, ANTES do fechamento
-st.header("🎉 SUPER PARLAY OF THE DAY")
-
-if super_parlay:
-    # Display especial para o SUPER PARLAY
-    st.success("🔥 **SPECIAL OF THE DAY!** 🔥")
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Probabilidade", f"{super_parlay['probability']:.1%}")
-    with col2:
-        st.metric("Odds", f"{super_parlay['odds']:.2f}")
-    with col3:
-        st.metric("Potencial", f"${super_parlay['potential_win']:.2f}")
-    
-    st.write(f"**Stake Recomendado:** ${super_parlay['stake']} | **Expected Value:** {super_parlay['ev']:+.1%}")
-    
-    # Mostrar jogos em formato mais visual
-    st.subheader("🎯 Jogos Selecionados:")
-    for i, detail in enumerate(super_parlay['details'], 1):
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.write(f"**{i}. {detail['game']}** ({detail['league']})")
-        with col2:
-            st.write(f"**{detail['bet']}** (Odd: {detail['odds']})")
-    
-    # Botão para compartilhar (simulado)
-    st.markdown("---")
-    st.markdown("**📱 Compartilhe este Super Parlay!**")
-    
-else:
-    st.info("Não foi possível gerar um Super Parlay hoje. Tente ajustar a odd alvo ou aguarde mais jogos.")
-
 
 
 
@@ -869,5 +833,60 @@ if parlay_suggestions:
                 st.write(f"• {detail['game']} - {detail['bet']} (Prob: {detail['prob']:.1%}, Odd: {detail['odds']})")
 else:
     st.info("No profitable parlay suggestions found for today.")
+
+
+st.header("🎰 Auto Parlay Recommendations")
+
+if parlay_suggestions:
+    # Mostrar estatísticas dos parlays
+    legs_count = {}
+    for parlay in parlay_suggestions:
+        leg_type = parlay['type']
+        legs_count[leg_type] = legs_count.get(leg_type, 0) + 1
+    
+    stats_text = " | ".join([f"{count}x {leg}" for leg, count in legs_count.items()])
+    st.success(f"📊 Distribuição: {stats_text}")
+    
+    for i, parlay in enumerate(parlay_suggestions):
+        with st.expander(f"#{i+1} {parlay['type']} - Prob: {parlay['probability']:.1%} | Odds: {parlay['odds']} | EV: {parlay['ev']:+.1%}"):
+            st.write(f"**Stake Sugerido:** ${parlay['stake']} | **Potencial:** ${parlay['potential_win']}")
+            
+            for detail in parlay['details']:
+                st.write(f"• {detail['game']} - {detail['bet']} (Prob: {detail['prob']:.1%}, Odd: {detail['odds']})")
+else:
+    st.info("No profitable parlay suggestions found for today.")
+
+# 🔥🔥🔥 SUPER PARLAY SECTION - AGORA AQUI! 🔥🔥🔥
+st.header("🎉 SUPER PARLAY OF THE DAY")
+
+if super_parlay:
+    # Display especial para o SUPER PARLAY
+    st.success("🔥 **SPECIAL OF THE DAY!** 🔥")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Probabilidade", f"{super_parlay['probability']:.1%}")
+    with col2:
+        st.metric("Odds", f"{super_parlay['odds']:.2f}")
+    with col3:
+        st.metric("Potencial", f"${super_parlay['potential_win']:.2f}")
+    
+    st.write(f"**Stake Recomendado:** ${super_parlay['stake']} | **Expected Value:** {super_parlay['ev']:+.1%}")
+    
+    # Mostrar jogos em formato mais visual
+    st.subheader("🎯 Jogos Selecionados:")
+    for i, detail in enumerate(super_parlay['details'], 1):
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.write(f"**{i}. {detail['game']}** ({detail['league']})")
+        with col2:
+            st.write(f"**{detail['bet']}** (Odd: {detail['odds']})")
+    
+    # Botão para compartilhar (simulado)
+    st.markdown("---")
+    st.markdown("**📱 Compartilhe este Super Parlay!**")
+    
+else:
+    st.info("Não foi possível gerar um Super Parlay hoje. Tente ajustar a odd alvo ou aguarde mais jogos.")
 
 
