@@ -300,7 +300,7 @@ if cat_cols:
 games_today["ML_Proba_Home"] = np.nan
 games_today["ML_Proba_Draw"] = np.nan
 games_today["ML_Proba_Away"] = np.nan
-games_today["ML_Recommendation"] = "❌ Avoid - Dados Insuficientes"
+games_today["ML_Recommendation"] = "❌ Avoid"
 
 # Aplicar modelo apenas nos jogos válidos
 if not X_today_valid.empty:
