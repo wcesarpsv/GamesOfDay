@@ -708,7 +708,7 @@ summary_ml = summary_stats_ml(finished_games)
 # SEÇÃO 4: SUPER PARLAY
 st.sidebar.header("🎉 SUPER PARLAY OF THE DAY")
 
-super_parlay_stake = st.sidebar.number_input("Super Parlay Stake", 1, 10, 2, 1, help="Stake fixo para o Super Parlay (aposta divertida)")
+super_parlay_stake = st.sidebar.number_input("Super Parlay Stake", 10, 100, 10, 10, help="Stake fixo para o Super Parlay (aposta divertida)")
 target_super_odds = st.sidebar.slider("Target Odds", 20, 100, 50, 5, help="Odd alvo para o Super Parlay")
 
 # Resumo Super Parlay
