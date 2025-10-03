@@ -5,6 +5,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
+import math
 import itertools
 from datetime import datetime
 from sklearn.ensemble import RandomForestClassifier
@@ -448,6 +449,12 @@ st.sidebar.markdown("---")
 min_parlay_legs = st.sidebar.slider("Min Legs", 2, 4, 2, 1, help="Número mínimo de jogos no parlay")
 max_parlay_legs = st.sidebar.slider("Max Legs", 2, 4, 4, 1, help="Número máximo de jogos no parlay")
 
+# 🔥 NOVO: FILTROS PARA FINS DE SEMANA
+st.sidebar.markdown("---")
+st.sidebar.markdown("**🎯 Filtros Fim de Semana**")
+weekend_filter = st.sidebar.checkbox("Ativar Filtro FDS", value=True, help="Filtros mais rigorosos para muitos jogos")
+max_eligible_games = st.sidebar.slider("Máx Jogos Elegíveis", 10, 50, 20, 5, help="Limitar jogos para cálculo (evitar travamento)")
+
 # Resumo Parlay System
 st.sidebar.markdown("---")
 st.sidebar.markdown("**🎰 Parlay System**")
@@ -488,7 +495,7 @@ def calculate_parlay_odds(games_list, games_df):
     expected_value = total_prob * total_odds - 1
     return total_prob, round(total_odds, 2), expected_value, game_details
 
-def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, max_suggestions=5, min_legs=2, max_legs=4):
+def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, max_suggestions=5, min_legs=2, max_legs=4, weekend_filter=True, max_eligible=20):
     games_today_filtered = games_df.copy()
     
     eligible_games = []
@@ -501,40 +508,76 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
                 prob = row['ML_Proba_Home']
                 odds = row['Odd_H']
                 bet_type = 'Home'
+                edge = prob * odds - 1
             elif 'Back Away' in rec:
                 prob = row['ML_Proba_Away'] 
                 odds = row['Odd_A']
                 bet_type = 'Away'
+                edge = prob * odds - 1
             elif 'Back Draw' in rec:
                 prob = row['ML_Proba_Draw']
                 odds = row['Odd_D']
                 bet_type = 'Draw'
+                edge = prob * odds - 1
             elif '1X' in rec:
                 prob = row['ML_Proba_Home'] + row['ML_Proba_Draw']
                 odds = row['Odd_1X']
                 bet_type = '1X'
+                edge = prob * odds - 1
             elif 'X2' in rec:
                 prob = row['ML_Proba_Away'] + row['ML_Proba_Draw']
                 odds = row['Odd_X2']
                 bet_type = 'X2'
+                edge = prob * odds - 1
             else:
                 continue
             
-            if prob > min_prob:
-                eligible_games.append((idx, bet_type, prob, round(odds, 2)))
+            # 🔥 FILTROS MAIS RIGOROSOS PARA FINS DE SEMANA
+            if weekend_filter and len(games_today_filtered) > 15:
+                # Critérios mais rigorosos quando há muitos jogos
+                if prob > (min_prob + 0.05) and edge > -0.05:  # Prob maior e edge menos negativo
+                    eligible_games.append((idx, bet_type, prob, round(odds, 2), edge))
+            else:
+                # Critérios normais para poucos jogos
+                if prob > min_prob:
+                    eligible_games.append((idx, bet_type, prob, round(odds, 2), edge))
+    
+    # 🔥 LIMITAR NÚMERO DE JOGOS ELEGÍVEIS
+    if len(eligible_games) > max_eligible:
+        # Ordenar por probabilidade e pegar os melhores
+        eligible_games.sort(key=lambda x: x[2], reverse=True)  # Ordenar por prob
+        eligible_games = eligible_games[:max_eligible]
+        st.warning(f"⚡ Limite ativado: {len(eligible_games)} jogos elegíveis (de {len(games_today_filtered)} totais)")
     
     st.info(f"🎯 Jogos elegíveis para parlays: {len(eligible_games)}")
     
+    # 🔥 CALCULAR QUANTIDADE MÁXIMA DE COMBINAÇÕES
+    total_combinations = 0
+    if min_legs <= 2 and len(eligible_games) >= 2:
+        total_combinations += math.comb(len(eligible_games), 2)
+    if min_legs <= 3 and max_legs >= 3 and len(eligible_games) >= 3:
+        total_combinations += math.comb(len(eligible_games), 3)
+    if max_legs >= 4 and len(eligible_games) >= 4:
+        total_combinations += math.comb(len(eligible_games), 4)
+    
+    st.info(f"🧮 Combinações possíveis: {total_combinations:,}")
+    
+    # 🔥 AVISO SE MUITAS COMBINAÇÕES
+    if total_combinations > 1000:
+        st.warning("⚠️ Muitas combinações! Use filtros mais rigorosos.")
+    
     parlay_suggestions = []
     
-    # 🔥 PARLAYS DE 2 LEGS
+    # 🔥 PARLAYS DE 2 LEGS - CRITÉRIOS MAIS RIGOROSOS PARA FDS
     if min_legs <= 2 and len(eligible_games) >= 2:
+        ev_threshold = 0.08 if weekend_filter and len(eligible_games) > 15 else 0.05
+        prob_threshold = 0.30 if weekend_filter and len(eligible_games) > 15 else 0.25
+        
         for combo in itertools.combinations(eligible_games, 2):
             games_list = [(game[0], game[1]) for game in combo]
             prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
             
-            # Critérios para 2-legs
-            if ev > 0.05 and prob > 0.25:
+            if ev > ev_threshold and prob > prob_threshold:
                 stake = min(parlay_bankroll * 0.08, parlay_bankroll * 0.12 * prob)
                 stake = round(stake, 2)
                 
@@ -552,12 +595,14 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
     
     # 🔥 PARLAYS DE 3 LEGS
     if min_legs <= 3 and max_legs >= 3 and len(eligible_games) >= 3:
+        ev_threshold = 0.05 if weekend_filter and len(eligible_games) > 15 else 0.02
+        prob_threshold = 0.20 if weekend_filter and len(eligible_games) > 15 else 0.15
+        
         for combo in itertools.combinations(eligible_games, 3):
             games_list = [(game[0], game[1]) for game in combo]
             prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
             
-            # Critérios para 3-legs
-            if ev > 0.02 and prob > 0.15:
+            if ev > ev_threshold and prob > prob_threshold:
                 stake = min(parlay_bankroll * 0.05, parlay_bankroll * 0.08 * prob)
                 stake = round(stake, 2)
                 
@@ -573,13 +618,12 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
                         'details': details
                     })
     
-    # 🔥 PARLAYS DE 4 LEGS
-    if max_legs >= 4 and len(eligible_games) >= 4:
+    # 🔥 PARLAYS DE 4 LEGS - APENAS SE POUCOS JOGOS
+    if max_legs >= 4 and len(eligible_games) >= 4 and len(eligible_games) <= 25:  # Só calcular se até 25 jogos
         for combo in itertools.combinations(eligible_games, 4):
             games_list = [(game[0], game[1]) for game in combo]
             prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
             
-            # Critérios para 4-legs
             if ev > 0.10 and prob > 0.10:
                 stake = min(parlay_bankroll * 0.03, parlay_bankroll * 0.05 * prob)
                 stake = round(stake, 2)
@@ -610,7 +654,9 @@ parlay_suggestions = generate_parlay_suggestions(
     min_parlay_prob, 
     max_parlay_suggestions,
     min_parlay_legs,
-    max_parlay_legs
+    max_parlay_legs,
+    weekend_filter,      # 🔥 NOVO
+    max_eligible_games   # 🔥 NOVO
 )
 
 ########################################
