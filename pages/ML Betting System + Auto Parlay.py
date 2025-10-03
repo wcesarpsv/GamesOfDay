@@ -248,25 +248,91 @@ def ml_recommendation_from_proba(p_home, p_draw, p_away, threshold=0.65):
         elif sum_away_draw > sum_home_draw: return "🟪 X2 (Away/Draw)"
         else: return "❌ Avoid"
 
+# 🔥 NOVO: Função para verificar dados faltantes
+def check_missing_features(row, features_required):
+    """Verifica se há dados faltantes nas features essenciais"""
+    missing_features = []
+    
+    for feature in features_required:
+        if feature in row:
+            if pd.isna(row[feature]) or row[feature] == '':
+                missing_features.append(feature)
+        else:
+            missing_features.append(feature)
+    
+    return missing_features
+
+# 🔥 NOVO: Lista de features obrigatórias
+required_features = [
+    'M_H', 'M_A', 'Diff_Power', 'M_Diff',
+    'Home_Band', 'Away_Band', 'League_Classification',
+    'Odd_H', 'Odd_D', 'Odd_A'
+]
+
 X_today = games_today[features_raw].copy()
-if 'Home_Band' in X_today: X_today['Home_Band_Num'] = X_today['Home_Band'].map(BAND_MAP)
-if 'Away_Band' in X_today: X_today['Away_Band_Num'] = X_today['Away_Band'].map(BAND_MAP)
+
+# 🔥 NOVO: Aplicar validação de dados faltantes
+games_today["ML_Data_Valid"] = True
+games_today["Missing_Features"] = ""
+
+for idx, row in games_today.iterrows():
+    missing = check_missing_features(row, required_features)
+    if missing:
+        games_today.at[idx, "ML_Data_Valid"] = False
+        games_today.at[idx, "Missing_Features"] = ", ".join(missing)
+
+# Aplicar o modelo apenas aos jogos com dados completos
+valid_games_mask = games_today["ML_Data_Valid"] == True
+X_today_valid = X_today[valid_games_mask].copy()
+
+if 'Home_Band' in X_today_valid: 
+    X_today_valid['Home_Band_Num'] = X_today_valid['Home_Band'].map(BAND_MAP)
+if 'Away_Band' in X_today_valid: 
+    X_today_valid['Away_Band_Num'] = X_today_valid['Away_Band'].map(BAND_MAP)
 
 if cat_cols:
-    encoded_today = encoder.transform(X_today[cat_cols])
+    encoded_today = encoder.transform(X_today_valid[cat_cols])
     encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(cat_cols))
-    X_today = pd.concat([X_today.drop(columns=cat_cols).reset_index(drop=True),
-                         encoded_today_df.reset_index(drop=True)], axis=1)
+    X_today_valid = pd.concat([X_today_valid.drop(columns=cat_cols).reset_index(drop=True),
+                             encoded_today_df.reset_index(drop=True)], axis=1)
 
-ml_proba = model.predict_proba(X_today)
-games_today["ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
-games_today["ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
-games_today["ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
+# Inicializar colunas de probabilidade com NaN
+games_today["ML_Proba_Home"] = np.nan
+games_today["ML_Proba_Draw"] = np.nan
+games_today["ML_Proba_Away"] = np.nan
+games_today["ML_Recommendation"] = "❌ Avoid - Dados Insuficientes"
 
-games_today["ML_Recommendation"] = [
-    ml_recommendation_from_proba(row["ML_Proba_Home"], row["ML_Proba_Draw"], row["ML_Proba_Away"], threshold)
-    for _, row in games_today.iterrows()
-]
+# Aplicar modelo apenas nos jogos válidos
+if not X_today_valid.empty:
+    ml_proba = model.predict_proba(X_today_valid)
+    
+    # Preencher apenas os jogos válidos
+    valid_indices = games_today[valid_games_mask].index
+    
+    games_today.loc[valid_indices, "ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
+    games_today.loc[valid_indices, "ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
+    games_today.loc[valid_indices, "ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
+    
+    # Gerar recomendações apenas para jogos válidos
+    for idx in valid_indices:
+        p_home = games_today.at[idx, "ML_Proba_Home"]
+        p_draw = games_today.at[idx, "ML_Proba_Draw"] 
+        p_away = games_today.at[idx, "ML_Proba_Away"]
+        
+        games_today.at[idx, "ML_Recommendation"] = ml_recommendation_from_proba(
+            p_home, p_draw, p_away, threshold
+        )
+
+# 🔥 NOVO: Mostrar estatísticas de validação
+invalid_count = len(games_today) - valid_games_mask.sum()
+if invalid_count > 0:
+    st.warning(f"⚠️ {invalid_count} jogos excluídos por dados insuficientes")
+    
+    # Mostrar detalhes dos jogos com problemas
+    invalid_games = games_today[~valid_games_mask]
+    if not invalid_games.empty:
+        with st.expander("📋 Ver jogos com dados insuficientes"):
+            st.dataframe(invalid_games[['Home', 'Away', 'League', 'Missing_Features']])
 
 
 ########################################
@@ -830,10 +896,10 @@ st.json(summary_ml)
 
 st.header("🎯 Machine Learning Recommendations")
 
-# Mostrar Kelly stakes e recomendações ML
+# 🔥 ATUALIZADO: Adicionar coluna de validação
 cols_to_show = [
     'Date', 'Time', 'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today',
-    'ML_Recommendation', 'ML_Correct', 'Kelly_Stake_ML',
+    'ML_Recommendation', 'ML_Data_Valid', 'ML_Correct', 'Kelly_Stake_ML',  # 🔥 NOVO
     'Profit_ML_Fixed', 'Profit_ML_Kelly',
     'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away', 
     'Odd_H', 'Odd_D', 'Odd_A'
@@ -854,12 +920,12 @@ st.dataframe(
         'Odd_H': '{:.2f}',
         'Odd_D': '{:.2f}',
         'Odd_A': '{:.2f}'
-    }),
+    }).apply(lambda x: ['background-color: #ffcccc' if x.name == 'ML_Data_Valid' and x.iloc[0] == False else '' 
+                       for i in range(len(x))], axis=1),  # 🔥 Destaque visual
     use_container_width=True,
     height=800
-
-
 )
+    
 
 st.header("🎰 Auto Parlay Recommendations")
 
