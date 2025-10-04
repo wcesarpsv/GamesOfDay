@@ -140,6 +140,7 @@ def dominant_side(row, threshold=DOMINANT_THRESHOLD):
 # BLOCO 3.5 – FUNÇÕES AUSENTES (NOVO)
 ########################################
 
+# 3.5.1 Funções Auxiliares Originais
 def compute_double_chance_odds(df):
     """Calcula odds para dupla chance 1X e X2"""
     df = df.copy()
@@ -160,7 +161,7 @@ def classify_leagues_variation(history_df):
     """Classifica ligas por nível de variação dos momentos"""
     if history_df.empty:
         return pd.DataFrame(columns=['League', 'League_Classification'])
-    
+        
     variation_data = []
     for league in history_df['League'].unique():
         league_data = history_df[history_df['League'] == league]
@@ -186,8 +187,76 @@ def classify_leagues_variation(history_df):
             'League': league, 
             'League_Classification': classification
         })
-    
+        
     return pd.DataFrame(variation_data) if variation_data else pd.DataFrame(columns=['League', 'League_Classification'])
+
+
+#################################################
+# 3.5.2 Funções de EV e Lucro com Filtro (NOVAS)
+#################################################
+
+def calculate_ev(prob, odd):
+    """Calcula o Valor Esperado: EV = (Probabilidade * Odd) - 1"""
+    # Retorna NaN se a Odd for inválida (Odd <= 1.0 ou NaN)
+    if pd.isna(prob) or pd.isna(odd) or odd <= 1.0:
+        return np.nan
+    return (prob * odd) - 1
+
+def calculate_profit_with_ev_filter(rec, result, odds_row, prob_row, ev_threshold):
+    """
+    Calcula o lucro, APENAS se o EV da aposta (identificado pela recomendação) 
+    for maior que o threshold.
+    Assume que as colunas 'ML_EV_*' já foram calculadas e estão em prob_row (que é a row do DF).
+    """
+    if pd.isna(rec) or result is None or rec == '❌ Avoid': return 0.0
+    r = str(rec)
+    
+    # 1. Definir a aposta, buscar Odd e EV correspondente
+    current_ev = -1.0
+    odd = np.nan
+    target_result = None
+
+    if 'Back Home' in r:
+        odd = odds_row.get('Odd_H', np.nan)
+        current_ev = prob_row.get('ML_EV_Home', -1.0)
+        target_result = "Home"
+    elif 'Back Away' in r:
+        odd = odds_row.get('Odd_A', np.nan)
+        current_ev = prob_row.get('ML_EV_Away', -1.0)
+        target_result = "Away"
+    elif 'Back Draw' in r:
+        odd = odds_row.get('Odd_D', np.nan)
+        current_ev = prob_row.get('ML_EV_Draw', -1.0)
+        target_result = "Draw"
+    elif '1X' in r:
+        odd = odds_row.get('Odd_1X', np.nan)
+        current_ev = prob_row.get('ML_EV_1X', -1.0)
+        target_result = ["Home", "Draw"]
+    elif 'X2' in r:
+        odd = odds_row.get('Odd_X2', np.nan)
+        current_ev = prob_row.get('ML_EV_X2', -1.0)
+        target_result = ["Away", "Draw"]
+    else:
+        return 0.0
+
+    # 2. Aplicar o filtro de EV
+    if pd.isna(odd) or current_ev < ev_threshold:
+        return 0.0 # Não faz aposta (Profit = 0)
+    
+    # 3. Calcular o Lucro
+    if target_result is None:
+        return 0.0
+        
+    is_win = False
+    if isinstance(target_result, list):
+        is_win = result in target_result
+    else:
+        is_win = result == target_result
+
+    if is_win:
+        return odd - 1.0 # Ganho
+    else:
+        return -1.0 # Perda (aposta de 1 unidade)
 
 ########################################
 # BLOCO 4 – REGRAS (AUTO RECOMMENDATION)
@@ -613,70 +682,94 @@ def make_model(choice, params):
 
 
 ########################################
-# SUBBLOCO 8B – Treinamento seguro
+# SUBBLOCO 8B – Treinamento seguro (com botão)
 ########################################
-with st.spinner("Treinando modelo..."):
-    base_model = make_model(model_choice, params)
+
+# Botão para executar o treinamento
+if st.button("🚀 Rodar Treinamento / Teste"):
+    with st.spinner("Treinando modelo..."):
+        base_model = make_model(model_choice, params)
+
+        if apply_calibration:
+            model = CalibratedClassifierCV(base_model, cv=5, method='isotonic')
+        else:
+            model = base_model
+
+        try:
+            model.fit(X_train, y_train)
+            st.success("Treinamento concluído com sucesso!")
+
+            # Guardar o modelo no session_state para usar depois
+            st.session_state["trained_model"] = model
+        except ValueError as e:
+            st.error("Erro durante o treinamento. Confira detalhes abaixo:")
+            st.code(str(e))
+            st.stop()
+
+
+########################################
+# SUBBLOCO 8D – Predição e Recomendações (ajustado)
+########################################
+
+# 8D.1 Geração de Probabilidades e Predições
+if "trained_model" in st.session_state:
+    model = st.session_state["trained_model"]
+
+    # Geração de probabilidades e predições
+    proba_test = model.predict_proba(X_test) if hasattr(model, "predict_proba") else None
+    pred_test = model.predict(X_test)
+
+    classes_ = list(model.classes_)
+
+    # Função auxiliar para pegar probabilidades por classe
+    def p(cls):
+        if proba_test is None: 
+            return np.zeros(len(X_test))
+        idx = classes_.index(cls) if cls in classes_ else None
+        return proba_test[:, idx] if idx is not None else np.zeros(len(X_test))
+
+    # Copiar test_df e adicionar colunas
+    test_df = test_df.copy()
+    test_df["ML_Proba_Home"] = p("Home")
+    test_df["ML_Proba_Draw"] = p("Draw")
+    test_df["ML_Proba_Away"] = p("Away")
+    test_df["ML_Pred"] = pred_test
+
+    # 8D.2 UI de Limiares (Thresholds)
+    # Ajuste do limiar para decisão
+    st.subheader("🎯 Limiar para Decisão e Valor Esperado (EV)")
+    colT1, colT2 = st.columns(2)
+    with colT1:
+        threshold = st.slider("Threshold (%) para Back Home/Away (Decisão ML)", 40, 85, 65, step=1) / 100.0
+    with colT2:
+        # NOVO: Limite de EV
+        ev_threshold = st.slider("Threshold (%) Mínimo de EV (Filtro de Lucro)", 0, 30, 5, step=1) / 100.0
     
-    if apply_calibration:
-        model = CalibratedClassifierCV(base_model, cv=5, method='isotonic')
-    else:
-        model = base_model
+    # Armazenar o EV Threshold no state para uso posterior
+    st.session_state['EV_THRESHOLD'] = ev_threshold
 
-    try:
-        model.fit(X_train, y_train)
-        st.success("Treinamento concluído com sucesso!")
-    except ValueError as e:
-        st.error("Erro durante o treinamento. Confira detalhes abaixo:")
-        st.code(str(e))
-        st.stop()
+    # 8D.3 Recomendação ML
+    # Função de recomendação baseada nas probabilidades
+    def ml_rec_from_proba(row, thr=0.65):
+        ph, pd_, pa = row['ML_Proba_Home'], row['ML_Proba_Draw'], row['ML_Proba_Away']
+        if ph >= thr:
+            return "🟢 Back Home"
+        if pa >= thr:
+            return "🟠 Back Away"
+        sum_hd, sum_ad = ph + pd_, pa + pd_
+        if abs(ph - pa) < 0.05 and pd_ > 0.35:
+            return "⚪ Back Draw"
+        if sum_hd > sum_ad:
+            return "🟦 1X (Home/Draw)"
+        if sum_ad > sum_hd:
+            return "🟪 X2 (Away/Draw)"
+        return "❌ Avoid"
 
-########################################
-# SUBBLOCO 8D – Predição e Recomendações
-########################################
+    # Aplicar a recomendação
+    test_df["ML_Recommendation"] = test_df.apply(ml_rec_from_proba, axis=1, thr=threshold)
 
-# Geração de probabilidades e predições
-proba_test = model.predict_proba(X_test) if hasattr(model, "predict_proba") else None
-pred_test = model.predict(X_test)
-
-classes_ = list(model.classes_)
-
-# Função auxiliar para pegar probabilidades por classe
-def p(cls):
-    if proba_test is None: 
-        return np.zeros(len(X_test))
-    idx = classes_.index(cls) if cls in classes_ else None
-    return proba_test[:, idx] if idx is not None else np.zeros(len(X_test))
-
-# Copiar test_df e adicionar colunas
-test_df = test_df.copy()
-test_df["ML_Proba_Home"] = p("Home")
-test_df["ML_Proba_Draw"] = p("Draw")
-test_df["ML_Proba_Away"] = p("Away")
-test_df["ML_Pred"] = pred_test
-
-# Ajuste do limiar para decisão
-st.subheader("🎯 Limiar para Back direto")
-threshold = st.slider("Threshold (%) para Back Home/Away", 50, 85, 65, step=1) / 100.0
-
-# Função de recomendação baseada nas probabilidades
-def ml_rec_from_proba(row, thr=0.65):
-    ph, pd_, pa = row['ML_Proba_Home'], row['ML_Proba_Draw'], row['ML_Proba_Away']
-    if ph >= thr:
-        return "🟢 Back Home"
-    if pa >= thr:
-        return "🟠 Back Away"
-    sum_hd, sum_ad = ph + pd_, pa + pd_
-    if abs(ph - pa) < 0.05 and pd_ > 0.35:
-        return "⚪ Back Draw"
-    if sum_hd > sum_ad:
-        return "🟦 1X (Home/Draw)"
-    if sum_ad > sum_hd:
-        return "🟪 X2 (Away/Draw)"
-    return "❌ Avoid"
-
-# Aplicar a recomendação
-test_df["ML_Recommendation"] = test_df.apply(ml_rec_from_proba, axis=1, thr=threshold)
+else:
+    st.warning("⚠️ Treine o modelo primeiro clicando no botão acima.")
 
 
 ########################################
@@ -706,6 +799,11 @@ if test_df.empty:
     st.error("❌ Nenhum dado disponível para teste.")
     st.stop()
 
+# Só prosseguir se já tiver modelo treinado e recomendações ML
+if "trained_model" not in st.session_state or "ML_Recommendation" not in test_df.columns:
+    st.warning("⚠️ Treine o modelo clicando no botão acima para ver métricas e lucros.")
+    st.stop()
+
 # Padronizar ligas
 test_df['League'] = test_df['League'].astype(str).str.strip().str.lower()
 league_class['League'] = league_class['League'].astype(str).str.strip().str.lower()
@@ -727,18 +825,18 @@ if not league_bands.empty:
         test_df = test_df.merge(league_class, on='League', how='left')
 
 # ---- Bands: usar *_Num se existir; caso contrário, derivar; não travar se P20/P80 faltar
-REV_MAP  = {1: "Bottom 20%", 2: "Balanced", 3: "Top 20%"}
+REV_MAP = {1: "Bottom 20%", 2: "Balanced", 3: "Top 20%"}
 
 def classify_band(value, low, high):
     if pd.isna(value) or pd.isna(low) or pd.isna(high): 
         return "Balanced"
-    if value <= low:  
+    if value <= low: 
         return "Bottom 20%"
     if value >= high: 
         return "Top 20%"
     return "Balanced"
 
-# Home Band - LÓGICA CORRIGIDA
+# Home Band
 if 'Home_Band_Num' not in test_df.columns:
     if 'Home_Band' in test_df.columns:
         test_df['Home_Band_Num'] = test_df['Home_Band'].map(BAND_MAP).fillna(2).astype(int)
@@ -752,7 +850,7 @@ if 'Home_Band_Num' not in test_df.columns:
         test_df['Home_Band_Num'] = 2
         test_df['Home_Band'] = "Balanced"
 
-# Away Band - LÓGICA CORRIGIDA  
+# Away Band
 if 'Away_Band_Num' not in test_df.columns:
     if 'Away_Band' in test_df.columns:
         test_df['Away_Band_Num'] = test_df['Away_Band'].map(BAND_MAP).fillna(2).astype(int)
@@ -766,22 +864,17 @@ if 'Away_Band_Num' not in test_df.columns:
         test_df['Away_Band_Num'] = 2
         test_df['Away_Band'] = "Balanced"
 
-# (Opcional) reconstruir labels textuais para exibição
+# Labels textuais para exibição
 if 'Home_Band' not in test_df.columns:
     test_df['Home_Band'] = test_df['Home_Band_Num'].map(REV_MAP)
 if 'Away_Band' not in test_df.columns:
     test_df['Away_Band'] = test_df['Away_Band_Num'].map(REV_MAP)
 
-# Calcular M_Diff e Dominant (garantir que existem)
+# Calcular M_Diff e Dominant
 if 'M_Diff' not in test_df.columns:
     test_df['M_Diff'] = test_df['M_H'] - test_df['M_A']
     
 test_df['Dominant'] = test_df.apply(dominant_side, axis=1)
-
-# VALIDAÇÃO FINAL ANTES DE PROSSEGUIR
-if test_df.empty:
-    st.error("❌ Nenhum dado disponível após preparação.")
-    st.stop()
 
 # Recomendações (regras)
 if compare_rules:
@@ -789,15 +882,77 @@ if compare_rules:
 else:
     test_df['Auto_Recommendation'] = np.nan
 
+
+# 9.1 Geração do EV (NOVO)
+# --------------------------------------------------------------------------------------
+# NOVO: CÁLCULO DO EV PARA TODAS AS POSSÍVEIS APOSTAS ML (USADO PARA FILTRAGEM DE LUCRO)
+# --------------------------------------------------------------------------------------
+if "trained_model" in st.session_state:
+    # 1. Calcular EV para as apostas simples (H, D, A)
+    test_df['ML_EV_Home'] = test_df.apply(
+        lambda r: calculate_ev(r['ML_Proba_Home'], r.get('Odd_H')), axis=1
+    )
+    test_df['ML_EV_Draw'] = test_df.apply(
+        lambda r: calculate_ev(r['ML_Proba_Draw'], r.get('Odd_D')), axis=1
+    )
+    test_df['ML_EV_Away'] = test_df.apply(
+        lambda r: calculate_ev(r['ML_Proba_Away'], r.get('Odd_A')), axis=1
+    )
+
+    # 2. Calcular Probabilidades e EV para Dupla Chance (1X, X2)
+    test_df['ML_Proba_1X'] = test_df['ML_Proba_Home'] + test_df['ML_Proba_Draw']
+    test_df['ML_EV_1X'] = test_df.apply(
+        lambda r: calculate_ev(r['ML_Proba_1X'], r.get('Odd_1X')), axis=1
+    )
+    test_df['ML_Proba_X2'] = test_df['ML_Proba_Away'] + test_df['ML_Proba_Draw']
+    test_df['ML_EV_X2'] = test_df.apply(
+        lambda r: calculate_ev(r['ML_Proba_X2'], r.get('Odd_X2')), axis=1
+    )
+
+# 9.2 Cálculo de Lucros com Filtro EV (MODIFICADO)
+# Obter o threshold de EV do Session State (default para 0.0 se não existir)
+ev_threshold_final = st.session_state.get('EV_THRESHOLD', 0.00)
+
+# Função auxiliar para o cálculo de lucro simples (Auto) - Garantindo que a função exista
+def calculate_profit_simple(rec, result, odds_row):
+    """Calcula o lucro sem filtro de EV, usado para a comparação de Regras (Auto)"""
+    if pd.isna(rec) or result is None or rec == '❌ Avoid': return 0.0
+    r = str(rec)
+    
+    if 'Back Home' in r:
+        odd = odds_row.get('Odd_H', np.nan); return (odd - 1) if result == "Home" and not pd.isna(odd) else -1
+    if 'Back Away' in r:
+        odd = odds_row.get('Odd_A', np.nan); return (odd - 1) if result == "Away" and not pd.isna(odd) else -1
+    if 'Back Draw' in r:
+        odd = odds_row.get('Odd_D', np.nan); return (odd - 1) if result == "Draw" and not pd.isna(odd) else -1
+    if '1X' in r:
+        odd = odds_row.get('Odd_1X', np.nan); return (odd - 1) if result in ["Home","Draw"] and not pd.isna(odd) else -1
+    if 'X2' in r:
+        odd = odds_row.get('Odd_X2', np.nan); return (odd - 1) if result in ["Away","Draw"] and not pd.isna(odd) else -1
+    return 0.0
+
+
 # Lucros
-test_df['Profit_ML'] = test_df.apply(lambda r: calculate_profit(r['ML_Recommendation'], r['Result'], r), axis=1)
-test_df['Profit_Auto'] = test_df.apply(lambda r: calculate_profit(r['Auto_Recommendation'], r['Result'], r), axis=1)
+# Profit ML: AGORA USA O FILTRO DE EV! (calculate_profit_with_ev_filter é do Bloco 3.5.2)
+test_df['Profit_ML'] = test_df.apply(
+    lambda r: calculate_profit_with_ev_filter(
+        r['ML_Recommendation'], r['Result'], r, r, ev_threshold_final
+    ), 
+    axis=1
+)
+
+# Profit Auto: Usa o cálculo simples (sem filtro de EV, para comparação)
+test_df['Profit_Auto'] = test_df.apply(
+    lambda r: calculate_profit_simple(r['Auto_Recommendation'], r['Result'], r), 
+    axis=1
+)
 
 # Acertos
 test_df['ML_Correct'] = test_df.apply(lambda r: check_recommendation(r['ML_Recommendation'], r['Result']), axis=1)
 test_df['Auto_Correct'] = test_df.apply(lambda r: check_recommendation(r['Auto_Recommendation'], r['Result']), axis=1)
 
 st.success(f"✅ Dados preparados: {len(test_df)} jogos para análise")
+
 
 ########################################
 # BLOCO 10 – MÉTRICAS & SUMÁRIOS (CORRIGIDO COM GOLS)
@@ -864,6 +1019,50 @@ if compare_rules:
 
 st.json(summary)
 
+
+########################################
+# BLOCO 10B – MÉTRICAS EXTRAS (ECE e MCC)
+########################################
+from sklearn.metrics import matthews_corrcoef
+
+def expected_calibration_error(y_true, y_prob, n_bins=10):
+    """
+    Expected Calibration Error (ECE)
+    y_true: array binário (1 para Home, 0 para não-Home)
+    y_prob: probabilidades previstas para Home
+    """
+    df_ece = pd.DataFrame({"y": y_true, "p": y_prob}).dropna()
+    if df_ece.empty:
+        return np.nan
+    
+    df_ece['bin'] = pd.cut(df_ece['p'], bins=np.linspace(0,1,n_bins+1), include_lowest=True)
+    ece = 0.0
+    for _, g in df_ece.groupby('bin'):
+        if len(g) == 0: 
+            continue
+        acc = g['y'].mean()
+        conf = g['p'].mean()
+        ece += (len(g)/len(df_ece)) * abs(acc - conf)
+    return ece
+
+# Calcular ECE (para classe Home) e MCC (geral)
+ece_val = expected_calibration_error((test_df['Result']=="Home").astype(int), test_df["ML_Proba_Home"])
+mcc_val = matthews_corrcoef(test_df['Result'], test_df['ML_Pred'])
+
+# Adicionar ao resumo
+summary.update({
+    "ECE (Home)": None if np.isnan(ece_val) else round(ece_val, 4),
+    "MCC": round(mcc_val, 4)
+})
+
+# Mostrar novamente o resumo atualizado
+st.subheader("📊 Resumo de Métricas (com extras)")
+st.json(summary)
+
+
+
+
+
 ########################################
 # BLOCO 11 – CHECKBOXES DE VISUALIZAÇÃO
 ########################################
@@ -877,6 +1076,13 @@ with colv2:
     show_calib = st.checkbox("Gráfico de calibração (Home)", value=True)
 with colv3:
     show_feat_imp = st.checkbox("Importância das features (se disponível)", value=False)
+
+########################################
+# BLOCO 11B – Confusion Matrix
+########################################
+show_cm = st.checkbox("Mostrar Confusion Matrix", value=False)
+
+
 
 ########################################
 # BLOCO 12 – GRÁFICOS
@@ -979,6 +1185,40 @@ if show_feat_imp and hasattr(getattr(model, 'base_estimator_', model), "feature_
         st.info("O modelo não expõe 'feature_importances_'.")
 elif show_feat_imp:
     st.info("Importância de features disponível apenas para árvores (RF/XGB/LGBM).")
+
+
+def plot_conf_matrix(y_true, y_pred, labels=["Home","Draw","Away"]):
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    fig, ax = plt.subplots(figsize=(5,4))
+    im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+    ax.figure.colorbar(im, ax=ax)
+    
+    # Títulos e eixos
+    ax.set(
+        xticks=np.arange(cm.shape[1]),
+        yticks=np.arange(cm.shape[0]),
+        xticklabels=labels, yticklabels=labels,
+        ylabel="Resultado Real",
+        xlabel="Resultado Previsto",
+        title="Matriz de Confusão"
+    )
+    
+    # Colocar os números em cada célula
+    fmt = "d"
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], fmt),
+                    ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    
+    st.pyplot(fig)
+
+# Exibir apenas se ativado
+if show_cm:
+    st.subheader("🔲 Matriz de Confusão")
+    plot_conf_matrix(test_df['Result'], test_df['ML_Pred'])
+
 
 
 ########################################
