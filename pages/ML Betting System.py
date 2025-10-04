@@ -278,7 +278,6 @@ def auto_adjust_threshold(games_today, target_recommendations=5):
     
     return best_threshold
 
-
 ########################################
 ####### Bloco 4B – LiveScore Merge #####
 ########################################
