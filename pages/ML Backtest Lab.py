@@ -1294,7 +1294,7 @@ if save_csv:
 
 
 ########################################
-# BLOCO 10B – MÉTRICAS EXTRAS (ECE e MCC)
+# BLOCO 10B – MÉTRICAS EXTRAS (ECE e MCC) - CORRIGIDO
 ########################################
 from sklearn.metrics import matthews_corrcoef
 
@@ -1318,22 +1318,35 @@ def expected_calibration_error(y_true, y_prob, n_bins=10):
         ece += (len(g)/len(df_ece)) * abs(acc - conf)
     return ece
 
-# Calcular ECE (para classe Home) e MCC (geral)
-ece_val = expected_calibration_error((test_df['Result']=="Home").astype(int), test_df["ML_Proba_Home"])
-mcc_val = matthews_corrcoef(test_df['Result'], test_df['ML_Pred'])
+# Calcular ECE (para classe Home) e MCC (geral) - COM VERIFICAÇÃO
+if 'ML_Proba_Home' in test_df.columns and 'Result' in test_df.columns:
+    try:
+        ece_val = expected_calibration_error(
+            (test_df['Result']=="Home").astype(int), 
+            test_df["ML_Proba_Home"]
+        )
+    except Exception:
+        ece_val = np.nan
+else:
+    ece_val = np.nan
 
-# Adicionar ao resumo
-summary.update({
+if 'ML_Pred' in test_df.columns and 'Result' in test_df.columns:
+    try:
+        mcc_val = matthews_corrcoef(test_df['Result'], test_df['ML_Pred'])
+    except Exception:
+        mcc_val = np.nan
+else:
+    mcc_val = np.nan
+
+# Adicionar ao resumo com verificações
+summary_extra = {
     "ECE (Home)": None if np.isnan(ece_val) else round(ece_val, 4),
-    "MCC": round(mcc_val, 4)
-})
+    "MCC": None if np.isnan(mcc_val) else round(mcc_val, 4)
+}
 
-# Mostrar novamente o resumo atualizado
+# Mostrar o resumo atualizado
 st.subheader("📊 Resumo de Métricas (com extras)")
-st.json(summary)
-
-
-
+st.json({**summary, **summary_extra})
 
 
 ########################################
@@ -1349,6 +1362,7 @@ with colv2:
     show_calib = st.checkbox("Gráfico de calibração (Home)", value=True)
 with colv3:
     show_feat_imp = st.checkbox("Importância das features (se disponível)", value=False)
+    show_cm = st.checkbox("Mostrar Confusion Matrix", value=False)
 
 ########################################
 # BLOCO 11B – Confusion Matrix
@@ -1399,6 +1413,36 @@ def plot_calibration_curve(prob, outcomes, title, n_bins=10):
     ax.legend()
     st.pyplot(fig)
 
+def plot_conf_matrix(y_true, y_pred, labels=["Home","Draw","Away"]):
+    try:
+        cm = confusion_matrix(y_true, y_pred, labels=labels)
+        fig, ax = plt.subplots(figsize=(5,4))
+        im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+        ax.figure.colorbar(im, ax=ax)
+        
+        # Títulos e eixos
+        ax.set(
+            xticks=np.arange(cm.shape[1]),
+            yticks=np.arange(cm.shape[0]),
+            xticklabels=labels, yticklabels=labels,
+            ylabel="Resultado Real",
+            xlabel="Resultado Previsto",
+            title="Matriz de Confusão"
+        )
+        
+        # Colocar os números em cada célula
+        fmt = "d"
+        thresh = cm.max() / 2.
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):
+                ax.text(j, i, format(cm[i, j], fmt),
+                        ha="center", va="center",
+                        color="white" if cm[i, j] > thresh else "black")
+        
+        st.pyplot(fig)
+    except Exception as e:
+        st.error(f"Erro ao plotar matriz de confusão: {e}")
+
 # Tabela - CORRIGIDO PARA INCLUIR GOLS
 if show_table:
     cols_to_show = [
@@ -1407,21 +1451,31 @@ if show_table:
         'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2',
         'Result',
         'Auto_Recommendation','ML_Recommendation',
-        'Profit_Auto','Profit_ML',
+        'Profit_Auto','Profit_ML', 'Profit_Kelly',
         'ML_Proba_Home','ML_Proba_Draw','ML_Proba_Away'
     ]
     available_cols = [c for c in cols_to_show if c in test_df.columns]
     st.subheader("📋 Tabela – Teste (regras x ML) - COM GOLS")
+    
+    # Formatação condicional
+    format_dict = {
+        'Odd_H':'{:.2f}','Odd_D':'{:.2f}','Odd_A':'{:.2f}',
+        'Odd_1X':'{:.2f}','Odd_X2':'{:.2f}',
+        'Profit_Auto':'{:.2f}','Profit_ML':'{:.2f}','Profit_Kelly':'{:.3f}',
+        'ML_Proba_Home':'{:.3f}','ML_Proba_Draw':'{:.3f}','ML_Proba_Away':'{:.3f}',
+    }
+    
+    # Adicionar formatação para gols se existirem
+    if 'Goals_H_FT' in available_cols:
+        format_dict['Goals_H_FT'] = '{:.0f}'
+    if 'Goals_A_FT' in available_cols:
+        format_dict['Goals_A_FT'] = '{:.0f}'
+    
     st.dataframe(
         test_df[available_cols]
-        .style.format({
-            'Odd_H':'{:.2f}','Odd_D':'{:.2f}','Odd_A':'{:.2f}',
-            'Odd_1X':'{:.2f}','Odd_X2':'{:.2f}',
-            'Profit_Auto':'{:.2f}','Profit_ML':'{:.2f}',
-            'ML_Proba_Home':'{:.2f}','ML_Proba_Draw':'{:.2f}','ML_Proba_Away':'{:.2f}',
-            'Goals_H_FT':'{:.0f}','Goals_A_FT':'{:.0f}',  # FORMATO PARA GOLS
-        }),
-        use_container_width=True, height=600
+        .style.format(format_dict),
+        use_container_width=True, 
+        height=600
     )
 
 # ROI
@@ -1431,6 +1485,10 @@ if show_roi:
         plot_roi(test_df[test_df['Auto_Recommendation']!='❌ Avoid'], 'Profit_Auto', "ROI – Regras (apenas apostas feitas)")
     if len(ml_bets):
         plot_roi(test_df[test_df['ML_Recommendation']!='❌ Avoid'], 'Profit_ML', "ROI – ML (apenas apostas feitas)")
+    if 'Profit_Kelly' in test_df.columns:
+        kelly_bets = test_df[test_df['Profit_Kelly'].abs() > 0.001]
+        if len(kelly_bets):
+            plot_roi(kelly_bets, 'Profit_Kelly', "ROI – Kelly (apenas apostas feitas)")
 
 # Histograma
 if show_hist and "ML_Proba_Home" in test_df:
@@ -1444,51 +1502,25 @@ if show_calib and "ML_Proba_Home" in test_df:
     plot_calibration_curve(test_df["ML_Proba_Home"], y_home, "Calibração (Home) – Modelo vs Linha Perfeita", n_bins=10)
 
 # Importância das features (somente para modelos com atributo)
-if show_feat_imp and hasattr(getattr(model, 'base_estimator_', model), "feature_importances_"):
-    st.subheader("🔥 Importância das Features (modelo baseado em árvores)")
+if show_feat_imp and "trained_model" in st.session_state:
+    model = st.session_state["trained_model"]
     est = getattr(model, 'base_estimator_', model)
     importances = getattr(est, "feature_importances_", None)
-    if importances is not None:
+    
+    if importances is not None and hasattr(importances, '__len__'):
+        st.subheader("🔥 Importância das Features (modelo baseado em árvores)")
         fi = pd.Series(importances, index=X_train.columns).sort_values(ascending=False).head(20)
         fig, ax = plt.subplots(figsize=(8,6))
         ax.barh(fi.index[::-1], fi.values[::-1])
         ax.set_title("Top 20 Features")
         st.pyplot(fig)
     else:
-        st.info("O modelo não expõe 'feature_importances_'.")
+        st.info("Importância de features não disponível para este modelo.")
 elif show_feat_imp:
     st.info("Importância de features disponível apenas para árvores (RF/XGB/LGBM).")
 
-
-def plot_conf_matrix(y_true, y_pred, labels=["Home","Draw","Away"]):
-    cm = confusion_matrix(y_true, y_pred, labels=labels)
-    fig, ax = plt.subplots(figsize=(5,4))
-    im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
-    ax.figure.colorbar(im, ax=ax)
-    
-    # Títulos e eixos
-    ax.set(
-        xticks=np.arange(cm.shape[1]),
-        yticks=np.arange(cm.shape[0]),
-        xticklabels=labels, yticklabels=labels,
-        ylabel="Resultado Real",
-        xlabel="Resultado Previsto",
-        title="Matriz de Confusão"
-    )
-    
-    # Colocar os números em cada célula
-    fmt = "d"
-    thresh = cm.max() / 2.
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            ax.text(j, i, format(cm[i, j], fmt),
-                    ha="center", va="center",
-                    color="white" if cm[i, j] > thresh else "black")
-    
-    st.pyplot(fig)
-
-# Exibir apenas se ativado
-if show_cm:
+# Matriz de Confusão
+if show_cm and 'ML_Pred' in test_df.columns and 'Result' in test_df.columns:
     st.subheader("🔲 Matriz de Confusão")
     plot_conf_matrix(test_df['Result'], test_df['ML_Pred'])
 
