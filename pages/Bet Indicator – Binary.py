@@ -341,14 +341,15 @@ cols_to_show = [
 ]
 
 def color_prob(val, color):
-    alpha = int((1 - val) * 255)
+    # INVERTIDO: agora usa o valor diretamente (maior = mais escuro)
+    alpha = int(val * 255)  # val * 255 em vez de (1 - val) * 255
     return f'background-color: rgba({color}, {alpha/255:.2f})'
 
 def style_probs(val, col):
     if col == 'p_home':
-        return color_prob(val, "0,200,0")  # verde
+        return color_prob(val, "0,200,0")  # verde - mais escuro para probabilidades altas
     elif col == 'p_away':
-        return color_prob(val, "255,140,0")  # laranja
+        return color_prob(val, "255,140,0")  # laranja - mais escuro para probabilidades altas
     return ''
 
 styled_df = (
