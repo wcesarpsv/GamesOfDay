@@ -192,15 +192,75 @@ def classify_leagues_variation(history_df):
 
 
 #################################################
-# 3.5.2 Funções de EV e Lucro com Filtro (NOVAS)
+# 3.5.2 Funções de EV e Lucro com Filtro (CORRIGIDO)
 #################################################
 
-# ... (Funções calculate_ev e calculate_profit_with_ev_filter permanecem inalteradas, mas 
-# a nova função calculate_kelly_profit_with_ev_filter é adicionada aqui)
+def calculate_ev(probability, odd):
+    """Calcula o Valor Esperado (Expected Value) de uma aposta."""
+    if pd.isna(probability) or pd.isna(odd) or odd <= 1.0:
+        return 0.0
+    # EV = (Probabilidade * Odd) - 1.0
+    return (probability * odd) - 1.0
+
+
+def calculate_profit_with_ev_filter(rec, result, odds_row, prob_row, ev_threshold):
+    """
+    Calcula o lucro com stake fixa (1 unidade) APENAS se o EV da aposta
+    for maior que o threshold.
+    """
+    if pd.isna(rec) or result is None or rec == '❌ Avoid': return 0.0
+    r = str(rec)
+    
+    # 1. Definir a aposta e buscar Odd, Probabilidade e EV correspondente
+    current_ev = -1.0
+    prob = np.nan
+    odd = np.nan
+    target_result = None
+
+    if 'Back Home' in r:
+        odd = odds_row.get('Odd_H', np.nan)
+        current_ev = prob_row.get('ML_EV_Home', -1.0)
+        target_result = "Home"
+    elif 'Back Away' in r:
+        odd = odds_row.get('Odd_A', np.nan)
+        current_ev = prob_row.get('ML_EV_Away', -1.0)
+        target_result = "Away"
+    elif 'Back Draw' in r:
+        odd = odds_row.get('Odd_D', np.nan)
+        current_ev = prob_row.get('ML_EV_Draw', -1.0)
+        target_result = "Draw"
+    elif '1X' in r:
+        odd = odds_row.get('Odd_1X', np.nan)
+        current_ev = prob_row.get('ML_EV_1X', -1.0)
+        target_result = ["Home", "Draw"]
+    elif 'X2' in r:
+        odd = odds_row.get('Odd_X2', np.nan)
+        current_ev = prob_row.get('ML_EV_X2', -1.0)
+        target_result = ["Away", "Draw"]
+    else:
+        return 0.0
+
+    # 2. Aplicar o filtro de EV e validar dados
+    # Se a odd for inválida OU o EV for menor que o threshold, NÃO aposta.
+    if pd.isna(odd) or odd <= 1.0 or current_ev < ev_threshold:
+        return 0.0 # Não faz aposta
+
+    # 3. Calcular o Lucro (Stake Fixa = 1.0)
+    is_win = False
+    if isinstance(target_result, list):
+        is_win = result in target_result
+    else:
+        is_win = result == target_result
+
+    if is_win:
+        return odd - 1.0 # Ganho: 1 * (odd - 1)
+    else:
+        return -1.0 # Perda: -1
+
 
 def calculate_kelly_profit_with_ev_filter(rec, result, odds_row, prob_row, ev_threshold, kelly_fraction=1.0):
     """
-    Calcula o lucro usando o Kelly Criterion, aplicado APENAS se o EV da aposta 
+    Calcula o lucro usando o Kelly Criterion, aplicado APENAS se o EV da aposta
     for maior que o threshold.
     """
     if pd.isna(rec) or result is None or rec == '❌ Avoid': return 0.0
@@ -212,6 +272,7 @@ def calculate_kelly_profit_with_ev_filter(rec, result, odds_row, prob_row, ev_th
     odd = np.nan
     target_result = None
 
+    # Busca a probabilidade, odd e EV (que já foi calculado no Bloco 9.1 usando calculate_ev)
     if 'Back Home' in r:
         prob = prob_row.get('ML_Proba_Home', np.nan)
         odd = odds_row.get('Odd_H', np.nan)
@@ -227,8 +288,6 @@ def calculate_kelly_profit_with_ev_filter(rec, result, odds_row, prob_row, ev_th
         odd = odds_row.get('Odd_D', np.nan)
         current_ev = prob_row.get('ML_EV_Draw', -1.0)
         target_result = "Draw"
-    # A fórmula Kelly simples só funciona diretamente para 2-way ou 3-way moneyline, 
-    # mas a Dupla Chance (1X/X2) é binária (Ganha/Perde) e funciona se usarmos Odd_1X/Odd_X2 e Prob_1X/Prob_X2.
     elif '1X' in r:
         prob = prob_row.get('ML_Proba_1X', np.nan)
         odd = odds_row.get('Odd_1X', np.nan)
