@@ -1113,6 +1113,89 @@ st.json(summary)
 
 
 ########################################
+# BLOCO 9.3 – CÁLCULO E EXIBIÇÃO DE MÉTRICAS
+########################################
+
+st.subheader("📊 Resumo de Métricas (Resultados Finais)")
+
+# --- Métricas ML (Máquina) ---
+total_apostas_ml = (test_df['Profit_ML'].abs() > 0).sum()
+total_acertos_ml = test_df['ML_Correct'].sum()
+total_profit_ml = test_df['Profit_ML'].sum().round(2)
+winrate_ml = (total_acertos_ml / total_apostas_ml * 100).round(2) if total_apostas_ml > 0 else 0.0
+
+# --- Métricas Kelly ---
+# Apostas Kelly: Contamos as linhas onde a stake (e, portanto, o lucro/perda) não é zero.
+apostas_kelly = (test_df['Profit_Kelly'].abs() > 0).sum()
+total_profit_kelly = test_df['Profit_Kelly'].sum().round(2)
+# Nota: Winrate Kelly é o mesmo do ML, pois a seleção de jogos é a mesma (EV filter)
+
+# --- Métricas Regras (Auto) ---
+total_apostas_auto = (test_df['Profit_Auto'].abs() > 0).sum()
+total_acertos_auto = test_df['Auto_Correct'].sum()
+total_profit_auto = test_df['Profit_Auto'].sum().round(2)
+winrate_auto = (total_acertos_auto / total_apostas_auto * 100).round(2) if total_apostas_auto > 0 else 0.0
+
+# --- Métricas Preditivas (Requerem 'proba') ---
+proba_test = test_df[["ML_Proba_Home", "ML_Proba_Draw", "ML_Proba_Away"]].values
+y_true = test_df['Result']
+
+if len(y_true.unique()) > 1 and proba_test.shape[1] == 3:
+    # Mapear y_true para índices (0, 1, 2)
+    classes_list = ['Away', 'Draw', 'Home']
+    y_true_indices = y_true.apply(lambda x: classes_list.index(x))
+
+    # Calcular as métricas
+    auc_score = roc_auc_score(y_true_indices, proba_test, multi_class='ovr').round(4)
+    logloss = log_loss(y_true, proba_test).round(4)
+else:
+    auc_score, logloss = 'N/A', 'N/A'
+
+
+# --- Exibição Final ---
+
+resumo = {
+    "Jogos (teste)": len(test_df),
+    
+    # ML - Stake Fixa
+    "Apostas ML (Stake Fixa)": total_apostas_ml,
+    "Winrate ML (%)": winrate_ml,
+    "Profit ML (Stake Fixa)": total_profit_ml,
+    
+    # Kelly - Stake Variável
+    "Apostas Kelly (Stake Variável)": apostas_kelly,
+    "Profit Kelly (Stake Variável)": total_profit_kelly,
+    
+    # Regras - Stake Fixa
+    "Apostas Regras": total_apostas_auto,
+    "Winrate Regras (%)": winrate_auto,
+    "Profit Regras": total_profit_auto,
+    
+    # Qualidade da Probabilidade
+    "AUC (OvR)": auc_score,
+    "LogLoss": logloss,
+    # Você pode adicionar ECE (Home), Brier (Home) se calcular separadamente
+}
+
+st.json(resumo)
+
+
+# Salvar CSV (se selecionado)
+if save_csv:
+    csv_file = test_df[['Date', 'Home', 'Away', 'Result', 
+                        'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away', 
+                        'ML_Recommendation', 'Profit_ML', 'Profit_Kelly', 
+                        'Auto_Recommendation', 'Profit_Auto']].to_csv(index=False).encode('utf-8')
+    
+    st.download_button(
+        label="Download Dados de Teste (CSV)",
+        data=csv_file,
+        file_name='ml_backtest_results.csv',
+        mime='text/csv',
+    )
+
+
+########################################
 # BLOCO 10B – MÉTRICAS EXTRAS (ECE e MCC)
 ########################################
 from sklearn.metrics import matthews_corrcoef
