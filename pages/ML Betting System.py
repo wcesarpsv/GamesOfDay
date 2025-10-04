@@ -30,6 +30,51 @@ GAMES_FOLDER = "GamesDay"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa", "afc","trophy"]
 DOMINANT_THRESHOLD = 0.90
 
+
+        
+
+########################################
+####### Bloco 4 – Load Data ############
+########################################
+files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
+files = sorted(files)
+
+if not files:
+    st.warning("No CSV files found in GamesDay folder.")
+    st.stop()
+
+options = files[-2:] if len(files) >= 2 else files
+selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
+
+# Carregar os jogos do dia selecionado
+games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
+games_today = filter_leagues(games_today)
+
+# Apenas jogos sem placar final
+if 'Goals_H_FT' in games_today.columns:
+    games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
+
+# Carregar histórico para treinar o modelo
+all_games = load_all_games(GAMES_FOLDER)
+all_games = filter_leagues(all_games)
+history = prepare_history(all_games)
+
+# Apply data quality improvements
+history = improve_data_quality(history)
+
+if history.empty:
+    st.error("No valid historical data found.")
+    st.stop()
+
+# Extrair data do arquivo selecionado
+import re
+date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
+if date_match:
+    selected_date_str = date_match.group(0)
+else:
+    selected_date_str = datetime.now().strftime("%Y-%m-%d")
+
+
 ########################################
 ####### Bloco 3 – Helper Functions #####
 ########################################
@@ -97,19 +142,33 @@ def create_advanced_features(df):
     """Create enhanced features for better model performance"""
     df = df.copy()
     
-    # Power ratios and normalized metrics
-    df['Power_Ratio'] = df['M_H'] / (df['M_A'] + 0.001)
+    # Power ratios and normalized metrics - BALANCEADAS
+    df['Power_Ratio_Home'] = df['M_H'] / (df['M_A'] + 0.001)
+    df['Power_Ratio_Away'] = df['M_A'] / (df['M_H'] + 0.001)
     df['Total_Power'] = df['M_H'] + df['M_A']
     df['Power_Diff_Normalized'] = (df['M_H'] - df['M_A']) / (df['Total_Power'] + 0.001)
     
-    # Odds-based features
-    if 'Odd_H' in df.columns:
+    # Odds-based features - BALANCEADAS
+    if 'Odd_H' in df.columns and 'Odd_A' in df.columns and 'Odd_D' in df.columns:
         df['Fair_Prob_Home'] = 1 / df['Odd_H']
-        if 'Odd_A' in df.columns and 'Odd_D' in df.columns:
-            df['Market_Margin'] = df['Fair_Prob_Home'] + (1 / df['Odd_A']) + (1 / df['Odd_D']) - 1
+        df['Fair_Prob_Away'] = 1 / df['Odd_A']
+        df['Fair_Prob_Draw'] = 1 / df['Odd_D']
+        df['Market_Margin'] = df['Fair_Prob_Home'] + df['Fair_Prob_Away'] + df['Fair_Prob_Draw'] - 1
+        
+        # Probabilidade relativa Home vs Away
+        df['Prob_Ratio_Home_Away'] = df['Fair_Prob_Home'] / (df['Fair_Prob_Away'] + 0.001)
+        df['Prob_Diff_Home_Away'] = df['Fair_Prob_Home'] - df['Fair_Prob_Away']
     
-    # Home advantage factor
+    # Home/Away advantage - BALANCEADAS
     df['Home_Advantage'] = df['M_H'] * 0.1
+    df['Away_Strength'] = df['M_A'] * 0.1
+    df['Advantage_Ratio'] = df['Home_Advantage'] / (df['Away_Strength'] + 0.001)
+    
+    # Value detection features
+    if all(col in df.columns for col in ['ML_Proba_Home', 'ML_Proba_Away', 'Fair_Prob_Home', 'Fair_Prob_Away']):
+        df['Value_Home'] = (df['ML_Proba_Home'] - df['Fair_Prob_Home']) / (df['Fair_Prob_Home'] + 0.001)
+        df['Value_Away'] = (df['ML_Proba_Away'] - df['Fair_Prob_Away']) / (df['Fair_Prob_Away'] + 0.001)
+        df['Value_Diff'] = df['Value_Home'] - df['Value_Away']
     
     return df
 
@@ -218,48 +277,7 @@ def auto_adjust_threshold(games_today, target_recommendations=5):
         test_threshold += 0.02
     
     return best_threshold
-        
 
-########################################
-####### Bloco 4 – Load Data ############
-########################################
-files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
-files = sorted(files)
-
-if not files:
-    st.warning("No CSV files found in GamesDay folder.")
-    st.stop()
-
-options = files[-2:] if len(files) >= 2 else files
-selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
-
-# Carregar os jogos do dia selecionado
-games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
-games_today = filter_leagues(games_today)
-
-# Apenas jogos sem placar final
-if 'Goals_H_FT' in games_today.columns:
-    games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
-
-# Carregar histórico para treinar o modelo
-all_games = load_all_games(GAMES_FOLDER)
-all_games = filter_leagues(all_games)
-history = prepare_history(all_games)
-
-# Apply data quality improvements
-history = improve_data_quality(history)
-
-if history.empty:
-    st.error("No valid historical data found.")
-    st.stop()
-
-# Extrair data do arquivo selecionado
-import re
-date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
-if date_match:
-    selected_date_str = date_match.group(0)
-else:
-    selected_date_str = datetime.now().strftime("%Y-%m-%d")
 
 ########################################
 ####### Bloco 4B – LiveScore Merge #####
@@ -299,6 +317,18 @@ else:
 # Apply advanced feature engineering
 games_today = create_advanced_features(games_today)
 history = create_advanced_features(history)
+
+# Verificar se as novas features BALANCEADAS foram criadas
+balanced_features = [
+    'Power_Ratio_Home', 'Power_Ratio_Away', 'Fair_Prob_Home', 'Fair_Prob_Away',
+    'Home_Advantage', 'Away_Strength', 'Prob_Ratio_Home_Away', 'Prob_Diff_Home_Away'
+]
+
+created_features = [f for f in balanced_features if f in games_today.columns]
+home_created = len([f for f in created_features if 'Home' in f])
+away_created = len([f for f in created_features if 'Away' in f])
+
+st.sidebar.info(f"🔧 {home_created}🏠/{away_created}🚌 features balanceadas")
 
 games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
 history['M_Diff'] = history['M_H'] - history['M_A']
@@ -345,6 +375,8 @@ games_today['Away_Band'] = np.where(
     np.where(games_today['M_A'] >= games_today['Away_P80'], 'Top 20%', 'Balanced')
 )
 
+
+
 ########################################
 ####### Bloco 6 – Train ML Model #######
 ########################################
@@ -357,18 +389,34 @@ def map_result(row):
 
 history['Result'] = history.apply(map_result, axis=1)
 
-# Enhanced feature set
+# Enhanced feature set - BALANCEADA
 features_raw = [
-    'M_H','M_A','Diff_Power','M_Diff',
-    'Home_Band','Away_Band','League_Classification',
-    'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2',
-    'EV','Games_Analyzed',
-    # New enhanced features
-    'Power_Ratio', 'Total_Power', 'Power_Diff_Normalized',
-    'Fair_Prob_Home', 'Market_Margin', 'Home_Advantage'
+    # Features básicas
+    'M_H', 'M_A', 'Diff_Power', 'M_Diff',
+    
+    # Bandas e ligas
+    'Home_Band', 'Away_Band', 'League_Classification',
+    
+    # Odds
+    'Odd_H', 'Odd_D', 'Odd_A', 'Odd_1X', 'Odd_X2',
+    'EV', 'Games_Analyzed',
+    
+    # Novas features BALANCEADAS
+    'Power_Ratio_Home', 'Power_Ratio_Away', 'Total_Power', 'Power_Diff_Normalized',
+    'Fair_Prob_Home', 'Fair_Prob_Away', 'Fair_Prob_Draw', 'Market_Margin',
+    'Prob_Ratio_Home_Away', 'Prob_Diff_Home_Away',
+    'Home_Advantage', 'Away_Strength', 'Advantage_Ratio'
 ]
-# Only include features that exist in the dataframe
+
+# Só incluir features que existem no dataframe
 features_raw = [f for f in features_raw if f in history.columns]
+
+# Verificar se temos features balanceadas
+home_features = [f for f in features_raw if 'Home' in f]
+away_features = [f for f in features_raw if 'Away' in f]
+neutral_features = [f for f in features_raw if 'Home' not in f and 'Away' not in f]
+
+st.sidebar.info(f"🏠 {len(home_features)} Home | 🚌 {len(away_features)} Away | ⚖️ {len(neutral_features)} Neutral")
 
 X = history[features_raw].copy()
 y = history['Result']
@@ -392,7 +440,7 @@ if cat_cols:
     X = pd.concat([X.drop(columns=cat_cols).reset_index(drop=True),
                    encoded_df.reset_index(drop=True)], axis=1)
 
-# Use only Random Forest for stability (removes Gradient Boosting that causes errors)
+# Use only Random Forest for stability
 st.info("🏗️ Training Enhanced Random Forest Model...")
 
 model = RandomForestClassifier(
@@ -408,6 +456,63 @@ model = RandomForestClassifier(
 model.fit(X, y)
 
 st.success("✅ Model trained successfully!")
+
+# 🔍 ANÁLISE DAS FEATURES BALANCEADAS
+st.header("🔍 Balanced Feature Analysis")
+
+# Mostrar balanceamento
+st.subheader("⚖️ Balanceamento Home vs Away")
+
+balance_stats = {
+    'Home Features': len([f for f in X.columns if 'Home' in f]),
+    'Away Features': len([f for f in X.columns if 'Away' in f]), 
+    'Neutral Features': len([f for f in X.columns if 'Home' not in f and 'Away' not in f]),
+    'Total Features': len(X.columns)
+}
+
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("🏠 Home", balance_stats['Home Features'])
+col2.metric("🚌 Away", balance_stats['Away Features'])
+col3.metric("⚖️ Neutral", balance_stats['Neutral Features'])
+col4.metric("📊 Total", balance_stats['Total Features'])
+
+# Feature importance
+feature_importance = pd.DataFrame({
+    'feature': X.columns,
+    'importance': model.feature_importances_
+}).sort_values('importance', ascending=False)
+
+# Top features por categoria
+st.subheader("🎯 Top Features por Categoria")
+
+top_home = feature_importance[feature_importance['feature'].str.contains('Home', na=False)].head(5)
+top_away = feature_importance[feature_importance['feature'].str.contains('Away', na=False)].head(5)
+top_neutral = feature_importance[~feature_importance['feature'].str.contains('Home|Away', na=False)].head(5)
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.write("**🏠 Top Home Features:**")
+    for _, row in top_home.iterrows():
+        st.write(f"{row['feature']}: {row['importance']:.3f}")
+
+with col2:
+    st.write("**🚌 Top Away Features:**")
+    for _, row in top_away.iterrows():
+        st.write(f"{row['feature']}: {row['importance']:.3f}")
+
+with col3:
+    st.write("**⚖️ Top Neutral Features:**")
+    for _, row in top_neutral.iterrows():
+        st.write(f"{row['feature']}: {row['importance']:.3f}")
+
+# Verificar se o balanceamento melhorou
+if len(home_features) == len(away_features):
+    st.success("✅ Features perfeitamente balanceadas!")
+elif abs(len(home_features) - len(away_features)) <= 2:
+    st.info("⚖️ Features razoavelmente balanceadas")
+else:
+    st.warning("⚠️ Ainda há desbalanceamento nas features")
 
 ########################################
 ####### Bloco 7 – Apply ML to Today ####
