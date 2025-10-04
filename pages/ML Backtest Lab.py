@@ -195,58 +195,68 @@ def classify_leagues_variation(history_df):
 # 3.5.2 Funções de EV e Lucro com Filtro (NOVAS)
 #################################################
 
-def calculate_ev(prob, odd):
-    """Calcula o Valor Esperado: EV = (Probabilidade * Odd) - 1"""
-    # Retorna NaN se a Odd for inválida (Odd <= 1.0 ou NaN)
-    if pd.isna(prob) or pd.isna(odd) or odd <= 1.0:
-        return np.nan
-    return (prob * odd) - 1
+# ... (Funções calculate_ev e calculate_profit_with_ev_filter permanecem inalteradas, mas 
+# a nova função calculate_kelly_profit_with_ev_filter é adicionada aqui)
 
-def calculate_profit_with_ev_filter(rec, result, odds_row, prob_row, ev_threshold):
+def calculate_kelly_profit_with_ev_filter(rec, result, odds_row, prob_row, ev_threshold, kelly_fraction=1.0):
     """
-    Calcula o lucro, APENAS se o EV da aposta (identificado pela recomendação) 
+    Calcula o lucro usando o Kelly Criterion, aplicado APENAS se o EV da aposta 
     for maior que o threshold.
-    Assume que as colunas 'ML_EV_*' já foram calculadas e estão em prob_row (que é a row do DF).
     """
     if pd.isna(rec) or result is None or rec == '❌ Avoid': return 0.0
     r = str(rec)
     
-    # 1. Definir a aposta, buscar Odd e EV correspondente
+    # 1. Definir a aposta, buscar Odd, Probabilidade e EV correspondente
     current_ev = -1.0
+    prob = np.nan
     odd = np.nan
     target_result = None
 
     if 'Back Home' in r:
+        prob = prob_row.get('ML_Proba_Home', np.nan)
         odd = odds_row.get('Odd_H', np.nan)
         current_ev = prob_row.get('ML_EV_Home', -1.0)
         target_result = "Home"
     elif 'Back Away' in r:
+        prob = prob_row.get('ML_Proba_Away', np.nan)
         odd = odds_row.get('Odd_A', np.nan)
         current_ev = prob_row.get('ML_EV_Away', -1.0)
         target_result = "Away"
     elif 'Back Draw' in r:
+        prob = prob_row.get('ML_Proba_Draw', np.nan)
         odd = odds_row.get('Odd_D', np.nan)
         current_ev = prob_row.get('ML_EV_Draw', -1.0)
         target_result = "Draw"
+    # A fórmula Kelly simples só funciona diretamente para 2-way ou 3-way moneyline, 
+    # mas a Dupla Chance (1X/X2) é binária (Ganha/Perde) e funciona se usarmos Odd_1X/Odd_X2 e Prob_1X/Prob_X2.
     elif '1X' in r:
+        prob = prob_row.get('ML_Proba_1X', np.nan)
         odd = odds_row.get('Odd_1X', np.nan)
         current_ev = prob_row.get('ML_EV_1X', -1.0)
         target_result = ["Home", "Draw"]
     elif 'X2' in r:
+        prob = prob_row.get('ML_Proba_X2', np.nan)
         odd = odds_row.get('Odd_X2', np.nan)
         current_ev = prob_row.get('ML_EV_X2', -1.0)
         target_result = ["Away", "Draw"]
     else:
         return 0.0
 
-    # 2. Aplicar o filtro de EV
-    if pd.isna(odd) or current_ev < ev_threshold:
-        return 0.0 # Não faz aposta (Profit = 0)
-    
-    # 3. Calcular o Lucro
-    if target_result is None:
-        return 0.0
+    # 2. Aplicar o filtro de EV e validar dados
+    if pd.isna(odd) or odd <= 1.0 or pd.isna(prob) or current_ev < ev_threshold:
+        return 0.0 # Não faz aposta
+
+    # 3. Calcular a Stake de Kelly (f): f = (p * o - 1) / (o - 1)
+    # Kelly_f é a fração da banca a ser apostada
+    if odd > 1.0:
+        kelly_f = ((prob * odd) - 1.0) / (odd - 1.0)
+    else:
+        return 0.0 # Odd inválida
         
+    # Aplicar o multiplicador da fração Kelly (e.g., Full Kelly=1.0, Half Kelly=0.5)
+    stake = max(0.0, kelly_f * kelly_fraction)
+    
+    # 4. Calcular o Lucro
     is_win = False
     if isinstance(target_result, list):
         is_win = result in target_result
@@ -254,9 +264,9 @@ def calculate_profit_with_ev_filter(rec, result, odds_row, prob_row, ev_threshol
         is_win = result == target_result
 
     if is_win:
-        return odd - 1.0 # Ganho
+        return stake * (odd - 1.0) # Ganho: stake * (odd - 1)
     else:
-        return -1.0 # Perda (aposta de 1 unidade)
+        return -stake # Perda: -stake
 
 ########################################
 # BLOCO 4 – REGRAS (AUTO RECOMMENDATION)
@@ -910,6 +920,7 @@ if "trained_model" in st.session_state:
     )
 
 # 9.2 Cálculo de Lucros com Filtro EV (MODIFICADO)
+# 9.2 Cálculo de Lucros com Filtro EV e Kelly (MODIFICADO)
 # Obter o threshold de EV do Session State (default para 0.0 se não existir)
 ev_threshold_final = st.session_state.get('EV_THRESHOLD', 0.00)
 
@@ -932,11 +943,33 @@ def calculate_profit_simple(rec, result, odds_row):
     return 0.0
 
 
-# Lucros
-# Profit ML: AGORA USA O FILTRO DE EV! (calculate_profit_with_ev_filter é do Bloco 3.5.2)
+# --- UI e Configuração do Kelly ---
+st.subheader("💰 Análise de Lucro (Kelly Criterion)")
+colK1, colK2 = st.columns(2)
+with colK1:
+    kelly_fraction = st.slider(
+        "Fração Kelly (Kelly Stake Multiplier)", 
+        0.0, 1.0, 0.5, step=0.05, 
+        help="0.5 = Half Kelly (50% da stake Kelly sugerida); 1.0 = Full Kelly."
+    )
+with colK2:
+    st.write("") # Espaçamento
+
+
+# --- Lucros ---
+
+# Profit ML (Stake Fixa = 1 unidade): Usa o cálculo com filtro de EV!
 test_df['Profit_ML'] = test_df.apply(
     lambda r: calculate_profit_with_ev_filter(
         r['ML_Recommendation'], r['Result'], r, r, ev_threshold_final
+    ), 
+    axis=1
+)
+
+# Profit Kelly (Stake Variável): Usa a nova função com filtro de EV e stake de Kelly
+test_df['Profit_Kelly'] = test_df.apply(
+    lambda r: calculate_kelly_profit_with_ev_filter(
+        r['ML_Recommendation'], r['Result'], r, r, ev_threshold_final, kelly_fraction
     ), 
     axis=1
 )
