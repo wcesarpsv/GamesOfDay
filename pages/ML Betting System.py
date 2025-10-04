@@ -180,6 +180,43 @@ def enhanced_ml_recommendation(row, threshold=0.65, min_value=0.02):
         return best_rec[0]
     else:
         return "❌ Avoid"
+
+def auto_adjust_threshold(games_today, target_recommendations=5):
+    """Ajusta automaticamente o threshold baseado no número de recomendações"""
+    if games_today.empty:
+        return 0.65
+    
+    valid_games = games_today[games_today['ML_Data_Valid'] == True]
+    if len(valid_games) == 0:
+        return 0.65
+    
+    # Começa com threshold baixo
+    test_threshold = 0.55
+    max_threshold = 0.75
+    
+    best_threshold = 0.65
+    best_count = 0
+    
+    # Testa diferentes thresholds
+    while test_threshold <= max_threshold:
+        count = 0
+        for idx, row in valid_games.iterrows():
+            p_home = row.get('ML_Proba_Home', 0)
+            p_draw = row.get('ML_Proba_Draw', 0)
+            p_away = row.get('ML_Proba_Away', 0)
+            
+            max_prob = max(p_home, p_draw, p_away)
+            if max_prob >= test_threshold:
+                count += 1
+        
+        # Prefere thresholds que dão perto do target
+        if abs(count - target_recommendations) < abs(best_count - target_recommendations):
+            best_threshold = test_threshold
+            best_count = count
+        
+        test_threshold += 0.02
+    
+    return best_threshold
         
 
 ########################################
@@ -374,9 +411,141 @@ st.success("✅ Model trained successfully!")
 ########################################
 ####### Bloco 7 – Apply ML to Today ####
 ########################################
-# Use dynamic threshold
-threshold = dynamic_threshold_adjustment(games_today)
-st.sidebar.metric("🎯 Dynamic ML Threshold", f"{threshold:.1%}")
+# Use dynamic threshold with auto-adjustment
+def auto_adjust_threshold(games_today, target_recommendations=8):
+    """Ajusta automaticamente o threshold baseado no número de recomendações"""
+    if games_today.empty:
+        return 0.60
+    
+    valid_games = games_today[games_today['ML_Data_Valid'] == True]
+    if len(valid_games) == 0:
+        return 0.60
+    
+    # Testa diferentes thresholds
+    test_threshold = 0.50
+    max_threshold = 0.70
+    
+    best_threshold = 0.60
+    best_count = 0
+    
+    while test_threshold <= max_threshold:
+        count = 0
+        for idx, row in valid_games.iterrows():
+            if not row['ML_Data_Valid']:
+                continue
+                
+            p_home = row.get('ML_Proba_Home', 0)
+            p_draw = row.get('ML_Proba_Draw', 0) 
+            p_away = row.get('ML_Proba_Away', 0)
+            
+            # Calcular EVs para ver se tem valor
+            ev_home = p_home * row.get('Odd_H', 2.0) - 1
+            ev_away = p_away * row.get('Odd_A', 2.0) - 1
+            ev_draw = p_draw * row.get('Odd_D', 3.0) - 1
+            
+            max_prob = max(p_home, p_draw, p_away)
+            max_ev = max(ev_home, ev_away, ev_draw)
+            
+            if max_prob >= test_threshold and max_ev >= 0.02:
+                count += 1
+        
+        # Prefere thresholds que dão perto do target
+        if abs(count - target_recommendations) < abs(best_count - target_recommendations):
+            best_threshold = test_threshold
+            best_count = count
+        
+        test_threshold += 0.02
+    
+    return best_threshold
+
+# Seleção de threshold
+threshold_option = st.sidebar.selectbox(
+    "Threshold Strategy",
+    ["Auto-Adjust", "Dynamic", "Fixed"],
+    index=0
+)
+
+if threshold_option == "Auto-Adjust":
+    target_recs = st.sidebar.slider("Target Recommendations", 3, 15, 8)
+    threshold = auto_adjust_threshold(games_today, target_recs)
+elif threshold_option == "Dynamic":
+    threshold = dynamic_threshold_adjustment(games_today)
+else:
+    threshold = st.sidebar.slider("Fixed Threshold", 0.50, 0.80, 0.65)
+
+st.sidebar.metric("🎯 ML Threshold", f"{threshold:.1%}")
+
+# Relaxar um pouco o min_value para EV
+min_ev_value = st.sidebar.slider("Min EV Value", 0.00, 0.10, 0.02, 0.01)
+
+def enhanced_ml_recommendation_v2(row, threshold=0.65, min_value=0.02):
+    """Enhanced recommendation with more flexible rules"""
+    
+    if pd.isna(row.get('ML_Proba_Home')) or pd.isna(row.get('ML_Proba_Away')) or pd.isna(row.get('ML_Proba_Draw')):
+        return "❌ Avoid"
+    
+    p_home = row['ML_Proba_Home']
+    p_draw = row['ML_Proba_Draw'] 
+    p_away = row['ML_Proba_Away']
+    
+    # Calculate expected value for each bet
+    ev_home = p_home * row.get('Odd_H', 2.0) - 1
+    ev_away = p_away * row.get('Odd_A', 2.0) - 1  
+    ev_draw = p_draw * row.get('Odd_D', 3.0) - 1
+    ev_1x = (p_home + p_draw) * row.get('Odd_1X', 1.5) - 1
+    ev_x2 = (p_away + p_draw) * row.get('Odd_X2', 1.5) - 1
+    
+    # Encontrar a melhor aposta
+    best_bet = None
+    best_ev = -999
+    
+    # Check Home win
+    if p_home >= threshold and ev_home >= min_value and ev_home > best_ev:
+        best_bet = "🟢 Back Home"
+        best_ev = ev_home
+    
+    # Check Away win  
+    if p_away >= threshold and ev_away >= min_value and ev_away > best_ev:
+        best_bet = "🟠 Back Away"
+        best_ev = ev_away
+        
+    # Check Draw
+    if p_draw >= threshold and ev_draw >= min_value and ev_draw > best_ev:
+        best_bet = "⚪ Back Draw"
+        best_ev = ev_draw
+    
+    # Check Double Chance - com threshold mais baixo
+    dc_threshold = threshold - 0.10  # 10% mais baixo para double chance
+    
+    if ev_1x >= min_value and (p_home + p_draw) >= dc_threshold and ev_1x > best_ev:
+        best_bet = "🟦 1X (Home/Draw)"
+        best_ev = ev_1x
+        
+    if ev_x2 >= min_value and (p_away + p_draw) >= dc_threshold and ev_x2 > best_ev:
+        best_bet = "🟪 X2 (Away/Draw)"
+        best_ev = ev_x2
+    
+    # Se não encontrou nada, verificar se há alguma com EV muito bom mesmo com prob menor
+    if best_bet is None:
+        high_ev_bets = []
+        
+        if ev_home >= 0.10:  # EV muito bom
+            high_ev_bets.append(("🟢 Back Home", ev_home, p_home))
+        if ev_away >= 0.10:
+            high_ev_bets.append(("🟠 Back Away", ev_away, p_away))
+        if ev_draw >= 0.10:
+            high_ev_bets.append(("⚪ Back Draw", ev_draw, p_draw))
+        if ev_1x >= 0.08:
+            high_ev_bets.append(("🟦 1X (Home/Draw)", ev_1x, p_home + p_draw))
+        if ev_x2 >= 0.08:
+            high_ev_bets.append(("🟪 X2 (Away/Draw)", ev_x2, p_away + p_draw))
+            
+        if high_ev_bets:
+            # Ordenar por EV e pegar a melhor
+            high_ev_bets.sort(key=lambda x: x[1], reverse=True)
+            best_bet = high_ev_bets[0][0]
+    
+    return best_bet if best_bet else "❌ Avoid"
 
 def check_missing_features(row, features_required):
     """Verifica se há dados faltantes nas features essenciais"""
@@ -391,22 +560,21 @@ def check_missing_features(row, features_required):
     
     return missing_features
 
-# Lista de features obrigatórias
+# Lista de features obrigatórias - reduzida para ser menos rigorosa
 required_features = [
     'M_H', 'M_A', 'Diff_Power', 'M_Diff',
-    'Home_Band', 'Away_Band', 'League_Classification',
     'Odd_H', 'Odd_D', 'Odd_A'
 ]
 
 X_today = games_today[features_raw].copy()
 
-# Aplicar validação de dados faltantes
+# Aplicar validação de dados faltantes - menos rigorosa
 games_today["ML_Data_Valid"] = True
 games_today["Missing_Features"] = ""
 
 for idx, row in games_today.iterrows():
     missing = check_missing_features(row, required_features)
-    if missing:
+    if len(missing) > 3:  # Só marca como inválido se faltarem mais de 3 features críticas
         games_today.at[idx, "ML_Data_Valid"] = False
         games_today.at[idx, "Missing_Features"] = ", ".join(missing)
 
@@ -454,18 +622,28 @@ if not X_today_valid.empty:
     games_today.loc[valid_indices, "ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
     games_today.loc[valid_indices, "ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
     
-    # Gerar recomendações usando enhanced function
+    # Gerar recomendações usando enhanced function v2
     for idx in valid_indices:
         p_home = games_today.at[idx, "ML_Proba_Home"]
         p_draw = games_today.at[idx, "ML_Proba_Draw"] 
         p_away = games_today.at[idx, "ML_Proba_Away"]
         
-        games_today.at[idx, "ML_Recommendation"] = enhanced_ml_recommendation(
-            games_today.loc[idx], threshold
+        games_today.at[idx, "ML_Recommendation"] = enhanced_ml_recommendation_v2(
+            games_today.loc[idx], threshold, min_ev_value
         )
 
 # Mostrar estatísticas de validação
 invalid_count = len(games_today) - valid_games_mask.sum()
+valid_recommendations = len(games_today[games_today['ML_Recommendation'] != '❌ Avoid'])
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Total Games", len(games_today))
+with col2:
+    st.metric("Valid Games", len(games_today[valid_games_mask]))
+with col3:
+    st.metric("Recommendations", valid_recommendations)
+
 if invalid_count > 0:
     st.warning(f"⚠️ {invalid_count} jogos excluídos por dados insuficientes")
     
@@ -473,6 +651,14 @@ if invalid_count > 0:
     if not invalid_games.empty:
         with st.expander("📋 Ver jogos com dados insuficientes"):
             st.dataframe(invalid_games[['Home', 'Away', 'League', 'Missing_Features']])
+
+# Mostrar análise rápida das probabilidades
+if valid_recommendations > 0:
+    st.success(f"🎯 {valid_recommendations} jogos recomendados!")
+    recommended_games = games_today[games_today['ML_Recommendation'] != '❌ Avoid']
+    st.dataframe(recommended_games[['Home', 'Away', 'League', 'ML_Recommendation', 'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away']])
+else:
+    st.info("💡 Nenhuma recomendação encontrada. Tente ajustar o threshold ou min EV value.")
 
 ########################################
 ##### Bloco 8 – Kelly Criterion ########
@@ -1005,6 +1191,121 @@ def generate_super_parlay(games_df, target_odds=50, max_games=8):
 
 # Gerar SUPER PARLAY
 super_parlay = generate_super_parlay(games_today, target_super_odds)
+
+
+########################################
+##### Bloco 12B – Diagnosis & Debug ###
+########################################
+
+st.header("🔍 Diagnosis - Why So Many Avoids?")
+
+# Analisar os motivos dos Avoid
+avoid_games = games_today[games_today['ML_Recommendation'] == '❌ Avoid']
+valid_games = games_today[games_today['ML_Recommendation'] != '❌ Avoid']
+
+st.subheader("📊 Avoid Analysis")
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Total Games", len(games_today))
+with col2:
+    st.metric("Avoid Games", len(avoid_games))
+with col3:
+    st.metric("Recommended Games", len(valid_games))
+
+# Motivos dos Avoid
+if len(avoid_games) > 0:
+    st.subheader("🎯 Reasons for Avoid")
+    
+    reasons = {
+        'Data Invalid': len(avoid_games[~avoid_games['ML_Data_Valid']]),
+        'Low Probability': 0,
+        'Negative EV': 0,
+        'Other': 0
+    }
+    
+    for idx, row in avoid_games.iterrows():
+        if not row['ML_Data_Valid']:
+            continue  # Já contamos acima
+            
+        p_home = row.get('ML_Proba_Home', 0)
+        p_draw = row.get('ML_Proba_Draw', 0)
+        p_away = row.get('ML_Proba_Away', 0)
+        
+        # Calcular EVs
+        ev_home = p_home * row.get('Odd_H', 2) - 1
+        ev_away = p_away * row.get('Odd_A', 2) - 1
+        ev_draw = p_draw * row.get('Odd_D', 3) - 1
+        ev_1x = (p_home + p_draw) * row.get('Odd_1X', 1.5) - 1
+        ev_x2 = (p_away + p_draw) * row.get('Odd_X2', 1.5) - 1
+        
+        max_prob = max(p_home, p_draw, p_away)
+        max_ev = max(ev_home, ev_away, ev_draw, ev_1x, ev_x2)
+        
+        if max_prob < threshold:
+            reasons['Low Probability'] += 1
+        elif max_ev < 0.02:  # min_value
+            reasons['Negative EV'] += 1
+        else:
+            reasons['Other'] += 1
+    
+    # Mostrar gráfico de razões
+    fig, ax = plt.subplots()
+    ax.bar(reasons.keys(), reasons.values())
+    ax.set_title("Reasons for Avoid Recommendations")
+    ax.set_ylabel("Number of Games")
+    plt.xticks(rotation=45)
+    st.pyplot(fig)
+    
+    # Mostrar detalhes dos avoids
+    with st.expander("📋 Detailed Avoid Analysis"):
+        avoid_debug = avoid_games.copy()
+        avoid_debug['Max_Probability'] = avoid_debug.apply(
+            lambda x: max(x.get('ML_Proba_Home', 0), x.get('ML_Proba_Draw', 0), x.get('ML_Proba_Away', 0)), 
+            axis=1
+        )
+        avoid_debug['Max_EV'] = avoid_debug.apply(
+            lambda x: max(
+                x.get('ML_Proba_Home', 0) * x.get('Odd_H', 2) - 1,
+                x.get('ML_Proba_Away', 0) * x.get('Odd_A', 2) - 1,
+                x.get('ML_Proba_Draw', 0) * x.get('Odd_D', 3) - 1
+            ), 
+            axis=1
+        )
+        
+        st.dataframe(avoid_debug[['Home', 'Away', 'League', 'Max_Probability', 'Max_EV', 'ML_Data_Valid', 'Missing_Features']])
+
+# Mostrar estatísticas das probabilidades
+if not games_today.empty:
+    st.subheader("📈 Probability Distribution")
+    
+    probs_home = games_today['ML_Proba_Home'].dropna()
+    probs_draw = games_today['ML_Proba_Draw'].dropna()
+    probs_away = games_today['ML_Proba_Away'].dropna()
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if len(probs_home) > 0:
+            st.metric("Avg Home Prob", f"{probs_home.mean():.1%}")
+    with col2:
+        if len(probs_draw) > 0:
+            st.metric("Avg Draw Prob", f"{probs_draw.mean():.1%}")
+    with col3:
+        if len(probs_away) > 0:
+            st.metric("Avg Away Prob", f"{probs_away.mean():.1%}")
+    
+    # Histograma de probabilidades
+    if len(probs_home) > 0:
+        fig, ax = plt.subplots()
+        ax.hist(probs_home, bins=20, alpha=0.7, label='Home')
+        ax.hist(probs_draw, bins=20, alpha=0.7, label='Draw')
+        ax.hist(probs_away, bins=20, alpha=0.7, label='Away')
+        ax.axvline(threshold, color='red', linestyle='--', label=f'Threshold ({threshold:.1%})')
+        ax.set_xlabel('Probability')
+        ax.set_ylabel('Frequency')
+        ax.set_title('Probability Distribution')
+        ax.legend()
+        st.pyplot(fig)
 
 ########################################
 ##### Bloco 13 – Display Results #######
