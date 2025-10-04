@@ -29,44 +29,6 @@ GAMES_FOLDER = "GamesDay"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa", "afc","trophy"]
 DOMINANT_THRESHOLD = 0.90
 
-########################################
-####### Bloco 3 – Helper Functions #####
-########################################
-def load_all_games(folder):
-    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
-    df_list = []
-    for file in files:
-        try:
-            df = pd.read_csv(os.path.join(folder, file))
-            df_list.append(df)
-        except Exception as e:
-            st.error(f"Error loading {file}: {e}")
-    return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
-
-def filter_leagues(df):
-    if df.empty or 'League' not in df.columns:
-        return df
-    pattern = '|'.join(EXCLUDED_LEAGUE_KEYWORDS)
-    return df[~df['League'].str.lower().str.contains(pattern, na=False)].copy()
-
-def prepare_history(df):
-    required = ['Goals_H_FT', 'Goals_A_FT', 'M_H', 'M_A', 'Diff_Power', 'League']
-    for col in required:
-        if col not in df.columns:
-            st.error(f"Missing required column: {col}")
-            return pd.DataFrame()
-    return df.dropna(subset=['Goals_H_FT', 'Goals_A_FT'])
-
-def compute_double_chance_odds(df):
-    probs = pd.DataFrame()
-    probs['p_H'] = 1 / df['Odd_H']
-    probs['p_D'] = 1 / df['Odd_D']
-    probs['p_A'] = 1 / df['Odd_A']
-    probs = probs.div(probs.sum(axis=1), axis=0)
-    df['Odd_1X'] = 1 / (probs['p_H'] + probs['p_D'])
-    df['Odd_X2'] = 1 / (probs['p_A'] + probs['p_D'])
-    return df
-
 def improve_data_quality(history):
     """Clean and enhance historical data"""
     if history.empty:
@@ -80,10 +42,10 @@ def improve_data_quality(history):
     # Ensure sufficient data per league
     if 'League' in history.columns:
         league_counts = history['League'].value_counts()
-        valid_leagues = league_counts[league_counts >= 50].index  # Min 50 games per league
+        valid_leagues = league_counts[league_counts >= 50].index
         history = history[history['League'].isin(valid_leagues)]
     
-    # Remove suspicious odds (too low or too high)
+    # Remove suspicious odds
     odds_columns = ['Odd_H', 'Odd_A', 'Odd_D']
     available_odds = [col for col in odds_columns if col in history.columns]
     
@@ -97,17 +59,30 @@ def create_advanced_features(df):
     df = df.copy()
     
     # Power ratios and normalized metrics
-    df['Power_Ratio'] = df['M_H'] / (df['M_A'] + 0.001)  # Avoid division by zero
+    df['Power_Ratio'] = df['M_H'] / (df['M_A'] + 0.001)
     df['Total_Power'] = df['M_H'] + df['M_A']
     df['Power_Diff_Normalized'] = (df['M_H'] - df['M_A']) / (df['Total_Power'] + 0.001)
     
     # Odds-based features
     if 'Odd_H' in df.columns:
         df['Fair_Prob_Home'] = 1 / df['Odd_H']
-        df['Market_Margin'] = df['Fair_Prob_Home'] + (1 / df['Odd_A']) + (1 / df['Odd_D']) - 1
+        if 'Odd_A' in df.columns and 'Odd_D' in df.columns:
+            df['Market_Margin'] = df['Fair_Prob_Home'] + (1 / df['Odd_A']) + (1 / df['Odd_D']) - 1
     
     # Home advantage factor
     df['Home_Advantage'] = df['M_H'] * 0.1
+    
+    return df
+
+def clean_dataframe(df):
+    """Remove NaN and infinite values from dataframe"""
+    df = df.replace([np.inf, -np.inf], np.nan)
+    
+    # Fill numeric columns with median
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    for col in numeric_cols:
+        if df[col].isna().any():
+            df[col] = df[col].fillna(df[col].median())
     
     return df
 
@@ -119,14 +94,11 @@ def dynamic_threshold_adjustment(games_today):
     n_games = len(games_today)
     base_threshold = 0.65
     
-    # Fewer games → stricter threshold
     if n_games < 10:
         base_threshold += 0.05
-    # Many games → can be more selective  
     elif n_games > 30:
         base_threshold += 0.03
     
-    # Better odds quality → can be more aggressive
     if 'Odd_H' in games_today.columns:
         avg_odds_quality = games_today[['Odd_H', 'Odd_D', 'Odd_A']].mean().mean()
         if avg_odds_quality > 2.0:
@@ -151,7 +123,6 @@ def enhanced_ml_recommendation(row, threshold=0.65, min_value=0.02):
     ev_1x = (p_home + p_draw) * row.get('Odd_1X', 1.5) - 1
     ev_x2 = (p_away + p_draw) * row.get('Odd_X2', 1.5) - 1
     
-    # Only recommend if positive EV and minimum probability
     recommendations = []
     
     if p_home >= threshold and ev_home >= min_value:
@@ -161,67 +132,16 @@ def enhanced_ml_recommendation(row, threshold=0.65, min_value=0.02):
     if p_draw >= threshold and ev_draw >= min_value:
         recommendations.append(("⚪ Back Draw", ev_draw))
     
-    # Double chance with positive EV
     if ev_1x >= min_value and (p_home + p_draw) >= 0.70:
         recommendations.append(("🟦 1X (Home/Draw)", ev_1x))
     if ev_x2 >= min_value and (p_away + p_draw) >= 0.70:
         recommendations.append(("🟪 X2 (Away/Draw)", ev_x2))
     
-    # Return best recommendation by EV
     if recommendations:
         best_rec = max(recommendations, key=lambda x: x[1])
         return best_rec[0]
     else:
         return "❌ Avoid"
-
-def create_ensemble_model():
-    """Create an ensemble of models for better accuracy"""
-    
-    rf = RandomForestClassifier(
-        n_estimators=500,
-        max_depth=15,
-        min_samples_split=8,
-        min_samples_leaf=2,
-        max_features='sqrt',
-        class_weight='balanced_subsample',
-        random_state=42,
-        n_jobs=-1
-    )
-    
-    gb = GradientBoostingClassifier(
-        n_estimators=300,
-        max_depth=6,
-        learning_rate=0.1,
-        subsample=0.8,
-        random_state=42
-    )
-    
-    # Use calibrated classifier for better probability estimates
-    lr = CalibratedClassifierCV(
-        LogisticRegression(class_weight='balanced', max_iter=1000),
-        cv=3
-    )
-    
-    return rf, gb, lr
-
-def ensemble_predict_proba(models, X):
-    """Weighted average of model predictions"""
-    rf, gb, lr = models
-    
-    # Get probabilities from each model
-    proba_rf = rf.predict_proba(X)
-    proba_gb = gb.predict_proba(X) 
-    proba_lr = lr.predict_proba(X)
-    
-    # Weighted average (adjust weights based on cross-validation)
-    weights = [0.5, 0.3, 0.2]  # RF, GB, LR
-    weighted_proba = (
-        weights[0] * proba_rf + 
-        weights[1] * proba_gb + 
-        weights[2] * proba_lr
-    )
-    
-    return weighted_proba
 
 ########################################
 ####### Bloco 4 – Load Data ############
@@ -376,9 +296,16 @@ features_raw = [f for f in features_raw if f in history.columns]
 X = history[features_raw].copy()
 y = history['Result']
 
+# Clean the data before training
+X = clean_dataframe(X)
+
 BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
-if 'Home_Band' in X: X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
-if 'Away_Band' in X: X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
+if 'Home_Band' in X: 
+    X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
+    X = X.drop('Home_Band', axis=1)
+if 'Away_Band' in X: 
+    X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
+    X = X.drop('Away_Band', axis=1)
 
 cat_cols = [c for c in ['League_Classification'] if c in X]
 encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
@@ -388,18 +315,22 @@ if cat_cols:
     X = pd.concat([X.drop(columns=cat_cols).reset_index(drop=True),
                    encoded_df.reset_index(drop=True)], axis=1)
 
-# Use ensemble model instead of single Random Forest
-st.info("🏗️ Training Enhanced Ensemble Model...")
+# Use only Random Forest for stability (removes Gradient Boosting that causes errors)
+st.info("🏗️ Training Enhanced Random Forest Model...")
 
-# Train ensemble models
-rf_model, gb_model, lr_model = create_ensemble_model()
+model = RandomForestClassifier(
+    n_estimators=800,
+    max_depth=12,
+    min_samples_split=10,
+    min_samples_leaf=4,
+    max_features='sqrt',
+    class_weight='balanced_subsample',
+    random_state=42,
+    n_jobs=-1
+)
+model.fit(X, y)
 
-# Train all models
-rf_model.fit(X, y)
-gb_model.fit(X, y) 
-lr_model.fit(X, y)
-
-ensemble_models = (rf_model, gb_model, lr_model)
+st.success("✅ Model trained successfully!")
 
 ########################################
 ####### Bloco 7 – Apply ML to Today ####
@@ -444,10 +375,16 @@ for idx, row in games_today.iterrows():
 valid_games_mask = games_today["ML_Data_Valid"] == True
 X_today_valid = X_today[valid_games_mask].copy()
 
+# Clean today's data
+X_today_valid = clean_dataframe(X_today_valid)
+
+# Apply the same transformations as training data
 if 'Home_Band' in X_today_valid: 
     X_today_valid['Home_Band_Num'] = X_today_valid['Home_Band'].map(BAND_MAP)
+    X_today_valid = X_today_valid.drop('Home_Band', axis=1)
 if 'Away_Band' in X_today_valid: 
     X_today_valid['Away_Band_Num'] = X_today_valid['Away_Band'].map(BAND_MAP)
+    X_today_valid = X_today_valid.drop('Away_Band', axis=1)
 
 if cat_cols:
     encoded_today = encoder.transform(X_today_valid[cat_cols])
@@ -455,26 +392,28 @@ if cat_cols:
     X_today_valid = pd.concat([X_today_valid.drop(columns=cat_cols).reset_index(drop=True),
                              encoded_today_df.reset_index(drop=True)], axis=1)
 
+# Ensure same columns as training data
+missing_cols = set(X.columns) - set(X_today_valid.columns)
+for col in missing_cols:
+    X_today_valid[col] = 0
+X_today_valid = X_today_valid[X.columns]
+
 # Inicializar colunas de probabilidade com NaN
 games_today["ML_Proba_Home"] = np.nan
 games_today["ML_Proba_Draw"] = np.nan
 games_today["ML_Proba_Away"] = np.nan
 games_today["ML_Recommendation"] = "❌ Avoid"
 
-# Aplicar ensemble model apenas nos jogos válidos
+# Aplicar modelo apenas nos jogos válidos
 if not X_today_valid.empty:
-    # Use ensemble predictions instead of single model
-    ml_proba = ensemble_predict_proba(ensemble_models, X_today_valid)
+    ml_proba = model.predict_proba(X_today_valid)
     
     # Preencher apenas os jogos válidos
     valid_indices = games_today[valid_games_mask].index
     
-    # Get class order from first model
-    class_order = list(rf_model.classes_)
-    
-    games_today.loc[valid_indices, "ML_Proba_Home"] = ml_proba[:, class_order.index("Home")]
-    games_today.loc[valid_indices, "ML_Proba_Draw"] = ml_proba[:, class_order.index("Draw")]
-    games_today.loc[valid_indices, "ML_Proba_Away"] = ml_proba[:, class_order.index("Away")]
+    games_today.loc[valid_indices, "ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
+    games_today.loc[valid_indices, "ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
+    games_today.loc[valid_indices, "ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
     
     # Gerar recomendações usando enhanced function
     for idx in valid_indices:
@@ -491,7 +430,6 @@ invalid_count = len(games_today) - valid_games_mask.sum()
 if invalid_count > 0:
     st.warning(f"⚠️ {invalid_count} jogos excluídos por dados insuficientes")
     
-    # Mostrar detalhes dos jogos com problemas
     invalid_games = games_today[~valid_games_mask]
     if not invalid_games.empty:
         with st.expander("📋 Ver jogos com dados insuficientes"):
