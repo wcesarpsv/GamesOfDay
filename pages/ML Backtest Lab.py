@@ -1047,32 +1047,33 @@ st.success(f"✅ Dados preparados: {len(test_df)} jogos para análise")
 
 
 ########################################
-# BLOCO 9.3 – CÁLCULO E EXIBIÇÃO DE MÉTRICAS
+# BLOCO 9.3 – CÁLCULO E EXIBIÇÃO DE MÉTRICAS (CORRIGIDO)
 ########################################
 
 st.subheader("📊 Resumo de Métricas (Resultados Finais)")
 
 # --- Métricas ML (Máquina) ---
-# Conta as apostas ML (Profit_ML != 0)
 total_apostas_ml = (test_df['Profit_ML'].abs() > 0.001).sum() 
-total_acertos_ml = test_df['ML_Correct'].sum()
-total_profit_ml = test_df['Profit_ML'].sum().round(2)
-winrate_ml = (total_acertos_ml / total_apostas_ml * 100).round(2) if total_apostas_ml > 0 else 0.0
+total_acertos_ml = test_df['ML_Correct'].sum() if 'ML_Correct' in test_df.columns else 0
+total_profit_ml = test_df['Profit_ML'].sum() if 'Profit_ML' in test_df.columns else 0
+total_profit_ml = round(float(total_profit_ml), 2)
+winrate_ml = (total_acertos_ml / total_apostas_ml * 100) if total_apostas_ml > 0 else 0.0
+winrate_ml = round(float(winrate_ml), 2)
 
 # --- Métricas Kelly ---
-# Apostas Kelly: Contamos as linhas onde a stake (e, portanto, o lucro/perda) não é zero.
-apostas_kelly = (test_df['Profit_Kelly'].abs() > 0.001).sum()
-total_profit_kelly = test_df['Profit_Kelly'].sum().round(2)
+apostas_kelly = (test_df['Profit_Kelly'].abs() > 0.001).sum() if 'Profit_Kelly' in test_df.columns else 0
+total_profit_kelly = test_df['Profit_Kelly'].sum() if 'Profit_Kelly' in test_df.columns else 0
+total_profit_kelly = round(float(total_profit_kelly), 2)
 
 # --- Métricas Regras (Auto) ---
-# Conta as apostas Regras (Profit_Auto != 0)
-total_apostas_auto = (test_df['Profit_Auto'].abs() > 0.001).sum() 
-total_acertos_auto = test_df['Auto_Correct'].sum()
-total_profit_auto = test_df['Profit_Auto'].sum().round(2)
-winrate_auto = (total_acertos_auto / total_apostas_auto * 100).round(2) if total_apostas_auto > 0 else 0.0
+total_apostas_auto = (test_df['Profit_Auto'].abs() > 0.001).sum() if 'Profit_Auto' in test_df.columns else 0
+total_acertos_auto = test_df['Auto_Correct'].sum() if 'Auto_Correct' in test_df.columns else 0
+total_profit_auto = test_df['Profit_Auto'].sum() if 'Profit_Auto' in test_df.columns else 0
+total_profit_auto = round(float(total_profit_auto), 2)
+winrate_auto = (total_acertos_auto / total_apostas_auto * 100) if total_apostas_auto > 0 else 0.0
+winrate_auto = round(float(winrate_auto), 2)
 
-
-# --- Métricas Preditivas (Requerem 'proba' - CORREÇÃO AUC/LOGLOSS) ---
+# --- Métricas Preditivas (CORRIGIDO) ---
 required_proba_cols = ["ML_Proba_Home", "ML_Proba_Draw", "ML_Proba_Away"]
 proba_cols_exist = all(col in test_df.columns for col in required_proba_cols)
 
@@ -1092,15 +1093,17 @@ if proba_cols_exist:
         proba_test_valid = proba_test[valid_mask]
 
         if len(y_true_valid.unique()) > 1:
-            auc_score = roc_auc_score(y_true_valid, proba_test_valid, multi_class='ovr').round(4)
-            logloss = log_loss(y_true_valid, proba_test_valid).round(4)
+            auc_score = roc_auc_score(y_true_valid, proba_test_valid, multi_class='ovr')
+            auc_score = round(float(auc_score), 4) if not np.isnan(auc_score) else 'N/A'
+            
+            logloss_val = log_loss(y_true_valid, proba_test_valid)
+            logloss = round(float(logloss_val), 4) if not np.isnan(logloss_val) else 'N/A'
         else:
-            auc_score, logloss = 'N/A (Apenas 1 classe no teste válido)', 'N/A'
+            auc_score, logloss = 'N/A (Apenas 1 classe)', 'N/A (Apenas 1 classe)'
     else:
-        auc_score, logloss = 'N/A (Teste vazio ou inválido)', 'N/A'
+        auc_score, logloss = 'N/A (Dados insuficientes)', 'N/A (Dados insuficientes)'
 else:
-    auc_score, logloss = 'N/A (Modelo não treinado)', 'N/A'
-
+    auc_score, logloss = 'N/A (Probabilidades não disponíveis)', 'N/A (Probabilidades não disponíveis)'
 
 # --- Exibição Final ---
 
@@ -1108,16 +1111,16 @@ resumo = {
     "Jogos (teste)": len(test_df),
     
     # ML - Stake Fixa
-    "Apostas ML (Stake Fixa)": total_apostas_ml,
+    "Apostas ML (Stake Fixa)": int(total_apostas_ml),
     "Winrate ML (%)": winrate_ml,
     "Profit ML (Stake Fixa)": total_profit_ml,
     
-    # Kelly - Stake Variável (NOVO)
-    "Apostas Kelly (Stake Variável)": apostas_kelly,
+    # Kelly - Stake Variável
+    "Apostas Kelly (Stake Variável)": int(apostas_kelly),
     "Profit Kelly (Stake Variável)": total_profit_kelly,
     
     # Regras - Stake Fixa
-    "Apostas Regras": total_apostas_auto,
+    "Apostas Regras": int(total_apostas_auto),
     "Winrate Regras (%)": winrate_auto,
     "Profit Regras": total_profit_auto,
     
@@ -1128,9 +1131,8 @@ resumo = {
 
 st.json(resumo)
 
-
 # Salvar CSV (se selecionado)
-if save_csv:
+if save_csv and 'Profit_Kelly' in test_df.columns:
     csv_file = test_df[['Date', 'Home', 'Away', 'Result', 
                         'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away', 
                         'ML_Recommendation', 'Profit_ML', 'Profit_Kelly', 
@@ -1142,10 +1144,12 @@ if save_csv:
         file_name='ml_backtest_results.csv',
         mime='text/csv',
     )
+elif save_csv:
+    st.warning("Dados de Kelly não disponíveis para download")
 
 
 ########################################
-# BLOCO 10 – MÉTRICAS & SUMÁRIOS (CORRIGIDO COM GOLS)
+# BLOCO 10 – MÉTRICAS & SUMÁRIOS (CORRIGIDO)
 ########################################
 st.header("📈 Métricas do Teste (na data selecionada)")
 
@@ -1156,17 +1160,24 @@ def safe_auc(y_true, proba_df, labels=("Home","Draw","Away")):
         Y_bin = pd.get_dummies(y)
         aucs = []
         for c in labels:
-            if c in Y_bin and f"ML_Proba_{c}" in proba_df:
-                aucs.append(roc_auc_score(Y_bin[c], proba_df[f"ML_Proba_{c}"]))
+            if c in Y_bin.columns and f"ML_Proba_{c}" in proba_df.columns:
+                auc_val = roc_auc_score(Y_bin[c], proba_df[f"ML_Proba_{c}"])
+                aucs.append(auc_val)
         return float(np.mean(aucs)) if aucs else np.nan
     except Exception:
         return np.nan
 
+# Calcular métricas com tratamento de erro
 metrics_cols = ["ML_Proba_Home","ML_Proba_Draw","ML_Proba_Away"]
-auc_val = safe_auc(test_df['Result'], test_df[metrics_cols])
+if all(col in test_df.columns for col in metrics_cols):
+    auc_val = safe_auc(test_df['Result'], test_df[metrics_cols])
+    auc_val = round(float(auc_val), 4) if not np.isnan(auc_val) else np.nan
+else:
+    auc_val = np.nan
+
+# LogLoss
 try:
-    # Para logloss multiclasse, precisamos do array de probs alinhado em classes_
-    if proba_test is not None:
+    if proba_test is not None and 'Result' in test_df.columns:
         # Reordenar para [Home,Draw,Away] se existirem
         wanted = ["Home","Draw","Away"]
         cols = []
@@ -1177,120 +1188,50 @@ try:
                 cols.append(np.zeros(len(test_df)))
         proba_for_logloss = np.vstack(cols).T
         logloss_val = log_loss(test_df['Result'], proba_for_logloss, labels=wanted)
+        logloss_val = round(float(logloss_val), 4) if not np.isnan(logloss_val) else np.nan
     else:
         logloss_val = np.nan
 except Exception:
     logloss_val = np.nan
 
-acc_val = accuracy_score(test_df['Result'], test_df['ML_Pred']) if len(test_df) else np.nan
-brier_val = brier_score_loss(
-    (test_df['Result']=="Home").astype(int),
-    test_df["ML_Proba_Home"]
-) if "ML_Proba_Home" in test_df and len(test_df) else np.nan
+# Accuracy
+if 'ML_Pred' in test_df.columns and 'Result' in test_df.columns:
+    acc_val = accuracy_score(test_df['Result'], test_df['ML_Pred'])
+    acc_val = round(float(acc_val), 4)
+else:
+    acc_val = np.nan
 
-ml_bets = test_df[test_df['ML_Recommendation']!='❌ Avoid']
-auto_bets = test_df[test_df['Auto_Recommendation']!='❌ Avoid']
+# Brier Score
+if "ML_Proba_Home" in test_df.columns and 'Result' in test_df.columns:
+    brier_val = brier_score_loss(
+        (test_df['Result']=="Home").astype(int),
+        test_df["ML_Proba_Home"]
+    )
+    brier_val = round(float(brier_val), 4) if not np.isnan(brier_val) else np.nan
+else:
+    brier_val = np.nan
+
+ml_bets = test_df[test_df['ML_Recommendation']!='❌ Avoid'] if 'ML_Recommendation' in test_df.columns else pd.DataFrame()
+auto_bets = test_df[test_df['Auto_Recommendation']!='❌ Avoid'] if 'Auto_Recommendation' in test_df.columns else pd.DataFrame()
 
 summary = {
     "Jogos (teste)": int(len(test_df)),
     "Apostas ML": int(len(ml_bets)),
-    "Winrate ML (%)": round(100 * (ml_bets['ML_Correct'].sum()/len(ml_bets)) ,2) if len(ml_bets) else 0.0,
-    "Profit ML": round(test_df['Profit_ML'].sum(), 2),
-    "AUC (OvR)": None if np.isnan(auc_val) else round(auc_val, 4),
-    "LogLoss": None if np.isnan(logloss_val) else round(logloss_val, 4),
-    "Brier (Home)": None if np.isnan(brier_val) else round(brier_val, 4),
+    "Winrate ML (%)": round(float(100 * (ml_bets['ML_Correct'].sum()/len(ml_bets))), 2) if len(ml_bets) else 0.0,
+    "Profit ML": round(float(test_df['Profit_ML'].sum()), 2) if 'Profit_ML' in test_df.columns else 0.0,
+    "AUC (OvR)": auc_val if not np.isnan(auc_val) else "N/A",
+    "LogLoss": logloss_val if not np.isnan(logloss_val) else "N/A",
+    "Brier (Home)": brier_val if not np.isnan(brier_val) else "N/A",
 }
-if compare_rules:
+
+if compare_rules and 'Auto_Recommendation' in test_df.columns:
     summary.update({
         "Apostas Regras": int(len(auto_bets)),
-        "Winrate Regras (%)": round(100 * (auto_bets['Auto_Correct'].sum()/len(auto_bets)) ,2) if len(auto_bets) else 0.0,
-        "Profit Regras": round(test_df['Profit_Auto'].sum(), 2),
+        "Winrate Regras (%)": round(float(100 * (auto_bets['Auto_Correct'].sum()/len(auto_bets))), 2) if len(auto_bets) else 0.0,
+        "Profit Regras": round(float(test_df['Profit_Auto'].sum()), 2) if 'Profit_Auto' in test_df.columns else 0.0,
     })
 
 st.json(summary)
-
-
-########################################
-# BLOCO 9.3 – CÁLCULO E EXIBIÇÃO DE MÉTRICAS
-########################################
-
-st.subheader("📊 Resumo de Métricas (Resultados Finais)")
-
-# --- Métricas ML (Máquina) ---
-total_apostas_ml = (test_df['Profit_ML'].abs() > 0).sum()
-total_acertos_ml = test_df['ML_Correct'].sum()
-total_profit_ml = test_df['Profit_ML'].sum().round(2)
-winrate_ml = (total_acertos_ml / total_apostas_ml * 100).round(2) if total_apostas_ml > 0 else 0.0
-
-# --- Métricas Kelly ---
-# Apostas Kelly: Contamos as linhas onde a stake (e, portanto, o lucro/perda) não é zero.
-apostas_kelly = (test_df['Profit_Kelly'].abs() > 0).sum()
-total_profit_kelly = test_df['Profit_Kelly'].sum().round(2)
-# Nota: Winrate Kelly é o mesmo do ML, pois a seleção de jogos é a mesma (EV filter)
-
-# --- Métricas Regras (Auto) ---
-total_apostas_auto = (test_df['Profit_Auto'].abs() > 0).sum()
-total_acertos_auto = test_df['Auto_Correct'].sum()
-total_profit_auto = test_df['Profit_Auto'].sum().round(2)
-winrate_auto = (total_acertos_auto / total_apostas_auto * 100).round(2) if total_apostas_auto > 0 else 0.0
-
-# --- Métricas Preditivas (Requerem 'proba') ---
-proba_test = test_df[["ML_Proba_Home", "ML_Proba_Draw", "ML_Proba_Away"]].values
-y_true = test_df['Result']
-
-if len(y_true.unique()) > 1 and proba_test.shape[1] == 3:
-    # Mapear y_true para índices (0, 1, 2)
-    classes_list = ['Away', 'Draw', 'Home']
-    y_true_indices = y_true.apply(lambda x: classes_list.index(x))
-
-    # Calcular as métricas
-    auc_score = roc_auc_score(y_true_indices, proba_test, multi_class='ovr').round(4)
-    logloss = log_loss(y_true, proba_test).round(4)
-else:
-    auc_score, logloss = 'N/A', 'N/A'
-
-
-# --- Exibição Final ---
-
-resumo = {
-    "Jogos (teste)": len(test_df),
-    
-    # ML - Stake Fixa
-    "Apostas ML (Stake Fixa)": total_apostas_ml,
-    "Winrate ML (%)": winrate_ml,
-    "Profit ML (Stake Fixa)": total_profit_ml,
-    
-    # Kelly - Stake Variável
-    "Apostas Kelly (Stake Variável)": apostas_kelly,
-    "Profit Kelly (Stake Variável)": total_profit_kelly,
-    
-    # Regras - Stake Fixa
-    "Apostas Regras": total_apostas_auto,
-    "Winrate Regras (%)": winrate_auto,
-    "Profit Regras": total_profit_auto,
-    
-    # Qualidade da Probabilidade
-    "AUC (OvR)": auc_score,
-    "LogLoss": logloss,
-    # Você pode adicionar ECE (Home), Brier (Home) se calcular separadamente
-}
-
-st.json(resumo)
-
-
-# Salvar CSV (se selecionado)
-if save_csv:
-    csv_file = test_df[['Date', 'Home', 'Away', 'Result', 
-                        'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away', 
-                        'ML_Recommendation', 'Profit_ML', 'Profit_Kelly', 
-                        'Auto_Recommendation', 'Profit_Auto']].to_csv(index=False).encode('utf-8')
-    
-    st.download_button(
-        label="Download Dados de Teste (CSV)",
-        data=csv_file,
-        file_name='ml_backtest_results.csv',
-        mime='text/csv',
-    )
 
 
 ########################################
@@ -1371,83 +1312,11 @@ show_cm = st.checkbox("Mostrar Confusion Matrix", value=False)
 
 
 
-########################################
-# BLOCO 12 – GRÁFICOS
-########################################
-def plot_roi(df, profit_col, title):
-    df = df.copy()
-    # Se houver data, usar agrupamento por liga ou por partida; aqui acumulamos por ordem natural
-    df['ROI_acu'] = df[profit_col].cumsum()
-    fig, ax = plt.subplots(figsize=(8,4))
-    ax.plot(np.arange(len(df)), df['ROI_acu'])
-    ax.set_title(title)
-    ax.set_xlabel("Jogos (ordem no teste)")
-    ax.set_ylabel("ROI acumulado (stake=1)")
-    st.pyplot(fig)
-
-def plot_hist_proba(series, title):
-    fig, ax = plt.subplots(figsize=(6,4))
-    ax.hist(series.dropna(), bins=20)
-    ax.set_title(title)
-    ax.set_xlabel("Probabilidade prevista")
-    ax.set_ylabel("Frequência")
-    st.pyplot(fig)
-
-def plot_calibration_curve(prob, outcomes, title, n_bins=10):
-    # outcomes_bin: 1 se "Home", 0 caso contrário
-    dfc = pd.DataFrame({"p": prob, "y": outcomes}).dropna()
-    if dfc.empty:
-        st.warning("Sem dados suficientes para calibrar.")
-        return
-    dfc['bin'] = pd.cut(dfc['p'], bins=np.linspace(0,1,n_bins+1), include_lowest=True)
-    g = dfc.groupby('bin')
-    p_mean = g['p'].mean()
-    y_rate = g['y'].mean()
-
-    fig, ax = plt.subplots(figsize=(6,6))
-    ax.plot([0,1],[0,1],'--', label='Linha Perfeita')
-    ax.plot(p_mean, y_rate, marker='o', label='Modelo')
-    ax.set_title(title)
-    ax.set_xlabel('Prob. prevista (média do bin)')
-    ax.set_ylabel('Taxa real observada')
-    ax.legend()
-    st.pyplot(fig)
-
-def plot_conf_matrix(y_true, y_pred, labels=["Home","Draw","Away"]):
-    try:
-        cm = confusion_matrix(y_true, y_pred, labels=labels)
-        fig, ax = plt.subplots(figsize=(5,4))
-        im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
-        ax.figure.colorbar(im, ax=ax)
-        
-        # Títulos e eixos
-        ax.set(
-            xticks=np.arange(cm.shape[1]),
-            yticks=np.arange(cm.shape[0]),
-            xticklabels=labels, yticklabels=labels,
-            ylabel="Resultado Real",
-            xlabel="Resultado Previsto",
-            title="Matriz de Confusão"
-        )
-        
-        # Colocar os números em cada célula
-        fmt = "d"
-        thresh = cm.max() / 2.
-        for i in range(cm.shape[0]):
-            for j in range(cm.shape[1]):
-                ax.text(j, i, format(cm[i, j], fmt),
-                        ha="center", va="center",
-                        color="white" if cm[i, j] > thresh else "black")
-        
-        st.pyplot(fig)
-    except Exception as e:
-        st.error(f"Erro ao plotar matriz de confusão: {e}")
-
-# Tabela - CORRIGIDO PARA INCLUIR GOLS
+# Tabela - CORRIGIDO PARA INCLUIR GOLS E WIDTH
 if show_table:
     cols_to_show = [
         'Date','League','Home','Away',
-        'Goals_H_FT', 'Goals_A_FT',  # GOLS ADICIONADOS AQUI
+        'Goals_H_FT', 'Goals_A_FT',
         'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2',
         'Result',
         'Auto_Recommendation','ML_Recommendation',
@@ -1474,56 +1343,9 @@ if show_table:
     st.dataframe(
         test_df[available_cols]
         .style.format(format_dict),
-        use_container_width=True, 
+        width='stretch',  # CORREÇÃO: substituído use_container_width=True
         height=600
     )
-
-# ROI
-if show_roi:
-    st.subheader("📈 ROI acumulado")
-    if compare_rules and len(auto_bets):
-        plot_roi(test_df[test_df['Auto_Recommendation']!='❌ Avoid'], 'Profit_Auto', "ROI – Regras (apenas apostas feitas)")
-    if len(ml_bets):
-        plot_roi(test_df[test_df['ML_Recommendation']!='❌ Avoid'], 'Profit_ML', "ROI – ML (apenas apostas feitas)")
-    if 'Profit_Kelly' in test_df.columns:
-        kelly_bets = test_df[test_df['Profit_Kelly'].abs() > 0.001]
-        if len(kelly_bets):
-            plot_roi(kelly_bets, 'Profit_Kelly', "ROI – Kelly (apenas apostas feitas)")
-
-# Histograma
-if show_hist and "ML_Proba_Home" in test_df:
-    st.subheader("📊 Histograma – Probabilidade (Home)")
-    plot_hist_proba(test_df["ML_Proba_Home"], "Distribuição de Probabilidades (Home)")
-
-# Calibração (Home)
-if show_calib and "ML_Proba_Home" in test_df:
-    st.subheader("📉 Calibração – Home (modelo vs linha perfeita)")
-    y_home = (test_df['Result']=="Home").astype(int)
-    plot_calibration_curve(test_df["ML_Proba_Home"], y_home, "Calibração (Home) – Modelo vs Linha Perfeita", n_bins=10)
-
-# Importância das features (somente para modelos com atributo)
-if show_feat_imp and "trained_model" in st.session_state:
-    model = st.session_state["trained_model"]
-    est = getattr(model, 'base_estimator_', model)
-    importances = getattr(est, "feature_importances_", None)
-    
-    if importances is not None and hasattr(importances, '__len__'):
-        st.subheader("🔥 Importância das Features (modelo baseado em árvores)")
-        fi = pd.Series(importances, index=X_train.columns).sort_values(ascending=False).head(20)
-        fig, ax = plt.subplots(figsize=(8,6))
-        ax.barh(fi.index[::-1], fi.values[::-1])
-        ax.set_title("Top 20 Features")
-        st.pyplot(fig)
-    else:
-        st.info("Importância de features não disponível para este modelo.")
-elif show_feat_imp:
-    st.info("Importância de features disponível apenas para árvores (RF/XGB/LGBM).")
-
-# Matriz de Confusão
-if show_cm and 'ML_Pred' in test_df.columns and 'Result' in test_df.columns:
-    st.subheader("🔲 Matriz de Confusão")
-    plot_conf_matrix(test_df['Result'], test_df['ML_Pred'])
-
 
 
 ########################################
