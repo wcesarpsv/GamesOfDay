@@ -1053,37 +1053,53 @@ st.success(f"✅ Dados preparados: {len(test_df)} jogos para análise")
 st.subheader("📊 Resumo de Métricas (Resultados Finais)")
 
 # --- Métricas ML (Máquina) ---
-total_apostas_ml = (test_df['Profit_ML'].abs() > 0).sum()
+# Conta as apostas ML (Profit_ML != 0)
+total_apostas_ml = (test_df['Profit_ML'].abs() > 0.001).sum() 
 total_acertos_ml = test_df['ML_Correct'].sum()
 total_profit_ml = test_df['Profit_ML'].sum().round(2)
 winrate_ml = (total_acertos_ml / total_apostas_ml * 100).round(2) if total_apostas_ml > 0 else 0.0
 
 # --- Métricas Kelly ---
 # Apostas Kelly: Contamos as linhas onde a stake (e, portanto, o lucro/perda) não é zero.
-apostas_kelly = (test_df['Profit_Kelly'].abs() > 0).sum()
+apostas_kelly = (test_df['Profit_Kelly'].abs() > 0.001).sum()
 total_profit_kelly = test_df['Profit_Kelly'].sum().round(2)
-# Nota: Winrate Kelly é o mesmo do ML, pois a seleção de jogos é a mesma (EV filter)
 
 # --- Métricas Regras (Auto) ---
-total_apostas_auto = (test_df['Profit_Auto'].abs() > 0).sum()
+# Conta as apostas Regras (Profit_Auto != 0)
+total_apostas_auto = (test_df['Profit_Auto'].abs() > 0.001).sum() 
 total_acertos_auto = test_df['Auto_Correct'].sum()
 total_profit_auto = test_df['Profit_Auto'].sum().round(2)
 winrate_auto = (total_acertos_auto / total_apostas_auto * 100).round(2) if total_apostas_auto > 0 else 0.0
 
-# --- Métricas Preditivas (Requerem 'proba') ---
-proba_test = test_df[["ML_Proba_Home", "ML_Proba_Draw", "ML_Proba_Away"]].values
-y_true = test_df['Result']
 
-if len(y_true.unique()) > 1 and proba_test.shape[1] == 3:
-    # Mapear y_true para índices (0, 1, 2)
-    classes_list = ['Away', 'Draw', 'Home']
-    y_true_indices = y_true.apply(lambda x: classes_list.index(x))
+# --- Métricas Preditivas (Requerem 'proba' - CORREÇÃO AUC/LOGLOSS) ---
+required_proba_cols = ["ML_Proba_Home", "ML_Proba_Draw", "ML_Proba_Away"]
+proba_cols_exist = all(col in test_df.columns for col in required_proba_cols)
 
-    # Calcular as métricas
-    auc_score = roc_auc_score(y_true_indices, proba_test, multi_class='ovr').round(4)
-    logloss = log_loss(y_true, proba_test).round(4)
+if proba_cols_exist:
+    proba_test = test_df[required_proba_cols].values
+    y_true = test_df['Result']
+
+    # O roc_auc_score exige pelo menos 2 classes no teste
+    if len(y_true.unique()) > 1 and proba_test.shape[1] == 3:
+        # Mapear y_true para índices
+        classes_list = ['Away', 'Draw', 'Home']
+        y_true_indices = y_true.apply(lambda x: classes_list.index(x) if x in classes_list else -1)
+        
+        # Filtra índices inválidos e garante 2+ classes
+        valid_mask = y_true_indices != -1
+        y_true_valid = y_true_indices[valid_mask]
+        proba_test_valid = proba_test[valid_mask]
+
+        if len(y_true_valid.unique()) > 1:
+            auc_score = roc_auc_score(y_true_valid, proba_test_valid, multi_class='ovr').round(4)
+            logloss = log_loss(y_true_valid, proba_test_valid).round(4)
+        else:
+            auc_score, logloss = 'N/A (Apenas 1 classe no teste válido)', 'N/A'
+    else:
+        auc_score, logloss = 'N/A (Teste vazio ou inválido)', 'N/A'
 else:
-    auc_score, logloss = 'N/A', 'N/A'
+    auc_score, logloss = 'N/A (Modelo não treinado)', 'N/A'
 
 
 # --- Exibição Final ---
@@ -1096,7 +1112,7 @@ resumo = {
     "Winrate ML (%)": winrate_ml,
     "Profit ML (Stake Fixa)": total_profit_ml,
     
-    # Kelly - Stake Variável
+    # Kelly - Stake Variável (NOVO)
     "Apostas Kelly (Stake Variável)": apostas_kelly,
     "Profit Kelly (Stake Variável)": total_profit_kelly,
     
@@ -1108,7 +1124,6 @@ resumo = {
     # Qualidade da Probabilidade
     "AUC (OvR)": auc_score,
     "LogLoss": logloss,
-    # Você pode adicionar ECE (Home), Brier (Home) se calcular separadamente
 }
 
 st.json(resumo)
@@ -1127,10 +1142,6 @@ if save_csv:
         file_name='ml_backtest_results.csv',
         mime='text/csv',
     )
-
-
-# --- Plot de Calibração (Se houver código para ele, ele vem aqui) ---
-# ... (Seu código para plot_calibration vai aqui) ...
 
 
 ########################################
