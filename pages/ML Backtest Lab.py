@@ -192,28 +192,27 @@ def classify_leagues_variation(history_df):
 
 
 #################################################
-# 3.5.2 Funções de EV e Lucro com Filtro (CORRIGIDO)
+# 3.5.2 Funções de EV e Lucro com Filtro (NOVAS)
 #################################################
 
-def calculate_ev(probability, odd):
-    """Calcula o Valor Esperado (Expected Value) de uma aposta."""
-    if pd.isna(probability) or pd.isna(odd) or odd <= 1.0:
-        return 0.0
-    # EV = (Probabilidade * Odd) - 1.0
-    return (probability * odd) - 1.0
-
+def calculate_ev(prob, odd):
+    """Calcula o Valor Esperado: EV = (Probabilidade * Odd) - 1"""
+    # Retorna NaN se a Odd for inválida (Odd <= 1.0 ou NaN)
+    if pd.isna(prob) or pd.isna(odd) or odd <= 1.0:
+        return np.nan
+    return (prob * odd) - 1
 
 def calculate_profit_with_ev_filter(rec, result, odds_row, prob_row, ev_threshold):
     """
-    Calcula o lucro com stake fixa (1 unidade) APENAS se o EV da aposta
+    Calcula o lucro, APENAS se o EV da aposta (identificado pela recomendação) 
     for maior que o threshold.
+    Assume que as colunas 'ML_EV_*' já foram calculadas e estão em prob_row (que é a row do DF).
     """
     if pd.isna(rec) or result is None or rec == '❌ Avoid': return 0.0
     r = str(rec)
     
-    # 1. Definir a aposta e buscar Odd, Probabilidade e EV correspondente
+    # 1. Definir a aposta, buscar Odd e EV correspondente
     current_ev = -1.0
-    prob = np.nan
     odd = np.nan
     target_result = None
 
@@ -240,82 +239,14 @@ def calculate_profit_with_ev_filter(rec, result, odds_row, prob_row, ev_threshol
     else:
         return 0.0
 
-    # 2. Aplicar o filtro de EV e validar dados
-    # Se a odd for inválida OU o EV for menor que o threshold, NÃO aposta.
-    if pd.isna(odd) or odd <= 1.0 or current_ev < ev_threshold:
-        return 0.0 # Não faz aposta
-
-    # 3. Calcular o Lucro (Stake Fixa = 1.0)
-    is_win = False
-    if isinstance(target_result, list):
-        is_win = result in target_result
-    else:
-        is_win = result == target_result
-
-    if is_win:
-        return odd - 1.0 # Ganho: 1 * (odd - 1)
-    else:
-        return -1.0 # Perda: -1
-
-
-def calculate_kelly_profit_with_ev_filter(rec, result, odds_row, prob_row, ev_threshold, kelly_fraction=1.0):
-    """
-    Calcula o lucro usando o Kelly Criterion, aplicado APENAS se o EV da aposta
-    for maior que o threshold.
-    """
-    if pd.isna(rec) or result is None or rec == '❌ Avoid': return 0.0
-    r = str(rec)
+    # 2. Aplicar o filtro de EV
+    if pd.isna(odd) or current_ev < ev_threshold:
+        return 0.0 # Não faz aposta (Profit = 0)
     
-    # 1. Definir a aposta, buscar Odd, Probabilidade e EV correspondente
-    current_ev = -1.0
-    prob = np.nan
-    odd = np.nan
-    target_result = None
-
-    # Busca a probabilidade, odd e EV (que já foi calculado no Bloco 9.1 usando calculate_ev)
-    if 'Back Home' in r:
-        prob = prob_row.get('ML_Proba_Home', np.nan)
-        odd = odds_row.get('Odd_H', np.nan)
-        current_ev = prob_row.get('ML_EV_Home', -1.0)
-        target_result = "Home"
-    elif 'Back Away' in r:
-        prob = prob_row.get('ML_Proba_Away', np.nan)
-        odd = odds_row.get('Odd_A', np.nan)
-        current_ev = prob_row.get('ML_EV_Away', -1.0)
-        target_result = "Away"
-    elif 'Back Draw' in r:
-        prob = prob_row.get('ML_Proba_Draw', np.nan)
-        odd = odds_row.get('Odd_D', np.nan)
-        current_ev = prob_row.get('ML_EV_Draw', -1.0)
-        target_result = "Draw"
-    elif '1X' in r:
-        prob = prob_row.get('ML_Proba_1X', np.nan)
-        odd = odds_row.get('Odd_1X', np.nan)
-        current_ev = prob_row.get('ML_EV_1X', -1.0)
-        target_result = ["Home", "Draw"]
-    elif 'X2' in r:
-        prob = prob_row.get('ML_Proba_X2', np.nan)
-        odd = odds_row.get('Odd_X2', np.nan)
-        current_ev = prob_row.get('ML_EV_X2', -1.0)
-        target_result = ["Away", "Draw"]
-    else:
+    # 3. Calcular o Lucro
+    if target_result is None:
         return 0.0
-
-    # 2. Aplicar o filtro de EV e validar dados
-    if pd.isna(odd) or odd <= 1.0 or pd.isna(prob) or current_ev < ev_threshold:
-        return 0.0 # Não faz aposta
-
-    # 3. Calcular a Stake de Kelly (f): f = (p * o - 1) / (o - 1)
-    # Kelly_f é a fração da banca a ser apostada
-    if odd > 1.0:
-        kelly_f = ((prob * odd) - 1.0) / (odd - 1.0)
-    else:
-        return 0.0 # Odd inválida
         
-    # Aplicar o multiplicador da fração Kelly (e.g., Full Kelly=1.0, Half Kelly=0.5)
-    stake = max(0.0, kelly_f * kelly_fraction)
-    
-    # 4. Calcular o Lucro
     is_win = False
     if isinstance(target_result, list):
         is_win = result in target_result
@@ -323,9 +254,9 @@ def calculate_kelly_profit_with_ev_filter(rec, result, odds_row, prob_row, ev_th
         is_win = result == target_result
 
     if is_win:
-        return stake * (odd - 1.0) # Ganho: stake * (odd - 1)
+        return odd - 1.0 # Ganho
     else:
-        return -stake # Perda: -stake
+        return -1.0 # Perda (aposta de 1 unidade)
 
 ########################################
 # BLOCO 4 – REGRAS (AUTO RECOMMENDATION)
@@ -979,7 +910,6 @@ if "trained_model" in st.session_state:
     )
 
 # 9.2 Cálculo de Lucros com Filtro EV (MODIFICADO)
-# 9.2 Cálculo de Lucros com Filtro EV e Kelly (MODIFICADO)
 # Obter o threshold de EV do Session State (default para 0.0 se não existir)
 ev_threshold_final = st.session_state.get('EV_THRESHOLD', 0.00)
 
@@ -1002,33 +932,11 @@ def calculate_profit_simple(rec, result, odds_row):
     return 0.0
 
 
-# --- UI e Configuração do Kelly ---
-st.subheader("💰 Análise de Lucro (Kelly Criterion)")
-colK1, colK2 = st.columns(2)
-with colK1:
-    kelly_fraction = st.slider(
-        "Fração Kelly (Kelly Stake Multiplier)", 
-        0.0, 1.0, 0.5, step=0.05, 
-        help="0.5 = Half Kelly (50% da stake Kelly sugerida); 1.0 = Full Kelly."
-    )
-with colK2:
-    st.write("") # Espaçamento
-
-
-# --- Lucros ---
-
-# Profit ML (Stake Fixa = 1 unidade): Usa o cálculo com filtro de EV!
+# Lucros
+# Profit ML: AGORA USA O FILTRO DE EV! (calculate_profit_with_ev_filter é do Bloco 3.5.2)
 test_df['Profit_ML'] = test_df.apply(
     lambda r: calculate_profit_with_ev_filter(
         r['ML_Recommendation'], r['Result'], r, r, ev_threshold_final
-    ), 
-    axis=1
-)
-
-# Profit Kelly (Stake Variável): Usa a nova função com filtro de EV e stake de Kelly
-test_df['Profit_Kelly'] = test_df.apply(
-    lambda r: calculate_kelly_profit_with_ev_filter(
-        r['ML_Recommendation'], r['Result'], r, r, ev_threshold_final, kelly_fraction
     ), 
     axis=1
 )
@@ -1047,122 +955,9 @@ st.success(f"✅ Dados preparados: {len(test_df)} jogos para análise")
 
 
 ########################################
-# BLOCO 9.3 – CÁLCULO E EXIBIÇÃO DE MÉTRICAS (CORRIGIDO)
-########################################
-
-st.subheader("📊 Resumo de Métricas (Resultados Finais)")
-
-# --- Métricas ML (Máquina) ---
-total_apostas_ml = (test_df['Profit_ML'].abs() > 0.001).sum() 
-total_acertos_ml = test_df['ML_Correct'].sum() if 'ML_Correct' in test_df.columns else 0
-total_profit_ml = test_df['Profit_ML'].sum() if 'Profit_ML' in test_df.columns else 0
-total_profit_ml = round(float(total_profit_ml), 2)
-winrate_ml = (total_acertos_ml / total_apostas_ml * 100) if total_apostas_ml > 0 else 0.0
-winrate_ml = round(float(winrate_ml), 2)
-
-# --- Métricas Kelly ---
-apostas_kelly = (test_df['Profit_Kelly'].abs() > 0.001).sum() if 'Profit_Kelly' in test_df.columns else 0
-total_profit_kelly = test_df['Profit_Kelly'].sum() if 'Profit_Kelly' in test_df.columns else 0
-total_profit_kelly = round(float(total_profit_kelly), 2)
-
-# --- Métricas Regras (Auto) ---
-total_apostas_auto = (test_df['Profit_Auto'].abs() > 0.001).sum() if 'Profit_Auto' in test_df.columns else 0
-total_acertos_auto = test_df['Auto_Correct'].sum() if 'Auto_Correct' in test_df.columns else 0
-total_profit_auto = test_df['Profit_Auto'].sum() if 'Profit_Auto' in test_df.columns else 0
-total_profit_auto = round(float(total_profit_auto), 2)
-winrate_auto = (total_acertos_auto / total_apostas_auto * 100) if total_apostas_auto > 0 else 0.0
-winrate_auto = round(float(winrate_auto), 2)
-
-# --- Métricas Preditivas (CORRIGIDO) ---
-required_proba_cols = ["ML_Proba_Home", "ML_Proba_Draw", "ML_Proba_Away"]
-proba_cols_exist = all(col in test_df.columns for col in required_proba_cols)
-
-if proba_cols_exist:
-    proba_test = test_df[required_proba_cols].values
-    y_true = test_df['Result']
-
-    # O roc_auc_score exige pelo menos 2 classes no teste
-    if len(y_true.unique()) > 1 and proba_test.shape[1] == 3:
-        # Mapear y_true para índices
-        classes_list = ['Away', 'Draw', 'Home']
-        y_true_indices = y_true.apply(lambda x: classes_list.index(x) if x in classes_list else -1)
-        
-        # Filtra índices inválidos e garante 2+ classes
-        valid_mask = y_true_indices != -1
-        y_true_valid = y_true_indices[valid_mask]
-        proba_test_valid = proba_test[valid_mask]
-
-        if len(y_true_valid.unique()) > 1:
-            auc_score = roc_auc_score(y_true_valid, proba_test_valid, multi_class='ovr')
-            auc_score = round(float(auc_score), 4) if not np.isnan(auc_score) else 'N/A'
-            
-            logloss_val = log_loss(y_true_valid, proba_test_valid)
-            logloss = round(float(logloss_val), 4) if not np.isnan(logloss_val) else 'N/A'
-        else:
-            auc_score, logloss = 'N/A (Apenas 1 classe)', 'N/A (Apenas 1 classe)'
-    else:
-        auc_score, logloss = 'N/A (Dados insuficientes)', 'N/A (Dados insuficientes)'
-else:
-    auc_score, logloss = 'N/A (Probabilidades não disponíveis)', 'N/A (Probabilidades não disponíveis)'
-
-# --- Exibição Final ---
-
-resumo = {
-    "Jogos (teste)": len(test_df),
-    
-    # ML - Stake Fixa
-    "Apostas ML (Stake Fixa)": int(total_apostas_ml),
-    "Winrate ML (%)": winrate_ml,
-    "Profit ML (Stake Fixa)": total_profit_ml,
-    
-    # Kelly - Stake Variável
-    "Apostas Kelly (Stake Variável)": int(apostas_kelly),
-    "Profit Kelly (Stake Variável)": total_profit_kelly,
-    
-    # Regras - Stake Fixa
-    "Apostas Regras": int(total_apostas_auto),
-    "Winrate Regras (%)": winrate_auto,
-    "Profit Regras": total_profit_auto,
-    
-    # Qualidade da Probabilidade
-    "AUC (OvR)": auc_score,
-    "LogLoss": logloss,
-}
-
-st.json(resumo)
-
-# Salvar CSV (se selecionado)
-if save_csv and 'Profit_Kelly' in test_df.columns:
-    csv_file = test_df[['Date', 'Home', 'Away', 'Result', 
-                        'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away', 
-                        'ML_Recommendation', 'Profit_ML', 'Profit_Kelly', 
-                        'Auto_Recommendation', 'Profit_Auto']].to_csv(index=False).encode('utf-8')
-    
-    st.download_button(
-        label="Download Dados de Teste (CSV)",
-        data=csv_file,
-        file_name='ml_backtest_results.csv',
-        mime='text/csv',
-    )
-elif save_csv:
-    st.warning("Dados de Kelly não disponíveis para download")
-
-
-########################################
-# BLOCO 10 – MÉTRICAS & SUMÁRIOS (CORRIGIDO)
+# BLOCO 10 – MÉTRICAS & SUMÁRIOS (CORRIGIDO COM GOLS)
 ########################################
 st.header("📈 Métricas do Teste (na data selecionada)")
-
-# Definir proba_test e classes_ para uso no LogLoss
-if "trained_model" in st.session_state:
-    model = st.session_state["trained_model"]
-    proba_test = model.predict_proba(X_test) if hasattr(model, "predict_proba") else None
-    classes_ = list(model.classes_) if hasattr(model, "classes_") else []
-else:
-    proba_test = None
-    classes_ = []
-
-def safe_auc(y_true, proba_df, labels=("Home","Draw","Away")):
 
 def safe_auc(y_true, proba_df, labels=("Home","Draw","Away")):
     try:
@@ -1171,24 +966,17 @@ def safe_auc(y_true, proba_df, labels=("Home","Draw","Away")):
         Y_bin = pd.get_dummies(y)
         aucs = []
         for c in labels:
-            if c in Y_bin.columns and f"ML_Proba_{c}" in proba_df.columns:
-                auc_val = roc_auc_score(Y_bin[c], proba_df[f"ML_Proba_{c}"])
-                aucs.append(auc_val)
+            if c in Y_bin and f"ML_Proba_{c}" in proba_df:
+                aucs.append(roc_auc_score(Y_bin[c], proba_df[f"ML_Proba_{c}"]))
         return float(np.mean(aucs)) if aucs else np.nan
     except Exception:
         return np.nan
 
-# Calcular métricas com tratamento de erro
 metrics_cols = ["ML_Proba_Home","ML_Proba_Draw","ML_Proba_Away"]
-if all(col in test_df.columns for col in metrics_cols):
-    auc_val = safe_auc(test_df['Result'], test_df[metrics_cols])
-    auc_val = round(float(auc_val), 4) if not np.isnan(auc_val) else np.nan
-else:
-    auc_val = np.nan
-
-# LogLoss
+auc_val = safe_auc(test_df['Result'], test_df[metrics_cols])
 try:
-    if proba_test is not None and 'Result' in test_df.columns:
+    # Para logloss multiclasse, precisamos do array de probs alinhado em classes_
+    if proba_test is not None:
         # Reordenar para [Home,Draw,Away] se existirem
         wanted = ["Home","Draw","Away"]
         cols = []
@@ -1199,54 +987,41 @@ try:
                 cols.append(np.zeros(len(test_df)))
         proba_for_logloss = np.vstack(cols).T
         logloss_val = log_loss(test_df['Result'], proba_for_logloss, labels=wanted)
-        logloss_val = round(float(logloss_val), 4) if not np.isnan(logloss_val) else np.nan
     else:
         logloss_val = np.nan
 except Exception:
     logloss_val = np.nan
 
-# Accuracy
-if 'ML_Pred' in test_df.columns and 'Result' in test_df.columns:
-    acc_val = accuracy_score(test_df['Result'], test_df['ML_Pred'])
-    acc_val = round(float(acc_val), 4)
-else:
-    acc_val = np.nan
+acc_val = accuracy_score(test_df['Result'], test_df['ML_Pred']) if len(test_df) else np.nan
+brier_val = brier_score_loss(
+    (test_df['Result']=="Home").astype(int),
+    test_df["ML_Proba_Home"]
+) if "ML_Proba_Home" in test_df and len(test_df) else np.nan
 
-# Brier Score
-if "ML_Proba_Home" in test_df.columns and 'Result' in test_df.columns:
-    brier_val = brier_score_loss(
-        (test_df['Result']=="Home").astype(int),
-        test_df["ML_Proba_Home"]
-    )
-    brier_val = round(float(brier_val), 4) if not np.isnan(brier_val) else np.nan
-else:
-    brier_val = np.nan
-
-ml_bets = test_df[test_df['ML_Recommendation']!='❌ Avoid'] if 'ML_Recommendation' in test_df.columns else pd.DataFrame()
-auto_bets = test_df[test_df['Auto_Recommendation']!='❌ Avoid'] if 'Auto_Recommendation' in test_df.columns else pd.DataFrame()
+ml_bets = test_df[test_df['ML_Recommendation']!='❌ Avoid']
+auto_bets = test_df[test_df['Auto_Recommendation']!='❌ Avoid']
 
 summary = {
     "Jogos (teste)": int(len(test_df)),
     "Apostas ML": int(len(ml_bets)),
-    "Winrate ML (%)": round(float(100 * (ml_bets['ML_Correct'].sum()/len(ml_bets))), 2) if len(ml_bets) else 0.0,
-    "Profit ML": round(float(test_df['Profit_ML'].sum()), 2) if 'Profit_ML' in test_df.columns else 0.0,
-    "AUC (OvR)": auc_val if not np.isnan(auc_val) else "N/A",
-    "LogLoss": logloss_val if not np.isnan(logloss_val) else "N/A",
-    "Brier (Home)": brier_val if not np.isnan(brier_val) else "N/A",
+    "Winrate ML (%)": round(100 * (ml_bets['ML_Correct'].sum()/len(ml_bets)) ,2) if len(ml_bets) else 0.0,
+    "Profit ML": round(test_df['Profit_ML'].sum(), 2),
+    "AUC (OvR)": None if np.isnan(auc_val) else round(auc_val, 4),
+    "LogLoss": None if np.isnan(logloss_val) else round(logloss_val, 4),
+    "Brier (Home)": None if np.isnan(brier_val) else round(brier_val, 4),
 }
-
-if compare_rules and 'Auto_Recommendation' in test_df.columns:
+if compare_rules:
     summary.update({
         "Apostas Regras": int(len(auto_bets)),
-        "Winrate Regras (%)": round(float(100 * (auto_bets['Auto_Correct'].sum()/len(auto_bets))), 2) if len(auto_bets) else 0.0,
-        "Profit Regras": round(float(test_df['Profit_Auto'].sum()), 2) if 'Profit_Auto' in test_df.columns else 0.0,
+        "Winrate Regras (%)": round(100 * (auto_bets['Auto_Correct'].sum()/len(auto_bets)) ,2) if len(auto_bets) else 0.0,
+        "Profit Regras": round(test_df['Profit_Auto'].sum(), 2),
     })
 
 st.json(summary)
 
 
 ########################################
-# BLOCO 10B – MÉTRICAS EXTRAS (ECE e MCC) - CORRIGIDO
+# BLOCO 10B – MÉTRICAS EXTRAS (ECE e MCC)
 ########################################
 from sklearn.metrics import matthews_corrcoef
 
@@ -1270,35 +1045,22 @@ def expected_calibration_error(y_true, y_prob, n_bins=10):
         ece += (len(g)/len(df_ece)) * abs(acc - conf)
     return ece
 
-# Calcular ECE (para classe Home) e MCC (geral) - COM VERIFICAÇÃO
-if 'ML_Proba_Home' in test_df.columns and 'Result' in test_df.columns:
-    try:
-        ece_val = expected_calibration_error(
-            (test_df['Result']=="Home").astype(int), 
-            test_df["ML_Proba_Home"]
-        )
-    except Exception:
-        ece_val = np.nan
-else:
-    ece_val = np.nan
+# Calcular ECE (para classe Home) e MCC (geral)
+ece_val = expected_calibration_error((test_df['Result']=="Home").astype(int), test_df["ML_Proba_Home"])
+mcc_val = matthews_corrcoef(test_df['Result'], test_df['ML_Pred'])
 
-if 'ML_Pred' in test_df.columns and 'Result' in test_df.columns:
-    try:
-        mcc_val = matthews_corrcoef(test_df['Result'], test_df['ML_Pred'])
-    except Exception:
-        mcc_val = np.nan
-else:
-    mcc_val = np.nan
-
-# Adicionar ao resumo com verificações
-summary_extra = {
+# Adicionar ao resumo
+summary.update({
     "ECE (Home)": None if np.isnan(ece_val) else round(ece_val, 4),
-    "MCC": None if np.isnan(mcc_val) else round(mcc_val, 4)
-}
+    "MCC": round(mcc_val, 4)
+})
 
-# Mostrar o resumo atualizado
+# Mostrar novamente o resumo atualizado
 st.subheader("📊 Resumo de Métricas (com extras)")
-st.json({**summary, **summary_extra})
+st.json(summary)
+
+
+
 
 
 ########################################
@@ -1314,12 +1076,17 @@ with colv2:
     show_calib = st.checkbox("Gráfico de calibração (Home)", value=True)
 with colv3:
     show_feat_imp = st.checkbox("Importância das features (se disponível)", value=False)
-    show_cm = st.checkbox("Mostrar Confusion Matrix", value=False)
 
 ########################################
-# BLOCO 12 – FUNÇÕES DE PLOTAGEM (ADICIONADO)
+# BLOCO 11B – Confusion Matrix
 ########################################
+show_cm = st.checkbox("Mostrar Confusion Matrix", value=False)
 
+
+
+########################################
+# BLOCO 12 – GRÁFICOS
+########################################
 def plot_roi(df, profit_col, title):
     df = df.copy()
     # Se houver data, usar agrupamento por liga ou por partida; aqui acumulamos por ordem natural
@@ -1359,133 +1126,110 @@ def plot_calibration_curve(prob, outcomes, title, n_bins=10):
     ax.legend()
     st.pyplot(fig)
 
-def plot_conf_matrix(y_true, y_pred, labels=["Home","Draw","Away"]):
-    try:
-        cm = confusion_matrix(y_true, y_pred, labels=labels)
-        fig, ax = plt.subplots(figsize=(5,4))
-        im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
-        ax.figure.colorbar(im, ax=ax)
-        
-        # Títulos e eixos
-        ax.set(
-            xticks=np.arange(cm.shape[1]),
-            yticks=np.arange(cm.shape[0]),
-            xticklabels=labels, yticklabels=labels,
-            ylabel="Resultado Real",
-            xlabel="Resultado Previsto",
-            title="Matriz de Confusão"
-        )
-        
-        # Colocar os números em cada célula
-        fmt = "d"
-        thresh = cm.max() / 2.
-        for i in range(cm.shape[0]):
-            for j in range(cm.shape[1]):
-                ax.text(j, i, format(cm[i, j], fmt),
-                        ha="center", va="center",
-                        color="white" if cm[i, j] > thresh else "black")
-        
-        st.pyplot(fig)
-    except Exception as e:
-        st.error(f"Erro ao plotar matriz de confusão: {e}")
-
-########################################
-# BLOCO 13 – EXIBIÇÃO DOS GRÁFICOS
-########################################
-
-# Tabela - CORRIGIDO PARA INCLUIR GOLS E WIDTH
+# Tabela - CORRIGIDO PARA INCLUIR GOLS
 if show_table:
     cols_to_show = [
         'Date','League','Home','Away',
-        'Goals_H_FT', 'Goals_A_FT',
+        'Goals_H_FT', 'Goals_A_FT',  # GOLS ADICIONADOS AQUI
         'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2',
         'Result',
         'Auto_Recommendation','ML_Recommendation',
-        'Profit_Auto','Profit_ML', 'Profit_Kelly',
+        'Profit_Auto','Profit_ML',
         'ML_Proba_Home','ML_Proba_Draw','ML_Proba_Away'
     ]
     available_cols = [c for c in cols_to_show if c in test_df.columns]
     st.subheader("📋 Tabela – Teste (regras x ML) - COM GOLS")
-    
-    # Formatação condicional
-    format_dict = {
-        'Odd_H':'{:.2f}','Odd_D':'{:.2f}','Odd_A':'{:.2f}',
-        'Odd_1X':'{:.2f}','Odd_X2':'{:.2f}',
-        'Profit_Auto':'{:.2f}','Profit_ML':'{:.2f}','Profit_Kelly':'{:.3f}',
-        'ML_Proba_Home':'{:.3f}','ML_Proba_Draw':'{:.3f}','ML_Proba_Away':'{:.3f}',
-    }
-    
-    # Adicionar formatação para gols se existirem
-    if 'Goals_H_FT' in available_cols:
-        format_dict['Goals_H_FT'] = '{:.0f}'
-    if 'Goals_A_FT' in available_cols:
-        format_dict['Goals_A_FT'] = '{:.0f}'
-    
     st.dataframe(
         test_df[available_cols]
-        .style.format(format_dict),
-        width='stretch',  # CORREÇÃO: substituído use_container_width=True
-        height=600
+        .style.format({
+            'Odd_H':'{:.2f}','Odd_D':'{:.2f}','Odd_A':'{:.2f}',
+            'Odd_1X':'{:.2f}','Odd_X2':'{:.2f}',
+            'Profit_Auto':'{:.2f}','Profit_ML':'{:.2f}',
+            'ML_Proba_Home':'{:.2f}','ML_Proba_Draw':'{:.2f}','ML_Proba_Away':'{:.2f}',
+            'Goals_H_FT':'{:.0f}','Goals_A_FT':'{:.0f}',  # FORMATO PARA GOLS
+        }),
+        use_container_width=True, height=600
     )
 
 # ROI
 if show_roi:
     st.subheader("📈 ROI acumulado")
-    ml_bets = test_df[test_df['ML_Recommendation']!='❌ Avoid'] if 'ML_Recommendation' in test_df.columns else pd.DataFrame()
-    auto_bets = test_df[test_df['Auto_Recommendation']!='❌ Avoid'] if 'Auto_Recommendation' in test_df.columns else pd.DataFrame()
-    
-    if compare_rules and len(auto_bets) > 0:
+    if compare_rules and len(auto_bets):
         plot_roi(test_df[test_df['Auto_Recommendation']!='❌ Avoid'], 'Profit_Auto', "ROI – Regras (apenas apostas feitas)")
-    if len(ml_bets) > 0:
+    if len(ml_bets):
         plot_roi(test_df[test_df['ML_Recommendation']!='❌ Avoid'], 'Profit_ML', "ROI – ML (apenas apostas feitas)")
-    if 'Profit_Kelly' in test_df.columns:
-        kelly_bets = test_df[test_df['Profit_Kelly'].abs() > 0.001]
-        if len(kelly_bets) > 0:
-            plot_roi(kelly_bets, 'Profit_Kelly', "ROI – Kelly (apenas apostas feitas)")
 
 # Histograma
-if show_hist and "ML_Proba_Home" in test_df.columns:
+if show_hist and "ML_Proba_Home" in test_df:
     st.subheader("📊 Histograma – Probabilidade (Home)")
     plot_hist_proba(test_df["ML_Proba_Home"], "Distribuição de Probabilidades (Home)")
 
 # Calibração (Home)
-if show_calib and "ML_Proba_Home" in test_df.columns and 'Result' in test_df.columns:
+if show_calib and "ML_Proba_Home" in test_df:
     st.subheader("📉 Calibração – Home (modelo vs linha perfeita)")
     y_home = (test_df['Result']=="Home").astype(int)
     plot_calibration_curve(test_df["ML_Proba_Home"], y_home, "Calibração (Home) – Modelo vs Linha Perfeita", n_bins=10)
 
 # Importância das features (somente para modelos com atributo)
-if show_feat_imp and "trained_model" in st.session_state:
-    model = st.session_state["trained_model"]
+if show_feat_imp and hasattr(getattr(model, 'base_estimator_', model), "feature_importances_"):
+    st.subheader("🔥 Importância das Features (modelo baseado em árvores)")
     est = getattr(model, 'base_estimator_', model)
     importances = getattr(est, "feature_importances_", None)
-    
-    if importances is not None and hasattr(importances, '__len__'):
-        st.subheader("🔥 Importância das Features (modelo baseado em árvores)")
+    if importances is not None:
         fi = pd.Series(importances, index=X_train.columns).sort_values(ascending=False).head(20)
         fig, ax = plt.subplots(figsize=(8,6))
         ax.barh(fi.index[::-1], fi.values[::-1])
         ax.set_title("Top 20 Features")
         st.pyplot(fig)
     else:
-        st.info("Importância de features não disponível para este modelo.")
+        st.info("O modelo não expõe 'feature_importances_'.")
 elif show_feat_imp:
     st.info("Importância de features disponível apenas para árvores (RF/XGB/LGBM).")
 
-# Matriz de Confusão
-if show_cm and 'ML_Pred' in test_df.columns and 'Result' in test_df.columns:
+
+def plot_conf_matrix(y_true, y_pred, labels=["Home","Draw","Away"]):
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    fig, ax = plt.subplots(figsize=(5,4))
+    im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+    ax.figure.colorbar(im, ax=ax)
+    
+    # Títulos e eixos
+    ax.set(
+        xticks=np.arange(cm.shape[1]),
+        yticks=np.arange(cm.shape[0]),
+        xticklabels=labels, yticklabels=labels,
+        ylabel="Resultado Real",
+        xlabel="Resultado Previsto",
+        title="Matriz de Confusão"
+    )
+    
+    # Colocar os números em cada célula
+    fmt = "d"
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], fmt),
+                    ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    
+    st.pyplot(fig)
+
+# Exibir apenas se ativado
+if show_cm:
     st.subheader("🔲 Matriz de Confusão")
     plot_conf_matrix(test_df['Result'], test_df['ML_Pred'])
 
+
+
 ########################################
-# BLOCO 14 – EXPORT
+# BLOCO 13 – EXPORT
 ########################################
 if save_csv:
     out_cols = [
         'Date','League','Home','Away','Result',
         'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2',
         'Auto_Recommendation','ML_Recommendation',
-        'Profit_Auto','Profit_ML', 'Profit_Kelly',
+        'Profit_Auto','Profit_ML',
         'ML_Proba_Home','ML_Proba_Draw','ML_Proba_Away',
         '__srcfile'
     ]
@@ -1493,4 +1237,4 @@ if save_csv:
     csv_bytes = test_df[export_cols].to_csv(index=False).encode('utf-8')
     st.download_button("💾 Baixar CSV de previsões (teste)", data=csv_bytes, file_name="ml_backtest_lab_test.csv", mime="text/csv")
 
-st.success("Pronto! Você pode ajustar datas, mudar o modelo e ligar/desligue os gráficos.")
+st.success("Pronto! Você pode ajustar datas, mudar o modelo e ligar/desligar os gráficos.")
