@@ -667,7 +667,7 @@ if "trained_model" in st.session_state:
 
     # Ajuste do limiar para decisão
     st.subheader("🎯 Limiar para Back direto")
-    threshold = st.slider("Threshold (%) para Back Home/Away", 50, 85, 65, step=1) / 100.0
+    threshold = st.slider("Threshold (%) para Back Home/Away", 40, 85, 65, step=1) / 100.0
 
     # Função de recomendação baseada nas probabilidades
     def ml_rec_from_proba(row, thr=0.65):
