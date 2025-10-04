@@ -1153,6 +1153,17 @@ elif save_csv:
 ########################################
 st.header("📈 Métricas do Teste (na data selecionada)")
 
+# Definir proba_test e classes_ para uso no LogLoss
+if "trained_model" in st.session_state:
+    model = st.session_state["trained_model"]
+    proba_test = model.predict_proba(X_test) if hasattr(model, "predict_proba") else None
+    classes_ = list(model.classes_) if hasattr(model, "classes_") else []
+else:
+    proba_test = None
+    classes_ = []
+
+def safe_auc(y_true, proba_df, labels=("Home","Draw","Away")):
+
 def safe_auc(y_true, proba_df, labels=("Home","Draw","Away")):
     try:
         # OvR ponderado
@@ -1306,11 +1317,81 @@ with colv3:
     show_cm = st.checkbox("Mostrar Confusion Matrix", value=False)
 
 ########################################
-# BLOCO 11B – Confusion Matrix
+# BLOCO 12 – FUNÇÕES DE PLOTAGEM (ADICIONADO)
 ########################################
-show_cm = st.checkbox("Mostrar Confusion Matrix", value=False)
 
+def plot_roi(df, profit_col, title):
+    df = df.copy()
+    # Se houver data, usar agrupamento por liga ou por partida; aqui acumulamos por ordem natural
+    df['ROI_acu'] = df[profit_col].cumsum()
+    fig, ax = plt.subplots(figsize=(8,4))
+    ax.plot(np.arange(len(df)), df['ROI_acu'])
+    ax.set_title(title)
+    ax.set_xlabel("Jogos (ordem no teste)")
+    ax.set_ylabel("ROI acumulado (stake=1)")
+    st.pyplot(fig)
 
+def plot_hist_proba(series, title):
+    fig, ax = plt.subplots(figsize=(6,4))
+    ax.hist(series.dropna(), bins=20)
+    ax.set_title(title)
+    ax.set_xlabel("Probabilidade prevista")
+    ax.set_ylabel("Frequência")
+    st.pyplot(fig)
+
+def plot_calibration_curve(prob, outcomes, title, n_bins=10):
+    # outcomes_bin: 1 se "Home", 0 caso contrário
+    dfc = pd.DataFrame({"p": prob, "y": outcomes}).dropna()
+    if dfc.empty:
+        st.warning("Sem dados suficientes para calibrar.")
+        return
+    dfc['bin'] = pd.cut(dfc['p'], bins=np.linspace(0,1,n_bins+1), include_lowest=True)
+    g = dfc.groupby('bin')
+    p_mean = g['p'].mean()
+    y_rate = g['y'].mean()
+
+    fig, ax = plt.subplots(figsize=(6,6))
+    ax.plot([0,1],[0,1],'--', label='Linha Perfeita')
+    ax.plot(p_mean, y_rate, marker='o', label='Modelo')
+    ax.set_title(title)
+    ax.set_xlabel('Prob. prevista (média do bin)')
+    ax.set_ylabel('Taxa real observada')
+    ax.legend()
+    st.pyplot(fig)
+
+def plot_conf_matrix(y_true, y_pred, labels=["Home","Draw","Away"]):
+    try:
+        cm = confusion_matrix(y_true, y_pred, labels=labels)
+        fig, ax = plt.subplots(figsize=(5,4))
+        im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+        ax.figure.colorbar(im, ax=ax)
+        
+        # Títulos e eixos
+        ax.set(
+            xticks=np.arange(cm.shape[1]),
+            yticks=np.arange(cm.shape[0]),
+            xticklabels=labels, yticklabels=labels,
+            ylabel="Resultado Real",
+            xlabel="Resultado Previsto",
+            title="Matriz de Confusão"
+        )
+        
+        # Colocar os números em cada célula
+        fmt = "d"
+        thresh = cm.max() / 2.
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):
+                ax.text(j, i, format(cm[i, j], fmt),
+                        ha="center", va="center",
+                        color="white" if cm[i, j] > thresh else "black")
+        
+        st.pyplot(fig)
+    except Exception as e:
+        st.error(f"Erro ao plotar matriz de confusão: {e}")
+
+########################################
+# BLOCO 13 – EXIBIÇÃO DOS GRÁFICOS
+########################################
 
 # Tabela - CORRIGIDO PARA INCLUIR GOLS E WIDTH
 if show_table:
@@ -1347,16 +1428,64 @@ if show_table:
         height=600
     )
 
+# ROI
+if show_roi:
+    st.subheader("📈 ROI acumulado")
+    ml_bets = test_df[test_df['ML_Recommendation']!='❌ Avoid'] if 'ML_Recommendation' in test_df.columns else pd.DataFrame()
+    auto_bets = test_df[test_df['Auto_Recommendation']!='❌ Avoid'] if 'Auto_Recommendation' in test_df.columns else pd.DataFrame()
+    
+    if compare_rules and len(auto_bets) > 0:
+        plot_roi(test_df[test_df['Auto_Recommendation']!='❌ Avoid'], 'Profit_Auto', "ROI – Regras (apenas apostas feitas)")
+    if len(ml_bets) > 0:
+        plot_roi(test_df[test_df['ML_Recommendation']!='❌ Avoid'], 'Profit_ML', "ROI – ML (apenas apostas feitas)")
+    if 'Profit_Kelly' in test_df.columns:
+        kelly_bets = test_df[test_df['Profit_Kelly'].abs() > 0.001]
+        if len(kelly_bets) > 0:
+            plot_roi(kelly_bets, 'Profit_Kelly', "ROI – Kelly (apenas apostas feitas)")
+
+# Histograma
+if show_hist and "ML_Proba_Home" in test_df.columns:
+    st.subheader("📊 Histograma – Probabilidade (Home)")
+    plot_hist_proba(test_df["ML_Proba_Home"], "Distribuição de Probabilidades (Home)")
+
+# Calibração (Home)
+if show_calib and "ML_Proba_Home" in test_df.columns and 'Result' in test_df.columns:
+    st.subheader("📉 Calibração – Home (modelo vs linha perfeita)")
+    y_home = (test_df['Result']=="Home").astype(int)
+    plot_calibration_curve(test_df["ML_Proba_Home"], y_home, "Calibração (Home) – Modelo vs Linha Perfeita", n_bins=10)
+
+# Importância das features (somente para modelos com atributo)
+if show_feat_imp and "trained_model" in st.session_state:
+    model = st.session_state["trained_model"]
+    est = getattr(model, 'base_estimator_', model)
+    importances = getattr(est, "feature_importances_", None)
+    
+    if importances is not None and hasattr(importances, '__len__'):
+        st.subheader("🔥 Importância das Features (modelo baseado em árvores)")
+        fi = pd.Series(importances, index=X_train.columns).sort_values(ascending=False).head(20)
+        fig, ax = plt.subplots(figsize=(8,6))
+        ax.barh(fi.index[::-1], fi.values[::-1])
+        ax.set_title("Top 20 Features")
+        st.pyplot(fig)
+    else:
+        st.info("Importância de features não disponível para este modelo.")
+elif show_feat_imp:
+    st.info("Importância de features disponível apenas para árvores (RF/XGB/LGBM).")
+
+# Matriz de Confusão
+if show_cm and 'ML_Pred' in test_df.columns and 'Result' in test_df.columns:
+    st.subheader("🔲 Matriz de Confusão")
+    plot_conf_matrix(test_df['Result'], test_df['ML_Pred'])
 
 ########################################
-# BLOCO 13 – EXPORT
+# BLOCO 14 – EXPORT
 ########################################
 if save_csv:
     out_cols = [
         'Date','League','Home','Away','Result',
         'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2',
         'Auto_Recommendation','ML_Recommendation',
-        'Profit_Auto','Profit_ML',
+        'Profit_Auto','Profit_ML', 'Profit_Kelly',
         'ML_Proba_Home','ML_Proba_Draw','ML_Proba_Away',
         '__srcfile'
     ]
@@ -1364,4 +1493,4 @@ if save_csv:
     csv_bytes = test_df[export_cols].to_csv(index=False).encode('utf-8')
     st.download_button("💾 Baixar CSV de previsões (teste)", data=csv_bytes, file_name="ml_backtest_lab_test.csv", mime="text/csv")
 
-st.success("Pronto! Você pode ajustar datas, mudar o modelo e ligar/desligar os gráficos.")
+st.success("Pronto! Você pode ajustar datas, mudar o modelo e ligar/desligue os gráficos.")
