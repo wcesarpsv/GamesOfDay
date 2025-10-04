@@ -140,6 +140,7 @@ def dominant_side(row, threshold=DOMINANT_THRESHOLD):
 # BLOCO 3.5 – FUNÇÕES AUSENTES (NOVO)
 ########################################
 
+# 3.5.1 Funções Auxiliares Originais
 def compute_double_chance_odds(df):
     """Calcula odds para dupla chance 1X e X2"""
     df = df.copy()
@@ -160,7 +161,7 @@ def classify_leagues_variation(history_df):
     """Classifica ligas por nível de variação dos momentos"""
     if history_df.empty:
         return pd.DataFrame(columns=['League', 'League_Classification'])
-    
+        
     variation_data = []
     for league in history_df['League'].unique():
         league_data = history_df[history_df['League'] == league]
@@ -186,8 +187,76 @@ def classify_leagues_variation(history_df):
             'League': league, 
             'League_Classification': classification
         })
-    
+        
     return pd.DataFrame(variation_data) if variation_data else pd.DataFrame(columns=['League', 'League_Classification'])
+
+
+#################################################
+# 3.5.2 Funções de EV e Lucro com Filtro (NOVAS)
+#################################################
+
+def calculate_ev(prob, odd):
+    """Calcula o Valor Esperado: EV = (Probabilidade * Odd) - 1"""
+    # Retorna NaN se a Odd for inválida (Odd <= 1.0 ou NaN)
+    if pd.isna(prob) or pd.isna(odd) or odd <= 1.0:
+        return np.nan
+    return (prob * odd) - 1
+
+def calculate_profit_with_ev_filter(rec, result, odds_row, prob_row, ev_threshold):
+    """
+    Calcula o lucro, APENAS se o EV da aposta (identificado pela recomendação) 
+    for maior que o threshold.
+    Assume que as colunas 'ML_EV_*' já foram calculadas e estão em prob_row (que é a row do DF).
+    """
+    if pd.isna(rec) or result is None or rec == '❌ Avoid': return 0.0
+    r = str(rec)
+    
+    # 1. Definir a aposta, buscar Odd e EV correspondente
+    current_ev = -1.0
+    odd = np.nan
+    target_result = None
+
+    if 'Back Home' in r:
+        odd = odds_row.get('Odd_H', np.nan)
+        current_ev = prob_row.get('ML_EV_Home', -1.0)
+        target_result = "Home"
+    elif 'Back Away' in r:
+        odd = odds_row.get('Odd_A', np.nan)
+        current_ev = prob_row.get('ML_EV_Away', -1.0)
+        target_result = "Away"
+    elif 'Back Draw' in r:
+        odd = odds_row.get('Odd_D', np.nan)
+        current_ev = prob_row.get('ML_EV_Draw', -1.0)
+        target_result = "Draw"
+    elif '1X' in r:
+        odd = odds_row.get('Odd_1X', np.nan)
+        current_ev = prob_row.get('ML_EV_1X', -1.0)
+        target_result = ["Home", "Draw"]
+    elif 'X2' in r:
+        odd = odds_row.get('Odd_X2', np.nan)
+        current_ev = prob_row.get('ML_EV_X2', -1.0)
+        target_result = ["Away", "Draw"]
+    else:
+        return 0.0
+
+    # 2. Aplicar o filtro de EV
+    if pd.isna(odd) or current_ev < ev_threshold:
+        return 0.0 # Não faz aposta (Profit = 0)
+    
+    # 3. Calcular o Lucro
+    if target_result is None:
+        return 0.0
+        
+    is_win = False
+    if isinstance(target_result, list):
+        is_win = result in target_result
+    else:
+        is_win = result == target_result
+
+    if is_win:
+        return odd - 1.0 # Ganho
+    else:
+        return -1.0 # Perda (aposta de 1 unidade)
 
 ########################################
 # BLOCO 4 – REGRAS (AUTO RECOMMENDATION)
@@ -642,6 +711,7 @@ if st.button("🚀 Rodar Treinamento / Teste"):
 # SUBBLOCO 8D – Predição e Recomendações (ajustado)
 ########################################
 
+# 8D.1 Geração de Probabilidades e Predições
 if "trained_model" in st.session_state:
     model = st.session_state["trained_model"]
 
@@ -665,10 +735,20 @@ if "trained_model" in st.session_state:
     test_df["ML_Proba_Away"] = p("Away")
     test_df["ML_Pred"] = pred_test
 
+    # 8D.2 UI de Limiares (Thresholds)
     # Ajuste do limiar para decisão
-    st.subheader("🎯 Limiar para Back direto")
-    threshold = st.slider("Threshold (%) para Back Home/Away", 40, 85, 65, step=1) / 100.0
+    st.subheader("🎯 Limiar para Decisão e Valor Esperado (EV)")
+    colT1, colT2 = st.columns(2)
+    with colT1:
+        threshold = st.slider("Threshold (%) para Back Home/Away (Decisão ML)", 40, 85, 65, step=1) / 100.0
+    with colT2:
+        # NOVO: Limite de EV
+        ev_threshold = st.slider("Threshold (%) Mínimo de EV (Filtro de Lucro)", 0, 30, 5, step=1) / 100.0
+    
+    # Armazenar o EV Threshold no state para uso posterior
+    st.session_state['EV_THRESHOLD'] = ev_threshold
 
+    # 8D.3 Recomendação ML
     # Função de recomendação baseada nas probabilidades
     def ml_rec_from_proba(row, thr=0.65):
         ph, pd_, pa = row['ML_Proba_Home'], row['ML_Proba_Draw'], row['ML_Proba_Away']
@@ -690,7 +770,6 @@ if "trained_model" in st.session_state:
 
 else:
     st.warning("⚠️ Treine o modelo primeiro clicando no botão acima.")
-
 
 
 ########################################
@@ -746,12 +825,12 @@ if not league_bands.empty:
         test_df = test_df.merge(league_class, on='League', how='left')
 
 # ---- Bands: usar *_Num se existir; caso contrário, derivar; não travar se P20/P80 faltar
-REV_MAP  = {1: "Bottom 20%", 2: "Balanced", 3: "Top 20%"}
+REV_MAP = {1: "Bottom 20%", 2: "Balanced", 3: "Top 20%"}
 
 def classify_band(value, low, high):
     if pd.isna(value) or pd.isna(low) or pd.isna(high): 
         return "Balanced"
-    if value <= low:  
+    if value <= low: 
         return "Bottom 20%"
     if value >= high: 
         return "Top 20%"
@@ -803,9 +882,70 @@ if compare_rules:
 else:
     test_df['Auto_Recommendation'] = np.nan
 
+
+# 9.1 Geração do EV (NOVO)
+# --------------------------------------------------------------------------------------
+# NOVO: CÁLCULO DO EV PARA TODAS AS POSSÍVEIS APOSTAS ML (USADO PARA FILTRAGEM DE LUCRO)
+# --------------------------------------------------------------------------------------
+if "trained_model" in st.session_state:
+    # 1. Calcular EV para as apostas simples (H, D, A)
+    test_df['ML_EV_Home'] = test_df.apply(
+        lambda r: calculate_ev(r['ML_Proba_Home'], r.get('Odd_H')), axis=1
+    )
+    test_df['ML_EV_Draw'] = test_df.apply(
+        lambda r: calculate_ev(r['ML_Proba_Draw'], r.get('Odd_D')), axis=1
+    )
+    test_df['ML_EV_Away'] = test_df.apply(
+        lambda r: calculate_ev(r['ML_Proba_Away'], r.get('Odd_A')), axis=1
+    )
+
+    # 2. Calcular Probabilidades e EV para Dupla Chance (1X, X2)
+    test_df['ML_Proba_1X'] = test_df['ML_Proba_Home'] + test_df['ML_Proba_Draw']
+    test_df['ML_EV_1X'] = test_df.apply(
+        lambda r: calculate_ev(r['ML_Proba_1X'], r.get('Odd_1X')), axis=1
+    )
+    test_df['ML_Proba_X2'] = test_df['ML_Proba_Away'] + test_df['ML_Proba_Draw']
+    test_df['ML_EV_X2'] = test_df.apply(
+        lambda r: calculate_ev(r['ML_Proba_X2'], r.get('Odd_X2')), axis=1
+    )
+
+# 9.2 Cálculo de Lucros com Filtro EV (MODIFICADO)
+# Obter o threshold de EV do Session State (default para 0.0 se não existir)
+ev_threshold_final = st.session_state.get('EV_THRESHOLD', 0.00)
+
+# Função auxiliar para o cálculo de lucro simples (Auto) - Garantindo que a função exista
+def calculate_profit_simple(rec, result, odds_row):
+    """Calcula o lucro sem filtro de EV, usado para a comparação de Regras (Auto)"""
+    if pd.isna(rec) or result is None or rec == '❌ Avoid': return 0.0
+    r = str(rec)
+    
+    if 'Back Home' in r:
+        odd = odds_row.get('Odd_H', np.nan); return (odd - 1) if result == "Home" and not pd.isna(odd) else -1
+    if 'Back Away' in r:
+        odd = odds_row.get('Odd_A', np.nan); return (odd - 1) if result == "Away" and not pd.isna(odd) else -1
+    if 'Back Draw' in r:
+        odd = odds_row.get('Odd_D', np.nan); return (odd - 1) if result == "Draw" and not pd.isna(odd) else -1
+    if '1X' in r:
+        odd = odds_row.get('Odd_1X', np.nan); return (odd - 1) if result in ["Home","Draw"] and not pd.isna(odd) else -1
+    if 'X2' in r:
+        odd = odds_row.get('Odd_X2', np.nan); return (odd - 1) if result in ["Away","Draw"] and not pd.isna(odd) else -1
+    return 0.0
+
+
 # Lucros
-test_df['Profit_ML'] = test_df.apply(lambda r: calculate_profit(r['ML_Recommendation'], r['Result'], r), axis=1)
-test_df['Profit_Auto'] = test_df.apply(lambda r: calculate_profit(r['Auto_Recommendation'], r['Result'], r), axis=1)
+# Profit ML: AGORA USA O FILTRO DE EV! (calculate_profit_with_ev_filter é do Bloco 3.5.2)
+test_df['Profit_ML'] = test_df.apply(
+    lambda r: calculate_profit_with_ev_filter(
+        r['ML_Recommendation'], r['Result'], r, r, ev_threshold_final
+    ), 
+    axis=1
+)
+
+# Profit Auto: Usa o cálculo simples (sem filtro de EV, para comparação)
+test_df['Profit_Auto'] = test_df.apply(
+    lambda r: calculate_profit_simple(r['Auto_Recommendation'], r['Result'], r), 
+    axis=1
+)
 
 # Acertos
 test_df['ML_Correct'] = test_df.apply(lambda r: check_recommendation(r['ML_Recommendation'], r['Result']), axis=1)
