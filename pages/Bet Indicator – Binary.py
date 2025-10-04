@@ -5,7 +5,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-from datetime import date, timedelta
+import re
+from datetime import date, timedelta, datetime
 from collections import Counter
 
 # Machine Learning
@@ -24,6 +25,7 @@ st.title("📊 AI-Powered Bet Indicator – Home vs Away (Binary)")
 
 # ---------------- Configs ----------------
 GAMES_FOLDER = "GamesDay"
+LIVESCORE_FOLDER = "LiveScore"
 MODELS_FOLDER = "Models"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa"]
 
@@ -75,31 +77,79 @@ if history.empty:
 
 
 # ########################################################
-# BLOCO 4 – Seleção do Matchday
+# BLOCO 4 – NOVO: SELEÇÃO DE DATA PADRÃO + MERGE COM LIVESCORE
 # ########################################################
-option = st.radio(
-    "Select Matches",
-    ("Today Matches", "Yesterday Matches"),
-    horizontal=True
-)
+files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
+files = sorted(files)
 
-files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
 if not files:
-    st.warning("No match files available.")
+    st.warning("No CSV files found in GamesDay folder.")
     st.stop()
 
-if option == "Today Matches":
-    selected_file = files[-1]  # latest file
-elif option == "Yesterday Matches":
-    if len(files) >= 2:
-        selected_file = files[-2]  # second to last file
+# Últimos dois arquivos (Hoje e Ontem) - igual ao código modelo
+options = files[-2:] if len(files) >= 2 else files
+selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
+
+# Extrair a data do arquivo selecionado (YYYY-MM-DD)
+date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
+if date_match:
+    selected_date_str = date_match.group(0)
+else:
+    selected_date_str = datetime.now().strftime("%Y-%m-%d")
+
+# Carregar os jogos do dia selecionado
+games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
+games_today = filter_leagues(games_today)
+
+# ========== MERGE COM LIVESCORE (IGUAL AO CÓDIGO MODELO) ==========
+livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
+
+# Ensure goal columns exist
+if 'Goals_H_Today' not in games_today.columns:
+    games_today['Goals_H_Today'] = np.nan
+if 'Goals_A_Today' not in games_today.columns:
+    games_today['Goals_A_Today'] = np.nan
+
+# Merge with the correct LiveScore file
+if os.path.exists(livescore_file):
+    st.info(f"LiveScore file found: {livescore_file}")
+    results_df = pd.read_csv(livescore_file)
+
+    # FILTER OUT CANCELED AND POSTPONED GAMES
+    results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
+    
+    required_cols = [
+        'game_id', 'status', 'home_goal', 'away_goal',
+        'home_ht_goal', 'away_ht_goal',
+        'home_corners', 'away_corners',
+        'home_yellow', 'away_yellow',
+        'home_red', 'away_red'
+    ]
+    missing_cols = [col for col in required_cols if col not in results_df.columns]
+    
+    if missing_cols:
+        st.error(f"The file {livescore_file} is missing these columns: {missing_cols}")
     else:
-        st.warning("No yesterday matches available.")
-        st.stop()
+        games_today = games_today.merge(
+            results_df,
+            left_on='Id',
+            right_on='game_id',
+            how='left',
+            suffixes=('', '_RAW')
+        )
 
-games_today = filter_leagues(pd.read_csv(os.path.join(GAMES_FOLDER, selected_file)))
+        # Update goals only for finished games
+        games_today['Goals_H_Today'] = games_today['home_goal']
+        games_today['Goals_A_Today'] = games_today['away_goal']
+        games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
+        
+        # ADD RED CARD COLUMNS
+        games_today['Home_Red'] = games_today['home_red']
+        games_today['Away_Red'] = games_today['away_red']
+else:
+    st.warning(f"No LiveScore results file found for selected date: {selected_date_str}")
 
-# 🔹 Mantém apenas jogos futuros (sem placares ainda)
+# 🔹 Mantém apenas jogos futuros (sem placares ainda) - baseado nos dados originais
 if 'Goals_H_FT' in games_today.columns:
     games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
 
@@ -180,6 +230,7 @@ X_today = pd.concat([games_today[base_features], games_today_leagues], axis=1) \
         .join(games_today[["Date","Home","Away"]]) \
         .drop_duplicates(subset=["Date","Home","Away"], keep="first") \
         .drop(columns=["Date","Home","Away"])
+
 # ########################################################
 # BLOCO 8 – Train / Validation + SMOTE
 # ########################################################
@@ -280,8 +331,10 @@ else:
 games_today['p_home'] = probs_today[:,0]
 games_today['p_away'] = probs_today[:,1]
 
+# ========== NOVO: COLUNAS DE GOLS ADICIONADAS APÓS AWAY ==========
 cols_to_show = [
     'Date', 'Time', 'League', 'Home', 'Away',
+    'Goals_H_Today', 'Goals_A_Today',  # NOVO: Colunas de gols adicionadas aqui
     'Odd_H', 'Odd_A', 'PesoMomentum_H', 'PesoMomentum_A',
     'CustoMomentum_H', 'CustoMomentum_A',
     'p_home', 'p_away'
@@ -304,19 +357,19 @@ styled_df = (
         'Odd_H': '{:.2f}', 'Odd_A': '{:.2f}',
         'PesoMomentum_H': '{:.2f}', 'PesoMomentum_A': '{:.2f}',
         'CustoMomentum_H': '{:.2f}', 'CustoMomentum_A': '{:.2f}',
-        'p_home': '{:.1%}', 'p_away': '{:.1%}'
+        'p_home': '{:.1%}', 'p_away': '{:.1%}',
+        'Goals_H_Today': '{:.0f}', 'Goals_A_Today': '{:.0f}'  # NOVO: Formatação dos gols
     }, na_rep='—')
     .applymap(lambda v: style_probs(v, 'p_home'), subset=['p_home'])
     .applymap(lambda v: style_probs(v, 'p_away'), subset=['p_away'])
 )
 
-st.markdown("### 📌 Predictions for Selected Matches")
+st.markdown(f"### 📌 Predictions for {selected_date_str} – Home vs Away (Binary)")
 st.dataframe(styled_df, use_container_width=True, height=1000)
 
 
 # 🔹 Botão para download do CSV
 import io
-today_str = date.today().strftime("%Y-%m-%d")
 csv_buffer = io.BytesIO()
 games_today.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
 csv_buffer.seek(0)
@@ -324,11 +377,6 @@ csv_buffer.seek(0)
 st.download_button(
     label="📥 Download Predictions CSV",
     data=csv_buffer,
-    file_name=f"Bet_Indicator_Binary_{today_str}.csv",
+    file_name=f"Bet_Indicator_Binary_{selected_date_str}.csv",
     mime="text/csv"
 )
-
-
-
-
-
