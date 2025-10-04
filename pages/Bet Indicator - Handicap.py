@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import os
 import joblib
+import re
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
@@ -18,6 +19,7 @@ st.title("📊 Bet Indicator – Asian Handicap (Home vs Away)")
 # ---------------- Configurações ----------------
 PAGE_PREFIX = "AsianHandicap"
 GAMES_FOLDER = "GamesDay"
+LIVESCORE_FOLDER = "LiveScore"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa","trophy"]
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -69,6 +71,79 @@ def load_model(filename):
 ##################### BLOCO 3 – LOAD DATA + HANDICAP TARGET #####################
 st.info("📂 Loading data...")
 
+# ========== NOVO: SELEÇÃO DE DATA IGUAL AO CÓDIGO MODELO ==========
+files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
+files = sorted(files)
+
+if not files:
+    st.warning("No CSV files found in GamesDay folder.")
+    st.stop()
+
+# Últimos dois arquivos (Hoje e Ontem) - igual ao código modelo
+options = files[-2:] if len(files) >= 2 else files
+selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
+
+# Extrair a data do arquivo selecionado (YYYY-MM-DD)
+date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
+if date_match:
+    selected_date_str = date_match.group(0)
+else:
+    selected_date_str = datetime.now().strftime("%Y-%m-%d")
+
+# Carregar os jogos do dia selecionado
+games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
+games_today = filter_leagues(games_today)
+
+# ========== NOVO: MERGE COM LIVESCORE (IGUAL AO CÓDIGO MODELO) ==========
+livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
+
+# Ensure goal columns exist
+if 'Goals_H_Today' not in games_today.columns:
+    games_today['Goals_H_Today'] = np.nan
+if 'Goals_A_Today' not in games_today.columns:
+    games_today['Goals_A_Today'] = np.nan
+
+# Merge with the correct LiveScore file
+if os.path.exists(livescore_file):
+    st.info(f"LiveScore file found: {livescore_file}")
+    results_df = pd.read_csv(livescore_file)
+
+    # FILTER OUT CANCELED AND POSTPONED GAMES
+    results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
+    
+    required_cols = [
+        'game_id', 'status', 'home_goal', 'away_goal',
+        'home_ht_goal', 'away_ht_goal',
+        'home_corners', 'away_corners',
+        'home_yellow', 'away_yellow',
+        'home_red', 'away_red'
+    ]
+    missing_cols = [col for col in required_cols if col not in results_df.columns]
+    
+    if missing_cols:
+        st.error(f"The file {livescore_file} is missing these columns: {missing_cols}")
+    else:
+        games_today = games_today.merge(
+            results_df,
+            left_on='Id',
+            right_on='game_id',
+            how='left',
+            suffixes=('', '_RAW')
+        )
+
+        # Update goals only for finished games
+        games_today['Goals_H_Today'] = games_today['home_goal']
+        games_today['Goals_A_Today'] = games_today['away_goal']
+        games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
+        
+        # ADD RED CARD COLUMNS
+        games_today['Home_Red'] = games_today['home_red']
+        games_today['Away_Red'] = games_today['away_red']
+else:
+    st.warning(f"No LiveScore results file found for selected date: {selected_date_str}")
+
+# ========== CONTINUAÇÃO DO CÓDIGO ORIGINAL ==========
+# Carregar histórico para treinamento
 history = filter_leagues(load_all_games(GAMES_FOLDER))
 history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line"]).copy()
 
@@ -80,24 +155,7 @@ else:
 if history.empty:
     st.stop()
 
-today = datetime.now().strftime("%Y-%m-%d")
-yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-
-games_today = filter_leagues(load_selected_csvs(GAMES_FOLDER))
-if "Date" in games_today.columns:
-    games_today["Date"] = pd.to_datetime(games_today["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
-games_today = games_today[games_today["Date"] == today].copy()
-
-include_yesterday = st.sidebar.checkbox("Include yesterday's matches", value=False)
-if include_yesterday:
-    games_today = filter_leagues(load_selected_csvs(GAMES_FOLDER))
-    if "Date" in games_today.columns:
-        games_today["Date"] = pd.to_datetime(games_today["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
-    games_today = games_today[games_today["Date"].isin([today, yesterday])].copy()
-
-if set(["Date", "Home", "Away"]).issubset(games_today.columns):
-    games_today = games_today.drop_duplicates(subset=["Home", "Away","Goals_H_FT","Goals_A_FT"], keep="first")
-
+# Filtrar apenas jogos sem placar final (para previsão)
 if "Goals_H_FT" in games_today.columns:
     games_today = games_today[games_today["Goals_H_FT"].isna()].copy()
 
@@ -183,7 +241,6 @@ X_today_ah_away = X_today_ah_home.copy()
 
 numeric_cols = feature_blocks["odds"] + feature_blocks["strength"]
 numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
-
 
 
 ##################### BLOCO 5 – SIDEBAR CONFIG #####################
@@ -334,9 +391,11 @@ def color_prob(val, color):
     alpha = float(np.clip(val, 0, 1))
     return f"background-color: rgba({color}, {alpha:.2f})"
 
+# ========== NOVO: COLUNAS DE GOLS ADICIONADAS APÓS AWAY ==========
 styled_df = (
     games_today[[
         "Date","Time","League","Home","Away",
+        "Goals_H_Today", "Goals_A_Today",  # NOVO: Colunas de gols adicionadas aqui
         "Odd_H","Odd_D","Odd_A",
         "Asian_Line_Display","Odd_H_Asi","Odd_A_Asi",
         "p_ah_home_yes","p_ah_away_yes"
@@ -345,11 +404,12 @@ styled_df = (
         "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
         "Asian_Line_Display": "{:.2f}",
         "Odd_H_Asi": "{:.2f}", "Odd_A_Asi": "{:.2f}",
-        "p_ah_home_yes": "{:.1%}", "p_ah_away_yes": "{:.1%}"
+        "p_ah_home_yes": "{:.1%}", "p_ah_away_yes": "{:.1%}",
+        "Goals_H_Today": "{:.0f}", "Goals_A_Today": "{:.0f}"  # NOVO: Formatação dos gols
     }, na_rep="—")
     .applymap(lambda v: color_prob(v, "0,200,0"), subset=["p_ah_home_yes"])
     .applymap(lambda v: color_prob(v, "255,140,0"), subset=["p_ah_away_yes"])
 )
 
-st.markdown(f"### 📌 Predictions for Today's Matches – Asian Handicap ({ml_version_choice})")
+st.markdown(f"### 📌 Predictions for {selected_date_str} – Asian Handicap ({ml_version_choice})")
 st.dataframe(styled_df, use_container_width=True, height=800)
