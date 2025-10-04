@@ -1238,3 +1238,264 @@ if save_csv:
     st.download_button("💾 Baixar CSV de previsões (teste)", data=csv_bytes, file_name="ml_backtest_lab_test.csv", mime="text/csv")
 
 st.success("Pronto! Você pode ajustar datas, mudar o modelo e ligar/desligar os gráficos.")
+
+
+########################################
+# BLOCO 14 – GESTÃO DE BANKROLL AVANÇADA
+########################################
+
+class ConservativeBankrollManager:
+    """
+    Gerenciador conservador de bankroll com:
+    - Kelly fractional (1/4)
+    - Filtro de EV mínimo (5%)
+    - Limite máximo de stake (3%)
+    - Tracking de bankroll em tempo real
+    """
+    
+    def __init__(self, initial_bankroll=1000):
+        self.initial_br = initial_bankroll
+        self.current_br = initial_bankroll
+        self.history = []
+        self.stake_history = []
+        
+    def calculate_stake(self, prob, odd, min_ev=0.05, kelly_frac=0.25, max_stake_pct=0.03):
+        """
+        Calcula stake conservador com múltiplas camadas de proteção
+        
+        Args:
+            prob: Nossa probabilidade estimada (0-1)
+            odd: Odd decimal da casa
+            min_ev: EV mínimo necessário (default: 5%)
+            kelly_frac: Fração do Kelly (default: 1/4)
+            max_stake_pct: Stake máximo em % do bankroll (default: 3%)
+            
+        Returns:
+            tuple: (stake_amount, ev, recommendation)
+        """
+        
+        # 1. Calcular EV básico
+        ev = calculate_ev(prob, odd)
+        
+        # 2. Aplicar filtro de EV mínimo
+        if pd.isna(ev) or ev < min_ev:
+            return 0.0, ev, "❌ EV abaixo do mínimo"
+        
+        # 3. Calcular Kelly Full
+        try:
+            kelly_full = (prob * odd - 1) / (odd - 1)
+            # Limitar Kelly entre 0 e 1 (evitar edge cases)
+            kelly_full = max(0.0, min(kelly_full, 1.0))
+        except (ZeroDivisionError, ValueError):
+            return 0.0, ev, "❌ Odd inválida para Kelly"
+        
+        # 4. Aplicar Kelly Fractional
+        kelly_frac_calc = kelly_full * kelly_frac
+        
+        # 5. Aplicar limite máximo de stake
+        stake_pct = min(kelly_frac_calc, max_stake_pct)
+        
+        # 6. Garantir stake mínimo (0.5% do bankroll) para evitar apostas insignificantes
+        min_stake_pct = 0.005
+        if stake_pct < min_stake_pct:
+            return 0.0, ev, "❌ Stake muito pequena"
+        
+        # 7. Calcular valor absoluto do stake
+        stake_amount = stake_pct * self.current_br
+        
+        return stake_amount, ev, f"✅ Stake: {stake_pct:.2%} (${stake_amount:.2f})"
+    
+    def place_bet(self, stake_amount, odd, outcome_success):
+        """
+        Registra uma aposta e atualiza o bankroll
+        
+        Args:
+            stake_amount: Valor apostado
+            odd: Odd decimal
+            outcome_success: True se ganhou, False se perdeu
+            
+        Returns:
+            float: Profit da aposta
+        """
+        if outcome_success:
+            profit = stake_amount * (odd - 1)
+        else:
+            profit = -stake_amount
+        
+        # Atualizar bankroll
+        self.current_br += profit
+        
+        # Registrar no histórico
+        bet_record = {
+            'stake': stake_amount,
+            'odd': odd,
+            'outcome': 'win' if outcome_success else 'loss',
+            'profit': profit,
+            'bankroll_after': self.current_br,
+            'timestamp': datetime.now()
+        }
+        self.history.append(bet_record)
+        self.stake_history.append(stake_amount)
+        
+        return profit
+    
+    def get_metrics(self):
+        """Retorna métricas atuais do bankroll"""
+        if not self.history:
+            return {
+                'current_bankroll': self.current_br,
+                'total_profit': self.current_br - self.initial_br,
+                'total_return_pct': 0.0,
+                'total_bets': 0,
+                'win_rate': 0.0,
+                'avg_stake_pct': 0.0
+            }
+        
+        wins = sum(1 for bet in self.history if bet['outcome'] == 'win')
+        total_bets = len(self.history)
+        total_profit = self.current_br - self.initial_br
+        
+        return {
+            'current_bankroll': self.current_br,
+            'total_profit': total_profit,
+            'total_return_pct': (total_profit / self.initial_br) * 100,
+            'total_bets': total_bets,
+            'win_rate': (wins / total_bets) * 100 if total_bets > 0 else 0,
+            'avg_stake_pct': (np.mean(self.stake_history) / self.initial_br) * 100,
+            'max_stake_pct': (np.max(self.stake_history) / self.initial_br) * 100 if self.stake_history else 0
+        }
+    
+    def reset(self):
+        """Reseta o bankroll para o estado inicial"""
+        self.current_br = self.initial_br
+        self.history = []
+        self.stake_history = []
+
+# Instância global do bankroll manager
+bankroll_mgr = ConservativeBankrollManager(initial_bankroll=1000)
+
+
+
+########################################
+# BLOCO 15 – UI CONTROLE BANKROLL
+########################################
+
+st.header("💰 Gestão de Bankroll Avançada")
+
+col_br1, col_br2, col_br3 = st.columns(3)
+
+with col_br1:
+    st.subheader("📊 Configuração")
+    initial_br = st.number_input("Bankroll Inicial ($)", min_value=100, max_value=10000, value=1000, step=100)
+    min_ev_threshold = st.slider("EV Mínimo (%)", 1, 20, 5, help="EV mínimo para considerar aposta") / 100.0
+    kelly_fraction = st.selectbox("Kelly Fraction", [0.125, 0.25, 0.5], index=1, 
+                                 format_func=lambda x: f"1/{int(1/x)} Kelly", 
+                                 help="Fração conservadora do Kelly")
+    max_stake_pct = st.slider("Stake Máximo (% bankroll)", 1, 10, 3, help="Máximo por aposta") / 100.0
+
+with col_br2:
+    st.subheader("🎯 Status Atual")
+    metrics = bankroll_mgr.get_metrics()
+    st.metric("Bankroll Atual", f"${metrics['current_bankroll']:.2f}")
+    st.metric("Profit Total", f"${metrics['total_profit']:.2f}")
+    st.metric("Return %", f"{metrics['total_return_pct']:.2f}%")
+    
+with col_br3:
+    st.subheader("📈 Performance")
+    st.metric("Win Rate", f"{metrics['win_rate']:.1f}%")
+    st.metric("Total Apostas", metrics['total_bets'])
+    st.metric("Stake Médio", f"{metrics['avg_stake_pct']:.1f}%")
+
+# Botão para resetar bankroll
+if st.button("🔄 Resetar Bankroll"):
+    bankroll_mgr = ConservativeBankrollManager(initial_bankroll=initial_br)
+    st.success("Bankroll resetado!")
+
+st.divider()
+
+
+
+########################################
+# BLOCO 16 – FUNÇÕES ATUALIZADAS PARA STAKING
+########################################
+
+def calculate_profit_with_staking(row, bankroll_manager, bet_type="ML"):
+    """
+    Calcula profit considerando staking proporcional ao bankroll
+    e filtros de EV
+    
+    Args:
+        row: Linha do DataFrame com odds e probabilidades
+        bankroll_manager: Instância do gerenciador de bankroll
+        bet_type: "ML" ou "Auto" para escolher a recomendação
+        
+    Returns:
+        tuple: (profit, stake_amount, ev_value, bet_placed)
+    """
+    if bet_type == "ML":
+        rec = row.get('ML_Recommendation', '❌ Avoid')
+        prob_prefix = 'ML_Proba_'
+    else:
+        rec = row.get('Auto_Recommendation', '❌ Avoid')
+        prob_prefix = 'ML_Proba_'  # Usar mesma base de probabilidades para comparação justa
+    
+    if pd.isna(rec) or rec == '❌ Avoid':
+        return 0.0, 0.0, 0.0, False
+    
+    # Determinar tipo de aposta e obter odd correspondente
+    rec_str = str(rec)
+    target_result = None
+    odd = np.nan
+    prob = 0.0
+    
+    if 'Back Home' in rec_str:
+        odd = row.get('Odd_H', np.nan)
+        prob = row.get(f'{prob_prefix}Home', 0.0)
+        target_result = "Home"
+    elif 'Back Away' in rec_str:
+        odd = row.get('Odd_A', np.nan)
+        prob = row.get(f'{prob_prefix}Away', 0.0)
+        target_result = "Away"
+    elif 'Back Draw' in rec_str:
+        odd = row.get('Odd_D', np.nan)
+        prob = row.get(f'{prob_prefix}Draw', 0.0)
+        target_result = "Draw"
+    elif '1X' in rec_str:
+        odd = row.get('Odd_1X', np.nan)
+        prob = row.get(f'{prob_prefix}Home', 0.0) + row.get(f'{prob_prefix}Draw', 0.0)
+        target_result = ["Home", "Draw"]
+    elif 'X2' in rec_str:
+        odd = row.get('Odd_X2', np.nan)
+        prob = row.get(f'{prob_prefix}Away', 0.0) + row.get(f'{prob_prefix}Draw', 0.0)
+        target_result = ["Away", "Draw"]
+    else:
+        return 0.0, 0.0, 0.0, False
+    
+    # Verificar se resultado está disponível
+    result = row.get('Result')
+    if result is None:
+        return 0.0, 0.0, 0.0, False
+    
+    # Calcular stake usando bankroll manager
+    stake_amount, ev, stake_reason = bankroll_manager.calculate_stake(
+        prob, odd, 
+        min_ev=min_ev_threshold,
+        kelly_frac=kelly_fraction,
+        max_stake_pct=max_stake_pct
+    )
+    
+    # Se stake é zero, não apostar
+    if stake_amount == 0:
+        return 0.0, 0.0, ev, False
+    
+    # Determinar se ganhou a aposta
+    is_win = False
+    if isinstance(target_result, list):
+        is_win = result in target_result
+    else:
+        is_win = result == target_result
+    
+    # Registrar aposta e obter profit
+    profit = bankroll_manager.place_bet(stake_amount, odd, is_win)
+    
+    return profit, stake_amount, ev, True
