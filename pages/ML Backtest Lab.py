@@ -1499,3 +1499,191 @@ def calculate_profit_with_staking(row, bankroll_manager, bet_type="ML"):
     profit = bankroll_manager.place_bet(stake_amount, odd, is_win)
     
     return profit, stake_amount, ev, True
+
+
+
+
+########################################
+# BLOCO 17 – INTEGRAÇÃO BANKROLL NO CÁLCULO DE PROFITS
+########################################
+
+# Inicializar o bankroll manager (colocar depois da UI)
+bankroll_mgr = ConservativeBankrollManager(initial_bankroll=initial_br)
+
+# NOVO: Função para calcular todos os profits com staking
+def calculate_all_profits_with_staking(test_df, bankroll_manager):
+    """
+    Calcula profits para ML e Auto usando sistema de staking avançado
+    """
+    results_ml = []
+    results_auto = []
+    
+    for idx, row in test_df.iterrows():
+        # Profit ML com staking
+        profit_ml, stake_ml, ev_ml, bet_placed_ml = calculate_profit_with_staking(
+            row, bankroll_manager, bet_type="ML"
+        )
+        
+        # Profit Auto com staking (usando bankroll separado para comparação justa)
+        profit_auto, stake_auto, ev_auto, bet_placed_auto = calculate_profit_with_staking(
+            row, bankroll_manager, bet_type="Auto"
+        )
+        
+        results_ml.append({
+            'profit': profit_ml,
+            'stake': stake_ml,
+            'ev': ev_ml,
+            'bet_placed': bet_placed_ml
+        })
+        
+        results_auto.append({
+            'profit': profit_auto, 
+            'stake': stake_auto,
+            'ev': ev_auto,
+            'bet_placed': bet_placed_auto
+        })
+    
+    return results_ml, results_auto
+
+# ATUALIZAR: Substituir o cálculo de profits antigo (no Bloco 9)
+st.header("💰 Aplicando Sistema de Bankroll")
+
+if st.button("🎯 Calcular Profits com Staking Avançado"):
+    with st.spinner("Calculando stakes e profits..."):
+        # Fazer backup do bankroll atual
+        current_metrics = bankroll_mgr.get_metrics()
+        
+        # Calcular profits com staking
+        results_ml, results_auto = calculate_all_profits_with_staking(test_df, bankroll_mgr)
+        
+        # Adicionar colunas ao test_df
+        test_df['Profit_ML_Stake'] = [r['profit'] for r in results_ml]
+        test_df['Stake_ML'] = [r['stake'] for r in results_ml]
+        test_df['EV_ML'] = [r['ev'] for r in results_ml]
+        test_df['Bet_Placed_ML'] = [r['bet_placed'] for r in results_ml]
+        
+        test_df['Profit_Auto_Stake'] = [r['profit'] for r in results_auto]
+        test_df['Stake_Auto'] = [r['stake'] for r in results_auto]
+        test_df['EV_Auto'] = [r['ev'] for r in results_auto]
+        test_df['Bet_Placed_Auto'] = [r['bet_placed'] for r in results_auto]
+        
+        st.success(f"✅ Cálculo completo! {sum(test_df['Bet_Placed_ML'])} apostas ML realizadas")
+        
+        # Mostrar resumo
+        total_stake_ml = test_df['Stake_ML'].sum()
+        total_profit_ml = test_df['Profit_ML_Stake'].sum()
+        roi_ml = (total_profit_ml / total_stake_ml * 100) if total_stake_ml > 0 else 0
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Apostado ML", f"${total_stake_ml:.2f}")
+        with col2:
+            st.metric("Profit Total ML", f"${total_profit_ml:.2f}")
+        with col3:
+            st.metric("ROI ML", f"{roi_ml:.1f}%")
+
+st.divider()
+
+
+########################################
+# BLOCO 18 – MÉTRICAS ATUALIZADAS COM STAKING
+########################################
+
+# NOVO: Métricas específicas para staking
+def calculate_staking_metrics(test_df, profit_col, stake_col, bet_placed_col):
+    """Calcula métricas específicas para sistema de staking"""
+    bets_df = test_df[test_df[bet_placed_col] == True]
+    
+    if len(bets_df) == 0:
+        return {
+            'total_bets': 0,
+            'total_stake': 0,
+            'total_profit': 0,
+            'roi_pct': 0,
+            'avg_ev': 0,
+            'avg_stake': 0,
+            'win_rate': 0
+        }
+    
+    total_stake = bets_df[stake_col].sum()
+    total_profit = bets_df[profit_col].sum()
+    wins = len(bets_df[bets_df[profit_col] > 0])
+    
+    return {
+        'total_bets': len(bets_df),
+        'total_stake': total_stake,
+        'total_profit': total_profit,
+        'roi_pct': (total_profit / total_stake * 100) if total_stake > 0 else 0,
+        'avg_ev': bets_df['EV_ML'].mean() if 'EV_ML' in bets_df else 0,
+        'avg_stake': bets_df[stake_col].mean(),
+        'win_rate': (wins / len(bets_df)) * 100
+    }
+
+# ATUALIZAR: Mostrar métricas de staking no lugar das antigas
+st.header("📊 Métricas com Staking Avançado")
+
+if 'Profit_ML_Stake' in test_df.columns:
+    col_met1, col_met2 = st.columns(2)
+    
+    with col_met1:
+        st.subheader("🤖 ML com Staking")
+        ml_metrics = calculate_staking_metrics(test_df, 'Profit_ML_Stake', 'Stake_ML', 'Bet_Placed_ML')
+        st.metric("Total Apostas", ml_metrics['total_bets'])
+        st.metric("Total Stake", f"${ml_metrics['total_stake']:.2f}")
+        st.metric("Profit Total", f"${ml_metrics['total_profit']:.2f}")
+        st.metric("ROI", f"{ml_metrics['roi_pct']:.1f}%")
+        st.metric("Win Rate", f"{ml_metrics['win_rate']:.1f}%")
+        st.metric("EV Médio", f"{ml_metrics['avg_ev']:.3f}")
+    
+    with col_met2:
+        st.subheader("📋 Regras com Staking")
+        auto_metrics = calculate_staking_metrics(test_df, 'Profit_Auto_Stake', 'Stake_Auto', 'Bet_Placed_Auto')
+        st.metric("Total Apostas", auto_metrics['total_bets'])
+        st.metric("Total Stake", f"${auto_metrics['total_stake']:.2f}")
+        st.metric("Profit Total", f"${auto_metrics['total_profit']:.2f}")
+        st.metric("ROI", f"{auto_metrics['roi_pct']:.1f}%")
+        st.metric("Win Rate", f"{auto_metrics['win_rate']:.1f}%")
+        st.metric("EV Médio", f"{auto_metrics['avg_ev']:.3f}")
+
+else:
+    st.info("👆 Clique em 'Calcular Profits com Staking Avançado' para ver as métricas")
+
+
+
+########################################
+# BLOCO 19 – VISUALIZAÇÕES ATUALIZADAS
+########################################
+
+# NOVO: Gráfico de evolução do bankroll
+def plot_bankroll_evolution(test_df, profit_col, title):
+    """Plota evolução do bankroll com staking"""
+    if profit_col not in test_df.columns:
+        return
+    
+    bets_only = test_df[test_df[profit_col] != 0].copy()
+    if len(bets_only) == 0:
+        return
+    
+    cumulative_profit = bets_only[profit_col].cumsum() + 1000
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(range(len(cumulative_profit)), cumulative_profit, linewidth=2)
+    ax.set_title(f"{title} - Evolução do Bankroll")
+    ax.set_xlabel("Número de Apostas")
+    ax.set_ylabel("Bankroll ($)")
+    ax.grid(True, alpha=0.3)
+    
+    # Adicionar linha do bankroll inicial
+    ax.axhline(y=1000, color='red', linestyle='--', alpha=0.7, label='Bankroll Inicial')
+    ax.legend()
+    
+    st.pyplot(fig)
+
+# ATUALIZAR: Adicionar gráficos de bankroll às visualizações
+st.header("📈 Visualizações com Staking")
+
+if 'Profit_ML_Stake' in test_df.columns:
+    plot_bankroll_evolution(test_df, 'Profit_ML_Stake', "ML")
+    
+    if compare_rules:
+        plot_bankroll_evolution(test_df, 'Profit_Auto_Stake', "Regras")
