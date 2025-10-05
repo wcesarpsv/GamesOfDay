@@ -815,7 +815,7 @@ if invalid_count > 0:
 if valid_recommendations > 0:
     st.success(f"🎯 {valid_recommendations} jogos recomendados!")
     recommended_games = games_today[games_today['ML_Recommendation'] != '❌ Avoid']
-    st.dataframe(recommended_games[['Home', 'Away', 'League', 'ML_Recommendation', 'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away']])
+    st.dataframe(recommended_games[['Time','League', 'Home', 'Away',  'ML_Recommendation', 'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away']])
 else:
     st.info("💡 Nenhuma recomendação encontrada. Tente ajustar o threshold ou min EV value.")
 
