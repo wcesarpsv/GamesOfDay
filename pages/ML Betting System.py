@@ -265,6 +265,38 @@ def analyze_league_confidence(history_df):
     
     return league_stats[['League', 'total_games', 'unique_home_teams', 'unique_away_teams', 'League_Confidence']]
 
+
+def get_strict_required_features():
+    """Lista RIGOROSA de todas as features obrigatórias - ZERO TOLERANCE"""
+    return [
+        # CORE ABSOLUTO - Sem essas, não tem ML
+        'M_H', 'M_A', 'Diff_Power', 'M_Diff',
+        'Odd_H', 'Odd_D', 'Odd_A', 'Odd_1X', 'Odd_X2',
+        
+        # FEATURES AVANÇADAS - Essenciais para o modelo
+        'Power_Ratio_Home', 'Power_Ratio_Away', 'Total_Power', 'Power_Diff_Normalized',
+        'Fair_Prob_Home', 'Fair_Prob_Away', 'Fair_Prob_Draw', 'Market_Margin',
+        'Prob_Ratio_Home_Away', 'Prob_Diff_Home_Away',
+        'Home_Advantage', 'Away_Strength', 'Advantage_Ratio',
+        
+        # FEATURES DE BANDAS
+        'Home_Band', 'Away_Band', 'League_Classification'
+    ]
+
+def strict_feature_validation(row, required_features):
+    """VALIDAÇÃO RIGOROSA - 1 feature faltante = INVALIDO"""
+    missing_features = []
+    
+    for feature in required_features:
+        if feature not in row.index:
+            missing_features.append(f"{feature} (COLUNA AUSENTE)")
+        elif pd.isna(row[feature]):
+            missing_features.append(f"{feature} (VALOR NaN)")
+        elif row[feature] == '':
+            missing_features.append(f"{feature} (VALOR VAZIO)")
+    
+    return len(missing_features) == 0, missing_features
+
 def get_league_confidence_map(confidence_df):
     """
     Cria um mapa de confiança para fácil acesso
@@ -620,177 +652,87 @@ except Exception as e:
 ####### Bloco 7 – Apply ML to Today ####
 ########################################
 
-# CONFIGURAÇÃO RECOMENDADA PARA EVITAR ODDS INFLADAS
-st.sidebar.markdown("---")
-st.sidebar.markdown("**🛡️ Anti-Odd Inflada Config**")
+# 🔥 VALIDAÇÃO ZERO TOLERANCE - 1 FEATURE FALTANTE = AVOID
+st.info("🔍 Validando integridade dos dados para ML...")
 
-# Configurações padrão recomendadas
-threshold_option = "Fixed"  # Forçar Fixed para mais controle
-fixed_threshold = 0.65      # Threshold alto para evitar prob baixas
-min_ev_value = 0.05         # EV mínimo de 5%
+required_features = get_strict_required_features()
 
-st.sidebar.info("Configuração Atual:")
-st.sidebar.metric("Threshold", "65%")
-st.sidebar.metric("Min EV", "5%")
+# Inicializar todas as recomendações como AVOID por padrão
+games_today["ML_Data_Valid"] = False
+games_today["Missing_Features"] = ""
+games_today["ML_Recommendation"] = "❌ Avoid"
+games_today["ML_Proba_Home"] = np.nan
+games_today["ML_Proba_Draw"] = np.nan  
+games_today["ML_Proba_Away"] = np.nan
 
-# Função para ajuste automático de threshold
-def auto_adjust_threshold(games_today, target_recommendations=8):
-    """Ajusta automaticamente o threshold baseado no número de recomendações"""
-    if games_today.empty:
-        return 0.60
-    
-    valid_games = games_today[games_today['ML_Data_Valid'] == True]
-    if len(valid_games) == 0:
-        return 0.60
-    
-    # Testa diferentes thresholds
-    test_threshold = 0.50
-    max_threshold = 0.70
-    
-    best_threshold = 0.60
-    best_count = 0
-    
-    while test_threshold <= max_threshold:
-        count = 0
-        for idx, row in valid_games.iterrows():
-            if not row['ML_Data_Valid']:
-                continue
-                
-            p_home = row.get('ML_Proba_Home', 0)
-            p_draw = row.get('ML_Proba_Draw', 0) 
-            p_away = row.get('ML_Proba_Away', 0)
-            
-            # Calcular EVs para ver se tem valor
-            ev_home = p_home * row.get('Odd_H', 2.0) - 1
-            ev_away = p_away * row.get('Odd_A', 2.0) - 1
-            ev_draw = p_draw * row.get('Odd_D', 3.0) - 1
-            
-            max_prob = max(p_home, p_draw, p_away)
-            max_ev = max(ev_home, ev_away, ev_draw)
-            
-            if max_prob >= test_threshold and max_ev >= 0.02:
-                count += 1
-        
-        # Prefere thresholds que dão perto do target
-        if abs(count - target_recommendations) < abs(best_count - target_recommendations):
-            best_threshold = test_threshold
-            best_count = count
-        
-        test_threshold += 0.02
-    
-    return best_threshold
+# Validar CADA jogo individualmente
+valid_indices = []
 
-# Função de recomendação ML melhorada
-def enhanced_ml_recommendation_v2(row, threshold=0.65, min_value=0.05):
-    """VERSÃO CORRIGIDA - Com proteção contra odds infladas"""
+for idx, row in games_today.iterrows():
+    is_valid, missing = strict_feature_validation(row, required_features)
     
-    if pd.isna(row.get('ML_Proba_Home')) or pd.isna(row.get('ML_Proba_Away')) or pd.isna(row.get('ML_Proba_Draw')):
-        return "❌ Avoid"
-    
-    p_home = row['ML_Proba_Home']
-    p_draw = row['ML_Proba_Draw'] 
-    p_away = row['ML_Proba_Away']
-    
-    # Calculate expected value for each bet
-    ev_home = p_home * row.get('Odd_H', 2.0) - 1
-    ev_away = p_away * row.get('Odd_A', 2.0) - 1  
-    ev_draw = p_draw * row.get('Odd_D', 3.0) - 1
-    ev_1x = (p_home + p_draw) * row.get('Odd_1X', 1.3) - 1
-    ev_x2 = (p_away + p_draw) * row.get('Odd_X2', 1.3) - 1
-    
-    # NOVO: VERIFICAÇÕES DE SEGURANÇA
-    recommendations = []
-    
-    # 1. SINGLE BETS - COM VERIFICAÇÃO DE SEGURANÇA
-    if (p_home >= threshold and ev_home >= min_value and 
-        is_realistic_odd(p_home, row.get('Odd_H', 2.0))):
-        avoid, reason = should_avoid_suspicious_combination(p_home, row.get('Odd_H', 2.0))
-        if not avoid:
-            recommendations.append(("🟢 Back Home", ev_home, p_home))
-    
-    if (p_away >= threshold and ev_away >= min_value and 
-        is_realistic_odd(p_away, row.get('Odd_A', 2.0))):
-        avoid, reason = should_avoid_suspicious_combination(p_away, row.get('Odd_A', 2.0))
-        if not avoid:
-            recommendations.append(("🟠 Back Away", ev_away, p_away))
-    
-    if (p_draw >= threshold and ev_draw >= min_value and 
-        is_realistic_odd(p_draw, row.get('Odd_D', 3.0))):
-        avoid, reason = should_avoid_suspicious_combination(p_draw, row.get('Odd_D', 3.0))
-        if not avoid:
-            recommendations.append(("⚪ Back Draw", ev_draw, p_draw))
-    
-    # 2. DOUBLE CHANCE - COM VERIFICAÇÃO MAIS RIGOROSA
-    dc_threshold = 0.70
-    if (ev_1x >= min_value and (p_home + p_draw) >= dc_threshold and
-        is_realistic_odd(p_home + p_draw, row.get('Odd_1X', 1.3), '1x')):
-        avoid, reason = should_avoid_suspicious_combination(p_home + p_draw, row.get('Odd_1X', 1.3))
-        if not avoid:
-            recommendations.append(("🟦 1X (Home/Draw)", ev_1x, p_home + p_draw))
-    
-    if (ev_x2 >= min_value and (p_away + p_draw) >= dc_threshold and
-        is_realistic_odd(p_away + p_draw, row.get('Odd_X2', 1.3), 'x2')):
-        avoid, reason = should_avoid_suspicious_combination(p_away + p_draw, row.get('Odd_X2', 1.3))
-        if not avoid:
-            recommendations.append(("🟪 X2 (Away/Draw)", ev_x2, p_away + p_draw))
-    
-    # 3. ORDENAR por EV e pegar a melhor
-    if recommendations:
-        best_rec = max(recommendations, key=lambda x: x[1])  # Melhor EV
-        return best_rec[0]
-    
-    # 4. HIGH EV EXCEPTION - COM VERIFICAÇÃO EXTRA RIGOROSA
-    high_ev_threshold = 0.15
-    high_ev_bets = []
-    
-    # Para high EV, exigir probabilidade MÍNIMA e verificação de segurança
-    if (ev_home >= high_ev_threshold and p_home >= 0.55 and
-        is_realistic_odd(p_home, row.get('Odd_H', 2.0))):
-        avoid, reason = should_avoid_suspicious_combination(p_home, row.get('Odd_H', 2.0))
-        if not avoid:
-            high_ev_bets.append(("🟢 Back Home", ev_home))
-    
-    if (ev_away >= high_ev_threshold and p_away >= 0.55 and
-        is_realistic_odd(p_away, row.get('Odd_A', 2.0))):
-        avoid, reason = should_avoid_suspicious_combination(p_away, row.get('Odd_A', 2.0))
-        if not avoid:
-            high_ev_bets.append(("🟠 Back Away", ev_away))
-    
-    if (ev_draw >= high_ev_threshold and p_draw >= 0.55 and
-        is_realistic_odd(p_draw, row.get('Odd_D', 3.0))):
-        avoid, reason = should_avoid_suspicious_combination(p_draw, row.get('Odd_D', 3.0))
-        if not avoid:
-            high_ev_bets.append(("⚪ Back Draw", ev_draw))
-    
-    if high_ev_bets:
-        return max(high_ev_bets, key=lambda x: x[1])[0]
-    
-    return "❌ Avoid"
+    if is_valid:
+        games_today.at[idx, "ML_Data_Valid"] = True
+        games_today.at[idx, "Missing_Features"] = "✅ COMPLETE"
+        valid_indices.append(idx)
+    else:
+        games_today.at[idx, "ML_Data_Valid"] = False
+        games_today.at[idx, "Missing_Features"] = ", ".join(missing)
+        # Já está como "❌ Avoid" por padrão
 
-# Preparar dados de hoje para predição
+# Mostrar estatísticas de validação
+valid_count = len(valid_indices)
+invalid_count = len(games_today) - valid_count
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Total de Jogos", len(games_today))
+with col2:
+    st.metric("✅ Válidos para ML", valid_count)
+with col3:
+    st.metric("❌ Inválidos", invalid_count)
+
+# MOSTRAR DETALHES DOS JOGOS INVALIDOS
+invalid_games = games_today[~games_today["ML_Data_Valid"]]
+if not invalid_games.empty:
+    with st.expander("🚨 JOGOS EXCLUÍDOS - Faltam Features", expanded=True):
+        st.warning(f"{len(invalid_games)} jogos excluídos por dados incompletos:")
+        display_invalid = invalid_games[['Home', 'Away', 'League', 'Missing_Features']].copy()
+        display_invalid['Missing_Count'] = display_invalid['Missing_Features'].apply(lambda x: len(x.split(',')) if x != "✅ COMPLETE" else 0)
+        display_invalid = display_invalid.sort_values('Missing_Count', ascending=False)
+        st.dataframe(display_invalid, use_container_width=True)
+
+# ⚠️ SE NENHUM JOGO VÁLIDO, PARAR AQUI
+if len(valid_indices) == 0:
+    st.error("🚫 CRÍTICO: NENHUM jogo possui todas as features necessárias para ML!")
+    st.error("Verifique a qualidade dos dados nos arquivos CSV.")
+    st.stop()
+
+st.success(f"🎯 {valid_count} jogos validados para processamento ML")
+
+# CONFIGURAÇÃO DE THRESHOLD (mantido do código original)
+threshold_option = st.sidebar.selectbox(
+    "Threshold Strategy",
+    ["Auto-Adjust", "Dynamic", "Fixed"],
+    index=0
+)
+
+if threshold_option == "Auto-Adjust":
+    target_recs = st.sidebar.slider("Target Recommendations", 3, 15, 8)
+    threshold = auto_adjust_threshold(games_today, target_recs)
+elif threshold_option == "Dynamic":
+    threshold = dynamic_threshold_adjustment(games_today)
+else:
+    threshold = st.sidebar.slider("Fixed Threshold", 0.50, 0.80, 0.65)
+
+min_ev_value = st.sidebar.slider("Min EV Value", 0.00, 0.10, 0.02, 0.01)
+st.sidebar.metric("🎯 ML Threshold", f"{threshold:.1%}")
+
+# CONTINUAR APENAS COM JOGOS VÁLIDOS
 try:
-    # Lista de features obrigatórias - reduzida para ser menos rigorosa
-    required_features = [
-        'M_H', 'M_A', 'Diff_Power', 'M_Diff',
-        'Odd_H', 'Odd_D', 'Odd_A'
-    ]
-
-    X_today = games_today[features_raw].copy()
-
-    # Aplicar validação de dados faltantes - menos rigorosa
-    games_today["ML_Data_Valid"] = True
-    games_today["Missing_Features"] = ""
-
-    for idx, row in games_today.iterrows():
-        missing = check_missing_features(row, required_features)
-        if len(missing) > 3:  # Só marca como inválido se faltarem mais de 3 features críticas
-            games_today.at[idx, "ML_Data_Valid"] = False
-            games_today.at[idx, "Missing_Features"] = ", ".join(missing)
-
-    # Aplicar o modelo apenas aos jogos com dados completos
-    valid_games_mask = games_today["ML_Data_Valid"] == True
-    X_today_valid = X_today[valid_games_mask].copy()
-
+    # Preparar dados VÁLIDOS para predição
+    X_today_valid = games_today.loc[valid_indices][features_raw].copy()
+    
     # Clean today's data
     X_today_valid = clean_dataframe(X_today_valid)
 
@@ -817,83 +759,31 @@ try:
         X_today_valid[col] = 0
     X_today_valid = X_today_valid[X.columns]
 
-    # Inicializar colunas de probabilidade com NaN
-    games_today["ML_Proba_Home"] = np.nan
-    games_today["ML_Proba_Draw"] = np.nan
-    games_today["ML_Proba_Away"] = np.nan
-    games_today["ML_Recommendation"] = "❌ Avoid"
-
-    # Aplicar modelo apenas nos jogos válidos
-    if not X_today_valid.empty:
-        ml_proba = model.predict_proba(X_today_valid)
-        
-        # Preencher apenas os jogos válidos
-        valid_indices = games_today[valid_games_mask].index
-        
-        games_today.loc[valid_indices, "ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
-        games_today.loc[valid_indices, "ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
-        games_today.loc[valid_indices, "ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
-        
-        # Configuração de threshold
-        threshold_option = st.sidebar.selectbox(
-            "Threshold Strategy",
-            ["Auto-Adjust", "Dynamic", "Fixed"],
-            index=0
-        )
-
-        if threshold_option == "Auto-Adjust":
-            target_recs = st.sidebar.slider("Target Recommendations", 3, 15, 8)
-            threshold = auto_adjust_threshold(games_today, target_recs)
-        elif threshold_option == "Dynamic":
-            threshold = dynamic_threshold_adjustment(games_today)
-        else:
-            threshold = st.sidebar.slider("Fixed Threshold", 0.50, 0.80, 0.65)
-
-        st.sidebar.metric("🎯 ML Threshold", f"{threshold:.1%}")
-
-        # Relaxar um pouco o min_value para EV
-        min_ev_value = st.sidebar.slider("Min EV Value", 0.00, 0.10, 0.02, 0.01)
-
-        # Gerar recomendações usando enhanced function v2
-        for idx in valid_indices:
-            p_home = games_today.at[idx, "ML_Proba_Home"]
-            p_draw = games_today.at[idx, "ML_Proba_Draw"] 
-            p_away = games_today.at[idx, "ML_Proba_Away"]
-            
-            games_today.at[idx, "ML_Recommendation"] = enhanced_ml_recommendation_v2(
-                games_today.loc[idx], threshold, min_ev_value
-            )
-
-except Exception as e:
-    st.error(f"Error applying ML to today's games: {e}")
-
-# Mostrar estatísticas de validação
-invalid_count = len(games_today) - valid_games_mask.sum()
-valid_recommendations = len(games_today[games_today['ML_Recommendation'] != '❌ Avoid'])
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric("Total Games", len(games_today))
-with col2:
-    st.metric("Valid Games", len(games_today[valid_games_mask]))
-with col3:
-    st.metric("Recommendations", valid_recommendations)
-
-if invalid_count > 0:
-    st.warning(f"⚠️ {invalid_count} jogos excluídos por dados insuficientes")
+    # Aplicar modelo APENAS nos jogos válidos
+    st.info("🤖 Aplicando modelo ML nos jogos válidos...")
+    ml_proba = model.predict_proba(X_today_valid)
     
-    invalid_games = games_today[~valid_games_mask]
-    if not invalid_games.empty:
-        with st.expander("📋 Ver jogos com dados insuficientes"):
-            st.dataframe(invalid_games[['Home', 'Away', 'League', 'Missing_Features']])
-
-# Mostrar análise rápida das probabilidades
-if valid_recommendations > 0:
-    st.success(f"🎯 {valid_recommendations} jogos recomendados!")
-    recommended_games = games_today[games_today['ML_Recommendation'] != '❌ Avoid']
-    st.dataframe(recommended_games[['Time','League', 'Home', 'Away','Goals_H_Today','Goals_A_Today',  'ML_Recommendation', 'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away']])
-else:
-    st.info("💡 Nenhuma recomendação encontrada. Tente ajustar o threshold ou min EV value.")
+    # Preencher probabilidades APENAS para jogos válidos
+    games_today.loc[valid_indices, "ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
+    games_today.loc[valid_indices, "ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
+    games_today.loc[valid_indices, "ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
+    
+    # Gerar recomendações ML APENAS para jogos válidos
+    recommendation_count = 0
+    for idx in valid_indices:
+        recommendation = enhanced_ml_recommendation_v2(
+            games_today.loc[idx], threshold, min_ev_value
+        )
+        games_today.at[idx, "ML_Recommendation"] = recommendation
+        if recommendation != "❌ Avoid":
+            recommendation_count += 1
+    
+    st.success(f"✅ ML aplicado com sucesso! {recommendation_count} recomendações geradas")
+        
+except Exception as e:
+    st.error(f"Erro ao aplicar ML: {e}")
+    # Manter todos como "Avoid" em caso de erro
+    games_today["ML_Recommendation"] = "❌ Avoid"
 
 
 
@@ -1124,12 +1014,20 @@ def calculate_parlay_odds(games_list, games_df):
     return total_prob, round(total_odds, 2), expected_value, game_details
 
 def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, max_suggestions=5, min_legs=2, max_legs=4, weekend_filter=True, max_eligible=20):
-    """Gera sugestões de parlays lucrativos"""
-    games_today_filtered = games_df.copy()
+    """Gera sugestões de parlays APENAS com jogos válidos para ML"""
+    
+    # 🔥 FILTRAR APENAS JOGOS COM ML VÁLIDO (não é "❌ Avoid")
+    valid_ml_games = games_df[games_df['ML_Recommendation'] != '❌ Avoid'].copy()
+    
+    if len(valid_ml_games) == 0:
+        st.warning("⚠️ Nenhum jogo válido para parlays - todos estão como '❌ Avoid'")
+        return []
+    
+    st.info(f"🎯 {len(valid_ml_games)} jogos válidos disponíveis para parlays")
     
     eligible_games = []
     
-    for idx, row in games_today_filtered.iterrows():
+    for idx, row in valid_ml_games.iterrows():
         if row['ML_Recommendation'] != '❌ Avoid':
             rec = row['ML_Recommendation']
             
@@ -1161,8 +1059,8 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
             else:
                 continue
             
-            # FILTROS MAIS RIGOROSOS PARA FINS DE SEMANA
-            if weekend_filter and len(games_today_filtered) > 15:
+            # 🔥 CORREÇÃO: Usar valid_ml_games em vez de games_today_filtered
+            if weekend_filter and len(valid_ml_games) > 15:
                 # Critérios mais rigorosos quando há muitos jogos
                 if prob > (min_prob + 0.05) and edge > -0.05:  # Prob maior e edge menos negativo
                     eligible_games.append((idx, bet_type, prob, round(odds, 2), edge))
@@ -1176,7 +1074,8 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
         # Ordenar por probabilidade e pegar os melhores
         eligible_games.sort(key=lambda x: x[2], reverse=True)  # Ordenar por prob
         eligible_games = eligible_games[:max_eligible]
-        st.warning(f"⚡ Limite ativado: {len(eligible_games)} jogos elegíveis (de {len(games_today_filtered)} totais)")
+        # 🔥 CORREÇÃO: Usar valid_ml_games em vez de games_today_filtered
+        st.warning(f"⚡ Limite ativado: {len(eligible_games)} jogos elegíveis (de {len(valid_ml_games)} totais)")
     
     st.info(f"🎯 Jogos elegíveis para parlays: {len(eligible_games)}")
     
@@ -1217,7 +1116,8 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
         # Gerar combinações
         for combo in itertools.combinations(eligible_games, num_legs):
             games_list = [(game[0], game[1]) for game in combo]
-            prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
+            # 🔥 CORREÇÃO: Usar games_df (parâmetro original) em vez de games_today_filtered
+            prob, odds, ev, details = calculate_parlay_odds(games_list, games_df)
             
             if ev > ev_threshold and prob > prob_threshold:
                 stake = min(parlay_bankroll * stake_multiplier, parlay_bankroll * (stake_multiplier + 0.04) * prob)
@@ -1242,22 +1142,6 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
     st.info(f"🎰 Total de parlays gerados: {len(parlay_suggestions)}")
     
     return parlay_suggestions[:max_suggestions]
-
-# Gerar sugestões de parlay COM NOVOS PARÂMETROS
-try:
-    parlay_suggestions = generate_parlay_suggestions(
-        games_today, 
-        parlay_bankroll, 
-        min_parlay_prob, 
-        max_parlay_suggestions,
-        min_parlay_legs,
-        max_parlay_legs,
-        weekend_filter,      
-        max_eligible_games   
-    )
-except Exception as e:
-    st.error(f"Error generating parlay suggestions: {e}")
-    parlay_suggestions = []
 
 
 
