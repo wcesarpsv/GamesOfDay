@@ -186,6 +186,48 @@ def check_missing_features(row, features_required):
     
     return missing_features
 
+def is_realistic_odd(probability, odds, bet_type='single'):
+    """
+    Verifica se a odd é realista para a probabilidade
+    Evita recomendações baseadas em odds infladas/distorcidas
+    """
+    if pd.isna(probability) or pd.isna(odds) or odds <= 1:
+        return False
+    
+    # REGRAS POR TIPO DE APOSTA
+    if bet_type == 'single':
+        if odds > 8.0 and probability < 0.35:
+            return False  # Odd muito alta + prob muito baixa
+        if odds > 6.0 and probability < 0.30:
+            return False  # Odd alta + prob insuficiente
+        if odds > 4.0 and probability < 0.25:
+            return False  # Risco muito alto
+    elif bet_type in ['1x', 'x2']:
+        if odds > 3.0 and probability < 0.60:
+            return False  # Double chance com odd alta e prob baixa
+    
+    return True
+
+def should_avoid_suspicious_combination(probability, odds):
+    """
+    Identifica combinações suspeitas que são armadilhas comuns
+    """
+    # CASO 1: Probabilidade muito baixa com odd muito alta
+    if probability < 0.30 and odds > 6.0:
+        return True, "Probabilidade muito baixa com odd inflada"
+    
+    # CASO 2: Discrepância extrema entre prob e odd
+    implied_prob = 1 / odds
+    discrepancy = abs(probability - implied_prob)
+    if discrepancy > 0.25:  # Diferença maior que 25%
+        return True, f"Discrepância muito alta: ML {probability:.1%} vs Odd {implied_prob:.1%}"
+    
+    # CASO 3: Probabilidade borderline com odd extrema
+    if 0.25 <= probability <= 0.35 and odds > 7.0:
+        return True, "Probabilidade borderline com odd extrema"
+    
+    return False, ""
+
 
 
 ########################################
@@ -502,6 +544,19 @@ except Exception as e:
 ####### Bloco 7 – Apply ML to Today ####
 ########################################
 
+# CONFIGURAÇÃO RECOMENDADA PARA EVITAR ODDS INFLADAS
+st.sidebar.markdown("---")
+st.sidebar.markdown("**🛡️ Anti-Odd Inflada Config**")
+
+# Configurações padrão recomendadas
+threshold_option = "Fixed"  # Forçar Fixed para mais controle
+fixed_threshold = 0.65      # Threshold alto para evitar prob baixas
+min_ev_value = 0.05         # EV mínimo de 5%
+
+st.sidebar.info("Configuração Atual:")
+st.sidebar.metric("Threshold", "65%")
+st.sidebar.metric("Min EV", "5%")
+
 # Função para ajuste automático de threshold
 def auto_adjust_threshold(games_today, target_recommendations=8):
     """Ajusta automaticamente o threshold baseado no número de recomendações"""
@@ -550,8 +605,8 @@ def auto_adjust_threshold(games_today, target_recommendations=8):
     return best_threshold
 
 # Função de recomendação ML melhorada
-def enhanced_ml_recommendation_v2(row, threshold=0.65, min_value=0.02):
-    """Enhanced recommendation with more flexible rules"""
+def enhanced_ml_recommendation_v2(row, threshold=0.65, min_value=0.05):
+    """VERSÃO CORRIGIDA - Com proteção contra odds infladas"""
     
     if pd.isna(row.get('ML_Proba_Home')) or pd.isna(row.get('ML_Proba_Away')) or pd.isna(row.get('ML_Proba_Draw')):
         return "❌ Avoid"
@@ -564,60 +619,77 @@ def enhanced_ml_recommendation_v2(row, threshold=0.65, min_value=0.02):
     ev_home = p_home * row.get('Odd_H', 2.0) - 1
     ev_away = p_away * row.get('Odd_A', 2.0) - 1  
     ev_draw = p_draw * row.get('Odd_D', 3.0) - 1
-    ev_1x = (p_home + p_draw) * row.get('Odd_1X', 1.5) - 1
-    ev_x2 = (p_away + p_draw) * row.get('Odd_X2', 1.5) - 1
+    ev_1x = (p_home + p_draw) * row.get('Odd_1X', 1.3) - 1
+    ev_x2 = (p_away + p_draw) * row.get('Odd_X2', 1.3) - 1
     
-    # Encontrar a melhor aposta
-    best_bet = None
-    best_ev = -999
+    # NOVO: VERIFICAÇÕES DE SEGURANÇA
+    recommendations = []
     
-    # Check Home win
-    if p_home >= threshold and ev_home >= min_value and ev_home > best_ev:
-        best_bet = "🟢 Back Home"
-        best_ev = ev_home
+    # 1. SINGLE BETS - COM VERIFICAÇÃO DE SEGURANÇA
+    if (p_home >= threshold and ev_home >= min_value and 
+        is_realistic_odd(p_home, row.get('Odd_H', 2.0))):
+        avoid, reason = should_avoid_suspicious_combination(p_home, row.get('Odd_H', 2.0))
+        if not avoid:
+            recommendations.append(("🟢 Back Home", ev_home, p_home))
     
-    # Check Away win  
-    if p_away >= threshold and ev_away >= min_value and ev_away > best_ev:
-        best_bet = "🟠 Back Away"
-        best_ev = ev_away
-        
-    # Check Draw
-    if p_draw >= threshold and ev_draw >= min_value and ev_draw > best_ev:
-        best_bet = "⚪ Back Draw"
-        best_ev = ev_draw
+    if (p_away >= threshold and ev_away >= min_value and 
+        is_realistic_odd(p_away, row.get('Odd_A', 2.0))):
+        avoid, reason = should_avoid_suspicious_combination(p_away, row.get('Odd_A', 2.0))
+        if not avoid:
+            recommendations.append(("🟠 Back Away", ev_away, p_away))
     
-    # Check Double Chance - com threshold mais baixo
-    dc_threshold = threshold - 0.10  # 10% mais baixo para double chance
+    if (p_draw >= threshold and ev_draw >= min_value and 
+        is_realistic_odd(p_draw, row.get('Odd_D', 3.0))):
+        avoid, reason = should_avoid_suspicious_combination(p_draw, row.get('Odd_D', 3.0))
+        if not avoid:
+            recommendations.append(("⚪ Back Draw", ev_draw, p_draw))
     
-    if ev_1x >= min_value and (p_home + p_draw) >= dc_threshold and ev_1x > best_ev:
-        best_bet = "🟦 1X (Home/Draw)"
-        best_ev = ev_1x
-        
-    if ev_x2 >= min_value and (p_away + p_draw) >= dc_threshold and ev_x2 > best_ev:
-        best_bet = "🟪 X2 (Away/Draw)"
-        best_ev = ev_x2
+    # 2. DOUBLE CHANCE - COM VERIFICAÇÃO MAIS RIGOROSA
+    dc_threshold = 0.70
+    if (ev_1x >= min_value and (p_home + p_draw) >= dc_threshold and
+        is_realistic_odd(p_home + p_draw, row.get('Odd_1X', 1.3), '1x')):
+        avoid, reason = should_avoid_suspicious_combination(p_home + p_draw, row.get('Odd_1X', 1.3))
+        if not avoid:
+            recommendations.append(("🟦 1X (Home/Draw)", ev_1x, p_home + p_draw))
     
-    # Se não encontrou nada, verificar se há alguma com EV muito bom mesmo com prob menor
-    if best_bet is None:
-        high_ev_bets = []
-        
-        if ev_home >= 0.10:  # EV muito bom
-            high_ev_bets.append(("🟢 Back Home", ev_home, p_home))
-        if ev_away >= 0.10:
-            high_ev_bets.append(("🟠 Back Away", ev_away, p_away))
-        if ev_draw >= 0.10:
-            high_ev_bets.append(("⚪ Back Draw", ev_draw, p_draw))
-        if ev_1x >= 0.08:
-            high_ev_bets.append(("🟦 1X (Home/Draw)", ev_1x, p_home + p_draw))
-        if ev_x2 >= 0.08:
-            high_ev_bets.append(("🟪 X2 (Away/Draw)", ev_x2, p_away + p_draw))
-            
-        if high_ev_bets:
-            # Ordenar por EV e pegar a melhor
-            high_ev_bets.sort(key=lambda x: x[1], reverse=True)
-            best_bet = high_ev_bets[0][0]
+    if (ev_x2 >= min_value and (p_away + p_draw) >= dc_threshold and
+        is_realistic_odd(p_away + p_draw, row.get('Odd_X2', 1.3), 'x2')):
+        avoid, reason = should_avoid_suspicious_combination(p_away + p_draw, row.get('Odd_X2', 1.3))
+        if not avoid:
+            recommendations.append(("🟪 X2 (Away/Draw)", ev_x2, p_away + p_draw))
     
-    return best_bet if best_bet else "❌ Avoid"
+    # 3. ORDENAR por EV e pegar a melhor
+    if recommendations:
+        best_rec = max(recommendations, key=lambda x: x[1])  # Melhor EV
+        return best_rec[0]
+    
+    # 4. HIGH EV EXCEPTION - COM VERIFICAÇÃO EXTRA RIGOROSA
+    high_ev_threshold = 0.15
+    high_ev_bets = []
+    
+    # Para high EV, exigir probabilidade MÍNIMA e verificação de segurança
+    if (ev_home >= high_ev_threshold and p_home >= 0.55 and
+        is_realistic_odd(p_home, row.get('Odd_H', 2.0))):
+        avoid, reason = should_avoid_suspicious_combination(p_home, row.get('Odd_H', 2.0))
+        if not avoid:
+            high_ev_bets.append(("🟢 Back Home", ev_home))
+    
+    if (ev_away >= high_ev_threshold and p_away >= 0.55 and
+        is_realistic_odd(p_away, row.get('Odd_A', 2.0))):
+        avoid, reason = should_avoid_suspicious_combination(p_away, row.get('Odd_A', 2.0))
+        if not avoid:
+            high_ev_bets.append(("🟠 Back Away", ev_away))
+    
+    if (ev_draw >= high_ev_threshold and p_draw >= 0.55 and
+        is_realistic_odd(p_draw, row.get('Odd_D', 3.0))):
+        avoid, reason = should_avoid_suspicious_combination(p_draw, row.get('Odd_D', 3.0))
+        if not avoid:
+            high_ev_bets.append(("⚪ Back Draw", ev_draw))
+    
+    if high_ev_bets:
+        return max(high_ev_bets, key=lambda x: x[1])[0]
+    
+    return "❌ Avoid"
 
 # Preparar dados de hoje para predição
 try:
