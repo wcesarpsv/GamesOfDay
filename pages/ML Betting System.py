@@ -275,6 +275,95 @@ def should_avoid_suspicious_combination(probability, odds):
     
     return False, ""
 
+
+def enhanced_ml_recommendation_v2(row, threshold=0.65, min_value=0.05):
+    """VERSÃO CORRIGIDA - Com proteção contra odds infladas"""
+    
+    if pd.isna(row.get('ML_Proba_Home')) or pd.isna(row.get('ML_Proba_Away')) or pd.isna(row.get('ML_Proba_Draw')):
+        return "❌ Avoid"
+    
+    p_home = row['ML_Proba_Home']
+    p_draw = row['ML_Proba_Draw'] 
+    p_away = row['ML_Proba_Away']
+    
+    # Calculate expected value for each bet
+    ev_home = p_home * row.get('Odd_H', 2.0) - 1
+    ev_away = p_away * row.get('Odd_A', 2.0) - 1  
+    ev_draw = p_draw * row.get('Odd_D', 3.0) - 1
+    ev_1x = (p_home + p_draw) * row.get('Odd_1X', 1.3) - 1
+    ev_x2 = (p_away + p_draw) * row.get('Odd_X2', 1.3) - 1
+    
+    # NOVO: VERIFICAÇÕES DE SEGURANÇA
+    recommendations = []
+    
+    # 1. SINGLE BETS - COM VERIFICAÇÃO DE SEGURANÇA
+    if (p_home >= threshold and ev_home >= min_value and 
+        is_realistic_odd(p_home, row.get('Odd_H', 2.0))):
+        avoid, reason = should_avoid_suspicious_combination(p_home, row.get('Odd_H', 2.0))
+        if not avoid:
+            recommendations.append(("🟢 Back Home", ev_home, p_home))
+    
+    if (p_away >= threshold and ev_away >= min_value and 
+        is_realistic_odd(p_away, row.get('Odd_A', 2.0))):
+        avoid, reason = should_avoid_suspicious_combination(p_away, row.get('Odd_A', 2.0))
+        if not avoid:
+            recommendations.append(("🟠 Back Away", ev_away, p_away))
+    
+    if (p_draw >= threshold and ev_draw >= min_value and 
+        is_realistic_odd(p_draw, row.get('Odd_D', 3.0))):
+        avoid, reason = should_avoid_suspicious_combination(p_draw, row.get('Odd_D', 3.0))
+        if not avoid:
+            recommendations.append(("⚪ Back Draw", ev_draw, p_draw))
+    
+    # 2. DOUBLE CHANCE - COM VERIFICAÇÃO MAIS RIGOROSA
+    dc_threshold = 0.70
+    if (ev_1x >= min_value and (p_home + p_draw) >= dc_threshold and
+        is_realistic_odd(p_home + p_draw, row.get('Odd_1X', 1.3), '1x')):
+        avoid, reason = should_avoid_suspicious_combination(p_home + p_draw, row.get('Odd_1X', 1.3))
+        if not avoid:
+            recommendations.append(("🟦 1X (Home/Draw)", ev_1x, p_home + p_draw))
+    
+    if (ev_x2 >= min_value and (p_away + p_draw) >= dc_threshold and
+        is_realistic_odd(p_away + p_draw, row.get('Odd_X2', 1.3), 'x2')):
+        avoid, reason = should_avoid_suspicious_combination(p_away + p_draw, row.get('Odd_X2', 1.3))
+        if not avoid:
+            recommendations.append(("🟪 X2 (Away/Draw)", ev_x2, p_away + p_draw))
+    
+    # 3. ORDENAR por EV e pegar a melhor
+    if recommendations:
+        best_rec = max(recommendations, key=lambda x: x[1])  # Melhor EV
+        return best_rec[0]
+    
+    # 4. HIGH EV EXCEPTION - COM VERIFICAÇÃO EXTRA RIGOROSA
+    high_ev_threshold = 0.15
+    high_ev_bets = []
+    
+    # Para high EV, exigir probabilidade MÍNIMA e verificação de segurança
+    if (ev_home >= high_ev_threshold and p_home >= 0.55 and
+        is_realistic_odd(p_home, row.get('Odd_H', 2.0))):
+        avoid, reason = should_avoid_suspicious_combination(p_home, row.get('Odd_H', 2.0))
+        if not avoid:
+            high_ev_bets.append(("🟢 Back Home", ev_home))
+    
+    if (ev_away >= high_ev_threshold and p_away >= 0.55 and
+        is_realistic_odd(p_away, row.get('Odd_A', 2.0))):
+        avoid, reason = should_avoid_suspicious_combination(p_away, row.get('Odd_A', 2.0))
+        if not avoid:
+            high_ev_bets.append(("🟠 Back Away", ev_away))
+    
+    if (ev_draw >= high_ev_threshold and p_draw >= 0.55 and
+        is_realistic_odd(p_draw, row.get('Odd_D', 3.0))):
+        avoid, reason = should_avoid_suspicious_combination(p_draw, row.get('Odd_D', 3.0))
+        if not avoid:
+            high_ev_bets.append(("⚪ Back Draw", ev_draw))
+    
+    if high_ev_bets:
+        return max(high_ev_bets, key=lambda x: x[1])[0]
+    
+    return "❌ Avoid"
+
+
+
 def analyze_league_confidence(history_df):
     """
     Analisa a confiabilidade de cada liga baseado em dados históricos
