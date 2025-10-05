@@ -228,6 +228,52 @@ def should_avoid_suspicious_combination(probability, odds):
     
     return False, ""
 
+def analyze_league_confidence(history_df):
+    """
+    Analisa a confiabilidade de cada liga baseado em dados históricos
+    """
+    if history_df.empty or 'League' not in history_df.columns:
+        return pd.DataFrame()
+    
+    # Análise por liga
+    league_stats = history_df.groupby('League').agg({
+        'M_H': 'count',                          # Total de jogos
+        'Home': lambda x: x.nunique(),           # Times únicos home
+        'Away': lambda x: x.nunique(),           # Times únicos away
+    }).rename(columns={
+        'M_H': 'total_games',
+        'Home': 'unique_home_teams', 
+        'Away': 'unique_away_teams'
+    }).reset_index()
+    
+    # Calcular maturidade da liga
+    def calculate_confidence_level(row):
+        total_games = row['total_games']
+        avg_teams_per_game = (row['unique_home_teams'] + row['unique_away_teams']) / 2
+        
+        # CRITÉRIOS DE CONFIABILIDADE
+        if total_games >= 100 and avg_teams_per_game >= 15:
+            return "🟢 Alta"      # Liga estabelecida + muitos dados
+        elif total_games >= 50 and avg_teams_per_game >= 10:
+            return "🟡 Média"     # Liga boa mas menos amostras
+        elif total_games >= 20 and avg_teams_per_game >= 8:
+            return "🔴 Baixa"     # Liga nova/poucos dados
+        else:
+            return "🔴 Baixa"     # Muito poucos dados
+    
+    league_stats['League_Confidence'] = league_stats.apply(calculate_confidence_level, axis=1)
+    
+    return league_stats[['League', 'total_games', 'unique_home_teams', 'unique_away_teams', 'League_Confidence']]
+
+def get_league_confidence_map(confidence_df):
+    """
+    Cria um mapa de confiança para fácil acesso
+    """
+    if confidence_df.empty:
+        return {}
+    
+    return dict(zip(confidence_df['League'], confidence_df['League_Confidence']))
+
 
 
 ########################################
@@ -338,6 +384,37 @@ else:
 
 # Apply advanced feature engineering
 try:
+    # 🔥 NOVO: ANÁLISE DE CONFIABILIDADE DAS LIGAS
+    st.info("📊 Analisando confiabilidade das ligas...")
+
+    try:
+        # Analisar confiabilidade baseada em dados históricos
+        league_confidence_df = analyze_league_confidence(history)
+        
+        if not league_confidence_df.empty:
+            # Mostrar estatísticas das ligas
+            high_conf_leagues = league_confidence_df[league_confidence_df['League_Confidence'] == "🟢 Alta"]
+            medium_conf_leagues = league_confidence_df[league_confidence_df['League_Confidence'] == "🟡 Média"]
+            low_conf_leagues = league_confidence_df[league_confidence_df['League_Confidence'] == "🔴 Baixa"]
+            
+            st.sidebar.success(f"🎯 Ligas: {len(high_conf_leagues)}🟢 {len(medium_conf_leagues)}🟡 {len(low_conf_leagues)}🔴")
+            
+            # Criar mapa de confiança para uso posterior
+            league_confidence_map = get_league_confidence_map(league_confidence_df)
+            
+            # Adicionar coluna de confiança aos jogos de hoje
+            games_today['League_Confidence'] = games_today['League'].map(league_confidence_map)
+            games_today['League_Confidence'] = games_today['League_Confidence'].fillna("🔴 Baixa")
+            
+        else:
+            st.warning("Não foi possível analisar confiabilidade das ligas")
+            games_today['League_Confidence'] = "🔴 Baixa"  # Default
+            
+    except Exception as e:
+        st.warning(f"Erro na análise de confiabilidade: {e}")
+        games_today['League_Confidence'] = "🔴 Baixa"  # Default em caso de erro
+
+    # CONTINUAÇÃO DO CÓDIGO ORIGINAL (agora dentro do try principal)
     games_today = create_advanced_features(games_today)
     history = create_advanced_features(history)
 
@@ -438,7 +515,6 @@ try:
 
 except Exception as e:
     st.warning(f"Some league features could not be created: {e}")
-
 
 
 
@@ -1398,10 +1474,11 @@ else:
 
 st.header("🎯 Machine Learning Recommendations")
 
-# COLUNAS PARA DISPLAY
+# COLUNAS PARA DISPLAY - ATUALIZADO COM CONFIABILIDADE
 cols_to_show = [
-    'Date', 'Time', 'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today',
-    'ML_Recommendation', 'ML_Data_Valid', 'ML_Correct', 'Kelly_Stake_ML',
+    'Date', 'Time', 'League', 'League_Confidence', 'Home', 'Away',  # ← ADICIONADO League_Confidence
+    'Goals_H_Today', 'Goals_A_Today', 'ML_Recommendation', 
+    'ML_Data_Valid', 'ML_Correct', 'Kelly_Stake_ML',
     'Profit_ML_Fixed', 'Profit_ML_Kelly',
     'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away', 
     'Odd_H', 'Odd_D', 'Odd_A'
@@ -1409,14 +1486,27 @@ cols_to_show = [
 
 available_cols = [c for c in cols_to_show if c in games_today.columns]
 
-# Função para formatação condicional
-def highlight_invalid_rows(row):
-    if row['ML_Data_Valid'] == False:
-        return ['background-color: #ffcccc'] * len(row)
-    else:
-        return [''] * len(row)
+# Função para formatação condicional - ATUALIZADA
+def highlight_confidence_rows(row):
+    styles = [''] * len(row)
+    
+    # Destaque por confiança da liga
+    if 'League_Confidence' in row.index:
+        confidence = row['League_Confidence']
+        if confidence == "🟢 Alta":
+            styles = ['background-color: #e6f7e6'] * len(row)  # Verde claro
+        elif confidence == "🟡 Média":
+            styles = ['background-color: #fff9e6'] * len(row)  # Amarelo claro
+        elif confidence == "🔴 Baixa":
+            styles = ['background-color: #ffe6e6'] * len(row)  # Vermelho claro
+    
+    # Destaque para dados inválidos (sobrescreve confiança)
+    if 'ML_Data_Valid' in row.index and row['ML_Data_Valid'] == False:
+        styles = ['background-color: #ffcccc'] * len(row)  # Vermelho forte
+    
+    return styles
 
-# Display dos dados
+# Display dos dados - CORRIGIDO (fechando o parêntese do apply)
 try:
     st.dataframe(
         games_today[available_cols].style.format({
@@ -1431,7 +1521,7 @@ try:
             'Odd_H': '{:.2f}',
             'Odd_D': '{:.2f}',
             'Odd_A': '{:.2f}'
-        }).apply(highlight_invalid_rows, axis=1),
+        }).apply(highlight_confidence_rows, axis=1),  # ← AQUI ESTÁ CORRETO AGORA
         use_container_width=True,
         height=600
     )
