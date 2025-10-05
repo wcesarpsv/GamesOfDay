@@ -1551,7 +1551,7 @@ except Exception as e:
 # PARLAY RECOMMENDATIONS
 st.header("🎰 Auto Parlay Recommendations")
 
-if parlay_suggestions:
+if 'parlay_suggestions' in locals() and parlay_suggestions:
     # Mostrar estatísticas dos parlays
     legs_count = {}
     for parlay in parlay_suggestions:
