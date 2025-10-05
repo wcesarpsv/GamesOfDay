@@ -1311,17 +1311,18 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
     parlay_suggestions = []
     
     # 🔥 CRITÉRIOS MAIS FLEXÍVEIS PARA GERAR MAIS PARLAYS
+        # Definir thresholds baseado no número de legs
         if num_legs == 2:
-            ev_threshold = 0.03  # Reduzido de 0.05/0.08 para 0.03
-            prob_threshold = 0.20  # Reduzido de 0.25/0.30 para 0.20
+            ev_threshold = 0.03 if weekend_filter and len(eligible_games) > 15 else 0.05
+            prob_threshold = 0.20 if weekend_filter and len(eligible_games) > 15 else 0.25
             stake_multiplier = 0.08
         elif num_legs == 3:
-            ev_threshold = 0.01  # Reduzido de 0.02/0.05 para 0.01
-            prob_threshold = 0.15  # Reduzido de 0.15/0.20 para 0.15
+            ev_threshold = 0.01 if weekend_filter and len(eligible_games) > 15 else 0.02
+            prob_threshold = 0.15 if weekend_filter and len(eligible_games) > 15 else 0.15
             stake_multiplier = 0.05
         else:  # 4 legs
-            ev_threshold = 0.005  # Reduzido de 0.10 para 0.005
-            prob_threshold = 0.10  # Mantido
+            ev_threshold = 0.005
+            prob_threshold = 0.10
             stake_multiplier = 0.03
         
         # Gerar combinações
