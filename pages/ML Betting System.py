@@ -9,15 +9,11 @@ import math
 import itertools
 import matplotlib.pyplot as plt 
 from datetime import datetime
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import OneHotEncoder
-from sklearn.calibration import CalibratedClassifierCV
-from sklearn.feature_selection import SelectFromModel
-from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
-from sklearn.metrics import precision_recall_curve, f1_score
 import warnings
 warnings.filterwarnings('ignore')
+
 
 ########################################
 ########## Bloco 2 – Configs ############
@@ -31,54 +27,12 @@ EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa", "afc","trophy"]
 DOMINANT_THRESHOLD = 0.90
 
 
-        
-
-########################################
-####### Bloco 4 – Load Data ############
-########################################
-files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
-files = sorted(files)
-
-if not files:
-    st.warning("No CSV files found in GamesDay folder.")
-    st.stop()
-
-options = files[-2:] if len(files) >= 2 else files
-selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
-
-# Carregar os jogos do dia selecionado
-games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
-games_today = filter_leagues(games_today)
-
-# Apenas jogos sem placar final
-if 'Goals_H_FT' in games_today.columns:
-    games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
-
-# Carregar histórico para treinar o modelo
-all_games = load_all_games(GAMES_FOLDER)
-all_games = filter_leagues(all_games)
-history = prepare_history(all_games)
-
-# Apply data quality improvements
-history = improve_data_quality(history)
-
-if history.empty:
-    st.error("No valid historical data found.")
-    st.stop()
-
-# Extrair data do arquivo selecionado
-import re
-date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
-if date_match:
-    selected_date_str = date_match.group(0)
-else:
-    selected_date_str = datetime.now().strftime("%Y-%m-%d")
-
 
 ########################################
 ####### Bloco 3 – Helper Functions #####
 ########################################
 def load_all_games(folder):
+    """Carrega todos os arquivos CSV do folder especificado"""
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     df_list = []
     for file in files:
@@ -90,12 +44,14 @@ def load_all_games(folder):
     return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
 
 def filter_leagues(df):
+    """Filtra ligas baseado nas keywords excluídas"""
     if df.empty or 'League' not in df.columns:
         return df
     pattern = '|'.join(EXCLUDED_LEAGUE_KEYWORDS)
     return df[~df['League'].str.lower().str.contains(pattern, na=False)].copy()
 
 def prepare_history(df):
+    """Prepara dados históricos removendo valores NaN"""
     required = ['Goals_H_FT', 'Goals_A_FT', 'M_H', 'M_A', 'Diff_Power', 'League']
     for col in required:
         if col not in df.columns:
@@ -104,6 +60,10 @@ def prepare_history(df):
     return df.dropna(subset=['Goals_H_FT', 'Goals_A_FT'])
 
 def compute_double_chance_odds(df):
+    """Calcula odds para dupla chance (1X e X2)"""
+    if df.empty or not all(col in df.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
+        return df
+        
     probs = pd.DataFrame()
     probs['p_H'] = 1 / df['Odd_H']
     probs['p_D'] = 1 / df['Odd_D']
@@ -119,9 +79,10 @@ def improve_data_quality(history):
         return history
         
     # Remove outliers
-    Q1 = history['M_H'].quantile(0.05)
-    Q3 = history['M_H'].quantile(0.95)
-    history = history[(history['M_H'] >= Q1) & (history['M_H'] <= Q3)]
+    if 'M_H' in history.columns:
+        Q1 = history['M_H'].quantile(0.05)
+        Q3 = history['M_H'].quantile(0.95)
+        history = history[(history['M_H'] >= Q1) & (history['M_H'] <= Q3)]
     
     # Ensure sufficient data per league
     if 'League' in history.columns:
@@ -140,16 +101,20 @@ def improve_data_quality(history):
 
 def create_advanced_features(df):
     """Create enhanced features for better model performance"""
+    if df.empty:
+        return df
+        
     df = df.copy()
     
     # Power ratios and normalized metrics - BALANCEADAS
-    df['Power_Ratio_Home'] = df['M_H'] / (df['M_A'] + 0.001)
-    df['Power_Ratio_Away'] = df['M_A'] / (df['M_H'] + 0.001)
-    df['Total_Power'] = df['M_H'] + df['M_A']
-    df['Power_Diff_Normalized'] = (df['M_H'] - df['M_A']) / (df['Total_Power'] + 0.001)
+    if all(col in df.columns for col in ['M_H', 'M_A']):
+        df['Power_Ratio_Home'] = df['M_H'] / (df['M_A'] + 0.001)
+        df['Power_Ratio_Away'] = df['M_A'] / (df['M_H'] + 0.001)
+        df['Total_Power'] = df['M_H'] + df['M_A']
+        df['Power_Diff_Normalized'] = (df['M_H'] - df['M_A']) / (df['Total_Power'] + 0.001)
     
     # Odds-based features - BALANCEADAS
-    if 'Odd_H' in df.columns and 'Odd_A' in df.columns and 'Odd_D' in df.columns:
+    if all(col in df.columns for col in ['Odd_H', 'Odd_A', 'Odd_D']):
         df['Fair_Prob_Home'] = 1 / df['Odd_H']
         df['Fair_Prob_Away'] = 1 / df['Odd_A']
         df['Fair_Prob_Draw'] = 1 / df['Odd_D']
@@ -160,9 +125,10 @@ def create_advanced_features(df):
         df['Prob_Diff_Home_Away'] = df['Fair_Prob_Home'] - df['Fair_Prob_Away']
     
     # Home/Away advantage - BALANCEADAS
-    df['Home_Advantage'] = df['M_H'] * 0.1
-    df['Away_Strength'] = df['M_A'] * 0.1
-    df['Advantage_Ratio'] = df['Home_Advantage'] / (df['Away_Strength'] + 0.001)
+    if all(col in df.columns for col in ['M_H', 'M_A']):
+        df['Home_Advantage'] = df['M_H'] * 0.1
+        df['Away_Strength'] = df['M_A'] * 0.1
+        df['Advantage_Ratio'] = df['Home_Advantage'] / (df['Away_Strength'] + 0.001)
     
     # Value detection features
     if all(col in df.columns for col in ['ML_Proba_Home', 'ML_Proba_Away', 'Fair_Prob_Home', 'Fair_Prob_Away']):
@@ -174,6 +140,9 @@ def create_advanced_features(df):
 
 def clean_dataframe(df):
     """Remove NaN and infinite values from dataframe"""
+    if df.empty:
+        return df
+        
     df = df.replace([np.inf, -np.inf], np.nan)
     
     # Fill numeric columns with median
@@ -204,8 +173,385 @@ def dynamic_threshold_adjustment(games_today):
         
     return max(0.55, min(0.75, base_threshold))
 
-def enhanced_ml_recommendation(row, threshold=0.65, min_value=0.02):
-    """Enhanced recommendation with value betting principles"""
+def check_missing_features(row, features_required):
+    """Verifica se há dados faltantes nas features essenciais"""
+    missing_features = []
+    
+    for feature in features_required:
+        if feature in row:
+            if pd.isna(row[feature]) or row[feature] == '':
+                missing_features.append(feature)
+        else:
+            missing_features.append(feature)
+    
+    return missing_features
+
+
+
+########################################
+####### Bloco 4 – Load Data ############
+########################################
+
+# Carregar arquivos disponíveis
+files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
+files = sorted(files)
+
+if not files:
+    st.warning("No CSV files found in GamesDay folder.")
+    st.stop()
+
+# Selecionar os 2 arquivos mais recentes
+options = files[-2:] if len(files) >= 2 else files
+selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
+
+# Carregar os jogos do dia selecionado
+try:
+    games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
+    games_today = filter_leagues(games_today)
+    
+    # Apenas jogos sem placar final
+    if 'Goals_H_FT' in games_today.columns:
+        games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
+        
+except Exception as e:
+    st.error(f"Error loading games file: {e}")
+    st.stop()
+
+# Carregar histórico para treinar o modelo
+try:
+    all_games = load_all_games(GAMES_FOLDER)
+    all_games = filter_leagues(all_games)
+    history = prepare_history(all_games)
+
+    # Apply data quality improvements
+    history = improve_data_quality(history)
+
+    if history.empty:
+        st.error("No valid historical data found.")
+        st.stop()
+        
+except Exception as e:
+    st.error(f"Error processing historical data: {e}")
+    st.stop()
+
+# Extrair data do arquivo selecionado
+import re
+date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
+if date_match:
+    selected_date_str = date_match.group(0)
+else:
+    selected_date_str = datetime.now().strftime("%Y-%m-%d")
+
+st.success(f"✅ Loaded {len(games_today)} games for {selected_date_str}")
+
+
+
+
+########################################
+####### Bloco 4B – LiveScore Merge #####
+########################################
+livescore_folder = "LiveScore"
+livescore_file = os.path.join(livescore_folder, f"Resultados_RAW_{selected_date_str}.csv")
+
+# Inicializar colunas de gols
+games_today['Goals_H_Today'] = np.nan
+games_today['Goals_A_Today'] = np.nan
+
+if os.path.exists(livescore_file):
+    st.info(f"LiveScore file found: {livescore_file}")
+    try:
+        results_df = pd.read_csv(livescore_file)
+        
+        required_cols = ['game_id', 'status', 'home_goal', 'away_goal']
+        missing_cols = [col for col in required_cols if col not in results_df.columns]
+        
+        if not missing_cols:
+            games_today = games_today.merge(
+                results_df,
+                left_on='Id',
+                right_on='game_id',
+                how='left',
+                suffixes=('', '_RAW')
+            )
+            # Atualizar gols apenas para jogos finalizados
+            games_today['Goals_H_Today'] = games_today['home_goal']
+            games_today['Goals_A_Today'] = games_today['away_goal']
+            games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
+            st.success("✅ LiveScore data merged successfully!")
+        else:
+            st.warning(f"Missing columns in LiveScore file: {missing_cols}")
+            
+    except Exception as e:
+        st.error(f"Error loading LiveScore file: {e}")
+else:
+    st.warning(f"No LiveScore results file found for selected date: {selected_date_str}")
+
+
+
+
+
+########################################
+####### Bloco 5 – Features Engineering ##
+########################################
+
+# Apply advanced feature engineering
+try:
+    games_today = create_advanced_features(games_today)
+    history = create_advanced_features(history)
+
+    # Verificar se as novas features BALANCEADAS foram criadas
+    balanced_features = [
+        'Power_Ratio_Home', 'Power_Ratio_Away', 'Fair_Prob_Home', 'Fair_Prob_Away',
+        'Home_Advantage', 'Away_Strength', 'Prob_Ratio_Home_Away', 'Prob_Diff_Home_Away'
+    ]
+
+    created_features = [f for f in balanced_features if f in games_today.columns]
+    home_created = len([f for f in created_features if 'Home' in f])
+    away_created = len([f for f in created_features if 'Away' in f])
+
+    st.sidebar.info(f"🔧 {home_created}🏠/{away_created}🚌 features balanceadas")
+
+    # Criar features básicas essenciais
+    if all(col in games_today.columns for col in ['M_H', 'M_A']):
+        games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
+        
+    if all(col in history.columns for col in ['M_H', 'M_A']):
+        history['M_Diff'] = history['M_H'] - history['M_A']
+        
+    # Calcular odds de dupla chance
+    games_today = compute_double_chance_odds(games_today)
+
+except Exception as e:
+    st.error(f"Error in feature engineering: {e}")
+    st.stop()
+
+# Bandas e classificações de liga
+def classify_leagues_variation(history_df):
+    """Classifica ligas por variação de performance"""
+    if history_df.empty or 'League' not in history_df.columns:
+        return pd.DataFrame()
+        
+    agg = (
+        history_df.groupby('League')
+        .agg(
+            M_H_Min=('M_H','min'), M_H_Max=('M_H','max'),
+            M_A_Min=('M_A','min'), M_A_Max=('M_A','max'),
+            Hist_Games=('M_H','count')
+        ).reset_index()
+    )
+    agg['Variation_Total'] = (agg['M_H_Max'] - agg['M_H_Min']) + (agg['M_A_Max'] - agg['M_A_Min'])
+    
+    def label(v):
+        if v > 6.0: return "High Variation"
+        if v >= 3.0: return "Medium Variation"
+        return "Low Variation"
+        
+    agg['League_Classification'] = agg['Variation_Total'].apply(label)
+    return agg[['League','League_Classification','Variation_Total','Hist_Games']]
+
+def compute_league_bands(history_df):
+    """Calcula bandas de performance por liga"""
+    if history_df.empty or 'League' not in history_df.columns:
+        return pd.DataFrame()
+        
+    hist = history_df.copy()
+    
+    if all(col in hist.columns for col in ['M_H', 'M_A']):
+        hist['M_Diff'] = hist['M_H'] - hist['M_A']
+        
+        diff_q = hist.groupby('League')['M_Diff'].quantile([0.20, 0.80]).unstack().rename(
+            columns={0.2:'P20_Diff', 0.8:'P80_Diff'}).reset_index()
+        home_q = hist.groupby('League')['M_H'].quantile([0.20, 0.80]).unstack().rename(
+            columns={0.2:'Home_P20', 0.8:'Home_P80'}).reset_index()
+        away_q = hist.groupby('League')['M_A'].quantile([0.20, 0.80]).unstack().rename(
+            columns={0.2:'Away_P20', 0.8:'Away_P80'}).reset_index()
+            
+        out = diff_q.merge(home_q, on='League', how='inner').merge(away_q, on='League', how='inner')
+        return out
+    else:
+        return pd.DataFrame()
+
+# Aplicar classificações de liga
+try:
+    league_class = classify_leagues_variation(history)
+    league_bands = compute_league_bands(history)
+    
+    if not league_class.empty:
+        games_today = games_today.merge(league_class, on='League', how='left')
+    if not league_bands.empty:
+        games_today = games_today.merge(league_bands, on='League', how='left')
+
+    # Criar bandas home/away
+    if all(col in games_today.columns for col in ['M_H', 'Home_P20', 'Home_P80']):
+        games_today['Home_Band'] = np.where(
+            games_today['M_H'] <= games_today['Home_P20'], 'Bottom 20%',
+            np.where(games_today['M_H'] >= games_today['Home_P80'], 'Top 20%', 'Balanced')
+        )
+        
+    if all(col in games_today.columns for col in ['M_A', 'Away_P20', 'Away_P80']):
+        games_today['Away_Band'] = np.where(
+            games_today['M_A'] <= games_today['Away_P20'], 'Bottom 20%',
+            np.where(games_today['M_A'] >= games_today['Away_P80'], 'Top 20%', 'Balanced')
+        )
+
+except Exception as e:
+    st.warning(f"Some league features could not be created: {e}")
+
+
+
+
+########################################
+####### Bloco 6 – Train ML Model #######
+########################################
+
+# Preparar dados históricos para treino
+try:
+    history = history.dropna(subset=['Goals_H_FT','Goals_A_FT'])
+
+    def map_result(row):
+        """Mapeia resultado para classificação"""
+        try:
+            if row['Goals_H_FT'] > row['Goals_A_FT']: 
+                return "Home"
+            elif row['Goals_H_FT'] < row['Goals_A_FT']: 
+                return "Away"
+            else: 
+                return "Draw"
+        except:
+            return "Draw"
+
+    history['Result'] = history.apply(map_result, axis=1)
+
+    # Enhanced feature set - BALANCEADA
+    features_raw = [
+        # Features básicas
+        'M_H', 'M_A', 'Diff_Power', 'M_Diff',
+        
+        # Bandas e ligas
+        'Home_Band', 'Away_Band', 'League_Classification',
+        
+        # Odds
+        'Odd_H', 'Odd_D', 'Odd_A', 'Odd_1X', 'Odd_X2',
+        
+        # Novas features BALANCEADAS
+        'Power_Ratio_Home', 'Power_Ratio_Away', 'Total_Power', 'Power_Diff_Normalized',
+        'Fair_Prob_Home', 'Fair_Prob_Away', 'Fair_Prob_Draw', 'Market_Margin',
+        'Prob_Ratio_Home_Away', 'Prob_Diff_Home_Away',
+        'Home_Advantage', 'Away_Strength', 'Advantage_Ratio'
+    ]
+
+    # Só incluir features que existem no dataframe
+    features_raw = [f for f in features_raw if f in history.columns]
+
+    # Verificar se temos features balanceadas
+    home_features = [f for f in features_raw if 'Home' in f]
+    away_features = [f for f in features_raw if 'Away' in f]
+    neutral_features = [f for f in features_raw if 'Home' not in f and 'Away' not in f]
+
+    st.sidebar.info(f"🏠 {len(home_features)} Home | 🚌 {len(away_features)} Away | ⚖️ {len(neutral_features)} Neutral")
+
+    X = history[features_raw].copy()
+    y = history['Result']
+
+    # Clean the data before training
+    X = clean_dataframe(X)
+
+    # Mapear bandas para números
+    BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
+    if 'Home_Band' in X: 
+        X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
+        X = X.drop('Home_Band', axis=1)
+    if 'Away_Band' in X: 
+        X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
+        X = X.drop('Away_Band', axis=1)
+
+    # One-hot encoding para variáveis categóricas
+    cat_cols = [c for c in ['League_Classification'] if c in X]
+    encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
+    if cat_cols:
+        encoded = encoder.fit_transform(X[cat_cols])
+        encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(cat_cols))
+        X = pd.concat([X.drop(columns=cat_cols).reset_index(drop=True),
+                       encoded_df.reset_index(drop=True)], axis=1)
+
+    # Treinar modelo Random Forest
+    st.info("🏗️ Training Enhanced Random Forest Model...")
+
+    model = RandomForestClassifier(
+        n_estimators=800,
+        max_depth=12,
+        min_samples_split=10,
+        min_samples_leaf=4,
+        max_features='sqrt',
+        class_weight='balanced_subsample',
+        random_state=42,
+        n_jobs=-1
+    )
+    
+    model.fit(X, y)
+    st.success("✅ Model trained successfully!")
+
+except Exception as e:
+    st.error(f"Error training ML model: {e}")
+    st.stop()
+
+
+
+
+########################################
+####### Bloco 7 – Apply ML to Today ####
+########################################
+
+# Função para ajuste automático de threshold
+def auto_adjust_threshold(games_today, target_recommendations=8):
+    """Ajusta automaticamente o threshold baseado no número de recomendações"""
+    if games_today.empty:
+        return 0.60
+    
+    valid_games = games_today[games_today['ML_Data_Valid'] == True]
+    if len(valid_games) == 0:
+        return 0.60
+    
+    # Testa diferentes thresholds
+    test_threshold = 0.50
+    max_threshold = 0.70
+    
+    best_threshold = 0.60
+    best_count = 0
+    
+    while test_threshold <= max_threshold:
+        count = 0
+        for idx, row in valid_games.iterrows():
+            if not row['ML_Data_Valid']:
+                continue
+                
+            p_home = row.get('ML_Proba_Home', 0)
+            p_draw = row.get('ML_Proba_Draw', 0) 
+            p_away = row.get('ML_Proba_Away', 0)
+            
+            # Calcular EVs para ver se tem valor
+            ev_home = p_home * row.get('Odd_H', 2.0) - 1
+            ev_away = p_away * row.get('Odd_A', 2.0) - 1
+            ev_draw = p_draw * row.get('Odd_D', 3.0) - 1
+            
+            max_prob = max(p_home, p_draw, p_away)
+            max_ev = max(ev_home, ev_away, ev_draw)
+            
+            if max_prob >= test_threshold and max_ev >= 0.02:
+                count += 1
+        
+        # Prefere thresholds que dão perto do target
+        if abs(count - target_recommendations) < abs(best_count - target_recommendations):
+            best_threshold = test_threshold
+            best_count = count
+        
+        test_threshold += 0.02
+    
+    return best_threshold
+
+# Função de recomendação ML melhorada
+def enhanced_ml_recommendation_v2(row, threshold=0.65, min_value=0.02):
+    """Enhanced recommendation with more flexible rules"""
     
     if pd.isna(row.get('ML_Proba_Home')) or pd.isna(row.get('ML_Proba_Away')) or pd.isna(row.get('ML_Proba_Draw')):
         return "❌ Avoid"
@@ -221,523 +567,157 @@ def enhanced_ml_recommendation(row, threshold=0.65, min_value=0.02):
     ev_1x = (p_home + p_draw) * row.get('Odd_1X', 1.5) - 1
     ev_x2 = (p_away + p_draw) * row.get('Odd_X2', 1.5) - 1
     
-    recommendations = []
+    # Encontrar a melhor aposta
+    best_bet = None
+    best_ev = -999
     
-    if p_home >= threshold and ev_home >= min_value:
-        recommendations.append(("🟢 Back Home", ev_home))
-    if p_away >= threshold and ev_away >= min_value:
-        recommendations.append(("🟠 Back Away", ev_away)) 
-    if p_draw >= threshold and ev_draw >= min_value:
-        recommendations.append(("⚪ Back Draw", ev_draw))
+    # Check Home win
+    if p_home >= threshold and ev_home >= min_value and ev_home > best_ev:
+        best_bet = "🟢 Back Home"
+        best_ev = ev_home
     
-    if ev_1x >= min_value and (p_home + p_draw) >= 0.70:
-        recommendations.append(("🟦 1X (Home/Draw)", ev_1x))
-    if ev_x2 >= min_value and (p_away + p_draw) >= 0.70:
-        recommendations.append(("🟪 X2 (Away/Draw)", ev_x2))
+    # Check Away win  
+    if p_away >= threshold and ev_away >= min_value and ev_away > best_ev:
+        best_bet = "🟠 Back Away"
+        best_ev = ev_away
+        
+    # Check Draw
+    if p_draw >= threshold and ev_draw >= min_value and ev_draw > best_ev:
+        best_bet = "⚪ Back Draw"
+        best_ev = ev_draw
     
-    if recommendations:
-        best_rec = max(recommendations, key=lambda x: x[1])
-        return best_rec[0]
-    else:
-        return "❌ Avoid"
-
-def auto_adjust_threshold(games_today, target_recommendations=5):
-    """Ajusta automaticamente o threshold baseado no número de recomendações"""
-    if games_today.empty:
-        return 0.65
+    # Check Double Chance - com threshold mais baixo
+    dc_threshold = threshold - 0.10  # 10% mais baixo para double chance
     
-    valid_games = games_today[games_today['ML_Data_Valid'] == True]
-    if len(valid_games) == 0:
-        return 0.65
+    if ev_1x >= min_value and (p_home + p_draw) >= dc_threshold and ev_1x > best_ev:
+        best_bet = "🟦 1X (Home/Draw)"
+        best_ev = ev_1x
+        
+    if ev_x2 >= min_value and (p_away + p_draw) >= dc_threshold and ev_x2 > best_ev:
+        best_bet = "🟪 X2 (Away/Draw)"
+        best_ev = ev_x2
     
-    # Começa com threshold baixo
-    test_threshold = 0.55
-    max_threshold = 0.75
-    
-    best_threshold = 0.65
-    best_count = 0
-    
-    # Testa diferentes thresholds
-    while test_threshold <= max_threshold:
-        count = 0
-        for idx, row in valid_games.iterrows():
-            p_home = row.get('ML_Proba_Home', 0)
-            p_draw = row.get('ML_Proba_Draw', 0)
-            p_away = row.get('ML_Proba_Away', 0)
+    # Se não encontrou nada, verificar se há alguma com EV muito bom mesmo com prob menor
+    if best_bet is None:
+        high_ev_bets = []
+        
+        if ev_home >= 0.10:  # EV muito bom
+            high_ev_bets.append(("🟢 Back Home", ev_home, p_home))
+        if ev_away >= 0.10:
+            high_ev_bets.append(("🟠 Back Away", ev_away, p_away))
+        if ev_draw >= 0.10:
+            high_ev_bets.append(("⚪ Back Draw", ev_draw, p_draw))
+        if ev_1x >= 0.08:
+            high_ev_bets.append(("🟦 1X (Home/Draw)", ev_1x, p_home + p_draw))
+        if ev_x2 >= 0.08:
+            high_ev_bets.append(("🟪 X2 (Away/Draw)", ev_x2, p_away + p_draw))
             
-            max_prob = max(p_home, p_draw, p_away)
-            if max_prob >= test_threshold:
-                count += 1
+        if high_ev_bets:
+            # Ordenar por EV e pegar a melhor
+            high_ev_bets.sort(key=lambda x: x[1], reverse=True)
+            best_bet = high_ev_bets[0][0]
+    
+    return best_bet if best_bet else "❌ Avoid"
+
+# Preparar dados de hoje para predição
+try:
+    # Lista de features obrigatórias - reduzida para ser menos rigorosa
+    required_features = [
+        'M_H', 'M_A', 'Diff_Power', 'M_Diff',
+        'Odd_H', 'Odd_D', 'Odd_A'
+    ]
+
+    X_today = games_today[features_raw].copy()
+
+    # Aplicar validação de dados faltantes - menos rigorosa
+    games_today["ML_Data_Valid"] = True
+    games_today["Missing_Features"] = ""
+
+    for idx, row in games_today.iterrows():
+        missing = check_missing_features(row, required_features)
+        if len(missing) > 3:  # Só marca como inválido se faltarem mais de 3 features críticas
+            games_today.at[idx, "ML_Data_Valid"] = False
+            games_today.at[idx, "Missing_Features"] = ", ".join(missing)
+
+    # Aplicar o modelo apenas aos jogos com dados completos
+    valid_games_mask = games_today["ML_Data_Valid"] == True
+    X_today_valid = X_today[valid_games_mask].copy()
+
+    # Clean today's data
+    X_today_valid = clean_dataframe(X_today_valid)
+
+    # Apply the same transformations as training data
+    if 'Home_Band' in X_today_valid: 
+        X_today_valid['Home_Band_Num'] = X_today_valid['Home_Band'].map(BAND_MAP)
+        X_today_valid = X_today_valid.drop('Home_Band', axis=1)
+    if 'Away_Band' in X_today_valid: 
+        X_today_valid['Away_Band_Num'] = X_today_valid['Away_Band'].map(BAND_MAP)
+        X_today_valid = X_today_valid.drop('Away_Band', axis=1)
+
+    if 'cat_cols' in locals() and cat_cols:
+        try:
+            encoded_today = encoder.transform(X_today_valid[cat_cols])
+            encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(cat_cols))
+            X_today_valid = pd.concat([X_today_valid.drop(columns=cat_cols).reset_index(drop=True),
+                                     encoded_today_df.reset_index(drop=True)], axis=1)
+        except Exception as e:
+            st.warning(f"Encoding error: {e}")
+
+    # Ensure same columns as training data
+    missing_cols = set(X.columns) - set(X_today_valid.columns)
+    for col in missing_cols:
+        X_today_valid[col] = 0
+    X_today_valid = X_today_valid[X.columns]
+
+    # Inicializar colunas de probabilidade com NaN
+    games_today["ML_Proba_Home"] = np.nan
+    games_today["ML_Proba_Draw"] = np.nan
+    games_today["ML_Proba_Away"] = np.nan
+    games_today["ML_Recommendation"] = "❌ Avoid"
+
+    # Aplicar modelo apenas nos jogos válidos
+    if not X_today_valid.empty:
+        ml_proba = model.predict_proba(X_today_valid)
         
-        # Prefere thresholds que dão perto do target
-        if abs(count - target_recommendations) < abs(best_count - target_recommendations):
-            best_threshold = test_threshold
-            best_count = count
+        # Preencher apenas os jogos válidos
+        valid_indices = games_today[valid_games_mask].index
         
-        test_threshold += 0.02
-    
-    return best_threshold
-
-########################################
-####### Bloco 4B – LiveScore Merge #####
-########################################
-livescore_folder = "LiveScore"
-livescore_file = os.path.join(livescore_folder, f"Resultados_RAW_{selected_date_str}.csv")
-
-# Inicializar colunas de gols
-games_today['Goals_H_Today'] = np.nan
-games_today['Goals_A_Today'] = np.nan
-
-if os.path.exists(livescore_file):
-    st.info(f"LiveScore file found: {livescore_file}")
-    results_df = pd.read_csv(livescore_file)
-    
-    required_cols = ['game_id', 'status', 'home_goal', 'away_goal']
-    missing_cols = [col for col in required_cols if col not in results_df.columns]
-    
-    if not missing_cols:
-        games_today = games_today.merge(
-            results_df,
-            left_on='Id',
-            right_on='game_id',
-            how='left',
-            suffixes=('', '_RAW')
+        games_today.loc[valid_indices, "ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
+        games_today.loc[valid_indices, "ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
+        games_today.loc[valid_indices, "ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
+        
+        # Configuração de threshold
+        threshold_option = st.sidebar.selectbox(
+            "Threshold Strategy",
+            ["Auto-Adjust", "Dynamic", "Fixed"],
+            index=0
         )
-        # Atualizar gols apenas para jogos finalizados
-        games_today['Goals_H_Today'] = games_today['home_goal']
-        games_today['Goals_A_Today'] = games_today['away_goal']
-        games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
-else:
-    st.warning(f"No LiveScore results file found for selected date: {selected_date_str}")
 
-########################################
-####### Bloco 5 – Features Engineering ##
-########################################
-# Apply advanced feature engineering
-games_today = create_advanced_features(games_today)
-history = create_advanced_features(history)
-
-# Verificar se as novas features BALANCEADAS foram criadas
-balanced_features = [
-    'Power_Ratio_Home', 'Power_Ratio_Away', 'Fair_Prob_Home', 'Fair_Prob_Away',
-    'Home_Advantage', 'Away_Strength', 'Prob_Ratio_Home_Away', 'Prob_Diff_Home_Away'
-]
-
-created_features = [f for f in balanced_features if f in games_today.columns]
-home_created = len([f for f in created_features if 'Home' in f])
-away_created = len([f for f in created_features if 'Away' in f])
-
-st.sidebar.info(f"🔧 {home_created}🏠/{away_created}🚌 features balanceadas")
-
-games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
-history['M_Diff'] = history['M_H'] - history['M_A']
-games_today = compute_double_chance_odds(games_today)
-
-# Bandas e classificações de liga
-def classify_leagues_variation(history_df):
-    agg = (
-        history_df.groupby('League')
-        .agg(
-            M_H_Min=('M_H','min'), M_H_Max=('M_H','max'),
-            M_A_Min=('M_A','min'), M_A_Max=('M_A','max'),
-            Hist_Games=('M_H','count')
-        ).reset_index()
-    )
-    agg['Variation_Total'] = (agg['M_H_Max'] - agg['M_H_Min']) + (agg['M_A_Max'] - agg['M_A_Min'])
-    def label(v):
-        if v > 6.0: return "High Variation"
-        if v >= 3.0: return "Medium Variation"
-        return "Low Variation"
-    agg['League_Classification'] = agg['Variation_Total'].apply(label)
-    return agg[['League','League_Classification','Variation_Total','Hist_Games']]
-
-def compute_league_bands(history_df):
-    hist = history_df.copy()
-    hist['M_Diff'] = hist['M_H'] - hist['M_A']
-    diff_q = hist.groupby('League')['M_Diff'].quantile([0.20, 0.80]).unstack().rename(columns={0.2:'P20_Diff', 0.8:'P80_Diff'}).reset_index()
-    home_q = hist.groupby('League')['M_H'].quantile([0.20, 0.80]).unstack().rename(columns={0.2:'Home_P20', 0.8:'Home_P80'}).reset_index()
-    away_q = hist.groupby('League')['M_A'].quantile([0.20, 0.80]).unstack().rename(columns={0.2:'Away_P20', 0.8:'Away_P80'}).reset_index()
-    out = diff_q.merge(home_q, on='League', how='inner').merge(away_q, on='League', how='inner')
-    return out
-
-league_class = classify_leagues_variation(history)
-league_bands = compute_league_bands(history)
-games_today = games_today.merge(league_class, on='League', how='left')
-games_today = games_today.merge(league_bands, on='League', how='left')
-
-games_today['Home_Band'] = np.where(
-    games_today['M_H'] <= games_today['Home_P20'], 'Bottom 20%',
-    np.where(games_today['M_H'] >= games_today['Home_P80'], 'Top 20%', 'Balanced')
-)
-games_today['Away_Band'] = np.where(
-    games_today['M_A'] <= games_today['Away_P20'], 'Bottom 20%',
-    np.where(games_today['M_A'] >= games_today['Away_P80'], 'Top 20%', 'Balanced')
-)
-
-
-
-########################################
-####### Bloco 6 – Train ML Model #######
-########################################
-history = history.dropna(subset=['Goals_H_FT','Goals_A_FT'])
-
-def map_result(row):
-    if row['Goals_H_FT'] > row['Goals_A_FT']: return "Home"
-    elif row['Goals_H_FT'] < row['Goals_A_FT']: return "Away"
-    else: return "Draw"
-
-history['Result'] = history.apply(map_result, axis=1)
-
-# Enhanced feature set - BALANCEADA
-features_raw = [
-    # Features básicas
-    'M_H', 'M_A', 'Diff_Power', 'M_Diff',
-    
-    # Bandas e ligas
-    'Home_Band', 'Away_Band', 'League_Classification',
-    
-    # Odds
-    'Odd_H', 'Odd_D', 'Odd_A', 'Odd_1X', 'Odd_X2',
-    'EV', 'Games_Analyzed',
-    
-    # Novas features BALANCEADAS
-    'Power_Ratio_Home', 'Power_Ratio_Away', 'Total_Power', 'Power_Diff_Normalized',
-    'Fair_Prob_Home', 'Fair_Prob_Away', 'Fair_Prob_Draw', 'Market_Margin',
-    'Prob_Ratio_Home_Away', 'Prob_Diff_Home_Away',
-    'Home_Advantage', 'Away_Strength', 'Advantage_Ratio'
-]
-
-# Só incluir features que existem no dataframe
-features_raw = [f for f in features_raw if f in history.columns]
-
-# Verificar se temos features balanceadas
-home_features = [f for f in features_raw if 'Home' in f]
-away_features = [f for f in features_raw if 'Away' in f]
-neutral_features = [f for f in features_raw if 'Home' not in f and 'Away' not in f]
-
-st.sidebar.info(f"🏠 {len(home_features)} Home | 🚌 {len(away_features)} Away | ⚖️ {len(neutral_features)} Neutral")
-
-X = history[features_raw].copy()
-y = history['Result']
-
-# Clean the data before training
-X = clean_dataframe(X)
-
-BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
-if 'Home_Band' in X: 
-    X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
-    X = X.drop('Home_Band', axis=1)
-if 'Away_Band' in X: 
-    X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
-    X = X.drop('Away_Band', axis=1)
-
-cat_cols = [c for c in ['League_Classification'] if c in X]
-encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
-if cat_cols:
-    encoded = encoder.fit_transform(X[cat_cols])
-    encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(cat_cols))
-    X = pd.concat([X.drop(columns=cat_cols).reset_index(drop=True),
-                   encoded_df.reset_index(drop=True)], axis=1)
-
-# Use only Random Forest for stability
-st.info("🏗️ Training Enhanced Random Forest Model...")
-
-model = RandomForestClassifier(
-    n_estimators=800,
-    max_depth=12,
-    min_samples_split=10,
-    min_samples_leaf=4,
-    max_features='sqrt',
-    class_weight='balanced_subsample',
-    random_state=42,
-    n_jobs=-1
-)
-model.fit(X, y)
-
-st.success("✅ Model trained successfully!")
-
-# 🔍 ANÁLISE DAS FEATURES BALANCEADAS
-st.header("🔍 Balanced Feature Analysis")
-
-# Mostrar balanceamento
-st.subheader("⚖️ Balanceamento Home vs Away")
-
-balance_stats = {
-    'Home Features': len([f for f in X.columns if 'Home' in f]),
-    'Away Features': len([f for f in X.columns if 'Away' in f]), 
-    'Neutral Features': len([f for f in X.columns if 'Home' not in f and 'Away' not in f]),
-    'Total Features': len(X.columns)
-}
-
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("🏠 Home", balance_stats['Home Features'])
-col2.metric("🚌 Away", balance_stats['Away Features'])
-col3.metric("⚖️ Neutral", balance_stats['Neutral Features'])
-col4.metric("📊 Total", balance_stats['Total Features'])
-
-# Feature importance
-feature_importance = pd.DataFrame({
-    'feature': X.columns,
-    'importance': model.feature_importances_
-}).sort_values('importance', ascending=False)
-
-# Top features por categoria
-st.subheader("🎯 Top Features por Categoria")
-
-top_home = feature_importance[feature_importance['feature'].str.contains('Home', na=False)].head(5)
-top_away = feature_importance[feature_importance['feature'].str.contains('Away', na=False)].head(5)
-top_neutral = feature_importance[~feature_importance['feature'].str.contains('Home|Away', na=False)].head(5)
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.write("**🏠 Top Home Features:**")
-    for _, row in top_home.iterrows():
-        st.write(f"{row['feature']}: {row['importance']:.3f}")
-
-with col2:
-    st.write("**🚌 Top Away Features:**")
-    for _, row in top_away.iterrows():
-        st.write(f"{row['feature']}: {row['importance']:.3f}")
-
-with col3:
-    st.write("**⚖️ Top Neutral Features:**")
-    for _, row in top_neutral.iterrows():
-        st.write(f"{row['feature']}: {row['importance']:.3f}")
-
-# Verificar se o balanceamento melhorou
-if len(home_features) == len(away_features):
-    st.success("✅ Features perfeitamente balanceadas!")
-elif abs(len(home_features) - len(away_features)) <= 2:
-    st.info("⚖️ Features razoavelmente balanceadas")
-else:
-    st.warning("⚠️ Ainda há desbalanceamento nas features")
-
-########################################
-####### Bloco 7 – Apply ML to Today ####
-########################################
-
-def check_missing_features(row, features_required):
-    """Verifica se há dados faltantes nas features essenciais"""
-    missing_features = []
-    
-    for feature in features_required:
-        if feature in row:
-            if pd.isna(row[feature]) or row[feature] == '':
-                missing_features.append(feature)
+        if threshold_option == "Auto-Adjust":
+            target_recs = st.sidebar.slider("Target Recommendations", 3, 15, 8)
+            threshold = auto_adjust_threshold(games_today, target_recs)
+        elif threshold_option == "Dynamic":
+            threshold = dynamic_threshold_adjustment(games_today)
         else:
-            missing_features.append(feature)
-    
-    return missing_features
+            threshold = st.sidebar.slider("Fixed Threshold", 0.50, 0.80, 0.65)
 
-# Lista de features obrigatórias - reduzida para ser menos rigorosa
-required_features = [
-    'M_H', 'M_A', 'Diff_Power', 'M_Diff',
-    'Odd_H', 'Odd_D', 'Odd_A'
-]
+        st.sidebar.metric("🎯 ML Threshold", f"{threshold:.1%}")
 
-X_today = games_today[features_raw].copy()
+        # Relaxar um pouco o min_value para EV
+        min_ev_value = st.sidebar.slider("Min EV Value", 0.00, 0.10, 0.02, 0.01)
 
-# Aplicar validação de dados faltantes - menos rigorosa
-games_today["ML_Data_Valid"] = True
-games_today["Missing_Features"] = ""
-
-for idx, row in games_today.iterrows():
-    missing = check_missing_features(row, required_features)
-    if len(missing) > 3:  # Só marca como inválido se faltarem mais de 3 features críticas
-        games_today.at[idx, "ML_Data_Valid"] = False
-        games_today.at[idx, "Missing_Features"] = ", ".join(missing)
-
-# Aplicar o modelo apenas aos jogos com dados completos
-valid_games_mask = games_today["ML_Data_Valid"] == True
-X_today_valid = X_today[valid_games_mask].copy()
-
-# Clean today's data
-X_today_valid = clean_dataframe(X_today_valid)
-
-# Apply the same transformations as training data
-if 'Home_Band' in X_today_valid: 
-    X_today_valid['Home_Band_Num'] = X_today_valid['Home_Band'].map(BAND_MAP)
-    X_today_valid = X_today_valid.drop('Home_Band', axis=1)
-if 'Away_Band' in X_today_valid: 
-    X_today_valid['Away_Band_Num'] = X_today_valid['Away_Band'].map(BAND_MAP)
-    X_today_valid = X_today_valid.drop('Away_Band', axis=1)
-
-if cat_cols:
-    encoded_today = encoder.transform(X_today_valid[cat_cols])
-    encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(cat_cols))
-    X_today_valid = pd.concat([X_today_valid.drop(columns=cat_cols).reset_index(drop=True),
-                             encoded_today_df.reset_index(drop=True)], axis=1)
-
-# Ensure same columns as training data
-missing_cols = set(X.columns) - set(X_today_valid.columns)
-for col in missing_cols:
-    X_today_valid[col] = 0
-X_today_valid = X_today_valid[X.columns]
-
-# Inicializar colunas de probabilidade com NaN
-games_today["ML_Proba_Home"] = np.nan
-games_today["ML_Proba_Draw"] = np.nan
-games_today["ML_Proba_Away"] = np.nan
-games_today["ML_Recommendation"] = "❌ Avoid"
-
-# Aplicar modelo apenas nos jogos válidos
-if not X_today_valid.empty:
-    ml_proba = model.predict_proba(X_today_valid)
-    
-    # Preencher apenas os jogos válidos
-    valid_indices = games_today[valid_games_mask].index
-    
-    games_today.loc[valid_indices, "ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
-    games_today.loc[valid_indices, "ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
-    games_today.loc[valid_indices, "ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
-    
-    # AGORA SIM podemos usar as funções de threshold que dependem de ML_Data_Valid
-    # Use dynamic threshold with auto-adjustment
-    def auto_adjust_threshold(games_today, target_recommendations=8):
-        """Ajusta automaticamente o threshold baseado no número de recomendações"""
-        if games_today.empty:
-            return 0.60
-        
-        valid_games = games_today[games_today['ML_Data_Valid'] == True]
-        if len(valid_games) == 0:
-            return 0.60
-        
-        # Testa diferentes thresholds
-        test_threshold = 0.50
-        max_threshold = 0.70
-        
-        best_threshold = 0.60
-        best_count = 0
-        
-        while test_threshold <= max_threshold:
-            count = 0
-            for idx, row in valid_games.iterrows():
-                if not row['ML_Data_Valid']:
-                    continue
-                    
-                p_home = row.get('ML_Proba_Home', 0)
-                p_draw = row.get('ML_Proba_Draw', 0) 
-                p_away = row.get('ML_Proba_Away', 0)
-                
-                # Calcular EVs para ver se tem valor
-                ev_home = p_home * row.get('Odd_H', 2.0) - 1
-                ev_away = p_away * row.get('Odd_A', 2.0) - 1
-                ev_draw = p_draw * row.get('Odd_D', 3.0) - 1
-                
-                max_prob = max(p_home, p_draw, p_away)
-                max_ev = max(ev_home, ev_away, ev_draw)
-                
-                if max_prob >= test_threshold and max_ev >= 0.02:
-                    count += 1
+        # Gerar recomendações usando enhanced function v2
+        for idx in valid_indices:
+            p_home = games_today.at[idx, "ML_Proba_Home"]
+            p_draw = games_today.at[idx, "ML_Proba_Draw"] 
+            p_away = games_today.at[idx, "ML_Proba_Away"]
             
-            # Prefere thresholds que dão perto do target
-            if abs(count - target_recommendations) < abs(best_count - target_recommendations):
-                best_threshold = test_threshold
-                best_count = count
-            
-            test_threshold += 0.02
-        
-        return best_threshold
+            games_today.at[idx, "ML_Recommendation"] = enhanced_ml_recommendation_v2(
+                games_today.loc[idx], threshold, min_ev_value
+            )
 
-    # Seleção de threshold - AGORA DEPOIS de ter as probabilidades
-    threshold_option = st.sidebar.selectbox(
-        "Threshold Strategy",
-        ["Auto-Adjust", "Dynamic", "Fixed"],
-        index=0
-    )
-
-    if threshold_option == "Auto-Adjust":
-        target_recs = st.sidebar.slider("Target Recommendations", 3, 15, 8)
-        threshold = auto_adjust_threshold(games_today, target_recs)
-    elif threshold_option == "Dynamic":
-        threshold = dynamic_threshold_adjustment(games_today)
-    else:
-        threshold = st.sidebar.slider("Fixed Threshold", 0.50, 0.80, 0.65)
-
-    st.sidebar.metric("🎯 ML Threshold", f"{threshold:.1%}")
-
-    # Relaxar um pouco o min_value para EV
-    min_ev_value = st.sidebar.slider("Min EV Value", 0.00, 0.10, 0.02, 0.01)
-
-    def enhanced_ml_recommendation_v2(row, threshold=0.65, min_value=0.02):
-        """Enhanced recommendation with more flexible rules"""
-        
-        if pd.isna(row.get('ML_Proba_Home')) or pd.isna(row.get('ML_Proba_Away')) or pd.isna(row.get('ML_Proba_Draw')):
-            return "❌ Avoid"
-        
-        p_home = row['ML_Proba_Home']
-        p_draw = row['ML_Proba_Draw'] 
-        p_away = row['ML_Proba_Away']
-        
-        # Calculate expected value for each bet
-        ev_home = p_home * row.get('Odd_H', 2.0) - 1
-        ev_away = p_away * row.get('Odd_A', 2.0) - 1  
-        ev_draw = p_draw * row.get('Odd_D', 3.0) - 1
-        ev_1x = (p_home + p_draw) * row.get('Odd_1X', 1.5) - 1
-        ev_x2 = (p_away + p_draw) * row.get('Odd_X2', 1.5) - 1
-        
-        # Encontrar a melhor aposta
-        best_bet = None
-        best_ev = -999
-        
-        # Check Home win
-        if p_home >= threshold and ev_home >= min_value and ev_home > best_ev:
-            best_bet = "🟢 Back Home"
-            best_ev = ev_home
-        
-        # Check Away win  
-        if p_away >= threshold and ev_away >= min_value and ev_away > best_ev:
-            best_bet = "🟠 Back Away"
-            best_ev = ev_away
-            
-        # Check Draw
-        if p_draw >= threshold and ev_draw >= min_value and ev_draw > best_ev:
-            best_bet = "⚪ Back Draw"
-            best_ev = ev_draw
-        
-        # Check Double Chance - com threshold mais baixo
-        dc_threshold = threshold - 0.10  # 10% mais baixo para double chance
-        
-        if ev_1x >= min_value and (p_home + p_draw) >= dc_threshold and ev_1x > best_ev:
-            best_bet = "🟦 1X (Home/Draw)"
-            best_ev = ev_1x
-            
-        if ev_x2 >= min_value and (p_away + p_draw) >= dc_threshold and ev_x2 > best_ev:
-            best_bet = "🟪 X2 (Away/Draw)"
-            best_ev = ev_x2
-        
-        # Se não encontrou nada, verificar se há alguma com EV muito bom mesmo com prob menor
-        if best_bet is None:
-            high_ev_bets = []
-            
-            if ev_home >= 0.10:  # EV muito bom
-                high_ev_bets.append(("🟢 Back Home", ev_home, p_home))
-            if ev_away >= 0.10:
-                high_ev_bets.append(("🟠 Back Away", ev_away, p_away))
-            if ev_draw >= 0.10:
-                high_ev_bets.append(("⚪ Back Draw", ev_draw, p_draw))
-            if ev_1x >= 0.08:
-                high_ev_bets.append(("🟦 1X (Home/Draw)", ev_1x, p_home + p_draw))
-            if ev_x2 >= 0.08:
-                high_ev_bets.append(("🟪 X2 (Away/Draw)", ev_x2, p_away + p_draw))
-                
-            if high_ev_bets:
-                # Ordenar por EV e pegar a melhor
-                high_ev_bets.sort(key=lambda x: x[1], reverse=True)
-                best_bet = high_ev_bets[0][0]
-        
-        return best_bet if best_bet else "❌ Avoid"
-
-    # Gerar recomendações usando enhanced function v2
-    for idx in valid_indices:
-        p_home = games_today.at[idx, "ML_Proba_Home"]
-        p_draw = games_today.at[idx, "ML_Proba_Draw"] 
-        p_away = games_today.at[idx, "ML_Proba_Away"]
-        
-        games_today.at[idx, "ML_Recommendation"] = enhanced_ml_recommendation_v2(
-            games_today.loc[idx], threshold, min_ev_value
-        )
+except Exception as e:
+    st.error(f"Error applying ML to today's games: {e}")
 
 # Mostrar estatísticas de validação
 invalid_count = len(games_today) - valid_games_mask.sum()
@@ -767,6 +747,8 @@ if valid_recommendations > 0:
 else:
     st.info("💡 Nenhuma recomendação encontrada. Tente ajustar o threshold ou min EV value.")
 
+
+
 ########################################
 ##### Bloco 8 – Kelly Criterion ########
 ########################################
@@ -785,33 +767,52 @@ st.sidebar.markdown("**🎯 ML Principal**")
 st.sidebar.markdown("• Apostas individuais com edge comprovado  \n• Kelly determina stake ideal  \n• Foco em valor a longo prazo")
 
 def kelly_stake(probability, odds, bankroll=1000, kelly_fraction=0.25, min_stake=1, max_stake=100):
-    if pd.isna(probability) or pd.isna(odds) or odds <= 1 or probability <= 0: return 0
+    """Calcula stake usando Kelly Criterion"""
+    if pd.isna(probability) or pd.isna(odds) or odds <= 1 or probability <= 0: 
+        return 0
     edge = probability * odds - 1
-    if edge <= 0: return 0
+    if edge <= 0: 
+        return 0
     full_kelly_fraction = edge / (odds - 1)
     fractional_kelly = full_kelly_fraction * kelly_fraction
     recommended_stake = fractional_kelly * bankroll
-    if recommended_stake < min_stake: return 0
-    elif recommended_stake > max_stake: return max_stake
-    else: return round(recommended_stake, 2)
+    if recommended_stake < min_stake: 
+        return 0
+    elif recommended_stake > max_stake: 
+        return max_stake
+    else: 
+        return round(recommended_stake, 2)
 
 def get_kelly_stake_ml(row):
+    """Aplica Kelly Criterion baseado na recomendação ML"""
     rec = row['ML_Recommendation']
-    if pd.isna(rec) or rec == '❌ Avoid': return 0
+    if pd.isna(rec) or rec == '❌ Avoid': 
+        return 0
     
-    if 'Back Home' in rec: return kelly_stake(row['ML_Proba_Home'], row['Odd_H'], bankroll, kelly_fraction, min_stake, max_stake)
-    elif 'Back Away' in rec: return kelly_stake(row['ML_Proba_Away'], row['Odd_A'], bankroll, kelly_fraction, min_stake, max_stake)
-    elif 'Back Draw' in rec: return kelly_stake(row['ML_Proba_Draw'], row['Odd_D'], bankroll, kelly_fraction, min_stake, max_stake)
-    elif '1X' in rec: return kelly_stake(row['ML_Proba_Home'] + row['ML_Proba_Draw'], row['Odd_1X'], bankroll, kelly_fraction, min_stake, max_stake)
-    elif 'X2' in rec: return kelly_stake(row['ML_Proba_Away'] + row['ML_Proba_Draw'], row['Odd_X2'], bankroll, kelly_fraction, min_stake, max_stake)
+    if 'Back Home' in rec: 
+        return kelly_stake(row['ML_Proba_Home'], row['Odd_H'], bankroll, kelly_fraction, min_stake, max_stake)
+    elif 'Back Away' in rec: 
+        return kelly_stake(row['ML_Proba_Away'], row['Odd_A'], bankroll, kelly_fraction, min_stake, max_stake)
+    elif 'Back Draw' in rec: 
+        return kelly_stake(row['ML_Proba_Draw'], row['Odd_D'], bankroll, kelly_fraction, min_stake, max_stake)
+    elif '1X' in rec: 
+        return kelly_stake(row['ML_Proba_Home'] + row['ML_Proba_Draw'], row['Odd_1X'], bankroll, kelly_fraction, min_stake, max_stake)
+    elif 'X2' in rec: 
+        return kelly_stake(row['ML_Proba_Away'] + row['ML_Proba_Draw'], row['Odd_X2'], bankroll, kelly_fraction, min_stake, max_stake)
     return 0
 
+# Aplicar Kelly Criterion
 games_today['Kelly_Stake_ML'] = games_today.apply(get_kelly_stake_ml, axis=1)
+
+
+
 
 ########################################
 ##### Bloco 9 – Result Tracking ########
 ########################################
+
 def determine_result(row):
+    """Determina resultado baseado nos gols"""
     try:
         gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
         ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
@@ -830,6 +831,7 @@ def determine_result(row):
 games_today['Result_Today'] = games_today.apply(determine_result, axis=1)
 
 def check_recommendation(rec, result):
+    """Verifica se recomendação estava correta"""
     if pd.isna(rec) or result is None or rec == '❌ Avoid':
         return None
     rec = str(rec)
@@ -848,6 +850,7 @@ def check_recommendation(rec, result):
 games_today['ML_Correct'] = games_today.apply(lambda r: check_recommendation(r['ML_Recommendation'], r['Result_Today']), axis=1)
 
 def calculate_profit_with_kelly(rec, result, odds_row, ml_probabilities):
+    """Calcula profit considerando Kelly stake"""
     if pd.isna(rec) or result is None or rec == '❌ Avoid':
         return 0, 0
     
@@ -904,6 +907,9 @@ games_today[['Profit_ML_Fixed', 'Profit_ML_Kelly']] = games_today.apply(
     axis=1, result_type='expand'
 )
 
+
+
+
 ########################################
 #### Bloco 10 – Auto Parlay System #####
 ########################################
@@ -932,6 +938,7 @@ st.sidebar.markdown("**🎰 Parlay System**")
 st.sidebar.markdown("• Combina jogos sem edge individual  \n• Busca EV positivo em combinações  \n• Bankroll separado do principal")
 
 def calculate_parlay_odds(games_list, games_df):
+    """Calcula odds e probabilidade do parlay"""
     total_prob = 1.0
     total_odds = 1.0
     game_details = []
@@ -953,7 +960,9 @@ def calculate_parlay_odds(games_list, games_df):
         elif bet_type == 'X2':
             prob = game['ML_Proba_Away'] + game['ML_Proba_Draw']
             odds = game['Odd_X2']
-        
+        else:
+            continue
+            
         total_prob *= prob
         total_odds *= odds
         game_details.append({
@@ -967,6 +976,7 @@ def calculate_parlay_odds(games_list, games_df):
     return total_prob, round(total_odds, 2), expected_value, game_details
 
 def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, max_suggestions=5, min_legs=2, max_legs=4, weekend_filter=True, max_eligible=20):
+    """Gera sugestões de parlays lucrativos"""
     games_today_filtered = games_df.copy()
     
     eligible_games = []
@@ -1024,84 +1034,51 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
     
     # CALCULAR QUANTIDADE MÁXIMA DE COMBINAÇÕES
     total_combinations = 0
-    if min_legs <= 2 and len(eligible_games) >= 2:
-        total_combinations += math.comb(len(eligible_games), 2)
-    if min_legs <= 3 and max_legs >= 3 and len(eligible_games) >= 3:
-        total_combinations += math.comb(len(eligible_games), 3)
-    if max_legs >= 4 and len(eligible_games) >= 4:
-        total_combinations += math.comb(len(eligible_games), 4)
+    for legs in range(min_legs, max_legs + 1):
+        if len(eligible_games) >= legs:
+            total_combinations += math.comb(len(eligible_games), legs)
     
     st.info(f"🧮 Combinações possíveis: {total_combinations:,}")
     
     # AVISO SE MUITAS COMBINAÇÕES
     if total_combinations > 1000:
         st.warning("⚠️ Muitas combinações! Use filtros mais rigorosos.")
+        return []
     
     parlay_suggestions = []
     
-    # PARLAYS DE 2 LEGS - CRITÉRIOS MAIS RIGOROSOS PARA FDS
-    if min_legs <= 2 and len(eligible_games) >= 2:
-        ev_threshold = 0.08 if weekend_filter and len(eligible_games) > 15 else 0.05
-        prob_threshold = 0.30 if weekend_filter and len(eligible_games) > 15 else 0.25
+    # GERAR PARLAYS POR NÚMERO DE LEGS
+    for num_legs in range(min_legs, max_legs + 1):
+        if len(eligible_games) < num_legs:
+            continue
+            
+        # Definir thresholds baseado no número de legs
+        if num_legs == 2:
+            ev_threshold = 0.08 if weekend_filter and len(eligible_games) > 15 else 0.05
+            prob_threshold = 0.30 if weekend_filter and len(eligible_games) > 15 else 0.25
+            stake_multiplier = 0.08
+        elif num_legs == 3:
+            ev_threshold = 0.05 if weekend_filter and len(eligible_games) > 15 else 0.02
+            prob_threshold = 0.20 if weekend_filter and len(eligible_games) > 15 else 0.15
+            stake_multiplier = 0.05
+        else:  # 4 legs
+            ev_threshold = 0.10
+            prob_threshold = 0.10
+            stake_multiplier = 0.03
         
-        for combo in itertools.combinations(eligible_games, 2):
+        # Gerar combinações
+        for combo in itertools.combinations(eligible_games, num_legs):
             games_list = [(game[0], game[1]) for game in combo]
             prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
             
             if ev > ev_threshold and prob > prob_threshold:
-                stake = min(parlay_bankroll * 0.08, parlay_bankroll * 0.12 * prob)
+                stake = min(parlay_bankroll * stake_multiplier, parlay_bankroll * (stake_multiplier + 0.04) * prob)
                 stake = round(stake, 2)
                 
-                if stake >= 5:
+                min_stake_required = 2 if num_legs == 4 else (3 if num_legs == 3 else 5)
+                if stake >= min_stake_required:
                     parlay_suggestions.append({
-                        'type': '2-Leg Parlay',
-                        'games': games_list,
-                        'probability': prob,
-                        'odds': odds,
-                        'ev': ev,
-                        'stake': stake,
-                        'potential_win': round(stake * odds - stake, 2),
-                        'details': details
-                    })
-    
-    # PARLAYS DE 3 LEGS
-    if min_legs <= 3 and max_legs >= 3 and len(eligible_games) >= 3:
-        ev_threshold = 0.05 if weekend_filter and len(eligible_games) > 15 else 0.02
-        prob_threshold = 0.20 if weekend_filter and len(eligible_games) > 15 else 0.15
-        
-        for combo in itertools.combinations(eligible_games, 3):
-            games_list = [(game[0], game[1]) for game in combo]
-            prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
-            
-            if ev > ev_threshold and prob > prob_threshold:
-                stake = min(parlay_bankroll * 0.05, parlay_bankroll * 0.08 * prob)
-                stake = round(stake, 2)
-                
-                if stake >= 3:
-                    parlay_suggestions.append({
-                        'type': '3-Leg Parlay',
-                        'games': games_list,
-                        'probability': prob,
-                        'odds': odds,
-                        'ev': ev,
-                        'stake': stake,
-                        'potential_win': round(stake * odds - stake, 2),
-                        'details': details
-                    })
-    
-    # PARLAYS DE 4 LEGS - APENAS SE POUCOS JOGOS
-    if max_legs >= 4 and len(eligible_games) >= 4 and len(eligible_games) <= 25:  # Só calcular se até 25 jogos
-        for combo in itertools.combinations(eligible_games, 4):
-            games_list = [(game[0], game[1]) for game in combo]
-            prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
-            
-            if ev > 0.10 and prob > 0.10:
-                stake = min(parlay_bankroll * 0.03, parlay_bankroll * 0.05 * prob)
-                stake = round(stake, 2)
-                
-                if stake >= 2:
-                    parlay_suggestions.append({
-                        'type': '4-Leg Parlay',
+                        'type': f'{num_legs}-Leg Parlay',
                         'games': games_list,
                         'probability': prob,
                         'odds': odds,
@@ -1119,20 +1096,27 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
     return parlay_suggestions[:max_suggestions]
 
 # Gerar sugestões de parlay COM NOVOS PARÂMETROS
-parlay_suggestions = generate_parlay_suggestions(
-    games_today, 
-    parlay_bankroll, 
-    min_parlay_prob, 
-    max_parlay_suggestions,
-    min_parlay_legs,
-    max_parlay_legs,
-    weekend_filter,      # NOVO
-    max_eligible_games   # NOVO
-)
+try:
+    parlay_suggestions = generate_parlay_suggestions(
+        games_today, 
+        parlay_bankroll, 
+        min_parlay_prob, 
+        max_parlay_suggestions,
+        min_parlay_legs,
+        max_parlay_legs,
+        weekend_filter,      
+        max_eligible_games   
+    )
+except Exception as e:
+    st.error(f"Error generating parlay suggestions: {e}")
+    parlay_suggestions = []
+
+
 
 ########################################
 ##### Bloco 11 – Performance Summary ###
 ########################################
+
 finished_games = games_today.dropna(subset=['Result_Today'])
 
 def track_model_performance(games_today, finished_games):
@@ -1155,6 +1139,7 @@ def track_model_performance(games_today, finished_games):
             st.sidebar.error("⚠️ Performance alert: Consider adjusting thresholds")
 
 def summary_stats_ml(df):
+    """Calcula estatísticas de performance do ML"""
     bets = df[df['ML_Correct'].notna()]
     total_bets = len(bets)
     correct_bets = bets['ML_Correct'].sum()
@@ -1189,8 +1174,16 @@ def summary_stats_ml(df):
         "Kelly Bets Made": len(kelly_bets)
     }
 
-summary_ml = summary_stats_ml(finished_games)
-track_model_performance(games_today, finished_games)
+# Calcular estatísticas
+try:
+    summary_ml = summary_stats_ml(finished_games)
+    track_model_performance(games_today, finished_games)
+except Exception as e:
+    st.error(f"Error calculating performance stats: {e}")
+    summary_ml = {}
+
+
+
 
 ########################################
 ##### Bloco 12 – SUPER PARLAY OF THE DAY #
@@ -1297,122 +1290,15 @@ def generate_super_parlay(games_df, target_odds=50, max_games=8):
     return None
 
 # Gerar SUPER PARLAY
-super_parlay = generate_super_parlay(games_today, target_super_odds)
+try:
+    super_parlay = generate_super_parlay(games_today, target_super_odds)
+except Exception as e:
+    st.error(f"Error generating super parlay: {e}")
+    super_parlay = None
 
 
-########################################
-##### Bloco 12B – Diagnosis & Debug ###
-########################################
 
-st.header("🔍 Diagnosis - Why So Many Avoids?")
 
-# Analisar os motivos dos Avoid
-avoid_games = games_today[games_today['ML_Recommendation'] == '❌ Avoid']
-valid_games = games_today[games_today['ML_Recommendation'] != '❌ Avoid']
-
-st.subheader("📊 Avoid Analysis")
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric("Total Games", len(games_today))
-with col2:
-    st.metric("Avoid Games", len(avoid_games))
-with col3:
-    st.metric("Recommended Games", len(valid_games))
-
-# Motivos dos Avoid
-if len(avoid_games) > 0:
-    st.subheader("🎯 Reasons for Avoid")
-    
-    reasons = {
-        'Data Invalid': len(avoid_games[~avoid_games['ML_Data_Valid']]),
-        'Low Probability': 0,
-        'Negative EV': 0,
-        'Other': 0
-    }
-    
-    for idx, row in avoid_games.iterrows():
-        if not row['ML_Data_Valid']:
-            continue  # Já contamos acima
-            
-        p_home = row.get('ML_Proba_Home', 0)
-        p_draw = row.get('ML_Proba_Draw', 0)
-        p_away = row.get('ML_Proba_Away', 0)
-        
-        # Calcular EVs
-        ev_home = p_home * row.get('Odd_H', 2) - 1
-        ev_away = p_away * row.get('Odd_A', 2) - 1
-        ev_draw = p_draw * row.get('Odd_D', 3) - 1
-        ev_1x = (p_home + p_draw) * row.get('Odd_1X', 1.5) - 1
-        ev_x2 = (p_away + p_draw) * row.get('Odd_X2', 1.5) - 1
-        
-        max_prob = max(p_home, p_draw, p_away)
-        max_ev = max(ev_home, ev_away, ev_draw, ev_1x, ev_x2)
-        
-        if max_prob < threshold:
-            reasons['Low Probability'] += 1
-        elif max_ev < 0.02:  # min_value
-            reasons['Negative EV'] += 1
-        else:
-            reasons['Other'] += 1
-    
-    # Mostrar gráfico de razões
-    fig, ax = plt.subplots()
-    ax.bar(reasons.keys(), reasons.values())
-    ax.set_title("Reasons for Avoid Recommendations")
-    ax.set_ylabel("Number of Games")
-    plt.xticks(rotation=45)
-    st.pyplot(fig)
-    
-    # Mostrar detalhes dos avoids
-    with st.expander("📋 Detailed Avoid Analysis"):
-        avoid_debug = avoid_games.copy()
-        avoid_debug['Max_Probability'] = avoid_debug.apply(
-            lambda x: max(x.get('ML_Proba_Home', 0), x.get('ML_Proba_Draw', 0), x.get('ML_Proba_Away', 0)), 
-            axis=1
-        )
-        avoid_debug['Max_EV'] = avoid_debug.apply(
-            lambda x: max(
-                x.get('ML_Proba_Home', 0) * x.get('Odd_H', 2) - 1,
-                x.get('ML_Proba_Away', 0) * x.get('Odd_A', 2) - 1,
-                x.get('ML_Proba_Draw', 0) * x.get('Odd_D', 3) - 1
-            ), 
-            axis=1
-        )
-        
-        st.dataframe(avoid_debug[['Home', 'Away', 'League', 'Max_Probability', 'Max_EV', 'ML_Data_Valid', 'Missing_Features']])
-
-# Mostrar estatísticas das probabilidades
-if not games_today.empty:
-    st.subheader("📈 Probability Distribution")
-    
-    probs_home = games_today['ML_Proba_Home'].dropna()
-    probs_draw = games_today['ML_Proba_Draw'].dropna()
-    probs_away = games_today['ML_Proba_Away'].dropna()
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if len(probs_home) > 0:
-            st.metric("Avg Home Prob", f"{probs_home.mean():.1%}")
-    with col2:
-        if len(probs_draw) > 0:
-            st.metric("Avg Draw Prob", f"{probs_draw.mean():.1%}")
-    with col3:
-        if len(probs_away) > 0:
-            st.metric("Avg Away Prob", f"{probs_away.mean():.1%}")
-    
-    # Histograma de probabilidades
-    if len(probs_home) > 0:
-        fig, ax = plt.subplots()
-        ax.hist(probs_home, bins=20, alpha=0.7, label='Home')
-        ax.hist(probs_draw, bins=20, alpha=0.7, label='Draw')
-        ax.hist(probs_away, bins=20, alpha=0.7, label='Away')
-        ax.axvline(threshold, color='red', linestyle='--', label=f'Threshold ({threshold:.1%})')
-        ax.set_xlabel('Probability')
-        ax.set_ylabel('Frequency')
-        ax.set_title('Probability Distribution')
-        ax.legend()
-        st.pyplot(fig)
 
 ########################################
 ##### Bloco 13 – Display Results #######
@@ -1431,15 +1317,19 @@ st.sidebar.markdown(f"""
 • **Super Parlay Target:** {target_super_odds}  
 """)
 
+# HEADER PRINCIPAL
 st.header("📈 Day's Summary - Machine Learning Performance")
-st.json(summary_ml)
+if summary_ml:
+    st.json(summary_ml)
+else:
+    st.info("No finished games to display performance stats")
 
 st.header("🎯 Machine Learning Recommendations")
 
-# ATUALIZADO: Adicionar coluna de validação
+# COLUNAS PARA DISPLAY
 cols_to_show = [
     'Date', 'Time', 'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today',
-    'ML_Recommendation', 'ML_Data_Valid', 'ML_Correct', 'Kelly_Stake_ML',  # NOVO
+    'ML_Recommendation', 'ML_Data_Valid', 'ML_Correct', 'Kelly_Stake_ML',
     'Profit_ML_Fixed', 'Profit_ML_Kelly',
     'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away', 
     'Odd_H', 'Odd_D', 'Odd_A'
@@ -1447,26 +1337,36 @@ cols_to_show = [
 
 available_cols = [c for c in cols_to_show if c in games_today.columns]
 
-st.dataframe(
-    games_today[available_cols].style.format({
-        'Goals_H_Today': '{:.0f}',
-        'Goals_A_Today': '{:.0f}',
-        'Kelly_Stake_ML': '{:.2f}',
-        'Profit_ML_Fixed': '{:.2f}',
-        'Profit_ML_Kelly': '{:.2f}',
-        'ML_Proba_Home': '{:.3f}',
-        'ML_Proba_Draw': '{:.3f}',
-        'ML_Proba_Away': '{:.3f}',
-        'Odd_H': '{:.2f}',
-        'Odd_D': '{:.2f}',
-        'Odd_A': '{:.2f}'
-    }).apply(lambda x: ['background-color: #ffcccc' if x.name == 'ML_Data_Valid' and x.iloc[0] == False else '' 
-                       for i in range(len(x))], axis=1),  # Destaque visual
-    use_container_width=True,
-    height=800
-)
-    
+# Função para formatação condicional
+def highlight_invalid_rows(row):
+    if row['ML_Data_Valid'] == False:
+        return ['background-color: #ffcccc'] * len(row)
+    else:
+        return [''] * len(row)
 
+# Display dos dados
+try:
+    st.dataframe(
+        games_today[available_cols].style.format({
+            'Goals_H_Today': '{:.0f}',
+            'Goals_A_Today': '{:.0f}',
+            'Kelly_Stake_ML': '{:.2f}',
+            'Profit_ML_Fixed': '{:.2f}',
+            'Profit_ML_Kelly': '{:.2f}',
+            'ML_Proba_Home': '{:.3f}',
+            'ML_Proba_Draw': '{:.3f}',
+            'ML_Proba_Away': '{:.3f}',
+            'Odd_H': '{:.2f}',
+            'Odd_D': '{:.2f}',
+            'Odd_A': '{:.2f}'
+        }).apply(highlight_invalid_rows, axis=1),
+        use_container_width=True,
+        height=600
+    )
+except Exception as e:
+    st.error(f"Error displaying recommendations: {e}")
+
+# PARLAY RECOMMENDATIONS
 st.header("🎰 Auto Parlay Recommendations")
 
 if parlay_suggestions:
@@ -1487,8 +1387,6 @@ if parlay_suggestions:
                 st.write(f"• {detail['game']} - {detail['bet']} (Prob: {detail['prob']:.1%}, Odd: {detail['odds']})")
 else:
     st.info("No profitable parlay suggestions found for today.")
-    
-    
 
 # SUPER PARLAY SECTION
 st.header("🎉 SUPER PARLAY OF THE DAY")
