@@ -1317,11 +1317,11 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
             
         # Definir thresholds baseado no número de legs
         if num_legs == 2:
-            ev_threshold = 0.03 if weekend_filter and len(eligible_games) > 15 else 0.05
-            prob_threshold = 0.20 if weekend_filter and len(eligible_games) > 15 else 0.25
+            ev_threshold = 0.03 if weekend_filter and len(eligible_games) > 15 else 0.03
+            prob_threshold = 0.20 if weekend_filter and len(eligible_games) > 15 else 0.20
             stake_multiplier = 0.08
         elif num_legs == 3:
-            ev_threshold = 0.01 if weekend_filter and len(eligible_games) > 15 else 0.02
+            ev_threshold = 0.01 if weekend_filter and len(eligible_games) > 15 else 0.01
             prob_threshold = 0.15 if weekend_filter and len(eligible_games) > 15 else 0.15
             stake_multiplier = 0.05
         else:  # 4 legs
