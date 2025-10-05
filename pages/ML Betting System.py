@@ -443,6 +443,26 @@ def get_league_confidence_map(confidence_df):
     return dict(zip(confidence_df['League'], confidence_df['League_Confidence']))
 
 
+def classify_league_fallback(league_name, history_df):
+    """Classificação fallback para ligas não encontradas no histórico"""
+    if history_df.empty or 'League' not in history_df.columns:
+        return "🔴 Dados Insuficientes"
+    
+    # Verificar se a liga existe mas tem poucos dados
+    league_games = history_df[history_df['League'] == league_name]
+    if len(league_games) > 0:
+        game_count = len(league_games)
+        if game_count >= 50:
+            return "🟡 Liga Emergente"
+        elif game_count >= 20:
+            return "🔴 Liga Poucos Dados"
+        else:
+            return "🔴 Liga Muito Nova"
+    
+    # Liga completamente nova (não existe no histórico)
+    return "🔴 Liga Inédita"
+
+
 
 ########################################
 ####### Bloco 4 – Load Data ############
@@ -659,12 +679,29 @@ def compute_league_bands(history_df):
         return pd.DataFrame()
 
 # Aplicar classificações de liga
+# Aplicar classificações de liga
 try:
     league_class = classify_leagues_variation(history)
     league_bands = compute_league_bands(history)
     
     if not league_class.empty:
         games_today = games_today.merge(league_class, on='League', how='left')
+        
+        # 🔥 CORREÇÃO: Preencher NaN com classificação fallback
+        nan_mask = games_today['League_Classification'].isna()
+        if nan_mask.any():
+            st.warning(f"⚠️ {nan_mask.sum()} ligas sem classificação histórica - aplicando fallback...")
+            for idx in games_today[nan_mask].index:
+                league_name = games_today.at[idx, 'League']
+                fallback_class = classify_league_fallback(league_name, history)
+                games_today.at[idx, 'League_Classification'] = fallback_class
+    else:
+        # Se league_class estiver vazio, classificar TODAS as ligas como fallback
+        st.warning("⚠️ Nenhuma classificação de liga disponível - usando fallback para todas")
+        games_today['League_Classification'] = games_today['League'].apply(
+            lambda x: classify_league_fallback(x, history)
+        )
+    
     if not league_bands.empty:
         games_today = games_today.merge(league_bands, on='League', how='left')
 
@@ -683,6 +720,49 @@ try:
 
 except Exception as e:
     st.warning(f"Some league features could not be created: {e}")
+
+
+# 🔍 DIAGNÓSTICO DETALHADO DAS LIGAS
+st.header("🔍 Diagnóstico de Classificação de Ligas")
+
+# Verificar ligas problemáticas
+unique_leagues_today = games_today['League'].unique()
+unique_leagues_history = history['League'].unique() if 'League' in history.columns else []
+
+missing_leagues = set(unique_leagues_today) - set(unique_leagues_history)
+new_leagues = set(unique_leagues_today) - set(unique_leagues_history)
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Ligas Hoje", len(unique_leagues_today))
+with col2:
+    st.metric("Ligas Histórico", len(unique_leagues_history))
+with col3:
+    st.metric("Ligas Novas", len(new_leagues))
+
+if new_leagues:
+    with st.expander("📋 Lista de Ligas Novas/Inéditas"):
+        st.write(f"**{len(new_leagues)} ligas não encontradas no histórico:**")
+        for league in sorted(new_leagues):
+            st.write(f"• {league}")
+
+# Estatísticas de classificação
+if 'League_Classification' in games_today.columns:
+    st.subheader("📊 Distribuição de Classificações")
+    classification_counts = games_today['League_Classification'].value_counts()
+    
+    # Mostrar contagens
+    for classification, count in classification_counts.items():
+        st.write(f"{classification}: {count} ligas")
+    
+    # Verificar se ainda há NaN
+    nan_count = games_today['League_Classification'].isna().sum()
+    if nan_count > 0:
+        st.error(f"❌ AINDA EXISTEM {nan_count} LIGAS COM NaN!")
+        nan_leagues = games_today[games_today['League_Classification'].isna()]['League'].unique()
+        st.write("Ligas problemáticas:", list(nan_leagues))
+    else:
+        st.success("✅ TODAS as ligas foram classificadas com sucesso!")
 
 
 
