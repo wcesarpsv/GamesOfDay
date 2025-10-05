@@ -153,6 +153,53 @@ def clean_dataframe(df):
     
     return df
 
+def auto_adjust_threshold(games_today, target_recommendations=8):
+    """Ajusta automaticamente o threshold baseado no número de recomendações"""
+    if games_today.empty:
+        return 0.60
+    
+    valid_games = games_today[games_today['ML_Data_Valid'] == True]
+    if len(valid_games) == 0:
+        return 0.60
+    
+    # Testa diferentes thresholds
+    test_threshold = 0.50
+    max_threshold = 0.70
+    
+    best_threshold = 0.60
+    best_count = 0
+    
+    while test_threshold <= max_threshold:
+        count = 0
+        for idx, row in valid_games.iterrows():
+            if not row['ML_Data_Valid']:
+                continue
+                
+            p_home = row.get('ML_Proba_Home', 0)
+            p_draw = row.get('ML_Proba_Draw', 0) 
+            p_away = row.get('ML_Proba_Away', 0)
+            
+            # Calcular EVs para ver se tem valor
+            ev_home = p_home * row.get('Odd_H', 2.0) - 1
+            ev_away = p_away * row.get('Odd_A', 2.0) - 1
+            ev_draw = p_draw * row.get('Odd_D', 3.0) - 1
+            
+            max_prob = max(p_home, p_draw, p_away)
+            max_ev = max(ev_home, ev_away, ev_draw)
+            
+            if max_prob >= test_threshold and max_ev >= 0.02:
+                count += 1
+        
+        # Prefere thresholds que dão perto do target
+        if abs(count - target_recommendations) < abs(best_count - target_recommendations):
+            best_threshold = test_threshold
+            best_count = count
+        
+        test_threshold += 0.02
+    
+    return best_threshold
+
+
 def dynamic_threshold_adjustment(games_today):
     """Adjust threshold based on number of games and market quality"""
     if games_today.empty:
