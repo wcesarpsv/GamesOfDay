@@ -1487,24 +1487,24 @@ cols_to_show = [
 available_cols = [c for c in cols_to_show if c in games_today.columns]
 
 # Função para formatação condicional - ATUALIZADA
-def highlight_confidence_rows(row):
-    styles = [''] * len(row)
+# def highlight_confidence_rows(row):
+#     styles = [''] * len(row)
     
-    # Destaque por confiança da liga
-    if 'League_Confidence' in row.index:
-        confidence = row['League_Confidence']
-        if confidence == "🟢 Alta":
-            styles = ['background-color: #e6f7e6'] * len(row)  # Verde claro
-        elif confidence == "🟡 Média":
-            styles = ['background-color: #fff9e6'] * len(row)  # Amarelo claro
-        elif confidence == "🔴 Baixa":
-            styles = ['background-color: #ffe6e6'] * len(row)  # Vermelho claro
+#     # Destaque por confiança da liga
+#     if 'League_Confidence' in row.index:
+#         confidence = row['League_Confidence']
+#         if confidence == "🟢 Alta":
+#             styles = ['background-color: #e6f7e6'] * len(row)  # Verde claro
+#         elif confidence == "🟡 Média":
+#             styles = ['background-color: #fff9e6'] * len(row)  # Amarelo claro
+#         elif confidence == "🔴 Baixa":
+#             styles = ['background-color: #ffe6e6'] * len(row)  # Vermelho claro
     
-    # Destaque para dados inválidos (sobrescreve confiança)
-    if 'ML_Data_Valid' in row.index and row['ML_Data_Valid'] == False:
-        styles = ['background-color: #ffcccc'] * len(row)  # Vermelho forte
+#     # Destaque para dados inválidos (sobrescreve confiança)
+#     if 'ML_Data_Valid' in row.index and row['ML_Data_Valid'] == False:
+#         styles = ['background-color: #ffcccc'] * len(row)  # Vermelho forte
     
-    return styles
+#     return styles
 
 # Display dos dados - CORRIGIDO (fechando o parêntese do apply)
 try:
@@ -1521,7 +1521,7 @@ try:
             'Odd_H': '{:.2f}',
             'Odd_D': '{:.2f}',
             'Odd_A': '{:.2f}'
-        }).apply(highlight_confidence_rows, axis=1),  # ← AQUI ESTÁ CORRETO AGORA
+        }),
         use_container_width=True,
         height=600
     )
