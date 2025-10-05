@@ -464,6 +464,24 @@ def classify_league_fallback(league_name, history_df):
 
 
 
+def has_duplicate_games(parlay_games, existing_parlays):
+    """Verifica se algum jogo do parlay já existe em parlays existentes"""
+    if not existing_parlays:
+        return False
+    
+    current_game_ids = {game[0] for game in parlay_games}
+    
+    for existing_parlay in existing_parlays:
+        existing_game_ids = {game[0] for game in existing_parlay['games']}
+        
+        # Se houver qualquer jogo em comum, é duplicado
+        if current_game_ids & existing_game_ids:
+            return True
+    
+    return False
+
+
+
 ########################################
 ####### Bloco 4 – Load Data ############
 ########################################
@@ -1310,29 +1328,33 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
     
     parlay_suggestions = []
     
-    # GERAR PARLAYS POR NÚMERO DE LEGS
+    # 🔥 CORREÇÃO: REMOVER LINHA DUPLICADA AQUI!
+    # GERAR PARLAYS POR NÚMERO DE LEGS  # ← MANTER APENAS ESTA LINHA
+    
     for num_legs in range(min_legs, max_legs + 1):
         if len(eligible_games) < num_legs:
             continue
             
-        # Definir thresholds baseado no número de legs
+        # 🔥 CRITÉRIOS MAIS FLEXÍVEIS PARA GERAR MAIS PARLAYS
         if num_legs == 2:
-            ev_threshold = 0.03 if weekend_filter and len(eligible_games) > 15 else 0.03
-            prob_threshold = 0.20 if weekend_filter and len(eligible_games) > 15 else 0.20
+            ev_threshold = 0.03  # Reduzido de 0.05/0.08 para 0.03
+            prob_threshold = 0.20  # Reduzido de 0.25/0.30 para 0.20
             stake_multiplier = 0.08
         elif num_legs == 3:
-            ev_threshold = 0.01 if weekend_filter and len(eligible_games) > 15 else 0.01
-            prob_threshold = 0.15 if weekend_filter and len(eligible_games) > 15 else 0.15
+            ev_threshold = 0.01  # Reduzido de 0.02/0.05 para 0.01
+            prob_threshold = 0.15  # Reduzido de 0.15/0.20 para 0.15
             stake_multiplier = 0.05
         else:  # 4 legs
-            ev_threshold = 0.005
-            prob_threshold = 0.10
+            ev_threshold = 0.005  # Reduzido de 0.10 para 0.005
+            prob_threshold = 0.10  # Mantido
             stake_multiplier = 0.03
         
+        st.info(f"🎯 Gerando {num_legs}-leg parlays (EV > {ev_threshold:.3f}, Prob > {prob_threshold:.1%})")
+        
         # Gerar combinações
+        parlay_count_for_legs = 0
         for combo in itertools.combinations(eligible_games, num_legs):
             games_list = [(game[0], game[1]) for game in combo]
-            # 🔥 CORREÇÃO: Usar games_df (parâmetro original) em vez de games_today_filtered
             prob, odds, ev, details = calculate_parlay_odds(games_list, games_df)
             
             if ev > ev_threshold and prob > prob_threshold:
@@ -1340,17 +1362,31 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
                 stake = round(stake, 2)
                 
                 min_stake_required = 2 if num_legs == 4 else (3 if num_legs == 3 else 5)
+                
+                # 🔥 VERIFICAR SE HÁ JOGOS DUPLICADOS NOS PARLAYS JÁ SELECIONADOS
                 if stake >= min_stake_required:
-                    parlay_suggestions.append({
-                        'type': f'{num_legs}-Leg Parlay',
-                        'games': games_list,
-                        'probability': prob,
-                        'odds': odds,
-                        'ev': ev,
-                        'stake': stake,
-                        'potential_win': round(stake * odds - stake, 2),
-                        'details': details
-                    })
+                    if not has_duplicate_games(games_list, parlay_suggestions):
+                        parlay_suggestions.append({
+                            'type': f'{num_legs}-Leg Parlay',
+                            'games': games_list,
+                            'probability': prob,
+                            'odds': odds,
+                            'ev': ev,
+                            'stake': stake,
+                            'potential_win': round(stake * odds - stake, 2),
+                            'details': details
+                        })
+                        parlay_count_for_legs += 1
+                        
+                        # Limitar por max_suggestions
+                        if len(parlay_suggestions) >= max_suggestions:
+                            break
+        
+        st.success(f"✅ {parlay_count_for_legs} {num_legs}-leg parlays gerados")
+        
+        # Parar se atingiu o máximo de sugestões
+        if len(parlay_suggestions) >= max_suggestions:
+            break
     
     # Ordenar por Expected Value
     parlay_suggestions.sort(key=lambda x: x['ev'], reverse=True)
