@@ -595,6 +595,31 @@ def calculate_confidence_system(row, prob_away):
         'home_reason': " | ".join(home_reason)
     }
 
+def calculate_stake_recommendation(confidence_level, base_stake=100):
+    """
+    Calcula stake recomendado baseado no nível de confiança
+    """
+    stake_multipliers = {
+        'ALTA': 1.0,
+        'MÉDIA': 0.5,
+        'BAIXA': 0.0,
+        'FORTE': 0.8,
+        'MODERADA': 0.3,
+        'FRACA': 0.0
+    }
+    
+    return base_stake * stake_multipliers.get(confidence_level, 0.0)
+
+# ADICIONAR TAMBÉM VERIFICAÇÃO DE SEGURANÇA PARA A FUNÇÃO
+def safe_calculate_stake(confidence_level, base_stake=100):
+    """
+    Versão segura da função de cálculo de stake
+    """
+    try:
+        return calculate_stake_recommendation(confidence_level, base_stake)
+    except:
+        return 0.0
+
 ##################### BLOCO 7 – SIDEBAR CONFIG #####################
 st.sidebar.header("⚙️ Settings")
 ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest", "XGBoost"])
@@ -611,92 +636,42 @@ strategy_choice = st.sidebar.selectbox(
 ##################### BLOCO 8 – APLICAÇÃO DO MODELO AWAY PREMIUM #####################
 
 if strategy_choice == "Away Premium + Home Opportunities":
-    # VERIFICAÇÃO FINAL ANTES DO TREINAMENTO
-    st.info("🔍 Verificando dados antes do treinamento...")
+    # ... (código anterior mantido)
     
-    # Verificar se temos dados suficientes
-    if len(X_away) < 50:
-        st.error(f"❌ Dados históricos insuficientes: apenas {len(X_away)} amostras")
-        st.info("⚠️ Usando estratégia original por falta de dados")
-        strategy_choice = "Original Both Sides"
-    elif len(y_away.unique()) < 2:
-        st.error(f"❌ Target com apenas uma classe: {y_away.unique()}")
-        st.info("⚠️ Usando estratégia original por problema no target")
-        strategy_choice = "Original Both Sides"
-    else:
-        st.info("🤖 Treinando modelo Away Premium...")
-        away_model, away_feature_cols = train_away_premium_model(X_away, y_away, retrain)
+    # Aplicar sistema de confiança apenas se temos probabilidades
+    if 'p_ah_away_yes' in games_today.columns and not games_today['p_ah_away_yes'].isna().all():
+        confidence_data = []
+        for idx, row in games_today.iterrows():
+            prob_away = row['p_ah_away_yes']
+            confidence_info = calculate_confidence_system(row, prob_away)
+            confidence_info['prob_away'] = prob_away
+            confidence_info['prob_home'] = 1 - prob_away  # Oportunidade indireta
+            confidence_data.append(confidence_info)
         
-        if away_model is None:
-            st.error("❌ Falha no treinamento do modelo Away Premium")
-            st.info("⚠️ Voltando para estratégia original")
-            strategy_choice = "Original Both Sides"
-        else:
-            # Aplicar modelo aos jogos de hoje
-            if not games_today.empty:
-                # Garantir que temos as mesmas features
-                X_today_away = X_today_away.reindex(columns=away_feature_cols, fill_value=0)
-                
-                # Normalizar dados de hoje
-                if normalize_features and numeric_away_features:
-                    scaler_path = os.path.join(MODELS_FOLDER, "away_premium_scaler.pkl")
-                    if os.path.exists(scaler_path):
-                        scaler = joblib.load(scaler_path)
-                        available_numeric = [f for f in numeric_away_features if f in X_today_away.columns]
-                        if available_numeric:
-                            X_today_away[available_numeric] = scaler.transform(X_today_away[available_numeric])
-                
-                # Fazer previsões
-                try:
-                    away_probs = away_model.predict_proba(X_today_away)
-                    # VERIFICAR A ESTRUTURA DAS PROBABILIDADES
-                    st.write(f"🔍 Estrutura das probabilidades: {away_probs.shape}")
-                    st.write(f"🔍 Classes do modelo: {away_model.classes_}")
-                    
-                    # Garantir que estamos pegando a probabilidade correta
-                    if len(away_model.classes_) == 2:
-                        # Encontrar o índice da classe 1 (win)
-                        class_1_index = np.where(away_model.classes_ == 1)[0][0]
-                        games_today['p_ah_away_yes'] = away_probs[:, class_1_index]
-                        st.success(f"✅ Probabilidades calculadas (classe 1 no índice {class_1_index})")
-                    else:
-                        # Fallback: usar segunda coluna se não conseguir identificar
-                        games_today['p_ah_away_yes'] = away_probs[:, 1]
-                        st.warning("⚠️ Usando fallback para probabilidades")
-                        
-                except Exception as e:
-                    st.error(f"❌ Erro ao calcular probabilidades: {e}")
-                    # Criar coluna vazia para evitar KeyError
-                    games_today['p_ah_away_yes'] = np.nan
-                
-                # Aplicar sistema de confiança apenas se temos probabilidades
-                if 'p_ah_away_yes' in games_today.columns and not games_today['p_ah_away_yes'].isna().all():
-                    confidence_data = []
-                    for idx, row in games_today.iterrows():
-                        prob_away = row['p_ah_away_yes']
-                        confidence_info = calculate_confidence_system(row, prob_away)
-                        confidence_info['prob_away'] = prob_away
-                        confidence_info['prob_home'] = 1 - prob_away  # Oportunidade indireta
-                        confidence_data.append(confidence_info)
-                    
-                    # Adicionar dados de confiança ao dataframe
-                    confidence_df = pd.DataFrame(confidence_data)
-                    games_today = pd.concat([games_today, confidence_df], axis=1)
-                    
-                    # Calcular stakes recomendados
-                    games_today['stake_away'] = games_today['away_confidence'].apply(
-                        lambda x: calculate_stake_recommendation(x, 100)
-                    )
-                    games_today['stake_home'] = games_today['home_opportunity'].apply(
-                        lambda x: calculate_stake_recommendation(x, 100)
-                    )
-                else:
-                    st.error("❌ Não foi possível calcular probabilidades para os jogos de hoje")
-                    # Criar colunas vazias para evitar erros
-                    games_today['away_confidence'] = 'BAIXA'
-                    games_today['home_opportunity'] = 'FRACA'
-                    games_today['stake_away'] = 0
-                    games_today['stake_home'] = 0
+        # Adicionar dados de confiança ao dataframe
+        confidence_df = pd.DataFrame(confidence_data)
+        games_today = pd.concat([games_today, confidence_df], axis=1)
+        
+        # Calcular stakes recomendados COM VERIFICAÇÃO DE SEGURANÇA
+        try:
+            games_today['stake_away'] = games_today['away_confidence'].apply(
+                lambda x: safe_calculate_stake(x, 100)
+            )
+            games_today['stake_home'] = games_today['home_opportunity'].apply(
+                lambda x: safe_calculate_stake(x, 100)
+            )
+            st.success("✅ Stakes calculados com sucesso")
+        except Exception as e:
+            st.error(f"❌ Erro ao calcular stakes: {e}")
+            games_today['stake_away'] = 0
+            games_today['stake_home'] = 0
+    else:
+        st.error("❌ Não foi possível calcular probabilidades para os jogos de hoje")
+        # Criar colunas vazias para evitar erros
+        games_today['away_confidence'] = 'BAIXA'
+        games_today['home_opportunity'] = 'FRACA'
+        games_today['stake_away'] = 0
+        games_today['stake_home'] = 0
 
    ##################### BLOCO 9 – VISUALIZAÇÃO DOS RESULTADOS PREMIUM #####################
 
