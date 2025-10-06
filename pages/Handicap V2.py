@@ -309,7 +309,7 @@ def diagnose_handicap_targets(df):
     
     # Verificar overlap (quando ambos são 1)
     overlap = ((df['Target_AH_Home'] == 1) & (df['Target_AH_Away'] == 1)).sum()
-    st.write(f"**🚨 Jogos onde AMBOS targets são 1: {overcome}**")
+    st.write(f"**🚨 Jogos onde AMBOS targets são 1: {overlap}**")  # CORRIGIDO: overlap (não overcome)
     
     # Verificar quando ambos são 0
     both_zero = ((df['Target_AH_Home'] == 0) & (df['Target_AH_Away'] == 0)).sum()
