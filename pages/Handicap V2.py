@@ -204,6 +204,159 @@ history["Target_AH_Home"] = history["Handicap_Home_Result"].apply(lambda x: 1 if
 history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
 
 
+##################### BLOCO 3.5 – VERIFICAÇÃO DA QUALIDADE DOS DADOS AGGRESSION #####################
+
+st.markdown("### 🔍 Verificação da Qualidade dos Dados Aggression")
+
+def check_data_quality(df, df_name):
+    """Verifica a qualidade dos dados de Aggression"""
+    st.write(f"**📊 Análise para: {df_name}**")
+    
+    # Lista de colunas esperadas de Aggression
+    aggression_cols_expected = [
+        'Aggression_Home', 'Aggression_Away', 
+        'HandScore_Home', 'HandScore_Away',
+        'OverScore_Home', 'OverScore_Away'
+    ]
+    
+    # Verificar quais colunas existem
+    available_cols = [col for col in aggression_cols_expected if col in df.columns]
+    
+    if not available_cols:
+        st.warning(f"⚠️ Nenhuma coluna de Aggression encontrada em {df_name}")
+        return
+    
+    st.success(f"✅ Colunas de Aggression encontradas: {len(available_cols)}")
+    
+    # 1. Estatísticas básicas
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write("**Estatísticas Descritivas:**")
+        stats_df = df[available_cols].describe().round(3)
+        st.dataframe(stats_df, use_container_width=True)
+    
+    with col2:
+        st.write("**Valores Missing:**")
+        missing_df = pd.DataFrame({
+            'Coluna': available_cols,
+            'Missing': [df[col].isnull().sum() for col in available_cols],
+            'Preenchido (%)': [f"{(1 - df[col].isnull().sum() / len(df)) * 100:.1f}%" for col in available_cols]
+        })
+        st.dataframe(missing_df, use_container_width=True)
+    
+    # 2. Verificar valores extremos
+    st.write("**🔎 Valores Extremos (fora de ±3 desvios padrão):**")
+    extremes_info = []
+    for col in available_cols:
+        if df[col].dtype in ['float64', 'int64']:
+            mean_val = df[col].mean()
+            std_val = df[col].std()
+            lower_bound = mean_val - 3 * std_val
+            upper_bound = mean_val + 3 * std_val
+            extreme_count = ((df[col] < lower_bound) | (df[col] > upper_bound)).sum()
+            extremes_info.append({
+                'Coluna': col,
+                'Extremos': extreme_count,
+                'Percentual': f"{(extreme_count / len(df)) * 100:.1f}%",
+                'Mínimo': df[col].min(),
+                'Máximo': df[col].max()
+            })
+    
+    if extremes_info:
+        extremes_df = pd.DataFrame(extremes_info)
+        st.dataframe(extremes_df, use_container_width=True)
+    
+    # 3. Verificar distribuição
+    st.write("**📈 Distribuição dos Valores:**")
+    dist_cols = st.columns(min(3, len(available_cols)))
+    
+    for idx, col in enumerate(available_cols):
+        if df[col].dtype in ['float64', 'int64']:
+            with dist_cols[idx % 3]:
+                st.write(f"**{col}**")
+                st.write(f"Média: {df[col].mean():.3f}")
+                st.write(f"Mediana: {df[col].median():.3f}")
+                st.write(f"Std: {df[col].std():.3f}")
+    
+    return available_cols
+
+# Verificar qualidade nos dados históricos
+if not history.empty:
+    available_history_cols = check_data_quality(history, "Dados Históricos")
+    
+    # Mostrar exemplos dos dados
+    if available_history_cols:
+        st.write("**👀 Amostra dos Dados (primeiras 5 linhas):**")
+        sample_display = history[available_history_cols].head().round(3)
+        st.dataframe(sample_display, use_container_width=True)
+
+# Verificar qualidade nos dados de hoje
+if not games_today.empty:
+    available_today_cols = check_data_quality(games_today, "Dados de Hoje")
+    
+    # Comparar colunas disponíveis
+    if available_history_cols and available_today_cols:
+        st.write("**🔄 Comparação de Colunas Disponíveis:**")
+        comparison_df = pd.DataFrame({
+            'Coluna': list(set(available_history_cols + available_today_cols)),
+            'No Histórico': [1 if col in available_history_cols else 0 for col in set(available_history_cols + available_today_cols)],
+            'Hoje': [1 if col in available_today_cols else 0 for col in set(available_history_cols + available_today_cols)]
+        })
+        st.dataframe(comparison_df, use_container_width=True)
+
+# Adicionar também uma correção na função de carregamento de arquivos
+def load_all_games_improved(folder):
+    """Carrega todos os CSVs com tratamento de encoding"""
+    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
+    if not files:
+        return pd.DataFrame()
+    
+    dfs = []
+    for file in files:
+        try:
+            # Tentar diferentes encodings
+            encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1', 'windows-1252']
+            df_loaded = None
+            
+            for encoding in encodings:
+                try:
+                    df_loaded = pd.read_csv(os.path.join(folder, file), encoding=encoding)
+                    # Verificar se as colunas importantes estão presentes
+                    important_cols = ['Home', 'Away', 'League', 'Goals_H_FT', 'Goals_A_FT']
+                    if any(col in df_loaded.columns for col in important_cols):
+                        dfs.append(preprocess_df(df_loaded))
+                        st.success(f"✓ {file} - Encoding: {encoding}")
+                        break
+                    else:
+                        st.warning(f"⚠️ {file} - Encoding {encoding}: Colunas importantes não encontradas")
+                except (UnicodeDecodeError, UnicodeError) as e:
+                    continue
+                except Exception as e:
+                    st.error(f"❌ {file} - Erro com encoding {encoding}: {e}")
+                    continue
+            
+            if df_loaded is None:
+                st.error(f"❌ {file} - Não foi possível carregar com nenhum encoding")
+                
+        except Exception as e:
+            st.error(f"❌ Erro ao carregar {file}: {e}")
+    
+    if dfs:
+        result_df = pd.concat(dfs, ignore_index=True)
+        st.success(f"✅ Total de jogos carregados: {len(result_df)}")
+        return result_df
+    else:
+        st.error("❌ Nenhum arquivo foi carregado com sucesso")
+        return pd.DataFrame()
+
+# Substituir a chamada original no Bloco 3
+st.info("🔄 Carregando dados históricos com verificação de encoding...")
+history = filter_leagues(load_all_games_improved(GAMES_FOLDER))
+
+
+
+
 ##################### BLOCO 4 – FEATURE ENGINEERING COM AGGRESSION #####################
 
 # NOVO: ADICIONAR FEATURES DE AGGRESSION
@@ -214,31 +367,46 @@ def add_aggression_features(df):
     """
     aggression_features = []
     
+    # Verificar colunas disponíveis
+    available_cols = df.columns.tolist()
+    
+    st.write("**🔍 Colunas disponíveis para Aggression:**")
+    aggression_related = [col for col in available_cols if any(keyword in col.lower() for keyword in 
+                        ['aggression', 'handscore', 'overscore'])]
+    st.write(aggression_related)
+    
+    # Features básicas de aggression
     if all(col in df.columns for col in ['Aggression_Home', 'Aggression_Away']):
-        # CORRIGIR: Garantir que os nomes estão corretos
-        df['Handicap_Balance'] = df['Aggression_Home'] - df['Aggression_Away']
-        df['Underdog_Indicator'] = -df['Handicap_Balance']  # Positivo = Home underdog
-        
-        # Power vs Market Perception - CORRIGIR NOME
-        if 'M_H' in df.columns and 'M_A' in df.columns:
-            df['Power_Perception_Home'] = df['M_H'] - df['Aggression_Home']
-            df['Power_Perception_Away'] = df['M_A'] - df['Aggression_Away']
-            df['Power_Perception_Diff'] = df['Power_Perception_Home'] - df['Power_Perception_Away']
-        
-        aggression_features.extend(['Aggression_Home', 'Aggression_Away', 'Handicap_Balance', 
-                                  'Underdog_Indicator', 'Power_Perception_Diff'])
+        # Verificar se os dados fazem sentido
+        if df['Aggression_Home'].notna().any() and df['Aggression_Away'].notna().any():
+            df['Handicap_Balance'] = df['Aggression_Home'] - df['Aggression_Away']
+            df['Underdog_Indicator'] = -df['Handicap_Balance']  # Positivo = Home underdog
+            
+            # Power vs Market Perception
+            if 'M_H' in df.columns and 'M_A' in df.columns:
+                df['Power_Perception_Home'] = df['M_H'] - df['Aggression_Home']
+                df['Power_Perception_Away'] = df['M_A'] - df['Aggression_Away']
+                df['Power_Perception_Diff'] = df['Power_Perception_Home'] - df['Power_Perception_Away']
+            
+            aggression_features.extend(['Aggression_Home', 'Aggression_Away', 'Handicap_Balance', 
+                                      'Underdog_Indicator', 'Power_Perception_Diff'])
+        else:
+            st.warning("⚠️ Colunas de Aggression existem mas têm muitos valores missing")
     
-    # CORRIGIR: HandScore
+    # HandScore
     if all(col in df.columns for col in ['HandScore_Home', 'HandScore_Away']):
-        df['HandScore_Diff'] = df['HandScore_Home'] - df['HandScore_Away']
-        aggression_features.append('HandScore_Diff')
+        if df['HandScore_Home'].notna().any() and df['HandScore_Away'].notna().any():
+            df['HandScore_Diff'] = df['HandScore_Home'] - df['HandScore_Away']
+            aggression_features.append('HandScore_Diff')
     
-    # CORRIGIR: OverScore
+    # OverScore
     if all(col in df.columns for col in ['OverScore_Home', 'OverScore_Away']):
-        df['OverScore_Diff'] = df['OverScore_Home'] - df['OverScore_Away']
-        df['Total_OverScore'] = df['OverScore_Home'] + df['OverScore_Away']
-        aggression_features.extend(['OverScore_Diff', 'Total_OverScore'])
+        if df['OverScore_Home'].notna().any() and df['OverScore_Away'].notna().any():
+            df['OverScore_Diff'] = df['OverScore_Home'] - df['OverScore_Away']
+            df['Total_OverScore'] = df['OverScore_Home'] + df['OverScore_Away']
+            aggression_features.extend(['OverScore_Diff', 'Total_OverScore'])
     
+    st.write(f"**✅ Features de Aggression criadas:** {aggression_features}")
     return df, aggression_features
 
 # Aplicar às bases
