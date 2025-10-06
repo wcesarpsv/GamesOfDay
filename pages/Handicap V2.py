@@ -204,33 +204,24 @@ history["Target_AH_Home"] = history["Handicap_Home_Result"].apply(lambda x: 1 if
 history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
 
 
-##################### BLOCO 3.5 – CORREÇÃO DOS NOMES DAS COLUNAS #####################
+##################### BLOCO 3.5 – VERIFICAÇÃO DAS COLUNAS DE AGGRESSION #####################
 
-def correct_column_names(df):
-    """Corrige os nomes das colunas de Aggression"""
-    column_mapping = {
-        'Aggression_Name': 'Aggression_Home',
-        'Aggression_Array': 'Aggression_Away', 
-        'HardScore_Name': 'HandScore_Home',
-        'HardScore_Array': 'HandScore_Away',
-        'OverScore_Name': 'OverScore_Home',
-        'OverScore_Array': 'OverScore_Away'
-    }
-    
-    # Aplicar o mapeamento
-    df_corrected = df.rename(columns=column_mapping)
-    
-    # Log das alterações
-    renamed_cols = [old for old in column_mapping.keys() if old in df.columns]
-    if renamed_cols:
-        st.success(f"✅ Colunas renomeadas: {renamed_cols}")
-    
-    return df_corrected
+st.info("🔍 Verificando colunas de Aggression disponíveis...")
 
-# Aplicar correção aos dataframes
-st.info("🔧 Corrigindo nomes das colunas...")
-history = correct_column_names(history)
-games_today = correct_column_names(games_today)
+# Listar colunas disponíveis
+aggression_related_cols = [col for col in history.columns if any(keyword in col for keyword in 
+                            ['Aggression', 'HandScore', 'OverScore'])]
+
+st.write(f"**Colunas de Aggression encontradas:** {aggression_related_cols}")
+
+# Verificar se temos as colunas essenciais
+essential_cols = ['Aggression_Home', 'Aggression_Away']
+missing_essential = [col for col in essential_cols if col not in history.columns]
+
+if missing_essential:
+    st.warning(f"⚠️ Colunas essenciais faltando: {missing_essential}")
+else:
+    st.success("✅ Todas as colunas essenciais de Aggression estão disponíveis!")
 
 
 ##################### BLOCO 3.6 – TRATAMENTO DE DADOS MISSING #####################
@@ -257,10 +248,38 @@ def handle_missing_aggression(df, df_name):
     st.success(f"✅ Missing values tratados para {df_name}")
     return df
 
-# Aplicar tratamento
-if any(col in history.columns for col in ['Aggression_Home', 'Aggression_Away']):
+##################### BLOCO 3.6 – TRATAMENTO DE DADOS MISSING #####################
+
+def handle_missing_aggression(df, df_name):
+    """Trata dados missing nas colunas de Aggression"""
+    aggression_cols = ['Aggression_Home', 'Aggression_Away', 'HandScore_Home', 'HandScore_Away', 'OverScore_Home', 'OverScore_Away']
+    available_cols = [col for col in aggression_cols if col in df.columns]
+    
+    if not available_cols:
+        st.warning(f"⚠️ Nenhuma coluna de Aggression encontrada em {df_name}")
+        return df
+    
+    st.write(f"**🔄 Tratando missing values para: {df_name}**")
+    
+    # Estratégia: Preencher com a mediana para colunas numéricas
+    for col in available_cols:
+        if df[col].dtype in ['float64', 'int64']:
+            median_val = df[col].median()
+            missing_count = df[col].isnull().sum()
+            df[col] = df[col].fillna(median_val)
+            if missing_count > 0:
+                st.info(f"  {col}: Preenchidos {missing_count} valores com mediana {median_val:.3f}")
+    
+    st.success(f"✅ Missing values tratados para {df_name}")
+    return df
+
+# Aplicar tratamento APENAS se as colunas existirem
+available_aggression_cols = [col for col in ['Aggression_Home', 'Aggression_Away'] if col in history.columns]
+if available_aggression_cols:
     history = handle_missing_aggression(history, "Dados Históricos")
     games_today = handle_missing_aggression(games_today, "Dados de Hoje")
+else:
+    st.warning("⚠️ Pulando tratamento de missing values - colunas de Aggression não encontradas")
 
 
 ##################### BLOCO 4 – FEATURE ENGINEERING COM AGGRESSION E MOMENTUM #####################
