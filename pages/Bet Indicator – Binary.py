@@ -319,6 +319,86 @@ st.dataframe(df_report.style.format("{:.2f}"), use_container_width=True)
 
 
 # ########################################################
+# BLOCO 10.1 – ANÁLISE DAS FAIXAS DE PROBABILIDADE (HISTÓRICO)
+# ########################################################
+
+st.markdown("### 📈 Análise das Faixas de Probabilidade (Validação)")
+
+# Usar as probabilidades do modelo escolhido
+if model_choice == "Random Forest (Tuned)":
+    probs_val = rf_tuned.predict_proba(X_val)
+else:
+    probs_rf_val = rf_tuned.predict_proba(X_val)
+    probs_log_val = log_reg.predict_proba(X_val_scaled)
+    probs_val = (0.7 * probs_rf_val) + (0.3 * probs_log_val)
+
+# Probabilidade de Away para análise
+prob_away_val = probs_val[:, 1]
+
+# Criar faixas baseadas na sua observação visual
+faixas = [
+    (0, 0.3, "HIGH CONFIDENCE HOME"),
+    (0.3, 0.4, "MEDIUM CONFIDENCE HOME"), 
+    (0.4, 0.6, "UNCERTAIN/AVOID"),
+    (0.6, 0.7, "MEDIUM CONFIDENCE AWAY"),
+    (0.7, 1.0, "HIGH CONFIDENCE AWAY")
+]
+
+resultados_faixas = []
+
+for min_prob, max_prob, categoria in faixas:
+    mask = (prob_away_val >= min_prob) & (prob_away_val < max_prob)
+    
+    if mask.sum() > 0:
+        y_true_faixa = y_val[mask]
+        y_pred_faixa = preds[mask]
+        prob_faixa = prob_away_val[mask]
+        
+        # Estatísticas
+        n_jogos = len(y_true_faixa)
+        win_rate = accuracy_score(y_true_faixa, y_pred_faixa)
+        home_wins = ((y_true_faixa == 0) & (y_pred_faixa == 0)).sum()
+        away_wins = ((y_true_faixa == 1) & (y_pred_faixa == 1)).sum()
+        
+        resultados_faixas.append({
+            'Faixa': f"{min_prob:.0%}-{max_prob:.0%}",
+            'Categoria': categoria,
+            'Jogos': n_jogos,
+            'Win Rate': f"{win_rate:.1%}",
+            'Home Wins': home_wins,
+            'Away Wins': away_wins,
+            'Prob Média': f"{prob_faixa.mean():.1%}"
+        })
+
+# DataFrame de resultados
+df_faixas = pd.DataFrame(resultados_faixas)
+st.dataframe(df_faixas, use_container_width=True)
+
+# Gráfico de calibração
+st.markdown("#### 📊 Gráfico de Calibração - Away Probability vs Win Rate Real")
+calib_data = []
+for i in range(0, 101, 10):
+    min_p = i / 100
+    max_p = (i + 10) / 100
+    mask = (prob_away_val >= min_p) & (prob_away_val < max_p)
+    
+    if mask.sum() > 10:  # Mínimo de jogos para estatística
+        y_true_calib = y_val[mask]
+        away_win_rate = y_true_calib.mean()  # % de vitórias do Away
+        calib_data.append({
+            'Probabilidade Prevista': (min_p + max_p) / 2,
+            'Win Rate Real': away_win_rate,
+            'Jogos': mask.sum()
+        })
+
+df_calib = pd.DataFrame(calib_data)
+if not df_calib.empty:
+    st.line_chart(df_calib.set_index('Probabilidade Prevista')['Win Rate Real'])
+
+
+
+
+# ########################################################
 # BLOCO 11 – Previsões para os jogos de hoje + Download CSV
 # ########################################################
 if model_choice == "Random Forest (Tuned)":
@@ -367,6 +447,83 @@ styled_df = (
 
 st.markdown(f"### 📌 Predictions for {selected_date_str} – Home vs Away (Binary)")
 st.dataframe(styled_df, use_container_width=True, height=1000)
+
+
+# ########################################################
+# BLOCO 11.1 – CATEGORIAS VISUAIS PARA HOJE
+# ########################################################
+
+def categorizar_confianca(prob_away):
+    """Categoriza a confiança baseado nas faixas analisadas"""
+    if prob_away <= 0.3:
+        return "🟢 HIGH CONFIDENCE HOME", "home_high"
+    elif prob_away <= 0.4:
+        return "🟡 MEDIUM CONFIDENCE HOME", "home_medium"
+    elif prob_away <= 0.6:
+        return "🔴 UNCERTAIN/AVOID", "avoid"
+    elif prob_away <= 0.7:
+        return "🟡 MEDIUM CONFIDENCE AWAY", "away_medium"
+    else:
+        return "🟢 HIGH CONFIDENCE AWAY", "away_high"
+
+# Aplicar categorias aos jogos de hoje
+games_today['prob_away'] = probs_today[:, 1]
+games_today[['Categoria', 'Tipo']] = games_today['prob_away'].apply(
+    lambda x: pd.Series(categorizar_confianca(x))
+)
+
+# Ordenar por confiança (melhores apostas primeiro)
+ordem_confianca = {
+    "🟢 HIGH CONFIDENCE HOME": 1,
+    "🟢 HIGH CONFIDENCE AWAY": 2, 
+    "🟡 MEDIUM CONFIDENCE HOME": 3,
+    "🟡 MEDIUM CONFIDENCE AWAY": 4,
+    "🔴 UNCERTAIN/AVOID": 5
+}
+games_today['Ordem_Confianca'] = games_today['Categoria'].map(ordem_confianca)
+games_today = games_today.sort_values('Ordem_Confianca')
+
+# NOVAS COLUNAS PARA EXIBIÇÃO
+cols_to_show_enhanced = [
+    'Categoria', 'Date', 'Time', 'League', 'Home', 'Away',
+    'Goals_H_Today', 'Goals_A_Today', 
+    'Odd_H', 'Odd_A', 'prob_away', 'p_home', 'p_away'
+]
+
+def style_enhanced(row):
+    """Estilo melhorado com cores por categoria"""
+    if row['Categoria'] == "🟢 HIGH CONFIDENCE HOME":
+        return ['background-color: #90EE90'] * len(row)
+    elif row['Categoria'] == "🟢 HIGH CONFIDENCE AWAY":
+        return ['background-color: #90EE90'] * len(row)
+    elif row['Categoria'] == "🟡 MEDIUM CONFIDENCE HOME":
+        return ['background-color: #FFFACD'] * len(row) 
+    elif row['Categoria'] == "🟡 MEDIUM CONFIDENCE AWAY":
+        return ['background-color: #FFFACD'] * len(row)
+    elif row['Categoria'] == "🔴 UNCERTAIN/AVOID":
+        return ['background-color: #FFB6C1'] * len(row)
+    return [''] * len(row)
+
+# Exibir tabela categorizada
+st.markdown(f"### 🎯 Previsões Categorizadas para {selected_date_str}")
+
+styled_enhanced = (
+    games_today[cols_to_show_enhanced]
+    .style.format({
+        'Odd_H': '{:.2f}', 'Odd_A': '{:.2f}',
+        'prob_away': '{:.1%}', 'p_home': '{:.1%}', 'p_away': '{:.1%}',
+        'Goals_H_Today': '{:.0f}', 'Goals_A_Today': '{:.0f}'
+    }, na_rep='—')
+    .apply(style_enhanced, axis=1)
+)
+
+st.dataframe(styled_enhanced, use_container_width=True, height=1000)
+
+# Resumo por categoria
+st.markdown("#### 📋 Resumo por Categoria de Confiança")
+resumo_categorias = games_today['Categoria'].value_counts().reset_index()
+resumo_categorias.columns = ['Categoria', 'Quantidade']
+st.dataframe(resumo_categorias, use_container_width=True)
 
 
 # 🔹 Botão para download do CSV
