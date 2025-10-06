@@ -204,47 +204,238 @@ history["Target_AH_Home"] = history["Handicap_Home_Result"].apply(lambda x: 1 if
 history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
 
 
-##################### BLOCO 4 – FEATURE ENGINEERING COM AGGRESSION #####################
+##################### BLOCO 3.5 – CORREÇÃO DOS NOMES DAS COLUNAS #####################
 
-# NOVO: ADICIONAR FEATURES DE AGGRESSION
+def correct_column_names(df):
+    """Corrige os nomes das colunas de Aggression"""
+    column_mapping = {
+        'Aggression_Name': 'Aggression_Home',
+        'Aggression_Array': 'Aggression_Away', 
+        'HardScore_Name': 'HandScore_Home',
+        'HardScore_Array': 'HandScore_Away',
+        'OverScore_Name': 'OverScore_Home',
+        'OverScore_Array': 'OverScore_Away'
+    }
+    
+    # Aplicar o mapeamento
+    df_corrected = df.rename(columns=column_mapping)
+    
+    # Log das alterações
+    renamed_cols = [old for old in column_mapping.keys() if old in df.columns]
+    if renamed_cols:
+        st.success(f"✅ Colunas renomeadas: {renamed_cols}")
+    
+    return df_corrected
+
+# Aplicar correção aos dataframes
+st.info("🔧 Corrigindo nomes das colunas...")
+history = correct_column_names(history)
+games_today = correct_column_names(games_today)
+
+
+##################### BLOCO 3.6 – TRATAMENTO DE DADOS MISSING #####################
+
+def handle_missing_aggression(df, df_name):
+    """Trata dados missing nas colunas de Aggression"""
+    aggression_cols = ['Aggression_Home', 'Aggression_Away', 'HandScore_Home', 'HandScore_Away', 'OverScore_Home', 'OverScore_Away']
+    available_cols = [col for col in aggression_cols if col in df.columns]
+    
+    if not available_cols:
+        return df
+    
+    st.write(f"**🔄 Tratando missing values para: {df_name}**")
+    
+    # Estratégia: Preencher com a mediana para colunas numéricas
+    for col in available_cols:
+        if df[col].dtype in ['float64', 'int64']:
+            median_val = df[col].median()
+            missing_count = df[col].isnull().sum()
+            df[col] = df[col].fillna(median_val)
+            if missing_count > 0:
+                st.info(f"  {col}: Preenchidos {missing_count} valores com mediana {median_val:.3f}")
+    
+    st.success(f"✅ Missing values tratados para {df_name}")
+    return df
+
+# Aplicar tratamento
+if any(col in history.columns for col in ['Aggression_Home', 'Aggression_Away']):
+    history = handle_missing_aggression(history, "Dados Históricos")
+    games_today = handle_missing_aggression(games_today, "Dados de Hoje")
+
+
+##################### BLOCO 4 – FEATURE ENGINEERING COM AGGRESSION E MOMENTUM #####################
+
 def add_aggression_features(df):
     """
     Aggression positivo = DÁ mais handicap (favorito)
     Aggression negativo = RECEBE mais handicap (underdog)
     """
-    # Features básicas de aggression (se existirem)
     aggression_features = []
     
+    # VERIFICAR COM NOMES CORRETOS
     if all(col in df.columns for col in ['Aggression_Home', 'Aggression_Away']):
-        # Features estratégicas para handicap
-        df['Handicap_Balance'] = df['Aggression_Home'] - df['Aggression_Away']
-        df['Underdog_Indicator'] = -df['Handicap_Balance']  # Positivo = Home underdog
+        # Verificar qualidade dos dados
+        valid_data = df['Aggression_Home'].notna() & df['Aggression_Away'].notna()
         
-        # Power vs Market Perception
-        if 'M_H' in df.columns and 'M_A' in df.columns:
-            df['Power_vs_Perception_Home'] = df['M_H'] - df['Aggression_Home']
-            df['Power_vs_Perception_Away'] = df['M_A'] - df['Aggression_Away']
-            df['Power_Perception_Diff'] = df['Power_vs_Perception_Home'] - df['Power_vs_Perception_Away']
-        
-        aggression_features.extend(['Aggression_Home', 'Aggression_Away', 'Handicap_Balance', 
-                                  'Underdog_Indicator', 'Power_Perception_Diff'])
+        if valid_data.any():
+            # Criar features com nomes CORRETOS
+            df['Handicap_Balance'] = df['Aggression_Home'] - df['Aggression_Away']
+            df['Underdog_Indicator'] = -df['Handicap_Balance']  # Positivo = Home underdog
+            
+            # Power vs Market Perception
+            if 'M_H' in df.columns and 'M_A' in df.columns:
+                df['Power_Perception_Home'] = df['M_H'] - df['Aggression_Home']
+                df['Power_Perception_Away'] = df['M_A'] - df['Aggression_Away']
+                df['Power_Perception_Diff'] = df['Power_Perception_Home'] - df['Power_Perception_Away']
+            
+            aggression_features.extend(['Aggression_Home', 'Aggression_Away', 'Handicap_Balance', 
+                                      'Underdog_Indicator', 'Power_Perception_Diff'])
+        else:
+            st.warning("⚠️ Colunas de Aggression existem mas não têm dados válidos")
     
-    # Adicionar HandScore se disponível
+    # HandScore com nomes CORRETOS
     if all(col in df.columns for col in ['HandScore_Home', 'HandScore_Away']):
-        df['HandScore_Diff'] = df['HandScore_Home'] - df['HandScore_Away']
-        aggression_features.append('HandScore_Diff')
+        if df['HandScore_Home'].notna().any() and df['HandScore_Away'].notna().any():
+            df['HandScore_Diff'] = df['HandScore_Home'] - df['HandScore_Away']
+            aggression_features.append('HandScore_Diff')
     
-    # Adicionar OverScore se disponível
+    # OverScore com nomes CORRETOS  
     if all(col in df.columns for col in ['OverScore_Home', 'OverScore_Away']):
-        df['OverScore_Diff'] = df['OverScore_Home'] - df['OverScore_Away']
-        df['Total_OverScore'] = df['OverScore_Home'] + df['OverScore_Away']
-        aggression_features.extend(['OverScore_Diff', 'Total_OverScore'])
+        if df['OverScore_Home'].notna().any() and df['OverScore_Away'].notna().any():
+            df['OverScore_Diff'] = df['OverScore_Home'] - df['OverScore_Away']
+            df['Total_OverScore'] = df['OverScore_Home'] + df['OverScore_Away']
+            aggression_features.extend(['OverScore_Diff', 'Total_OverScore'])
     
     return df, aggression_features
 
-# Aplicar às bases
+def create_momentum_features(df, window=5):
+    """Cria features que capturam momentum e tendências dos times"""
+    
+    momentum_features = []
+    
+    # Garantir que os dados estão ordenados por data
+    if 'Date' not in df.columns:
+        return df, momentum_features
+    
+    df = df.sort_values(['Home', 'Date']).reset_index(drop=True)
+    
+    # Features para Home teams
+    if all(col in df.columns for col in ['HandScore_Home', 'Aggression_Home', 'Goals_H_FT']):
+        
+        # 1. MOMENTUM RECENTE DO HANDSCORE (últimos X jogos)
+        df['Home_HandScore_Trend'] = df.groupby('Home')['HandScore_Home'].transform(
+            lambda x: x.rolling(window=window, min_periods=1).mean()
+        )
+        
+        # 2. TENDÊNCIA DE AGGRESSION (está ficando mais ou menos agressivo?)
+        df['Home_Aggression_Trend'] = df.groupby('Home')['Aggression_Home'].transform(
+            lambda x: x.rolling(window=window, min_periods=1).mean()
+        )
+        
+        # 3. VOLATILIDADE DO PERFORMANCE
+        df['Home_HandScore_Volatility'] = df.groupby('Home')['HandScore_Home'].transform(
+            lambda x: x.rolling(window=window, min_periods=2).std()
+        ).fillna(0)
+        
+        # 4. MOMENTUM OFENSIVO (gols recentes)
+        df['Home_Goals_Form'] = df.groupby('Home')['Goals_H_FT'].transform(
+            lambda x: x.rolling(window=3, min_periods=1).mean()
+        )
+        
+        # 5. "HOT STREAK" - sequência de bons resultados
+        df['Home_Positive_Streak'] = df.groupby('Home')['HandScore_Home'].transform(
+            lambda x: (x > 0).rolling(window=3).sum()
+        )
+        
+        momentum_features.extend([
+            'Home_HandScore_Trend', 'Home_Aggression_Trend', 
+            'Home_HandScore_Volatility', 'Home_Goals_Form',
+            'Home_Positive_Streak'
+        ])
+    
+    # Features para Away teams (mesma lógica)
+    if all(col in df.columns for col in ['HandScore_Away', 'Aggression_Away', 'Goals_A_FT']):
+        
+        df['Away_HandScore_Trend'] = df.groupby('Away')['HandScore_Away'].transform(
+            lambda x: x.rolling(window=window, min_periods=1).mean()
+        )
+        
+        df['Away_Aggression_Trend'] = df.groupby('Away')['Aggression_Away'].transform(
+            lambda x: x.rolling(window=window, min_periods=1).mean()
+        )
+        
+        df['Away_HandScore_Volatility'] = df.groupby('Away')['HandScore_Away'].transform(
+            lambda x: x.rolling(window=window, min_periods=2).std()
+        ).fillna(0)
+        
+        df['Away_Goals_Form'] = df.groupby('Away')['Goals_A_FT'].transform(
+            lambda x: x.rolling(window=3, min_periods=1).mean()
+        )
+        
+        df['Away_Positive_Streak'] = df.groupby('Away')['HandScore_Away'].transform(
+            lambda x: (x > 0).rolling(window=3).sum()
+        )
+        
+        momentum_features.extend([
+            'Away_HandScore_Trend', 'Away_Aggression_Trend',
+            'Away_HandScore_Volatility', 'Away_Goals_Form', 
+            'Away_Positive_Streak'
+        ])
+    
+    # 6. FEATURES COMPARATIVAS DE MOMENTUM
+    if all(col in df.columns for col in ['Home_HandScore_Trend', 'Away_HandScore_Trend']):
+        df['Momentum_Advantage'] = df['Home_HandScore_Trend'] - df['Away_HandScore_Trend']
+        df['Form_Difference'] = df['Home_Goals_Form'] - df['Away_Goals_Form']
+        df['Trend_Consistency_Diff'] = df['Home_HandScore_Volatility'] - df['Away_HandScore_Volatility']
+        
+        momentum_features.extend([
+            'Momentum_Advantage', 'Form_Difference', 'Trend_Consistency_Diff'
+        ])
+    
+    return df, momentum_features
+
+def create_contrarian_features(df):
+    """Cria features que identificam oportunidades contrarianas"""
+    
+    contrarian_features = []
+    
+    if all(col in df.columns for col in ['Aggression_Home', 'Aggression_Away', 'Odd_H', 'Odd_A']):
+        
+        # 1. "OVERVALUED" - Times com aggression alta mas odds altas (supervalorizados)
+        df['Home_Overvalued'] = df['Aggression_Home'] * df['Odd_H']  # Alto = possivelmente supervalorizado
+        df['Away_Overvalued'] = df['Aggression_Away'] * df['Odd_A']
+        
+        # 2. "UNDERVALUED" - Times com aggression baixa mas odds baixas (subvalorizados)  
+        df['Home_Undervalued'] = (1 - df['Aggression_Home']) * (1/df['Odd_H'])  # Inverso
+        df['Away_Undervalued'] = (1 - df['Aggression_Away']) * (1/df['Odd_A'])
+        
+        # 3. "REVERSION INDICATOR" - Times em baixa mas com potencial de reversão
+        if 'Home_HandScore_Volatility' in df.columns and 'Home_Positive_Streak' in df.columns:
+            df['Home_Reversion_Potential'] = df['Home_HandScore_Volatility'] * (1 - df['Home_Positive_Streak']/3)
+        if 'Away_HandScore_Volatility' in df.columns and 'Away_Positive_Streak' in df.columns:
+            df['Away_Reversion_Potential'] = df['Away_HandScore_Volatility'] * (1 - df['Away_Positive_Streak']/3)
+        
+        contrarian_features.extend([
+            'Home_Overvalued', 'Away_Overvalued',
+            'Home_Undervalued', 'Away_Undervalued'
+        ])
+        
+        if 'Home_Reversion_Potential' in df.columns:
+            contrarian_features.extend(['Home_Reversion_Potential', 'Away_Reversion_Potential'])
+    
+    return df, contrarian_features
+
+# Aplicar todas as features
+st.info("🔄 Aplicando feature engineering...")
+
 history, aggression_features = add_aggression_features(history)
 games_today, _ = add_aggression_features(games_today)
+
+history, momentum_features = create_momentum_features(history)
+games_today, _ = create_momentum_features(games_today)
+
+history, contrarian_features = create_contrarian_features(history)
+games_today, _ = create_contrarian_features(games_today)
 
 # BLOCO DE FEATURES ATUALIZADO
 feature_blocks = {
@@ -254,13 +445,15 @@ feature_blocks = {
         "Diff_HT_P", "M_HT_H", "M_HT_A",
         "Asian_Line_Display"
     ],
-    "aggression": aggression_features,  # NOVO BLOCO DINÂMICO
+    "aggression": aggression_features,
+    "momentum": momentum_features,
+    "contrarian": contrarian_features,
     "categorical": []
 }
 
 # Filtrar apenas as features que existem no dataframe
-available_aggression = [col for col in feature_blocks["aggression"] if col in history.columns]
-feature_blocks["aggression"] = available_aggression
+for block_name in ["aggression", "momentum", "contrarian"]:
+    feature_blocks[block_name] = [col for col in feature_blocks[block_name] if col in history.columns]
 
 history_leagues = pd.get_dummies(history["League"], prefix="League")
 games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
@@ -287,7 +480,8 @@ X_today_ah_away = X_today_ah_home.copy()
 
 # ATUALIZAR numeric_cols para incluir as novas features
 numeric_cols = (feature_blocks["odds"] + feature_blocks["strength"] + 
-                feature_blocks["aggression"])
+                feature_blocks["aggression"] + feature_blocks["momentum"] +
+                feature_blocks["contrarian"])
 numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
 
 # BLOCO EXTRA – ANÁLISE DAS NOVAS FEATURES
@@ -340,7 +534,7 @@ st.sidebar.header("⚙️ Settings")
 ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest", "XGBoost"])
 ml_version_choice = st.sidebar.selectbox("Choose Model Version", ["v1", "v2"])
 retrain = st.sidebar.checkbox("Retrain models", value=False)
-normalize_features = st.sidebar.checkbox("Normalize features (odds + strength + aggression)", value=True)
+normalize_features = st.sidebar.checkbox("Normalize features", value=True)
 
 
 ##################### BLOCO 6 – TRAIN & EVALUATE #####################
@@ -506,15 +700,104 @@ styled_df = (
 st.markdown(f"### 📌 Predictions for {selected_date_str} – Asian Handicap ({ml_version_choice})")
 st.dataframe(styled_df, use_container_width=True, height=800)
 
-# NOVO: MOSTRAR AS FEATURES DE AGGRESSION NOS JOGOS DE HOJE
-if aggression_features:
-    st.markdown("### 🔎 Aggression Features nos Jogos de Hoje")
-    aggression_cols = [col for col in aggression_features if col in games_today.columns]
-    if aggression_cols:
-        aggression_display = games_today[["Home", "Away"] + aggression_cols].copy()
-        # Formatar valores numéricos
-        for col in aggression_cols:
-            if aggression_display[col].dtype in ['float64', 'int64']:
-                aggression_display[col] = aggression_display[col].round(3)
+
+##################### BLOCO 9 – SISTEMA DE RECOMENDAÇÕES INTELIGENTE #####################
+
+def identify_team_trends(games_df):
+    """Identifica times em alta/baixa baseado nas novas features"""
+    
+    trends = []
+    
+    for _, jogo in games_df.iterrows():
+        home_trend = "NEUTRO"
+        away_trend = "NEUTRO"
         
-        st.dataframe(aggression_display, use_container_width=True)
+        # Analisar Home
+        if 'Home_HandScore_Trend' in games_df.columns and 'Home_Positive_Streak' in games_df.columns:
+            home_trend_score = jogo.get('Home_HandScore_Trend', 0)
+            home_streak = jogo.get('Home_Positive_Streak', 0)
+            
+            if home_trend_score > 0.3 and home_streak >= 2:
+                home_trend = "🔥 ALTA"
+            elif home_trend_score < -0.3 and home_streak == 0:
+                home_trend = "💀 BAIXA"
+            elif jogo.get('Home_Reversion_Potential', 0) > 0.3:
+                home_trend = "🔄 REVERSÃO"
+        
+        # Analisar Away
+        if 'Away_HandScore_Trend' in games_df.columns and 'Away_Positive_Streak' in games_df.columns:
+            away_trend_score = jogo.get('Away_HandScore_Trend', 0)
+            away_streak = jogo.get('Away_Positive_Streak', 0)
+            
+            if away_trend_score > 0.3 and away_streak >= 2:
+                away_trend = "🔥 ALTA"  
+            elif away_trend_score < -0.3 and away_streak == 0:
+                away_trend = "💀 BAIXA"
+            elif jogo.get('Away_Reversion_Potential', 0) > 0.3:
+                away_trend = "🔄 REVERSÃO"
+        
+        trends.append({
+            'Home': jogo['Home'],
+            'Away': jogo['Away'], 
+            'Home_Trend': home_trend,
+            'Away_Trend': away_trend,
+            'Momentum_Advantage': jogo.get('Momentum_Advantage', 0),
+            'Home_Form': jogo.get('Home_Goals_Form', 0),
+            'Away_Form': jogo.get('Away_Goals_Form', 0)
+        })
+    
+    return pd.DataFrame(trends)
+
+def find_smart_away_handicap_bets(games_df):
+    """Encontra apostas inteligentes de Away Handicap usando Aggression + Momentum"""
+    
+    conditions = (
+        # Condições de Aggression (já testadas)
+        (games_df['Underdog_Indicator'] > 0.3) &      # Home é underdog
+        (games_df['Aggression_Away'] > 0.2) &         # Away é favorito
+        (games_df['Aggression_Home'] < -0.2) &        # Home é underdog
+        
+        # Condições de Momentum
+        (games_df.get('Away_HandScore_Trend', 0) > games_df.get('Home_HandScore_Trend', 0)) &  # Away em melhor momentum
+        (games_df.get('Away_Positive_Streak', 0) >= 1) &  # Away com pelo menos 1 jogo positivo
+        
+        # Probabilidade do modelo
+        (games_df['p_ah_away_yes'] > 0.55)
+    )
+    
+    # Aplicar condições apenas para colunas que existem
+    mask = pd.Series(True, index=games_df.index)
+    for condition in conditions:
+        if isinstance(condition, pd.Series):
+            mask = mask & condition
+    
+    smart_bets = games_df[mask]
+    
+    return smart_bets
+
+# Aplicar sistema de recomendações
+st.markdown("### 🎯 Recomendações Inteligentes")
+
+# Análise de tendências
+if any(col in games_today.columns for col in ['Home_HandScore_Trend', 'Away_HandScore_Trend']):
+    trends_df = identify_team_trends(games_today)
+    st.write("**🔥 Análise de Tendências dos Times:**")
+    st.dataframe(trends_df, use_container_width=True)
+
+# Melhores apostas Away Handicap
+smart_away_bets = find_smart_away_handicap_bets(games_today)
+
+if not smart_away_bets.empty:
+    st.success(f"🎯 **MELHORES OPORTUNIDADES - AWAY HANDICAP**: {len(smart_away_bets)} jogos")
+    
+    for _, jogo in smart_away_bets.iterrows():
+        st.write(f"**{jogo['Home']} vs {jogo['Away']}**")
+        st.write(f"🏠 Home Aggression: {jogo.get('Aggression_Home', 'N/A'):.2f} | Trend: {trends_df[trends_df['Home'] == jogo['Home']]['Home_Trend'].iloc[0] if not trends_df.empty else 'N/A'}")
+        st.write(f"✈️ Away Aggression: {jogo.get('Aggression_Away', 'N/A'):.2f} | Trend: {trends_df[trends_df['Away'] == jogo['Away']]['Away_Trend'].iloc[0] if not trends_df.empty else 'N/A'}")
+        st.write(f"⚖️ Underdog Indicator: {jogo.get('Underdog_Indicator', 'N/A'):.2f}")
+        st.write(f"📊 Prob Away Handicap: {jogo['p_ah_away_yes']:.1%}")
+        st.write("---")
+else:
+    st.info("ℹ️ Nenhuma oportunidade clara de Away Handicap identificada hoje.")
+
+st.success("✅ Sistema executado com sucesso!")
