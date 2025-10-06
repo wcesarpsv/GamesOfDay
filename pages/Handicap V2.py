@@ -212,29 +212,28 @@ def add_aggression_features(df):
     Aggression positivo = DÁ mais handicap (favorito)
     Aggression negativo = RECEBE mais handicap (underdog)
     """
-    # Features básicas de aggression (se existirem)
     aggression_features = []
     
     if all(col in df.columns for col in ['Aggression_Home', 'Aggression_Away']):
-        # Features estratégicas para handicap
+        # CORRIGIR: Garantir que os nomes estão corretos
         df['Handicap_Balance'] = df['Aggression_Home'] - df['Aggression_Away']
         df['Underdog_Indicator'] = -df['Handicap_Balance']  # Positivo = Home underdog
         
-        # Power vs Market Perception
+        # Power vs Market Perception - CORRIGIR NOME
         if 'M_H' in df.columns and 'M_A' in df.columns:
-            df['Power_vs_Perception_Home'] = df['M_H'] - df['Aggression_Home']
-            df['Power_vs_Perception_Away'] = df['M_A'] - df['Aggression_Away']
-            df['Power_Perception_Diff'] = df['Power_vs_Perception_Home'] - df['Power_vs_Perception_Away']
+            df['Power_Perception_Home'] = df['M_H'] - df['Aggression_Home']
+            df['Power_Perception_Away'] = df['M_A'] - df['Aggression_Away']
+            df['Power_Perception_Diff'] = df['Power_Perception_Home'] - df['Power_Perception_Away']
         
         aggression_features.extend(['Aggression_Home', 'Aggression_Away', 'Handicap_Balance', 
                                   'Underdog_Indicator', 'Power_Perception_Diff'])
     
-    # Adicionar HandScore se disponível
+    # CORRIGIR: HandScore
     if all(col in df.columns for col in ['HandScore_Home', 'HandScore_Away']):
         df['HandScore_Diff'] = df['HandScore_Home'] - df['HandScore_Away']
         aggression_features.append('HandScore_Diff')
     
-    # Adicionar OverScore se disponível
+    # CORRIGIR: OverScore
     if all(col in df.columns for col in ['OverScore_Home', 'OverScore_Away']):
         df['OverScore_Diff'] = df['OverScore_Home'] - df['OverScore_Away']
         df['Total_OverScore'] = df['OverScore_Home'] + df['OverScore_Away']
