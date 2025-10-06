@@ -631,81 +631,179 @@ if strategy_choice == "Away Premium + Home Opportunities":
             st.error("❌ Falha no treinamento do modelo Away Premium")
             st.info("⚠️ Voltando para estratégia original")
             strategy_choice = "Original Both Sides"
+        else:
+            # Aplicar modelo aos jogos de hoje
+            if not games_today.empty:
+                # Garantir que temos as mesmas features
+                X_today_away = X_today_away.reindex(columns=away_feature_cols, fill_value=0)
+                
+                # Normalizar dados de hoje
+                if normalize_features and numeric_away_features:
+                    scaler_path = os.path.join(MODELS_FOLDER, "away_premium_scaler.pkl")
+                    if os.path.exists(scaler_path):
+                        scaler = joblib.load(scaler_path)
+                        available_numeric = [f for f in numeric_away_features if f in X_today_away.columns]
+                        if available_numeric:
+                            X_today_away[available_numeric] = scaler.transform(X_today_away[available_numeric])
+                
+                # Fazer previsões
+                try:
+                    away_probs = away_model.predict_proba(X_today_away)
+                    # VERIFICAR A ESTRUTURA DAS PROBABILIDADES
+                    st.write(f"🔍 Estrutura das probabilidades: {away_probs.shape}")
+                    st.write(f"🔍 Classes do modelo: {away_model.classes_}")
+                    
+                    # Garantir que estamos pegando a probabilidade correta
+                    if len(away_model.classes_) == 2:
+                        # Encontrar o índice da classe 1 (win)
+                        class_1_index = np.where(away_model.classes_ == 1)[0][0]
+                        games_today['p_ah_away_yes'] = away_probs[:, class_1_index]
+                        st.success(f"✅ Probabilidades calculadas (classe 1 no índice {class_1_index})")
+                    else:
+                        # Fallback: usar segunda coluna se não conseguir identificar
+                        games_today['p_ah_away_yes'] = away_probs[:, 1]
+                        st.warning("⚠️ Usando fallback para probabilidades")
+                        
+                except Exception as e:
+                    st.error(f"❌ Erro ao calcular probabilidades: {e}")
+                    # Criar coluna vazia para evitar KeyError
+                    games_today['p_ah_away_yes'] = np.nan
+                
+                # Aplicar sistema de confiança apenas se temos probabilidades
+                if 'p_ah_away_yes' in games_today.columns and not games_today['p_ah_away_yes'].isna().all():
+                    confidence_data = []
+                    for idx, row in games_today.iterrows():
+                        prob_away = row['p_ah_away_yes']
+                        confidence_info = calculate_confidence_system(row, prob_away)
+                        confidence_info['prob_away'] = prob_away
+                        confidence_info['prob_home'] = 1 - prob_away  # Oportunidade indireta
+                        confidence_data.append(confidence_info)
+                    
+                    # Adicionar dados de confiança ao dataframe
+                    confidence_df = pd.DataFrame(confidence_data)
+                    games_today = pd.concat([games_today, confidence_df], axis=1)
+                    
+                    # Calcular stakes recomendados
+                    games_today['stake_away'] = games_today['away_confidence'].apply(
+                        lambda x: calculate_stake_recommendation(x, 100)
+                    )
+                    games_today['stake_home'] = games_today['home_opportunity'].apply(
+                        lambda x: calculate_stake_recommendation(x, 100)
+                    )
+                else:
+                    st.error("❌ Não foi possível calcular probabilidades para os jogos de hoje")
+                    # Criar colunas vazias para evitar erros
+                    games_today['away_confidence'] = 'BAIXA'
+                    games_today['home_opportunity'] = 'FRACA'
+                    games_today['stake_away'] = 0
+                    games_today['stake_home'] = 0
 
-    ##################### BLOCO 9 – VISUALIZAÇÃO DOS RESULTADOS PREMIUM #####################
+   ##################### BLOCO 9 – VISUALIZAÇÃO DOS RESULTADOS PREMIUM #####################
 
+if strategy_choice == "Away Premium + Home Opportunities":
     st.markdown(f"## 🎯 PREVISÕES AWAY HANDICAP + OPORTUNIDADES HOME - {selected_date_str}")
 
-    # Função para colorir basedo na confiança
-    def color_confidence(val):
-        if val == 'ALTA' or val == 'FORTE':
-            return 'background-color: #4CAF50; color: white; font-weight: bold;'
-        elif val == 'MÉDIA' or val == 'MODERADA':
-            return 'background-color: #FF9800; color: white; font-weight: bold;'
-        else:
-            return 'background-color: #F44336; color: white;'
+    # Verificar se as colunas necessárias existem
+    required_columns = ['p_ah_away_yes', 'away_confidence', 'home_opportunity']
+    missing_columns = [col for col in required_columns if col not in games_today.columns]
+    
+    if missing_columns:
+        st.error(f"❌ Colunas faltando: {missing_columns}")
+        st.info("⚠️ Exibindo dados básicos devido a erro no processamento")
+        
+        # DataFrame básico de fallback
+        display_df = games_today[['Home', 'Away', 'League', 'Asian_Line_Display']].copy()
+        display_df['Match'] = display_df['Home'] + ' vs ' + display_df['Away']
+        display_df['Prob Away HC'] = "N/A"
+        display_df['Confiança Away'] = "N/A"
+        display_df['Stake Away'] = 0
+        display_df['Prob Home HC'] = "N/A"
+        display_df['Oportunidade Home'] = "N/A"
+        display_df['Stake Home'] = 0
+        
+    else:
+        # Função para colorir basedo na confiança
+        def color_confidence(val):
+            if val == 'ALTA' or val == 'FORTE':
+                return 'background-color: #4CAF50; color: white; font-weight: bold;'
+            elif val == 'MÉDIA' or val == 'MODERADA':
+                return 'background-color: #FF9800; color: white; font-weight: bold;'
+            else:
+                return 'background-color: #F44336; color: white;'
 
-    # DataFrame final otimizado
-    display_df = games_today[['Home', 'Away', 'League', 'Asian_Line_Display']].copy()
-    display_df['Match'] = display_df['Home'] + ' vs ' + display_df['Away']
+        # DataFrame final otimizado
+        display_df = games_today[['Home', 'Away', 'League', 'Asian_Line_Display']].copy()
+        display_df['Match'] = display_df['Home'] + ' vs ' + display_df['Away']
 
-    # Adicionar colunas calculadas
-    display_df['Prob Away HC'] = games_today['p_ah_away_yes']
-    display_df['Confiança Away'] = games_today['away_confidence']
-    display_df['Stake Away'] = games_today['stake_away']
-    display_df['Prob Home HC'] = games_today['prob_home']
-    display_df['Oportunidade Home'] = games_today['home_opportunity']
-    display_df['Stake Home'] = games_today['stake_home']
+        # Adicionar colunas calculadas com verificação
+        display_df['Prob Away HC'] = games_today['p_ah_away_yes']
+        display_df['Confiança Away'] = games_today['away_confidence']
+        display_df['Stake Away'] = games_today['stake_away']
+        display_df['Prob Home HC'] = 1 - games_today['p_ah_away_yes']  # Calculado dinamicamente
+        display_df['Oportunidade Home'] = games_today['home_opportunity']
+        display_df['Stake Home'] = games_today['stake_home']
 
-    # Ordenar por confiança Away (mais altos primeiro)
-    display_df = display_df.sort_values(['Stake Away', 'Stake Home'], ascending=[False, False])
+        # Ordenar por confiança Away (mais altos primeiro)
+        display_df = display_df.sort_values(['Stake Away', 'Stake Home'], ascending=[False, False])
 
-    # Exibir resultados
+    # Exibir resultados (mesmo código, mas agora seguro)
     col1, col2 = st.columns([2, 1])
 
     with col1:
         st.markdown("### 📊 Previsões Detalhadas")
         
-        # Formatação da tabela
-        styled_df = display_df[[
-            'Match', 'League', 'Asian_Line_Display',
-            'Prob Away HC', 'Confiança Away', 'Stake Away',
-            'Prob Home HC', 'Oportunidade Home', 'Stake Home'
-        ]].style.format({
-            'Prob Away HC': '{:.1%}',
-            'Prob Home HC': '{:.1%}',
-            'Asian_Line_Display': '{:.2f}',
-            'Stake Away': 'R$ {:.0f}',
-            'Stake Home': 'R$ {:.0f}'
-        }).applymap(color_confidence, subset=['Confiança Away', 'Oportunidade Home'])
+        # Formatação condicional da tabela
+        if 'Confiança Away' in display_df.columns:
+            styled_df = display_df[[
+                'Match', 'League', 'Asian_Line_Display',
+                'Prob Away HC', 'Confiança Away', 'Stake Away',
+                'Prob Home HC', 'Oportunidade Home', 'Stake Home'
+            ]].style.format({
+                'Prob Away HC': '{:.1%}',
+                'Prob Home HC': '{:.1%}',
+                'Asian_Line_Display': '{:.2f}',
+                'Stake Away': 'R$ {:.0f}',
+                'Stake Home': 'R$ {:.0f}'
+            }).applymap(color_confidence, subset=['Confiança Away', 'Oportunidade Home'])
+        else:
+            styled_df = display_df[[
+                'Match', 'League', 'Asian_Line_Display',
+                'Prob Away HC', 'Confiança Away', 'Stake Away',
+                'Prob Home HC', 'Oportunidade Home', 'Stake Home'
+            ]]
         
         st.dataframe(styled_df, use_container_width=True, height=600)
 
     with col2:
         st.markdown("### 🎯 Resumo de Oportunidades")
         
-        # Estatísticas rápidas
-        high_away = len(display_df[display_df['Confiança Away'] == 'ALTA'])
-        strong_home = len(display_df[display_df['Oportunidade Home'] == 'FORTE'])
-        
-        st.metric("🎯 Away Alta Confiança", high_away)
-        st.metric("🏠 Home Oportunidades Fortes", strong_home)
-        st.metric("📈 Total de Jogos", len(display_df))
-        
-        # Stake total recomendado
-        total_stake = display_df['Stake Away'].sum() + display_df['Stake Home'].sum()
-        st.metric("💰 Stake Total Recomendado", f"R$ {total_stake:.0f}")
-        
-        # Top oportunidades
-        st.markdown("#### 🔥 Melhores Oportunidades Away")
-        top_away = display_df[display_df['Confiança Away'] == 'ALTA'][['Match', 'Prob Away HC']].head(3)
-        for _, match in top_away.iterrows():
-            st.write(f"**{match['Match']}** - {match['Prob Away HC']:.1%}")
-        
-        st.markdown("#### 🏠 Melhores Oportunidades Home")
-        top_home = display_df[display_df['Oportunidade Home'] == 'FORTE'][['Match', 'Prob Home HC']].head(3)
-        for _, match in top_home.iterrows():
-            st.write(f"**{match['Match']}** - {match['Prob Home HC']:.1%}")
+        if 'Confiança Away' in display_df.columns:
+            # Estatísticas rápidas
+            high_away = len(display_df[display_df['Confiança Away'] == 'ALTA'])
+            strong_home = len(display_df[display_df['Oportunidade Home'] == 'FORTE'])
+            
+            st.metric("🎯 Away Alta Confiança", high_away)
+            st.metric("🏠 Home Oportunidades Fortes", strong_home)
+            st.metric("📈 Total de Jogos", len(display_df))
+            
+            # Stake total recomendado
+            total_stake = display_df['Stake Away'].sum() + display_df['Stake Home'].sum()
+            st.metric("💰 Stake Total Recomendado", f"R$ {total_stake:.0f}")
+            
+            # Top oportunidades
+            if high_away > 0:
+                st.markdown("#### 🔥 Melhores Oportunidades Away")
+                top_away = display_df[display_df['Confiança Away'] == 'ALTA'][['Match', 'Prob Away HC']].head(3)
+                for _, match in top_away.iterrows():
+                    st.write(f"**{match['Match']}** - {match['Prob Away HC']:.1%}")
+            
+            if strong_home > 0:
+                st.markdown("#### 🏠 Melhores Oportunidades Home")
+                top_home = display_df[display_df['Oportunidade Home'] == 'FORTE'][['Match', 'Prob Home HC']].head(3)
+                for _, match in top_home.iterrows():
+                    st.write(f"**{match['Match']}** - {match['Prob Home HC']:.1%}")
+        else:
+            st.info("ℹ️ Dados de confiança não disponíveis")
 
     ##################### BLOCO 10 – DOWNLOAD DOS RESULTADOS #####################
 
