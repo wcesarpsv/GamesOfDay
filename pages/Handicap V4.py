@@ -272,6 +272,10 @@ if "Target_AH_Away" not in history.columns:
 # VERIFICAÇÃO ROBUSTA DAS FEATURES
 st.info("🔍 Verificando disponibilidade das features...")
 
+# Mostrar todas as colunas disponíveis para debug
+st.write("📋 **Colunas disponíveis no histórico:**", list(history.columns))
+st.write("📋 **Colunas disponíveis hoje:**", list(games_today.columns))
+
 # Features que realmente existem no histórico
 available_away_features = [f for f in away_premium_features if f in history.columns]
 st.write(f"✅ Features disponíveis no histórico: {available_away_features}")
@@ -281,43 +285,106 @@ available_today_features = [f for f in away_premium_features if f in games_today
 st.write(f"✅ Features disponíveis hoje: {available_today_features}")
 
 # Usar apenas as features que existem em AMBOS
-final_away_features = list(set(available_away_features) & set(available_today_features))
+final_away_features = [f for f in available_away_features if f in available_today_features]
 st.success(f"🎯 Features finais para o modelo: {final_away_features}")
 
 if not final_away_features:
     st.error("❌ Nenhuma feature disponível em ambos histórico e dados de hoje!")
+    
+    # Mostrar quais features estão faltando
+    missing_in_today = [f for f in available_away_features if f not in available_today_features]
+    if missing_in_today:
+        st.write(f"❌ Features faltando em games_today: {missing_in_today}")
+    
+    # Tentar uma abordagem alternativa com features básicas
+    st.info("🔄 Tentando com features básicas...")
+    basic_features = ['Odd_A', 'Asian_Line_Display']
+    final_away_features = [f for f in basic_features if f in history.columns and f in games_today.columns]
+    
+    if final_away_features:
+        st.success(f"🎯 Usando features básicas: {final_away_features}")
+    else:
+        st.stop()
+
+# VERIFICAÇÃO FINAL - garantir que todas as features existem
+missing_in_history = [f for f in final_away_features if f not in history.columns]
+missing_in_today = [f for f in final_away_features if f not in games_today.columns]
+
+if missing_in_history:
+    st.error(f"❌ Features faltando no histórico: {missing_in_history}")
+    final_away_features = [f for f in final_away_features if f not in missing_in_history]
+
+if missing_in_today:
+    st.error(f"❌ Features faltando em games_today: {missing_in_today}")
+    final_away_features = [f for f in final_away_features if f not in missing_in_today]
+
+if not final_away_features:
+    st.error("❌ Nenhuma feature disponível após verificação!")
     st.stop()
 
+st.success(f"✅ Features confirmadas: {final_away_features}")
+
 # Preparar matriz de features para Away
-X_away = history[final_away_features].copy()
-y_away = history["Target_AH_Away"].copy()
+try:
+    X_away = history[final_away_features].copy()
+    y_away = history["Target_AH_Away"].copy()
+    st.success("✅ Dados históricos preparados com sucesso")
+except KeyError as e:
+    st.error(f"❌ Erro ao preparar dados históricos: {e}")
+    st.stop()
 
 # One-hot encoding para ligas
-history_leagues = pd.get_dummies(history["League"], prefix="League")
-games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
-
-# Garantir que as colunas de liga são as mesmas
-common_league_cols = list(set(history_leagues.columns) & set(games_today_leagues.columns))
-if not common_league_cols:
-    st.warning("⚠️ Nenhuma liga comum entre histórico e dados de hoje")
+try:
+    history_leagues = pd.get_dummies(history["League"], prefix="League")
+    games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
+    
+    # Garantir que as colunas de liga são as mesmas
+    common_league_cols = list(set(history_leagues.columns) & set(games_today_leagues.columns))
+    if not common_league_cols:
+        st.warning("⚠️ Nenhuma liga comum entre histórico e dados de hoje")
+        history_leagues = pd.DataFrame()
+        games_today_leagues = pd.DataFrame()
+    else:
+        games_today_leagues = games_today_leagues.reindex(columns=common_league_cols, fill_value=0)
+        history_leagues = history_leagues[common_league_cols]
+        st.success(f"✅ {len(common_league_cols)} ligas comuns encontradas")
+        
+except Exception as e:
+    st.warning(f"⚠️ Erro no encoding de ligas: {e}")
     history_leagues = pd.DataFrame()
     games_today_leagues = pd.DataFrame()
-else:
-    games_today_leagues = games_today_leagues.reindex(columns=common_league_cols, fill_value=0)
-    history_leagues = history_leagues[common_league_cols]
 
 # Adicionar ligas às features (se existirem)
 if not history_leagues.empty:
     X_away = pd.concat([X_away, history_leagues], axis=1)
-    final_away_features.extend(history_leagues.columns.tolist())
+    league_cols = history_leagues.columns.tolist()
+    final_away_features.extend(league_cols)
+    st.success(f"✅ Adicionadas {len(league_cols)} colunas de liga")
 
-# Preparar dados de hoje
-X_today_away = games_today[final_away_features].copy()
-if not games_today_leagues.empty:
-    X_today_away = pd.concat([X_today_away, games_today_leagues], axis=1)
-
-# Garantir que as colunas são as mesmas
-X_today_away = X_today_away.reindex(columns=X_away.columns, fill_value=0)
+# Preparar dados de hoje com VERIFICAÇÃO
+try:
+    X_today_away = games_today[final_away_features].copy()
+    
+    # Adicionar ligas se existirem
+    if not games_today_leagues.empty:
+        X_today_away = pd.concat([X_today_away, games_today_leagues], axis=1)
+    
+    # Garantir que as colunas são as mesmas
+    X_today_away = X_today_away.reindex(columns=X_away.columns, fill_value=0)
+    st.success("✅ Dados de hoje preparados com sucesso")
+    
+except KeyError as e:
+    st.error(f"❌ Erro ao preparar dados de hoje: {e}")
+    
+    # Tentar alternativa: usar apenas as colunas que existem
+    existing_cols = [col for col in X_away.columns if col in games_today.columns]
+    if existing_cols:
+        st.info(f"🔄 Usando apenas {len(existing_cols)} colunas disponíveis")
+        X_today_away = games_today[existing_cols].copy()
+        X_today_away = X_today_away.reindex(columns=X_away.columns, fill_value=0)
+    else:
+        st.error("❌ Nenhuma coluna comum disponível")
+        st.stop()
 
 # Normalização das features numéricas
 numeric_away_features = [f for f in final_away_features if f in X_away.columns and 
@@ -328,7 +395,12 @@ st.info(f"🔢 Features numéricas para normalização: {numeric_away_features}"
 
 # Mostrar estatísticas das features
 st.write("📊 Estatísticas das features no histórico:")
-st.dataframe(X_away[final_away_features].describe(), use_container_width=True)
+st.dataframe(X_away.describe(), use_container_width=True)
+
+# Mostrar shape dos dados
+st.write(f"📐 Shape X_away: {X_away.shape}")
+st.write(f"📐 Shape X_today_away: {X_today_away.shape}")
+st.write(f"📐 Shape y_away: {y_away.shape}")
 
 ##################### BLOCO 5 – MODELO AWAY PREMIUM #####################
 
