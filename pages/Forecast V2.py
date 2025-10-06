@@ -254,10 +254,14 @@ def train_and_evaluate(X, y, name, num_classes):
     if not retrain:
         model = load_model(filename)
 
-    # 🔥 CORREÇÃO: Limpeza de dados antes do split
-    # Combinar X e y para limpeza consistente
-    data_clean = X.copy()
-    data_clean['target'] = y
+    # 🔥 CORREÇÃO: Limpeza CONSISTENTE de dados
+    # Remover NaN e infinitos ANTES do split
+    X_clean = X.copy()
+    y_clean = y.copy()
+    
+    # Combinar para limpeza consistente
+    data_clean = X_clean.copy()
+    data_clean['target'] = y_clean
     
     # Remover linhas com NaN ou infinitos
     data_clean = data_clean.replace([np.inf, -np.inf], np.nan)
@@ -267,16 +271,23 @@ def train_and_evaluate(X, y, name, num_classes):
         st.error(f"❌ No valid data after cleaning for {name}")
         return {}, None
         
-    # Separar novamente
+    # Separar novamente mantendo a mesma ordem
     X_clean = data_clean.drop('target', axis=1)
     y_clean = data_clean['target']
     
     st.info(f"📊 Dataset {name}: {len(X_clean)} samples after cleaning")
 
+    # 🔥 CORREÇÃO CRÍTICA: Garantir que as colunas são as mesmas
+    # Salvar os nomes das colunas originais
+    original_columns = X_clean.columns.tolist()
+    
     # Split dos dados LIMPOS
     X_train, X_val, y_train, y_val = train_test_split(
         X_clean, y_clean, test_size=0.2, random_state=42, stratify=y_clean
     )
+    
+    # 🔥 GARANTIR que validação tem as mesmas colunas que treino
+    X_val = X_val[original_columns]
     
     # Aplicar SMOTE se selecionado
     if use_smote:
@@ -321,6 +332,20 @@ def train_and_evaluate(X, y, name, num_classes):
         model.fit(X_train, y_train)
         save_model(model, filename)
 
+    # 🔥 CORREÇÃO: Garantir que X_val tem as mesmas colunas que o modelo espera
+    missing_cols = set(model.feature_names_in_) - set(X_val.columns)
+    extra_cols = set(X_val.columns) - set(model.feature_names_in_)
+    
+    if missing_cols:
+        st.warning(f"⚠️ Adding missing columns to validation set: {missing_cols}")
+        for col in missing_cols:
+            X_val[col] = 0
+    
+    if extra_cols:
+        st.warning(f"⚠️ Removing extra columns from validation set: {extra_cols}")
+        X_val = X_val[model.feature_names_in_]
+    
+    # Agora fazer as previsões
     preds = model.predict(X_val)
     probs = model.predict_proba(X_val)
 
@@ -346,7 +371,6 @@ def train_and_evaluate(X, y, name, num_classes):
 
     return metrics, model
 
-
 # ########################################################
 # Bloco 8 – Treinar Modelos
 # ########################################################
@@ -364,30 +388,32 @@ st.dataframe(df_stats, use_container_width=True)
 
 
 # ########################################################
-# Bloco 9 – Previsões (COM TRATAMENTO DE NaN)
+# Bloco 9 – Previsões (COM CORREÇÃO DE FEATURES)
 # ########################################################
 
-# 🔥 CORREÇÃO: Preencher NaN nos dados de hoje antes da previsão
-def safe_predict_proba(model, X_data, default_value=0.33):
-    """Previsão segura com tratamento de NaN"""
-    X_filled = X_data.fillna(0)  # Preencher NaN com 0
+def safe_predict_proba(model, X_data, feature_names):
+    """Previsão segura com alinhamento de features"""
+    # Criar DataFrame com as features que o modelo espera
+    X_aligned = pd.DataFrame(0, index=X_data.index, columns=feature_names)
+    
+    # Copiar as colunas que existem em ambos
+    common_cols = set(feature_names) & set(X_data.columns)
+    for col in common_cols:
+        X_aligned[col] = X_data[col].fillna(0)  # Preencher NaN
     
     try:
-        return model.predict_proba(X_filled)
+        return model.predict_proba(X_aligned)
     except Exception as e:
-        st.error(f"❌ Prediction error: {e}")
-        # Retornar probabilidades uniformes em caso de erro
+        st.error(f"❌ Prediction error for {model.__class__.__name__}: {e}")
+        # Fallback: probabilidades uniformes
         n_samples = len(X_data)
-        if hasattr(model, 'classes_'):
-            n_classes = len(model.classes_)
-            return np.full((n_samples, n_classes), default_value)
-        else:
-            return np.full((n_samples, 2), 0.5)  # Fallback para binário
+        n_classes = len(model.classes_) if hasattr(model, 'classes_') else 2
+        return np.full((n_samples, n_classes), 1.0/n_classes)
 
-# Previsões com tratamento seguro
-probs_1x2 = safe_predict_proba(model_multi, X_today_1x2)
-probs_ou = safe_predict_proba(model_ou, X_today_ou) 
-probs_btts = safe_predict_proba(model_btts, X_today_btts)
+# Previsões com alinhamento correto de features
+probs_1x2 = safe_predict_proba(model_multi, X_today_1x2, model_multi.feature_names_in_)
+probs_ou = safe_predict_proba(model_ou, X_today_ou, model_ou.feature_names_in_)
+probs_btts = safe_predict_proba(model_btts, X_today_btts, model_btts.feature_names_in_)
 
 games_today["p_home"], games_today["p_draw"], games_today["p_away"] = probs_1x2.T
 games_today["p_over25"], games_today["p_under25"] = probs_ou.T
