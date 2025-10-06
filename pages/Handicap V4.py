@@ -206,6 +206,18 @@ history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if
 
 ##################### BLOCO 4 – FEATURE ENGINEERING OTIMIZADO #####################
 
+# PRIMEIRO definir a lista de features
+away_premium_features = [
+    'Underdog_Indicator',      # Correlação 0.261 ✅
+    'Handicap_Balance',        # Correlação -0.261 ✅
+    'Aggression_Away',         # Correlação 0.209 ✅
+    'Aggression_Home',         # Correlação -0.190 ✅
+    'Odd_A',                   # Contexto de odds
+    'Asian_Line_Display',      # Linha do handicap
+    'Odds_Ratio',              # Relação de forças
+    'Line_Abs'                 # Magnitude do handicap
+]
+
 def create_optimized_features(df):
     """
     Feature engineering focado nas variáveis com correlação comprovada
@@ -234,6 +246,21 @@ def create_optimized_features(df):
         st.warning("⚠️ Asian_Line_Display não encontrado")
     
     return df
+
+# Aplicar feature engineering otimizado
+st.info("🔄 Aplicando feature engineering otimizado...")
+
+history = create_optimized_features(history)
+games_today = create_optimized_features(games_today)
+
+# AGORA filtrar apenas features que existem
+away_premium_features = [f for f in away_premium_features if f in history.columns]
+
+st.success(f"✅ Features premium para Away Handicap: {away_premium_features}")
+
+if not away_premium_features:
+    st.error("❌ Nenhuma feature premium disponível!")
+    st.stop()
 
 ##################### BLOCO 4.1 – PREPARAR DADOS PARA MODELO AWAY PREMIUM #####################
 
