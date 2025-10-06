@@ -317,7 +317,6 @@ df_report = pd.DataFrame(report).transpose()
 st.markdown("### 📑 Classification Report (Precision / Recall / F1)")
 st.dataframe(df_report.style.format("{:.2f}"), use_container_width=True)
 
-
 # ########################################################
 # BLOCO 10.1 – ANÁLISE DAS FAIXAS DE PROBABILIDADE (HISTÓRICO)
 # ########################################################
@@ -337,11 +336,13 @@ prob_away_val = probs_val[:, 1]
 
 # Criar faixas baseadas na sua observação visual
 faixas = [
-    (0, 0.3, "HIGH CONFIDENCE HOME"),
-    (0.3, 0.4, "MEDIUM CONFIDENCE HOME"), 
-    (0.4, 0.6, "UNCERTAIN/AVOID"),
-    (0.6, 0.7, "MEDIUM CONFIDENCE AWAY"),
-    (0.7, 1.0, "HIGH CONFIDENCE AWAY")
+    (0, 0.25, "🟢 HIGH CONFIDENCE HOME"),
+    (0.25, 0.35, "🟡 MEDIUM CONFIDENCE HOME"), 
+    (0.35, 0.45, "⚪ LOW CONFIDENCE HOME"),
+    (0.45, 0.55, "🔴 UNCERTAIN/AVOID"),
+    (0.55, 0.65, "⚪ LOW CONFIDENCE AWAY"),
+    (0.65, 0.75, "🟡 MEDIUM CONFIDENCE AWAY"),
+    (0.75, 1.0, "🟢 HIGH CONFIDENCE AWAY")
 ]
 
 resultados_faixas = []
@@ -360,14 +361,26 @@ for min_prob, max_prob, categoria in faixas:
         home_wins = ((y_true_faixa == 0) & (y_pred_faixa == 0)).sum()
         away_wins = ((y_true_faixa == 1) & (y_pred_faixa == 1)).sum()
         
+        # Calcular acurácia real vs esperada
+        prob_media = prob_faixa.mean()
+        if categoria in ["🟢 HIGH CONFIDENCE HOME", "🟡 MEDIUM CONFIDENCE HOME", "⚪ LOW CONFIDENCE HOME"]:
+            acuracia_esperada = 1 - prob_media  # Probabilidade de Home vencer
+            acuracia_real = home_wins / n_jogos if n_jogos > 0 else 0
+        else:
+            acuracia_esperada = prob_media  # Probabilidade de Away vencer
+            acuracia_real = away_wins / n_jogos if n_jogos > 0 else 0
+        
         resultados_faixas.append({
-            'Faixa': f"{min_prob:.0%}-{max_prob:.0%}",
+            'Faixa Away': f"{min_prob:.0%}-{max_prob:.0%}",
             'Categoria': categoria,
             'Jogos': n_jogos,
             'Win Rate': f"{win_rate:.1%}",
             'Home Wins': home_wins,
             'Away Wins': away_wins,
-            'Prob Média': f"{prob_faixa.mean():.1%}"
+            'Prob Média': f"{prob_media:.1%}",
+            'Acurácia Real': f"{acuracia_real:.1%}",
+            'Acurácia Esperada': f"{acuracia_esperada:.1%}",
+            'Performance': "✅ SUPERIOR" if acuracia_real > acuracia_esperada else "⚠️ INFERIOR"
         })
 
 # DataFrame de resultados
@@ -375,18 +388,19 @@ df_faixas = pd.DataFrame(resultados_faixas)
 st.dataframe(df_faixas, use_container_width=True)
 
 # Gráfico de calibração
-st.markdown("#### 📊 Gráfico de Calibração - Away Probability vs Win Rate Real")
+st.markdown("#### 📊 Gráfico de Calibração - Probabilidade Prevista vs Real")
 calib_data = []
-for i in range(0, 101, 10):
+for i in range(0, 100, 5):
     min_p = i / 100
-    max_p = (i + 10) / 100
+    max_p = (i + 5) / 100
     mask = (prob_away_val >= min_p) & (prob_away_val < max_p)
     
-    if mask.sum() > 10:  # Mínimo de jogos para estatística
+    if mask.sum() > 5:  # Mínimo de jogos para estatística
         y_true_calib = y_val[mask]
         away_win_rate = y_true_calib.mean()  # % de vitórias do Away
+        prob_media_calib = prob_away_val[mask].mean()
         calib_data.append({
-            'Probabilidade Prevista': (min_p + max_p) / 2,
+            'Probabilidade Prevista': prob_media_calib,
             'Win Rate Real': away_win_rate,
             'Jogos': mask.sum()
         })
@@ -394,12 +408,12 @@ for i in range(0, 101, 10):
 df_calib = pd.DataFrame(calib_data)
 if not df_calib.empty:
     st.line_chart(df_calib.set_index('Probabilidade Prevista')['Win Rate Real'])
-
-
-
+    
+    # Adicionar linha de referência perfeita
+    st.caption("Linha de referência: quanto mais próxima da diagonal, melhor a calibração")
 
 # ########################################################
-# BLOCO 11 – Previsões para os jogos de hoje + Download CSV
+# BLOCO 11 – Previsões para os jogos de hoje + Categorias Visuais
 # ########################################################
 if model_choice == "Random Forest (Tuned)":
     probs_today = rf_tuned.predict_proba(X_today)
@@ -411,66 +425,32 @@ else:
 games_today['p_home'] = probs_today[:,0]
 games_today['p_away'] = probs_today[:,1]
 
-# ========== NOVO: COLUNAS DE GOLS ADICIONADAS APÓS AWAY ==========
-cols_to_show = [
-    'Date', 'Time', 'League', 'Home', 'Away',
-    'Goals_H_Today', 'Goals_A_Today',  # NOVO: Colunas de gols adicionadas aqui
-    'Odd_H', 'Odd_A', 'PesoMomentum_H', 'PesoMomentum_A',
-    'CustoMomentum_H', 'CustoMomentum_A',
-    'p_home', 'p_away'
-]
-
-def color_prob(val, color):
-    # INVERTIDO: agora usa o valor diretamente (maior = mais escuro)
-    alpha = int(val * 255)  # val * 255 em vez de (1 - val) * 255
-    return f'background-color: rgba({color}, {alpha/255:.2f})'
-
-def style_probs(val, col):
-    if col == 'p_home':
-        return color_prob(val, "0,200,0")  # verde - mais escuro para probabilidades altas
-    elif col == 'p_away':
-        return color_prob(val, "255,140,0")  # laranja - mais escuro para probabilidades altas
-    return ''
-
-styled_df = (
-    games_today[cols_to_show]
-    .style.format({
-        'Odd_H': '{:.2f}', 'Odd_A': '{:.2f}',
-        'PesoMomentum_H': '{:.2f}', 'PesoMomentum_A': '{:.2f}',
-        'CustoMomentum_H': '{:.2f}', 'CustoMomentum_A': '{:.2f}',
-        'p_home': '{:.1%}', 'p_away': '{:.1%}',
-        'Goals_H_Today': '{:.0f}', 'Goals_A_Today': '{:.0f}'  # NOVO: Formatação dos gols
-    }, na_rep='—')
-    .applymap(lambda v: style_probs(v, 'p_home'), subset=['p_home'])
-    .applymap(lambda v: style_probs(v, 'p_away'), subset=['p_away'])
-)
-
-st.markdown(f"### 📌 Predictions for {selected_date_str} – Home vs Away (Binary)")
-st.dataframe(styled_df, use_container_width=True, height=1000)
-
-
 # ########################################################
 # BLOCO 11.1 – CATEGORIAS VISUAIS PARA HOJE
 # ########################################################
 
 def categorizar_confianca(prob_away):
     """Categoriza a confiança baseado nas faixas analisadas"""
-    if prob_away <= 0.3:
+    if prob_away <= 0.25:
         return "🟢 HIGH CONFIDENCE HOME", "home_high"
-    elif prob_away <= 0.4:
+    elif prob_away <= 0.35:
         return "🟡 MEDIUM CONFIDENCE HOME", "home_medium"
-    elif prob_away <= 0.6:
+    elif prob_away <= 0.45:
+        return "⚪ LOW CONFIDENCE HOME", "home_low"
+    elif prob_away <= 0.55:
         return "🔴 UNCERTAIN/AVOID", "avoid"
-    elif prob_away <= 0.7:
+    elif prob_away <= 0.65:
+        return "⚪ LOW CONFIDENCE AWAY", "away_low"
+    elif prob_away <= 0.75:
         return "🟡 MEDIUM CONFIDENCE AWAY", "away_medium"
     else:
         return "🟢 HIGH CONFIDENCE AWAY", "away_high"
 
 # Aplicar categorias aos jogos de hoje
 games_today['prob_away'] = probs_today[:, 1]
-games_today[['Categoria', 'Tipo']] = games_today['prob_away'].apply(
-    lambda x: pd.Series(categorizar_confianca(x))
-)
+categorias = games_today['prob_away'].apply(categorizar_confianca)
+games_today['Categoria'] = categorias.apply(lambda x: x[0])
+games_today['Tipo_Confianca'] = categorias.apply(lambda x: x[1])
 
 # Ordenar por confiança (melhores apostas primeiro)
 ordem_confianca = {
@@ -478,7 +458,9 @@ ordem_confianca = {
     "🟢 HIGH CONFIDENCE AWAY": 2, 
     "🟡 MEDIUM CONFIDENCE HOME": 3,
     "🟡 MEDIUM CONFIDENCE AWAY": 4,
-    "🔴 UNCERTAIN/AVOID": 5
+    "⚪ LOW CONFIDENCE HOME": 5,
+    "⚪ LOW CONFIDENCE AWAY": 6,
+    "🔴 UNCERTAIN/AVOID": 7
 }
 games_today['Ordem_Confianca'] = games_today['Categoria'].map(ordem_confianca)
 games_today = games_today.sort_values('Ordem_Confianca')
@@ -493,15 +475,19 @@ cols_to_show_enhanced = [
 def style_enhanced(row):
     """Estilo melhorado com cores por categoria"""
     if row['Categoria'] == "🟢 HIGH CONFIDENCE HOME":
-        return ['background-color: #90EE90'] * len(row)
+        return ['background-color: #90EE90'] * len(row)  # Verde claro
     elif row['Categoria'] == "🟢 HIGH CONFIDENCE AWAY":
-        return ['background-color: #90EE90'] * len(row)
+        return ['background-color: #90EE90'] * len(row)  # Verde claro
     elif row['Categoria'] == "🟡 MEDIUM CONFIDENCE HOME":
-        return ['background-color: #FFFACD'] * len(row) 
+        return ['background-color: #FFFACD'] * len(row)  # Amarelo claro
     elif row['Categoria'] == "🟡 MEDIUM CONFIDENCE AWAY":
-        return ['background-color: #FFFACD'] * len(row)
+        return ['background-color: #FFFACD'] * len(row)  # Amarelo claro
+    elif row['Categoria'] == "⚪ LOW CONFIDENCE HOME":
+        return ['background-color: #F5F5F5'] * len(row)  # Cinza claro
+    elif row['Categoria'] == "⚪ LOW CONFIDENCE AWAY":
+        return ['background-color: #F5F5F5'] * len(row)  # Cinza claro
     elif row['Categoria'] == "🔴 UNCERTAIN/AVOID":
-        return ['background-color: #FFB6C1'] * len(row)
+        return ['background-color: #FFB6C1'] * len(row)  # Vermelho claro
     return [''] * len(row)
 
 # Exibir tabela categorizada
@@ -514,17 +500,16 @@ styled_enhanced = (
         'prob_away': '{:.1%}', 'p_home': '{:.1%}', 'p_away': '{:.1%}',
         'Goals_H_Today': '{:.0f}', 'Goals_A_Today': '{:.0f}'
     }, na_rep='—')
-    .apply(styled_enhanced,style_enhanced, axis=1)
+    .apply(style_enhanced, axis=1)
 )
 
-st.dataframe(use_container_width=True, height=1000)
+st.dataframe(styled_enhanced, use_container_width=True, height=1000)
 
 # Resumo por categoria
 st.markdown("#### 📋 Resumo por Categoria de Confiança")
 resumo_categorias = games_today['Categoria'].value_counts().reset_index()
 resumo_categorias.columns = ['Categoria', 'Quantidade']
 st.dataframe(resumo_categorias, use_container_width=True)
-
 
 # 🔹 Botão para download do CSV
 import io
@@ -538,3 +523,31 @@ st.download_button(
     file_name=f"Bet_Indicator_Binary_{selected_date_str}.csv",
     mime="text/csv"
 )
+
+# ########################################################
+# BLOCO 12 – RECOMENDAÇÕES BASEADAS NA ANÁLISE
+# ########################################################
+st.markdown("### 💡 Recomendações Baseadas na Análise")
+
+high_confidence_games = games_today[
+    games_today['Categoria'].isin(["🟢 HIGH CONFIDENCE HOME", "🟢 HIGH CONFIDENCE AWAY"])
+]
+
+if not high_confidence_games.empty:
+    st.success(f"🎯 **Melhores Oportunidades do Dia**: {len(high_confidence_games)} jogos com alta confiança")
+    
+    for _, jogo in high_confidence_games.iterrows():
+        if "HOME" in jogo['Categoria']:
+            st.write(f"🏠 **{jogo['Home']} vs {jogo['Away']}** - Odd: {jogo['Odd_H']:.2f} | Prob: {jogo['p_home']:.1%}")
+        else:
+            st.write(f"✈️ **{jogo['Home']} vs {jogo['Away']}** - Odd: {jogo['Odd_A']:.2f} | Prob: {jogo['p_away']:.1%}")
+else:
+    st.warning("⚠️ **Atenção**: Nenhum jogo com alta confiança identificado hoje. Considere as apostas de média confiança ou evite apostar.")
+
+st.info("""
+**Legenda das Categorias:**
+- 🟢 **HIGH CONFIDENCE**: Melhores oportunidades (win rate histórico > 60%)
+- 🟡 **MEDIUM CONFIDENCE**: Boas oportunidades (win rate histórico 55-60%)  
+- ⚪ **LOW CONFIDENCE**: Oportunidades limitadas (win rate histórico 50-55%)
+- 🔴 **UNCERTAIN/AVOID**: Evitar apostas (win rate histórico < 50%)
+""")
