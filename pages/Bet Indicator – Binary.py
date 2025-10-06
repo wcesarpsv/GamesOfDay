@@ -479,7 +479,7 @@ styled_enhanced = (
     games_today[cols_to_show_enhanced]
     .style.format({
         'Odd_H': '{:.2f}', 'Odd_A': '{:.2f}',
-        'prob_away': '{:.1%}', 'p_home': '{:.1%}', 'p_away': '{:.1%}',
+         'p_home': '{:.1%}', 'p_away': '{:.1%}',
         'Goals_H_Today': '{:.0f}', 'Goals_A_Today': '{:.0f}'
     }, na_rep='—')
 )
