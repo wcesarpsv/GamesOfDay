@@ -514,7 +514,7 @@ styled_enhanced = (
         'prob_away': '{:.1%}', 'p_home': '{:.1%}', 'p_away': '{:.1%}',
         'Goals_H_Today': '{:.0f}', 'Goals_A_Today': '{:.0f}'
     }, na_rep='—')
-    .apply(styled_enhanced, axis=1)
+    .apply(styled_enhanced,style_enhanced, axis=1)
 )
 
 st.dataframe(use_container_width=True, height=1000)
