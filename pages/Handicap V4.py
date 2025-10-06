@@ -213,42 +213,27 @@ def create_optimized_features(df):
     df = df.copy()
     
     # ✅ FEATURES COM CORRELAÇÃO FORTE (Foco Away)
+    # Verificar se as colunas existem antes de criar features
     if all(col in df.columns for col in ['Aggression_Home', 'Aggression_Away']):
         df['Underdog_Indicator'] = df['Aggression_Away'] - df['Aggression_Home']
         df['Handicap_Balance'] = df['Aggression_Home'] - df['Aggression_Away']
+        st.write("✅ Features de Aggression criadas")
+    else:
+        st.warning("⚠️ Colunas de Aggression não encontradas")
     
     # ✅ FEATURES COMPLEMENTARES
     if all(col in df.columns for col in ['Odd_H', 'Odd_A']):
         df['Odds_Ratio'] = df['Odd_A'] / df['Odd_H']
+        st.write("✅ Odds_Ratio criada")
     
     # ✅ FEATURE DE LINHA (importante para handicap)
     if 'Asian_Line_Display' in df.columns:
         df['Line_Abs'] = abs(df['Asian_Line_Display'])
+        st.write("✅ Line_Abs criada")
+    else:
+        st.warning("⚠️ Asian_Line_Display não encontrado")
     
     return df
-
-# Aplicar feature engineering otimizado
-st.info("🔄 Aplicando feature engineering otimizado...")
-
-history = create_optimized_features(history)
-games_today = create_optimized_features(games_today)
-
-# ✅ DEFINIR FEATURES PREMIUM PARA AWAY
-away_premium_features = [
-    'Underdog_Indicator',      # Correlação 0.261 ✅
-    'Handicap_Balance',        # Correlação -0.261 ✅
-    'Aggression_Away',         # Correlação 0.209 ✅
-    'Aggression_Home',         # Correlação -0.190 ✅
-    'Odd_A',                   # Contexto de odds
-    'Asian_Line_Display',      # Linha do handicap
-    'Odds_Ratio',              # Relação de forças
-    'Line_Abs'                 # Magnitude do handicap
-]
-
-# Filtrar apenas features que existem
-away_premium_features = [f for f in away_premium_features if f in history.columns]
-
-st.success(f"✅ Features premium para Away Handicap: {away_premium_features}")
 
 ##################### BLOCO 4.1 – PREPARAR DADOS PARA MODELO AWAY PREMIUM #####################
 
@@ -257,29 +242,66 @@ if "Target_AH_Away" not in history.columns:
     st.error("Target_AH_Away não encontrado no histórico!")
     st.stop()
 
+# VERIFICAÇÃO ROBUSTA DAS FEATURES
+st.info("🔍 Verificando disponibilidade das features...")
+
+# Features que realmente existem no histórico
+available_away_features = [f for f in away_premium_features if f in history.columns]
+st.write(f"✅ Features disponíveis no histórico: {available_away_features}")
+
+# Features que existem nos dados de hoje
+available_today_features = [f for f in away_premium_features if f in games_today.columns]
+st.write(f"✅ Features disponíveis hoje: {available_today_features}")
+
+# Usar apenas as features que existem em AMBOS
+final_away_features = list(set(available_away_features) & set(available_today_features))
+st.success(f"🎯 Features finais para o modelo: {final_away_features}")
+
+if not final_away_features:
+    st.error("❌ Nenhuma feature disponível em ambos histórico e dados de hoje!")
+    st.stop()
+
 # Preparar matriz de features para Away
-X_away = history[away_premium_features].copy()
+X_away = history[final_away_features].copy()
 y_away = history["Target_AH_Away"].copy()
 
 # One-hot encoding para ligas
 history_leagues = pd.get_dummies(history["League"], prefix="League")
 games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
-games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
 
-# Adicionar ligas às features
-X_away = pd.concat([X_away, history_leagues], axis=1)
-away_premium_features.extend(history_leagues.columns.tolist())
+# Garantir que as colunas de liga são as mesmas
+common_league_cols = list(set(history_leagues.columns) & set(games_today_leagues.columns))
+if not common_league_cols:
+    st.warning("⚠️ Nenhuma liga comum entre histórico e dados de hoje")
+    history_leagues = pd.DataFrame()
+    games_today_leagues = pd.DataFrame()
+else:
+    games_today_leagues = games_today_leagues.reindex(columns=common_league_cols, fill_value=0)
+    history_leagues = history_leagues[common_league_cols]
+
+# Adicionar ligas às features (se existirem)
+if not history_leagues.empty:
+    X_away = pd.concat([X_away, history_leagues], axis=1)
+    final_away_features.extend(history_leagues.columns.tolist())
 
 # Preparar dados de hoje
-X_today_away = games_today[away_premium_features].copy()
-X_today_away = pd.concat([X_today_away, games_today_leagues], axis=1)
+X_today_away = games_today[final_away_features].copy()
+if not games_today_leagues.empty:
+    X_today_away = pd.concat([X_today_away, games_today_leagues], axis=1)
+
+# Garantir que as colunas são as mesmas
 X_today_away = X_today_away.reindex(columns=X_away.columns, fill_value=0)
 
 # Normalização das features numéricas
-numeric_away_features = [f for f in away_premium_features if f in X_away.columns and 
-                        X_away[f].dtype in ['float64', 'int64'] and f not in history_leagues.columns]
+numeric_away_features = [f for f in final_away_features if f in X_away.columns and 
+                        X_away[f].dtype in ['float64', 'int64'] and 
+                        not f.startswith('League_')]
 
 st.info(f"🔢 Features numéricas para normalização: {numeric_away_features}")
+
+# Mostrar estatísticas das features
+st.write("📊 Estatísticas das features no histórico:")
+st.dataframe(X_away[final_away_features].describe(), use_container_width=True)
 
 ##################### BLOCO 5 – MODELO AWAY PREMIUM #####################
 
@@ -369,15 +391,20 @@ def calculate_confidence_system(row, prob_away):
     away_confidence = "BAIXA"
     away_reason = []
     
-    if (row.get('Underdog_Indicator', 0) > 0.3 and 
+    # Usar get() com valores padrão para evitar KeyError
+    underdog_indicator = row.get('Underdog_Indicator', 0)
+    aggression_away = row.get('Aggression_Away', 0)
+    aggression_home = row.get('Aggression_Home', 0)
+    
+    if (underdog_indicator > 0.3 and 
         prob_away > 0.60 and
-        row.get('Aggression_Away', 0) > 0.2):
+        aggression_away > 0.2):
         away_confidence = "ALTA"
         away_reason.append("Underdog claro com aggression away alta")
     
-    elif (row.get('Underdog_Indicator', 0) > 0.15 and 
+    elif (underdog_indicator > 0.15 and 
           prob_away > 0.55 and
-          row.get('Aggression_Away', 0) > 0.1):
+          aggression_away > 0.1):
         away_confidence = "MÉDIA"
         away_reason.append("Underdog moderado com probabilidade boa")
     
@@ -390,13 +417,13 @@ def calculate_confidence_system(row, prob_away):
     home_reason = []
     
     if (prob_away < 0.35 and 
-        row.get('Underdog_Indicator', 0) < -0.2 and
-        row.get('Aggression_Home', 0) > row.get('Aggression_Away', 0)):
+        underdog_indicator < -0.2 and
+        aggression_home > aggression_away):
         home_opportunity = "FORTE"
         home_reason.append("Away muito fraco e Home favorito claro")
     
     elif (prob_away < 0.45 and 
-          row.get('Underdog_Indicator', 0) < 0):
+          underdog_indicator < 0):
         home_opportunity = "MODERADA"
         home_reason.append("Away fraco e Home não é underdog")
     
@@ -410,21 +437,6 @@ def calculate_confidence_system(row, prob_away):
         'home_opportunity': home_opportunity,
         'home_reason': " | ".join(home_reason)
     }
-
-def calculate_stake_recommendation(confidence_level, base_stake=100):
-    """
-    Calcula stake recomendado baseado no nível de confiança
-    """
-    stake_multipliers = {
-        'ALTA': 1.0,
-        'MÉDIA': 0.5,
-        'BAIXA': 0.0,
-        'FORTE': 0.8,
-        'MODERADA': 0.3,
-        'FRACA': 0.0
-    }
-    
-    return base_stake * stake_multipliers.get(confidence_level, 0.0)
 
 ##################### BLOCO 7 – SIDEBAR CONFIG #####################
 st.sidebar.header("⚙️ Settings")
