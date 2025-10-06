@@ -282,270 +282,129 @@ else:
     st.warning("⚠️ Pulando tratamento de missing values - colunas de Aggression não encontradas")
 
 
-##################### BLOCO 4 – FEATURE ENGINEERING COM AGGRESSION E MOMENTUM #####################
+##################### BLOCO 3.7 – VERIFICAÇÃO E CORREÇÃO DOS TARGETS #####################
 
-def add_aggression_features(df):
-    """
-    Aggression positivo = DÁ mais handicap (favorito)
-    Aggression negativo = RECEBE mais handicap (underdog)
-    """
-    aggression_features = []
-    
-    # VERIFICAR COM NOMES CORRETOS
-    if all(col in df.columns for col in ['Aggression_Home', 'Aggression_Away']):
-        # Verificar qualidade dos dados
-        valid_data = df['Aggression_Home'].notna() & df['Aggression_Away'].notna()
-        
-        if valid_data.any():
-            # Criar features com nomes CORRETOS
-            df['Handicap_Balance'] = df['Aggression_Home'] - df['Aggression_Away']
-            df['Underdog_Indicator'] = -df['Handicap_Balance']  # Positivo = Home underdog
-            
-            # Power vs Market Perception
-            if 'M_H' in df.columns and 'M_A' in df.columns:
-                df['Power_Perception_Home'] = df['M_H'] - df['Aggression_Home']
-                df['Power_Perception_Away'] = df['M_A'] - df['Aggression_Away']
-                df['Power_Perception_Diff'] = df['Power_Perception_Home'] - df['Power_Perception_Away']
-            
-            aggression_features.extend(['Aggression_Home', 'Aggression_Away', 'Handicap_Balance', 
-                                      'Underdog_Indicator', 'Power_Perception_Diff'])
-        else:
-            st.warning("⚠️ Colunas de Aggression existem mas não têm dados válidos")
-    
-    # HandScore com nomes CORRETOS
-    if all(col in df.columns for col in ['HandScore_Home', 'HandScore_Away']):
-        if df['HandScore_Home'].notna().any() and df['HandScore_Away'].notna().any():
-            df['HandScore_Diff'] = df['HandScore_Home'] - df['HandScore_Away']
-            aggression_features.append('HandScore_Diff')
-    
-    # OverScore com nomes CORRETOS  
-    if all(col in df.columns for col in ['OverScore_Home', 'OverScore_Away']):
-        if df['OverScore_Home'].notna().any() and df['OverScore_Away'].notna().any():
-            df['OverScore_Diff'] = df['OverScore_Home'] - df['OverScore_Away']
-            df['Total_OverScore'] = df['OverScore_Home'] + df['OverScore_Away']
-            aggression_features.extend(['OverScore_Diff', 'Total_OverScore'])
-    
-    return df, aggression_features
+st.markdown("### 🔍 VERIFICAÇÃO DOS TARGETS DE HANDICAP")
 
-def create_momentum_features(df, window=5):
-    """Cria features que capturam momentum e tendências dos times"""
+def diagnose_handicap_targets(df):
+    """Faz diagnóstico completo dos targets de handicap"""
     
-    momentum_features = []
+    st.write("**📊 Diagnóstico dos Targets Atuais:**")
     
-    # Garantir que os dados estão ordenados por data
-    if 'Date' not in df.columns:
-        return df, momentum_features
+    # Análise dos targets atuais
+    target_analysis = pd.DataFrame({
+        'Target': ['Home Handicap Win', 'Away Handicap Win', 'Draw/Partial'],
+        'Count': [
+            df['Target_AH_Home'].sum(),
+            df['Target_AH_Away'].sum(),
+            len(df) - df['Target_AH_Home'].sum() - df['Target_AH_Away'].sum()
+        ],
+        'Percentage': [
+            f"{df['Target_AH_Home'].mean():.1%}",
+            f"{df['Target_AH_Away'].mean():.1%}",
+            f"{(len(df) - df['Target_AH_Home'].sum() - df['Target_AH_Away'].sum()) / len(df):.1%}"
+        ]
+    })
+    st.dataframe(target_analysis)
     
-    df = df.sort_values(['Home', 'Date']).reset_index(drop=True)
+    # Verificar overlap (quando ambos são 1)
+    overlap = ((df['Target_AH_Home'] == 1) & (df['Target_AH_Away'] == 1)).sum()
+    st.write(f"**🚨 Jogos onde AMBOS targets são 1: {overcome}**")
     
-    # Features para Home teams
-    if all(col in df.columns for col in ['HandScore_Home', 'Aggression_Home', 'Goals_H_FT']):
-        
-        # 1. MOMENTUM RECENTE DO HANDSCORE (últimos X jogos)
-        df['Home_HandScore_Trend'] = df.groupby('Home')['HandScore_Home'].transform(
-            lambda x: x.rolling(window=window, min_periods=1).mean()
-        )
-        
-        # 2. TENDÊNCIA DE AGGRESSION (está ficando mais ou menos agressivo?)
-        df['Home_Aggression_Trend'] = df.groupby('Home')['Aggression_Home'].transform(
-            lambda x: x.rolling(window=window, min_periods=1).mean()
-        )
-        
-        # 3. VOLATILIDADE DO PERFORMANCE
-        df['Home_HandScore_Volatility'] = df.groupby('Home')['HandScore_Home'].transform(
-            lambda x: x.rolling(window=window, min_periods=2).std()
-        ).fillna(0)
-        
-        # 4. MOMENTUM OFENSIVO (gols recentes)
-        df['Home_Goals_Form'] = df.groupby('Home')['Goals_H_FT'].transform(
-            lambda x: x.rolling(window=3, min_periods=1).mean()
-        )
-        
-        # 5. "HOT STREAK" - sequência de bons resultados
-        df['Home_Positive_Streak'] = df.groupby('Home')['HandScore_Home'].transform(
-            lambda x: (x > 0).rolling(window=3).sum()
-        )
-        
-        momentum_features.extend([
-            'Home_HandScore_Trend', 'Home_Aggression_Trend', 
-            'Home_HandScore_Volatility', 'Home_Goals_Form',
-            'Home_Positive_Streak'
-        ])
+    # Verificar quando ambos são 0
+    both_zero = ((df['Target_AH_Home'] == 0) & (df['Target_AH_Away'] == 0)).sum()
+    st.write(f"**Jogos onde AMBOS targets são 0: {both_zero}**")
     
-    # Features para Away teams (mesma lógica)
-    if all(col in df.columns for col in ['HandScore_Away', 'Aggression_Away', 'Goals_A_FT']):
-        
-        df['Away_HandScore_Trend'] = df.groupby('Away')['HandScore_Away'].transform(
-            lambda x: x.rolling(window=window, min_periods=1).mean()
-        )
-        
-        df['Away_Aggression_Trend'] = df.groupby('Away')['Aggression_Away'].transform(
-            lambda x: x.rolling(window=window, min_periods=1).mean()
-        )
-        
-        df['Away_HandScore_Volatility'] = df.groupby('Away')['HandScore_Away'].transform(
-            lambda x: x.rolling(window=window, min_periods=2).std()
-        ).fillna(0)
-        
-        df['Away_Goals_Form'] = df.groupby('Away')['Goals_A_FT'].transform(
-            lambda x: x.rolling(window=3, min_periods=1).mean()
-        )
-        
-        df['Away_Positive_Streak'] = df.groupby('Away')['HandScore_Away'].transform(
-            lambda x: (x > 0).rolling(window=3).sum()
-        )
-        
-        momentum_features.extend([
-            'Away_HandScore_Trend', 'Away_Aggression_Trend',
-            'Away_HandScore_Volatility', 'Away_Goals_Form', 
-            'Away_Positive_Streak'
-        ])
-    
-    # 6. FEATURES COMPARATIVAS DE MOMENTUM
-    if all(col in df.columns for col in ['Home_HandScore_Trend', 'Away_HandScore_Trend']):
-        df['Momentum_Advantage'] = df['Home_HandScore_Trend'] - df['Away_HandScore_Trend']
-        df['Form_Difference'] = df['Home_Goals_Form'] - df['Away_Goals_Form']
-        df['Trend_Consistency_Diff'] = df['Home_HandScore_Volatility'] - df['Away_HandScore_Volatility']
-        
-        momentum_features.extend([
-            'Momentum_Advantage', 'Form_Difference', 'Trend_Consistency_Diff'
-        ])
-    
-    return df, momentum_features
+    return overlap, both_zero
 
-def create_contrarian_features(df):
-    """Cria features que identificam oportunidades contrarianas"""
+# Executar diagnóstico
+overlap_count, both_zero_count = diagnose_handicap_targets(history)
+
+def create_corrected_handicap_targets(df):
+    """Cria targets corrigidos para handicap"""
     
-    contrarian_features = []
+    st.warning("🔄 Criando targets corrigidos...")
     
-    if all(col in df.columns for col in ['Aggression_Home', 'Aggression_Away', 'Odd_H', 'Odd_A']):
-        
-        # 1. "OVERVALUED" - Times com aggression alta mas odds altas (supervalorizados)
-        df['Home_Overvalued'] = df['Aggression_Home'] * df['Odd_H']  # Alto = possivelmente supervalorizado
-        df['Away_Overvalued'] = df['Aggression_Away'] * df['Odd_A']
-        
-        # 2. "UNDERVALUED" - Times com aggression baixa mas odds baixas (subvalorizados)  
-        df['Home_Undervalued'] = (1 - df['Aggression_Home']) * (1/df['Odd_H'])  # Inverso
-        df['Away_Undervalued'] = (1 - df['Aggression_Away']) * (1/df['Odd_A'])
-        
-        # 3. "REVERSION INDICATOR" - Times em baixa mas com potencial de reversão
-        if 'Home_HandScore_Volatility' in df.columns and 'Home_Positive_Streak' in df.columns:
-            df['Home_Reversion_Potential'] = df['Home_HandScore_Volatility'] * (1 - df['Home_Positive_Streak']/3)
-        if 'Away_HandScore_Volatility' in df.columns and 'Away_Positive_Streak' in df.columns:
-            df['Away_Reversion_Potential'] = df['Away_HandScore_Volatility'] * (1 - df['Away_Positive_Streak']/3)
-        
-        contrarian_features.extend([
-            'Home_Overvalued', 'Away_Overvalued',
-            'Home_Undervalued', 'Away_Undervalued'
-        ])
-        
-        if 'Home_Reversion_Potential' in df.columns:
-            contrarian_features.extend(['Home_Reversion_Potential', 'Away_Reversion_Potential'])
+    # VERIFICAR O CÁLCULO ORIGINAL
+    st.write("**Verificação do cálculo original:**")
+    sample_check = df[['Goals_H_FT', 'Goals_A_FT', 'Asian_Line', 'Margin', 
+                      'Handicap_Home_Result', 'Handicap_Away_Result',
+                      'Target_AH_Home', 'Target_AH_Away']].head(5)
+    st.dataframe(sample_check)
     
-    return df, contrarian_features
+    # 🎯 CORREÇÃO: Targets mutuamente exclusivos
+    # Home win: Handicap_Home_Result > 0.5
+    # Away win: Handicap_Away_Result > 0.5  
+    # Draw/Partial: ambos <= 0.5
+    
+    df['Target_AH_Home_Corrected'] = (df['Handicap_Home_Result'] > 0.5).astype(int)
+    df['Target_AH_Away_Corrected'] = (df['Handicap_Away_Result'] > 0.5).astype(int)
+    
+    # Verificar a correção
+    st.write("**✅ Targets Corrigidos:**")
+    corrected_analysis = pd.DataFrame({
+        'Target': ['Home Handicap Win', 'Away Handicap Win', 'Draw/Partial'],
+        'Count': [
+            df['Target_AH_Home_Corrected'].sum(),
+            df['Target_AH_Away_Corrected'].sum(),
+            len(df) - df['Target_AH_Home_Corrected'].sum() - df['Target_AH_Away_Corrected'].sum()
+        ],
+        'Percentage': [
+            f"{df['Target_AH_Home_Corrected'].mean():.1%}",
+            f"{df['Target_AH_Away_Corrected'].mean():.1%}",
+            f"{(len(df) - df['Target_AH_Home_Corrected'].sum() - df['Target_AH_Away_Corrected'].sum()) / len(df):.1%}"
+        ]
+    })
+    st.dataframe(corrected_analysis)
+    
+    # Verificar overlap nos corrigidos
+    overlap_corrected = ((df['Target_AH_Home_Corrected'] == 1) & (df['Target_AH_Away_Corrected'] == 1)).sum()
+    st.write(f"**Overlap nos targets corrigidos: {overlap_corrected}**")
+    
+    return df
 
-# Aplicar todas as features
-st.info("🔄 Aplicando feature engineering...")
+# Aplicar correção se necessário
+if overlap_count > 0 or both_zero_count > len(history) * 0.3:
+    st.error("🚨 PROBLEMA DETECTADO: Targets com overlap ou muitos empates!")
+    history = create_corrected_handicap_targets(history)
+    
+    # Usar os targets corrigidos
+    history['Target_AH_Home'] = history['Target_AH_Home_Corrected']
+    history['Target_AH_Away'] = history['Target_AH_Away_Corrected']
+    
+    st.success("✅ Targets corrigidos aplicados!")
+else:
+    st.success("✅ Targets parecem OK!")
 
-history, aggression_features = add_aggression_features(history)
-games_today, _ = add_aggression_features(games_today)
 
-history, momentum_features = create_momentum_features(history)
-games_today, _ = create_momentum_features(games_today)
+##################### BLOCO 4 – FEATURE ENGINEERING SIMPLIFICADO #####################
 
-history, contrarian_features = create_contrarian_features(history)
-games_today, _ = create_contrarian_features(games_today)
-
-# BLOCO DE FEATURES ATUALIZADO
-feature_blocks = {
-    "odds": ["Odd_H", "Odd_D", "Odd_A"],
-    "strength": [
-        "Diff_Power", "M_H", "M_A", "Diff_M",
-        "Diff_HT_P", "M_HT_H", "M_HT_A",
-        "Asian_Line_Display"
-    ],
-    "aggression": aggression_features,
-    "momentum": momentum_features,
-    "contrarian": contrarian_features,
+# Usar apenas features mais importantes para evitar overfitting
+feature_blocks_simplified = {
+    "odds": ["Odd_H", "Odd_A"],
+    "strength": ["Diff_Power", "M_H", "M_A", "Asian_Line_Display"],
+    "aggression": ["Aggression_Home", "Aggression_Away", "Underdog_Indicator"],
     "categorical": []
 }
 
-# Filtrar apenas as features que existem no dataframe
-for block_name in ["aggression", "momentum", "contrarian"]:
-    feature_blocks[block_name] = [col for col in feature_blocks[block_name] if col in history.columns]
+# Filtrar apenas features que existem
+for block_name, cols in feature_blocks_simplified.items():
+    feature_blocks_simplified[block_name] = [c for c in cols if c in history.columns]
 
-history_leagues = pd.get_dummies(history["League"], prefix="League")
-games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
-games_today_leagues = games_today_leagues.reindex(columns=history_leagues.columns, fill_value=0)
-feature_blocks["categorical"] = list(history_leagues.columns)
+st.write("**🔧 Features Simplificadas:**", feature_blocks_simplified)
 
-def build_feature_matrix(df, leagues, blocks):
-    dfs = []
-    for block_name, cols in blocks.items():
-        if block_name == "categorical":
-            dfs.append(leagues)
-        elif cols:  # Só adiciona se a lista não estiver vazia
-            available_cols = [c for c in cols if c in df.columns]
-            if available_cols:
-                dfs.append(df[available_cols])
-    return pd.concat(dfs, axis=1)
-
-X_ah_home = build_feature_matrix(history, history_leagues, feature_blocks)
+# Rebuild com features simplificadas
+X_ah_home = build_feature_matrix(history, history_leagues, feature_blocks_simplified)
 X_ah_away = X_ah_home.copy()
 
-X_today_ah_home = build_feature_matrix(games_today, games_today_leagues, feature_blocks)
+X_today_ah_home = build_feature_matrix(games_today, games_today_leagues, feature_blocks_simplified)
 X_today_ah_home = X_today_ah_home.reindex(columns=X_ah_home.columns, fill_value=0)
 X_today_ah_away = X_today_ah_home.copy()
 
-# ATUALIZAR numeric_cols para incluir as novas features
-numeric_cols = (feature_blocks["odds"] + feature_blocks["strength"] + 
-                feature_blocks["aggression"] + feature_blocks["momentum"] +
-                feature_blocks["contrarian"])
+# Atualizar numeric_cols
+numeric_cols = (feature_blocks_simplified["odds"] + feature_blocks_simplified["strength"] + 
+                feature_blocks_simplified["aggression"])
 numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
-
-# BLOCO EXTRA – ANÁLISE DAS NOVAS FEATURES
-st.markdown("### 🔍 Análise: Aggression vs Asian Handicap")
-
-if not history.empty and all(col in history.columns for col in ['Target_AH_Home', 'Target_AH_Away'] + aggression_features):
-    
-    # Análise de correlação
-    available_aggression_for_analysis = [f for f in aggression_features if f in history.columns]
-    
-    if available_aggression_for_analysis:
-        # Correlação com target Home
-        corr_home = history[available_aggression_for_analysis + ['Target_AH_Home']].corr()['Target_AH_Home'].drop('Target_AH_Home')
-        
-        # Correlação com target Away  
-        corr_away = history[available_aggression_for_analysis + ['Target_AH_Away']].corr()['Target_AH_Away'].drop('Target_AH_Away')
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("**Correlação com Handicap Home Win:**")
-            corr_df_home = pd.DataFrame({
-                'Feature': corr_home.index,
-                'Correlation': corr_home.values
-            }).sort_values('Correlation', key=abs, ascending=False)
-            st.dataframe(corr_df_home.style.format({'Correlation': '{:.3f}'}), use_container_width=True)
-        
-        with col2:
-            st.write("**Correlação com Handicap Away Win:**")
-            corr_df_away = pd.DataFrame({
-                'Feature': corr_away.index, 
-                'Correlation': corr_away.values
-            }).sort_values('Correlation', key=abs, ascending=False)
-            st.dataframe(corr_df_away.style.format({'Correlation': '{:.3f}'}), use_container_width=True)
-        
-        # Destacar features mais promissoras
-        strong_features_home = corr_df_home[abs(corr_df_home['Correlation']) > 0.05]
-        strong_features_away = corr_df_away[abs(corr_df_away['Correlation']) > 0.05]
-        
-        if not strong_features_home.empty or not strong_features_away.empty:
-            st.success("🎯 **Features mais promissoras (correlação > |0.05|):**")
-            if not strong_features_home.empty:
-                st.write("Para Handicap Home:", ", ".join(strong_features_home['Feature'].tolist()))
-            if not strong_features_away.empty:
-                st.write("Para Handicap Away:", ", ".join(strong_features_away['Feature'].tolist()))
 
 
 ##################### BLOCO 5 – SIDEBAR CONFIG #####################
@@ -556,22 +415,20 @@ retrain = st.sidebar.checkbox("Retrain models", value=False)
 normalize_features = st.sidebar.checkbox("Normalize features", value=True)
 
 
-##################### BLOCO 6 – TRAIN & EVALUATE #####################
-def train_and_evaluate(X, y, name):
+##################### BLOCO 6 – TRAIN & EVALUATE (ATUALIZADO) #####################
+
+def train_simple_model(X, y, name):
+    """Treina modelo mais simples para evitar overfitting"""
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
-    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C_v1.pkl"
+    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_SIMPLE.pkl"
     feature_cols = X.columns.tolist()
 
     if not retrain:
         loaded = load_model(filename)
         if loaded:
             model, cols = loaded
-            preds = model.predict(X)
-            probs = model.predict_proba(X)
-            res = {"Model": f"{name}_v1", "Accuracy": accuracy_score(y, preds),
-                   "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
-            return res, (model, cols)
+            return {"Model": f"{name}_Simple", "Accuracy": "Loaded"}, (model, cols)
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
@@ -580,98 +437,60 @@ def train_and_evaluate(X, y, name):
         X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
         X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
 
+    # Modelo mais simples
     if ml_model_choice == "Random Forest":
-        model = RandomForestClassifier(n_estimators=300, max_depth=8, random_state=42)
+        model = RandomForestClassifier(
+            n_estimators=100,
+            max_depth=6,
+            min_samples_split=20,
+            min_samples_leaf=10,
+            random_state=42
+        )
     else:
-        model = XGBClassifier(n_estimators=400, max_depth=6, learning_rate=0.05,
-                              subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
-                              use_label_encoder=False, random_state=42)
+        model = XGBClassifier(
+            n_estimators=100,
+            max_depth=4,
+            learning_rate=0.1,
+            random_state=42,
+            eval_metric="logloss",
+            use_label_encoder=False
+        )
 
     model.fit(X_train, y_train)
     preds = model.predict(X_test)
     probs = model.predict_proba(X_test)
 
-    res = {"Model": f"{name}_v1", "Accuracy": accuracy_score(y_test, preds),
-           "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
+    res = {
+        "Model": f"{name}_Simple", 
+        "Accuracy": f"{accuracy_score(y_test, preds):.3f}",
+        "LogLoss": f"{log_loss(y_test, probs):.3f}",
+        "BrierScore": f"{brier_score_loss(y_test, probs[:,1]):.3f}"
+    }
 
     save_model(model, feature_cols, filename)
     return res, (model, feature_cols)
 
 
-def train_and_evaluate_v2(X, y, name, use_calibration=True):
-    safe_name = name.replace(" ", "")
-    safe_model = ml_model_choice.replace(" ", "")
-    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2C_v2.pkl"
-    feature_cols = X.columns.tolist()
+##################### BLOCO 7 – TRAINING MODELS SIMPLIFICADOS #####################
 
-    if not retrain:
-        loaded = load_model(filename)
-        if loaded:
-            model, cols = loaded
-            preds = model.predict(X)
-            probs = model.predict_proba(X)
-            res = {"Model": f"{name}_v2", "Accuracy": accuracy_score(y, preds),
-                   "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
-            return res, (model, cols)
+st.info("🤖 Treinando modelos simplificados...")
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+stats_simple = []
+res, model_ah_home_simple = train_simple_model(X_ah_home, history["Target_AH_Home"], "AH_Home")
+stats_simple.append(res)
+res, model_ah_away_simple = train_simple_model(X_ah_away, history["Target_AH_Away"], "AH_Away")
+stats_simple.append(res)
 
-    if normalize_features:
-        scaler = StandardScaler()
-        X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
-        X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
-
-    if ml_model_choice == "Random Forest":
-        base_model = RandomForestClassifier(n_estimators=500, max_depth=None, class_weight="balanced",
-                                            random_state=42, n_jobs=-1)
-    else:
-        base_model = XGBClassifier(n_estimators=1000, max_depth=5, learning_rate=0.1,
-                                   subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
-                                   use_label_encoder=False, random_state=42,
-                                   scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1)
-
-    if use_calibration:
-        try:
-            model = CalibratedClassifierCV(estimator=base_model, method="sigmoid", cv=2)
-        except TypeError:
-            model = CalibratedClassifierCV(base_estimator=base_model, method="sigmoid", cv=2)
-        model.fit(X_train, y_train)
-    else:
-        if ml_model_choice == "XGBoost":
-            base_model.fit(X_train, y_train, eval_set=[(X_test, y_test)], early_stopping_rounds=30, verbose=False)
-        else:
-            base_model.fit(X_train, y_train)
-        model = base_model
-
-    preds = model.predict(X_test)
-    probs = model.predict_proba(X_test)
-
-    res = {"Model": f"{name}_v2", "Accuracy": accuracy_score(y_test, preds),
-           "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
-
-    save_model(model, feature_cols, filename)
-    return res, (model, feature_cols)
+stats_simple_df = pd.DataFrame(stats_simple)
+st.markdown("### 📊 Model Statistics (Simplified)")
+st.dataframe(stats_simple_df, use_container_width=True)
 
 
-##################### BLOCO 7 – TRAINING MODELS #####################
-stats = []
-res, model_ah_home_v1 = train_and_evaluate(X_ah_home, history["Target_AH_Home"], "AH_Home"); stats.append(res)
-res, model_ah_away_v1 = train_and_evaluate(X_ah_away, history["Target_AH_Away"], "AH_Away"); stats.append(res)
-res, model_ah_home_v2 = train_and_evaluate_v2(X_ah_home, history["Target_AH_Home"], "AH_Home"); stats.append(res)
-res, model_ah_away_v2 = train_and_evaluate_v2(X_ah_away, history["Target_AH_Away"], "AH_Away"); stats.append(res)
+##################### BLOCO 8 – PREDICTIONS COM MODELOS SIMPLIFICADOS #####################
 
-stats_df = pd.DataFrame(stats)[["Model", "Accuracy", "LogLoss", "BrierScore"]]
-st.markdown("### 📊 Model Statistics (Validation) – v1 vs v2")
-st.dataframe(stats_df, use_container_width=True)
-
-
-##################### BLOCO 8 – PREDICTIONS #####################
-if ml_version_choice == "v1":
-    model_ah_home, cols1 = model_ah_home_v1
-    model_ah_away, cols2 = model_ah_away_v1
-else:
-    model_ah_home, cols1 = model_ah_home_v2
-    model_ah_away, cols2 = model_ah_away_v2
+# Usar modelos simplificados
+model_ah_home, cols1 = model_ah_home_simple
+model_ah_away, cols2 = model_ah_away_simple
 
 X_today_ah_home = X_today_ah_home.reindex(columns=cols1, fill_value=0)
 X_today_ah_away = X_today_ah_away.reindex(columns=cols2, fill_value=0)
@@ -691,33 +510,26 @@ if not games_today.empty:
     for cls, col in zip(model_ah_away.classes_, ["p_ah_away_no", "p_ah_away_yes"]):
         games_today[col] = probs_away[:, cls]
 
-def color_prob(val, color):
-    if pd.isna(val): return ""
-    alpha = float(np.clip(val, 0, 1))
-    return f"background-color: rgba({color}, {alpha:.2f})"
+# VERIFICAÇÃO DAS PROBABILIDADES
+st.markdown("### 🔍 VERIFICAÇÃO DAS PROBABILIDADES")
 
-# ========== EXIBIÇÃO DAS PREDIÇÕES ==========
-styled_df = (
-    games_today[[
-        "Date","Time","League","Home","Away",
-        "Goals_H_Today", "Goals_A_Today",
-        "Odd_H","Odd_D","Odd_A",
-        "Asian_Line_Display","Odd_H_Asi","Odd_A_Asi",
-        "p_ah_home_yes","p_ah_away_yes"
-    ]]
-    .style.format({
-        "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
-        "Asian_Line_Display": "{:.2f}",
-        "Odd_H_Asi": "{:.2f}", "Odd_A_Asi": "{:.2f}",
-        "p_ah_home_yes": "{:.1%}", "p_ah_away_yes": "{:.1%}",
-        "Goals_H_Today": "{:.0f}", "Goals_A_Today": "{:.0f}"
-    }, na_rep="—")
-    .applymap(lambda v: color_prob(v, "0,200,0"), subset=["p_ah_home_yes"])
-    .applymap(lambda v: color_prob(v, "255,140,0"), subset=["p_ah_away_yes"])
-)
+games_today['prob_sum'] = games_today['p_ah_home_yes'] + games_today['p_ah_away_yes']
+prob_stats = games_today['prob_sum'].describe()
 
-st.markdown(f"### 📌 Predictions for {selected_date_str} – Asian Handicap ({ml_version_choice})")
-st.dataframe(styled_df, use_container_width=True, height=800)
+st.write("**Estatísticas da Soma das Probabilidades:**")
+st.write(prob_stats)
+
+# Identificar se ainda há problemas
+problem_games = games_today[
+    (games_today['p_ah_home_yes'] > 0.6) & 
+    (games_today['p_ah_away_yes'] > 0.6)
+]
+
+if not problem_games.empty:
+    st.error(f"🚨 {len(problem_games)} jogos ainda com probabilidades altas para AMBOS os lados!")
+    st.dataframe(problem_games[['Home', 'Away', 'p_ah_home_yes', 'p_ah_away_yes', 'prob_sum']])
+else:
+    st.success("✅ Probabilidades estão bem distribuídas!")
 
 
 ##################### BLOCO 9 – SISTEMA DE RECOMENDAÇÕES INTELIGENTE #####################
