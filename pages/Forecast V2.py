@@ -421,7 +421,7 @@ games_today["p_btts_yes"], games_today["p_btts_no"] = probs_btts.T
 
 
 # ########################################################
-# Bloco 10 – Styling e Display
+# Bloco 10 – Styling e Display (ATUALIZADO COM PLACAR)
 # ########################################################
 def color_prob(val, color):
     alpha = int(val * 255)
@@ -437,21 +437,24 @@ def style_probs(val, col):
     elif col == "p_btts_no": return color_prob(val, "200,0,0")
     return ""
 
+# 🔥 COLUNAS ATUALIZADAS - Adicionando Goals_H_Today e Goals_A_Today
 cols_final = [
-    "Date","Time","League","Home","Away",
-    "Odd_H","Odd_D","Odd_A",
-    "p_home","p_draw","p_away",
-    "p_over25","p_under25",
-    "p_btts_yes","p_btts_no"
+    "Date", "Time", "League", "Home", "Away",
+    "Goals_H_Today", "Goals_A_Today",  # 🔥 NOVAS COLUNAS DE PLACAR
+    "Odd_H", "Odd_D", "Odd_A",
+    "p_home", "p_draw", "p_away",
+    "p_over25", "p_under25",
+    "p_btts_yes", "p_btts_no"
 ]
 
 styled_df = (
     games_today[cols_final]
     .style.format({
-        "Odd_H": "{:.2f}","Odd_D": "{:.2f}","Odd_A": "{:.2f}",
-        "p_home": "{:.1%}","p_draw": "{:.1%}","p_away": "{:.1%}",
-        "p_over25": "{:.1%}","p_under25": "{:.1%}",
-        "p_btts_yes": "{:.1%}","p_btts_no": "{:.1%}",
+        "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
+        "p_home": "{:.1%}", "p_draw": "{:.1%}", "p_away": "{:.1%}",
+        "p_over25": "{:.1%}", "p_under25": "{:.1%}",
+        "p_btts_yes": "{:.1%}", "p_btts_no": "{:.1%}",
+        "Goals_H_Today": "{:.0f}", "Goals_A_Today": "{:.0f}"  # 🔥 FORMATAÇÃO DO PLACAR
     }, na_rep="—")
     .applymap(lambda v: style_probs(v, "p_home"), subset=["p_home"])
     .applymap(lambda v: style_probs(v, "p_draw"), subset=["p_draw"])
@@ -460,12 +463,15 @@ styled_df = (
     .applymap(lambda v: style_probs(v, "p_under25"), subset=["p_under25"])
     .applymap(lambda v: style_probs(v, "p_btts_yes"), subset=["p_btts_yes"])
     .applymap(lambda v: style_probs(v, "p_btts_no"), subset=["p_btts_no"])
+    # 🔥 ESTILO PARA PLACAR (opcional - destaque para jogos em andamento)
+    .applymap(lambda v: "background-color: #e6ffe6" if pd.notna(v) and v != "—" else "", 
+              subset=["Goals_H_Today", "Goals_A_Today"])
 )
 
 st.markdown("### 📌 Predictions for Selected Matches")
 st.dataframe(styled_df, use_container_width=True, height=1000)
 
-# 🔹 Botão para download do CSV (do Binary)
+# 🔹 Botão para download do CSV (ATUALIZADO)
 import io
 csv_buffer = io.BytesIO()
 games_today.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
@@ -477,7 +483,6 @@ st.download_button(
     file_name=f"Bet_Indicator_Triple_View_{datetime.now().strftime('%Y-%m-%d')}.csv",
     mime="text/csv"
 )
-
 
 # ########################################################
 # Block 11 – Hybrid Forecast (Historical vs ML)
