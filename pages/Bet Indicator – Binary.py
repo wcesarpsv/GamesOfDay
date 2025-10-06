@@ -517,7 +517,7 @@ styled_enhanced = (
     .apply(style_enhanced, axis=1)
 )
 
-st.dataframe(styled_enhanced, use_container_width=True, height=1000)
+st.dataframe(use_container_width=True, height=1000)
 
 # Resumo por categoria
 st.markdown("#### 📋 Resumo por Categoria de Confiança")
