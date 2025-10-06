@@ -469,7 +469,7 @@ games_today = games_today.sort_values('Ordem_Confianca')
 cols_to_show_enhanced = [
     'Categoria', 'Date', 'Time', 'League', 'Home', 'Away',
     'Goals_H_Today', 'Goals_A_Today', 
-    'Odd_H', 'Odd_A', 'prob_away', 'p_home', 'p_away'
+    'Odd_H', 'Odd_A',  'p_home', 'p_away'
 ]
 
 # Exibir tabela categorizada - SEM BACKGROUND COLOR
