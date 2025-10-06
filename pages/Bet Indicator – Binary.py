@@ -426,7 +426,7 @@ games_today['p_home'] = probs_today[:,0]
 games_today['p_away'] = probs_today[:,1]
 
 # ########################################################
-# BLOCO 11.1 – CATEGORIAS VISUAIS PARA HOJE
+# BLOCO 11.1 – CATEGORIAS VISUAIS PARA HOJE (SEM BACKGROUND)
 # ########################################################
 
 def categorizar_confianca(prob_away):
@@ -472,25 +472,7 @@ cols_to_show_enhanced = [
     'Odd_H', 'Odd_A', 'prob_away', 'p_home', 'p_away'
 ]
 
-def style_enhanced(row):
-    """Estilo melhorado com cores por categoria"""
-    if row['Categoria'] == "🟢 HIGH CONFIDENCE HOME":
-        return ['background-color: #90EE90'] * len(row)  # Verde claro
-    elif row['Categoria'] == "🟢 HIGH CONFIDENCE AWAY":
-        return ['background-color: #90EE90'] * len(row)  # Verde claro
-    elif row['Categoria'] == "🟡 MEDIUM CONFIDENCE HOME":
-        return ['background-color: #FFFACD'] * len(row)  # Amarelo claro
-    elif row['Categoria'] == "🟡 MEDIUM CONFIDENCE AWAY":
-        return ['background-color: #FFFACD'] * len(row)  # Amarelo claro
-    elif row['Categoria'] == "⚪ LOW CONFIDENCE HOME":
-        return ['background-color: #F5F5F5'] * len(row)  # Cinza claro
-    elif row['Categoria'] == "⚪ LOW CONFIDENCE AWAY":
-        return ['background-color: #F5F5F5'] * len(row)  # Cinza claro
-    elif row['Categoria'] == "🔴 UNCERTAIN/AVOID":
-        return ['background-color: #FFB6C1'] * len(row)  # Vermelho claro
-    return [''] * len(row)
-
-# Exibir tabela categorizada
+# Exibir tabela categorizada - SEM BACKGROUND COLOR
 st.markdown(f"### 🎯 Previsões Categorizadas para {selected_date_str}")
 
 styled_enhanced = (
@@ -500,7 +482,6 @@ styled_enhanced = (
         'prob_away': '{:.1%}', 'p_home': '{:.1%}', 'p_away': '{:.1%}',
         'Goals_H_Today': '{:.0f}', 'Goals_A_Today': '{:.0f}'
     }, na_rep='—')
-    .apply(style_enhanced, axis=1)
 )
 
 st.dataframe(styled_enhanced, use_container_width=True, height=1000)
@@ -533,19 +514,43 @@ high_confidence_games = games_today[
     games_today['Categoria'].isin(["🟢 HIGH CONFIDENCE HOME", "🟢 HIGH CONFIDENCE AWAY"])
 ]
 
+medium_confidence_games = games_today[
+    games_today['Categoria'].isin(["🟡 MEDIUM CONFIDENCE HOME", "🟡 MEDIUM CONFIDENCE AWAY"])
+]
+
 if not high_confidence_games.empty:
-    st.success(f"🎯 **Melhores Oportunidades do Dia**: {len(high_confidence_games)} jogos com alta confiança")
+    st.success(f"🎯 **MELHORES OPORTUNIDADES (Alta Confiança)**: {len(high_confidence_games)} jogos")
     
     for _, jogo in high_confidence_games.iterrows():
         if "HOME" in jogo['Categoria']:
-            st.write(f"🏠 **{jogo['Home']} vs {jogo['Away']}** - Odd: {jogo['Odd_H']:.2f} | Prob: {jogo['p_home']:.1%}")
+            st.write(f"✅ **{jogo['Home']} vs {jogo['Away']}**")
+            st.write(f"   🏠 **Home Win** | Odd: {jogo['Odd_H']:.2f} | Prob: {jogo['p_home']:.1%}")
         else:
-            st.write(f"✈️ **{jogo['Home']} vs {jogo['Away']}** - Odd: {jogo['Odd_A']:.2f} | Prob: {jogo['p_away']:.1%}")
-else:
-    st.warning("⚠️ **Atenção**: Nenhum jogo com alta confiança identificado hoje. Considere as apostas de média confiança ou evite apostar.")
+            st.write(f"✅ **{jogo['Home']} vs {jogo['Away']}**")
+            st.write(f"   ✈️ **Away Win** | Odd: {jogo['Odd_A']:.2f} | Prob: {jogo['p_away']:.1%}")
+        st.write("---")
 
-st.info("""
-**Legenda das Categorias:**
+if not medium_confidence_games.empty:
+    st.info(f"📊 **OPORTUNIDADES SECUNDÁRIAS (Média Confiança)**: {len(medium_confidence_games)} jogos")
+    
+    for _, jogo in medium_confidence_games.iterrows():
+        if "HOME" in jogo['Categoria']:
+            st.write(f"⚡ **{jogo['Home']} vs {jogo['Away']}**")
+            st.write(f"   🏠 Home Win | Odd: {jogo['Odd_H']:.2f} | Prob: {jogo['p_home']:.1%}")
+        else:
+            st.write(f"⚡ **{jogo['Home']} vs {jogo['Away']}**")
+            st.write(f"   ✈️ Away Win | Odd: {jogo['Odd_A']:.2f} | Prob: {jogo['p_away']:.1%}")
+
+if not high_confidence_games.empty and not medium_confidence_games.empty:
+    st.write("")
+elif not high_confidence_games.empty:
+    st.write("")
+else:
+    st.warning("⚠️ **ATENÇÃO**: Nenhum jogo com alta confiança identificado hoje. Considere as apostas de média confiança ou evite apostar.")
+
+st.markdown("""
+**🎯 LEGENDA DAS CATEGORIAS:**
+
 - 🟢 **HIGH CONFIDENCE**: Melhores oportunidades (win rate histórico > 60%)
 - 🟡 **MEDIUM CONFIDENCE**: Boas oportunidades (win rate histórico 55-60%)  
 - ⚪ **LOW CONFIDENCE**: Oportunidades limitadas (win rate histórico 50-55%)
