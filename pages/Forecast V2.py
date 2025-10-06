@@ -463,9 +463,7 @@ styled_df = (
     .applymap(lambda v: style_probs(v, "p_under25"), subset=["p_under25"])
     .applymap(lambda v: style_probs(v, "p_btts_yes"), subset=["p_btts_yes"])
     .applymap(lambda v: style_probs(v, "p_btts_no"), subset=["p_btts_no"])
-    # 🔥 ESTILO PARA PLACAR (opcional - destaque para jogos em andamento)
-    .applymap(lambda v: "background-color: #e6ffe6" if pd.notna(v) and v != "—" else "", 
-              subset=["Goals_H_Today", "Goals_A_Today"])
+
 )
 
 st.markdown("### 📌 Predictions for Selected Matches")
