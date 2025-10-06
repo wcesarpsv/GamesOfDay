@@ -245,7 +245,7 @@ st.sidebar.markdown("""
 
 
 # ########################################################
-# Bloco 7 – Treino & Avaliação (COM SMOTE)
+# Bloco 7 – Treino & Avaliação (COM SMOTE - CORRIGIDO)
 # ########################################################
 def train_and_evaluate(X, y, name, num_classes):
     filename = f"{ml_model_choice.replace(' ', '')}_{name}_fc.pkl"
@@ -254,15 +254,40 @@ def train_and_evaluate(X, y, name, num_classes):
     if not retrain:
         model = load_model(filename)
 
-    # Split dos dados
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    # 🔥 CORREÇÃO: Limpeza de dados antes do split
+    # Combinar X e y para limpeza consistente
+    data_clean = X.copy()
+    data_clean['target'] = y
+    
+    # Remover linhas com NaN ou infinitos
+    data_clean = data_clean.replace([np.inf, -np.inf], np.nan)
+    data_clean = data_clean.dropna()
+    
+    if data_clean.empty:
+        st.error(f"❌ No valid data after cleaning for {name}")
+        return {}, None
+        
+    # Separar novamente
+    X_clean = data_clean.drop('target', axis=1)
+    y_clean = data_clean['target']
+    
+    st.info(f"📊 Dataset {name}: {len(X_clean)} samples after cleaning")
+
+    # Split dos dados LIMPOS
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_clean, y_clean, test_size=0.2, random_state=42, stratify=y_clean
+    )
     
     # Aplicar SMOTE se selecionado
     if use_smote:
         st.info(f"🔄 Applying SMOTE for {name} (before: {dict(Counter(y_train))})")
-        smote = SMOTE(random_state=42, sampling_strategy='auto')
-        X_train, y_train = smote.fit_resample(X_train, y_train)
-        st.info(f"📊 After SMOTE: {dict(Counter(y_train))}")
+        try:
+            smote = SMOTE(random_state=42, sampling_strategy='auto')
+            X_train, y_train = smote.fit_resample(X_train, y_train)
+            st.info(f"📊 After SMOTE: {dict(Counter(y_train))}")
+        except Exception as e:
+            st.error(f"❌ SMOTE failed for {name}: {e}")
+            st.warning("🔄 Continuing without SMOTE...")
 
     if model is None:
         if ml_model_choice == "Random Forest":
@@ -315,7 +340,8 @@ def train_and_evaluate(X, y, name, num_classes):
         "Accuracy": f"{acc:.3f}",
         "LogLoss": f"{ll:.3f}",
         "Brier": bs,
-        "SMOTE": "Yes" if use_smote else "No"
+        "SMOTE": "Yes" if use_smote else "No",
+        "Samples": len(X_clean)
     }
 
     return metrics, model
@@ -338,11 +364,34 @@ st.dataframe(df_stats, use_container_width=True)
 
 
 # ########################################################
-# Bloco 9 – Previsões
+# Bloco 9 – Previsões (COM TRATAMENTO DE NaN)
 # ########################################################
-games_today["p_home"], games_today["p_draw"], games_today["p_away"] = model_multi.predict_proba(X_today_1x2).T
-games_today["p_over25"], games_today["p_under25"] = model_ou.predict_proba(X_today_ou).T
-games_today["p_btts_yes"], games_today["p_btts_no"] = model_btts.predict_proba(X_today_btts).T
+
+# 🔥 CORREÇÃO: Preencher NaN nos dados de hoje antes da previsão
+def safe_predict_proba(model, X_data, default_value=0.33):
+    """Previsão segura com tratamento de NaN"""
+    X_filled = X_data.fillna(0)  # Preencher NaN com 0
+    
+    try:
+        return model.predict_proba(X_filled)
+    except Exception as e:
+        st.error(f"❌ Prediction error: {e}")
+        # Retornar probabilidades uniformes em caso de erro
+        n_samples = len(X_data)
+        if hasattr(model, 'classes_'):
+            n_classes = len(model.classes_)
+            return np.full((n_samples, n_classes), default_value)
+        else:
+            return np.full((n_samples, 2), 0.5)  # Fallback para binário
+
+# Previsões com tratamento seguro
+probs_1x2 = safe_predict_proba(model_multi, X_today_1x2)
+probs_ou = safe_predict_proba(model_ou, X_today_ou) 
+probs_btts = safe_predict_proba(model_btts, X_today_btts)
+
+games_today["p_home"], games_today["p_draw"], games_today["p_away"] = probs_1x2.T
+games_today["p_over25"], games_today["p_under25"] = probs_ou.T
+games_today["p_btts_yes"], games_today["p_btts_no"] = probs_btts.T
 
 
 # ########################################################
