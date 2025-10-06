@@ -6,16 +6,26 @@ import pandas as pd
 import numpy as np
 import os
 import joblib
+import re
+from datetime import date, timedelta, datetime
+from collections import Counter
+
+# Machine Learning
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+
+# SMOTE para balanceamento
+from imblearn.over_sampling import SMOTE
 
 st.set_page_config(page_title="Bet Indicator – Triple View", layout="wide")
 st.title("📊 Bet Indicator – Triple View (1X2 + OU + BTTS)")
 
 # Paths
 GAMES_FOLDER = "GamesDay"
+LIVESCORE_FOLDER = "LiveScore"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copa", "copas", "uefa", "nordeste", "afc","trophy"]
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -24,42 +34,107 @@ os.makedirs(MODELS_FOLDER, exist_ok=True)
 
 
 # ########################################################
-# Bloco 2 – Funções auxiliares
+# Bloco 2 – Funções auxiliares (ATUALIZADAS DO BINARY)
 # ########################################################
 def load_all_games(folder):
+    """Carrega todos os CSVs da pasta e remove duplicados por (Date, Home, Away)."""
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
-    if not files:
+    if not files: 
         return pd.DataFrame()
-    return pd.concat([pd.read_csv(os.path.join(folder, f)) for f in files], ignore_index=True)
+    df_list = []
+    for file in files:
+        try:
+            df = pd.read_csv(os.path.join(folder, file))
+            df_list.append(df)
+        except Exception as e:
+            st.error(f"Error loading {file}: {e}")
+    if not df_list:
+        return pd.DataFrame()
+    
+    df_all = pd.concat(df_list, ignore_index=True)
+    return df_all.drop_duplicates(subset=["Date", "Home", "Away","Goals_H_FT","Goals_A_FT"], keep="first")
+
+def filter_leagues(df):
+    """Remove ligas indesejadas (Copa, UEFA, etc)."""
+    if df.empty or 'League' not in df.columns:
+        return df
+    pattern = '|'.join(EXCLUDED_LEAGUE_KEYWORDS)
+    return df[~df['League'].str.lower().str.contains(pattern, na=False)].copy()
 
 def load_selected_csvs(folder):
+    """Carrega CSVs selecionados com sistema de data do Binary"""
     files = sorted([f for f in os.listdir(folder) if f.endswith(".csv")])
     if not files:
         return pd.DataFrame()
     
-    today_file = files[-1]
-    yesterday_file = files[-2] if len(files) >= 2 else None
+    # Últimos dois arquivos (Hoje e Ontem) - igual ao código Binary
+    options = files[-2:] if len(files) >= 2 else files
+    selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
+    
+    # Extrair a data do arquivo selecionado (YYYY-MM-DD)
+    date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
+    if date_match:
+        selected_date_str = date_match.group(0)
+    else:
+        selected_date_str = datetime.now().strftime("%Y-%m-%d")
+    
+    # Carregar o arquivo selecionado
+    games_today = pd.read_csv(os.path.join(folder, selected_file))
+    games_today = filter_leagues(games_today)
+    
+    # ========== MERGE COM LIVESCORE (DO BINARY) ==========
+    livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
 
-    st.markdown("### 📂 Select matches to display")
-    col1, col2 = st.columns(2)
-    today_checked = col1.checkbox("Today Matches", value=True)
-    yesterday_checked = col2.checkbox("Yesterday Matches", value=False)
+    # Ensure goal columns exist
+    if 'Goals_H_Today' not in games_today.columns:
+        games_today['Goals_H_Today'] = np.nan
+    if 'Goals_A_Today' not in games_today.columns:
+        games_today['Goals_A_Today'] = np.nan
 
-    selected_dfs = []
-    if today_checked:
-        selected_dfs.append(pd.read_csv(os.path.join(folder, today_file)))
-    if yesterday_checked and yesterday_file:
-        selected_dfs.append(pd.read_csv(os.path.join(folder, yesterday_file)))
+    # Merge with the correct LiveScore file
+    if os.path.exists(livescore_file):
+        st.info(f"LiveScore file found: {livescore_file}")
+        results_df = pd.read_csv(livescore_file)
 
-    if not selected_dfs:
-        return pd.DataFrame()
-    return pd.concat(selected_dfs, ignore_index=True)
+        # FILTER OUT CANCELED AND POSTPONED GAMES
+        results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
+        
+        required_cols = [
+            'game_id', 'status', 'home_goal', 'away_goal',
+            'home_ht_goal', 'away_ht_goal',
+            'home_corners', 'away_corners',
+            'home_yellow', 'away_yellow',
+            'home_red', 'away_red'
+        ]
+        missing_cols = [col for col in required_cols if col not in results_df.columns]
+        
+        if missing_cols:
+            st.error(f"The file {livescore_file} is missing these columns: {missing_cols}")
+        else:
+            games_today = games_today.merge(
+                results_df,
+                left_on='Id',
+                right_on='game_id',
+                how='left',
+                suffixes=('', '_RAW')
+            )
 
-def filter_leagues(df):
-    if df.empty or "League" not in df.columns:
-        return df
-    pattern = "|".join(EXCLUDED_LEAGUE_KEYWORDS)
-    return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
+            # Update goals only for finished games
+            games_today['Goals_H_Today'] = games_today['home_goal']
+            games_today['Goals_A_Today'] = games_today['away_goal']
+            games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
+            
+            # ADD RED CARD COLUMNS
+            games_today['Home_Red'] = games_today['home_red']
+            games_today['Away_Red'] = games_today['away_red']
+    else:
+        st.warning(f"No LiveScore results file found for selected date: {selected_date_str}")
+
+    # 🔹 Mantém apenas jogos futuros (sem placares ainda) - baseado nos dados originais
+    if 'Goals_H_FT' in games_today.columns:
+        games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
+
+    return games_today
 
 def save_model(model, filename):
     path = os.path.join(MODELS_FOLDER, filename)
@@ -75,10 +150,11 @@ def load_model(filename):
 
 
 # ########################################################
-# Bloco 3 – Carregar Dados
+# Bloco 3 – Carregar Dados (ATUALIZADO)
 # ########################################################
 st.info("📂 Loading data...")
 
+# Carregar dados históricos com função melhorada do Binary
 history = filter_leagues(load_all_games(GAMES_FOLDER))
 history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT"]).copy()
 
@@ -86,9 +162,8 @@ if history.empty:
     st.error("⚠️ No valid historical data found in GamesDay.")
     st.stop()
 
-games_today = filter_leagues(load_selected_csvs(GAMES_FOLDER))
-if "Goals_H_FT" in games_today.columns:
-    games_today = games_today[games_today["Goals_H_FT"].isna()].copy()
+# Carregar jogos de hoje com sistema melhorado
+games_today = load_selected_csvs(GAMES_FOLDER)
 
 if games_today.empty:
     st.error("⚠️ No valid matches selected.")
@@ -110,11 +185,31 @@ history["Target_BTTS"] = ((history["Goals_H_FT"] > 0) & (history["Goals_A_FT"] >
 # ########################################################
 # Bloco 5 – Features & One-Hot Leagues
 # ########################################################
+# Adicionar features de momentum do Binary
+def add_momentum_features(df):
+    df['PesoMomentum_H'] = abs(df['M_H']) / (abs(df['M_H']) + abs(df['M_A']))
+    df['PesoMomentum_A'] = abs(df['M_A']) / (abs(df['M_H']) + abs(df['M_A']))
+    df['CustoMomentum_H'] = df.apply(
+        lambda x: x['Odd_H'] / abs(x['M_H']) if abs(x['M_H']) > 0 else np.nan, axis=1
+    )
+    df['CustoMomentum_A'] = df.apply(
+        lambda x: x['Odd_A'] / abs(x['M_A']) if abs(x['M_A']) > 0 else np.nan, axis=1
+    )
+    return df
+
+history = add_momentum_features(history)
+games_today = add_momentum_features(games_today)
+
 history["Diff_M"] = history["M_H"] - history["M_A"]
 games_today["Diff_M"] = games_today["M_H"] - games_today["M_A"]
+history['Diff_Abs'] = (history['M_H'] - history['M_A']).abs()
+games_today['Diff_Abs'] = (games_today['M_H'] - games_today['M_A']).abs()
 
-features_1x2 = ["Odd_H", "Odd_D", "Odd_A", "Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "M_HT_H", "M_HT_A"]
-features_ou_btts = ["Odd_H", "Odd_D", "Odd_A", "Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "OU_Total"]
+# Features atualizadas com momentum
+features_1x2 = ["Odd_H", "Odd_D", "Odd_A", "Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "M_HT_H", "M_HT_A", 
+                "Diff_Abs", "PesoMomentum_H", "PesoMomentum_A", "CustoMomentum_H", "CustoMomentum_A"]
+features_ou_btts = ["Odd_H", "Odd_D", "Odd_A", "Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "OU_Total",
+                   "Diff_Abs", "PesoMomentum_H", "PesoMomentum_A", "CustoMomentum_H", "CustoMomentum_A"]
 
 history_leagues = pd.get_dummies(history["League"], prefix="League")
 games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
@@ -130,13 +225,14 @@ X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], a
 
 
 # ########################################################
-# Bloco 6 – Configurações ML (Sidebar)
+# Bloco 6 – Configurações ML (Sidebar) - ATUALIZADO
 # ########################################################
 st.sidebar.header("⚙️ Settings")
 ml_model_choice = st.sidebar.selectbox(
     "Choose ML Model", 
     ["Random Forest", "Random Forest Tuned", "XGBoost Tuned"]
 )
+use_smote = st.sidebar.checkbox("Use SMOTE for balancing", value=True)
 retrain = st.sidebar.checkbox("Retrain models", value=False)
 
 st.sidebar.markdown("""
@@ -144,11 +240,12 @@ st.sidebar.markdown("""
 - 🔹 *Random Forest*: simple and fast baseline.  
 - 🔹 *Random Forest Tuned*: suitable for market **1X2**.  
 - 🔹 *XGBoost Tuned*: suitable for markets **Over/Under 2.5** e **BTTS**.  
+- 🔹 *SMOTE*: recommended for imbalanced datasets
 """)
 
 
 # ########################################################
-# Bloco 7 – Treino & Avaliação
+# Bloco 7 – Treino & Avaliação (COM SMOTE)
 # ########################################################
 def train_and_evaluate(X, y, name, num_classes):
     filename = f"{ml_model_choice.replace(' ', '')}_{name}_fc.pkl"
@@ -156,6 +253,16 @@ def train_and_evaluate(X, y, name, num_classes):
 
     if not retrain:
         model = load_model(filename)
+
+    # Split dos dados
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    
+    # Aplicar SMOTE se selecionado
+    if use_smote:
+        st.info(f"🔄 Applying SMOTE for {name} (before: {dict(Counter(y_train))})")
+        smote = SMOTE(random_state=42, sampling_strategy='auto')
+        X_train, y_train = smote.fit_resample(X_train, y_train)
+        st.info(f"📊 After SMOTE: {dict(Counter(y_train))}")
 
     if model is None:
         if ml_model_choice == "Random Forest":
@@ -186,11 +293,8 @@ def train_and_evaluate(X, y, name, num_classes):
             }
             model = XGBClassifier(random_state=42, **xgb_params[name])
 
-        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
         model.fit(X_train, y_train)
         save_model(model, filename)
-    else:
-        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
     preds = model.predict(X_val)
     probs = model.predict_proba(X_val)
@@ -211,6 +315,7 @@ def train_and_evaluate(X, y, name, num_classes):
         "Accuracy": f"{acc:.3f}",
         "LogLoss": f"{ll:.3f}",
         "Brier": bs,
+        "SMOTE": "Yes" if use_smote else "No"
     }
 
     return metrics, model
@@ -285,6 +390,18 @@ styled_df = (
 st.markdown("### 📌 Predictions for Selected Matches")
 st.dataframe(styled_df, use_container_width=True, height=1000)
 
+# 🔹 Botão para download do CSV (do Binary)
+import io
+csv_buffer = io.BytesIO()
+games_today.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
+csv_buffer.seek(0)
+
+st.download_button(
+    label="📥 Download Predictions CSV",
+    data=csv_buffer,
+    file_name=f"Bet_Indicator_Triple_View_{datetime.now().strftime('%Y-%m-%d')}.csv",
+    mime="text/csv"
+)
 
 
 # ########################################################
@@ -316,9 +433,9 @@ try:
     if all_dfs and selected_date is not None:
         df_history = pd.concat(all_dfs, ignore_index=True)
 
-        # 🧹 Remove duplicates
+        # 🧹 Remove duplicates (usando função melhorada do Binary)
         df_history = df_history.drop_duplicates(
-            subset=["League", "Home", "Away", "Goals_H_FT", "Goals_A_FT"],
+            subset=["Date", "Home", "Away", "Goals_H_FT", "Goals_A_FT"],
             keep="first"
         )
 
@@ -478,14 +595,3 @@ try:
 
 except Exception as e:
     st.warning(f"⚠️ Divergence Block could not be generated: {e}")
-
-
-
-
-
-
-
-
-
-
-
