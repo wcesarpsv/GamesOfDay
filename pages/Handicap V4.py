@@ -417,66 +417,124 @@ def train_away_premium_model(X, y, retrain=False):
             st.success("✅ Modelo Away Premium carregado do cache")
             return model, feature_cols
     
+    # DEBUG: Verificar dados antes do split
+    st.write("🔍 **Debug - Antes do split:**")
+    st.write(f"Shape X: {X.shape}, Shape y: {y.shape}")
+    st.write(f"Tipos de X: {X.dtypes}")
+    st.write(f"Valores únicos em y: {y.unique()}, Counts: {y.value_counts()}")
+    
+    # Verificar se há dados suficientes
+    if len(X) < 100:
+        st.error(f"❌ Dados insuficientes para treinamento: apenas {len(X)} amostras")
+        return None, None
+    
+    # Verificar se y tem pelo menos 2 classes
+    if len(y.unique()) < 2:
+        st.error(f"❌ Target precisa ter pelo menos 2 classes. Encontrado: {y.unique()}")
+        return None, None
+    
     # Split temporal (mais realista)
     split_idx = int(len(X) * 0.8)
     X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
     y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
     
+    st.write("🔍 **Debug - Após split:**")
+    st.write(f"X_train: {X_train.shape}, X_test: {X_test.shape}")
+    st.write(f"y_train counts: {y_train.value_counts()}")
+    st.write(f"y_test counts: {y_test.value_counts()}")
+    
+    # Verificar NaN e infinitos
+    st.write("🔍 **Verificação de dados:**")
+    st.write(f"NaN em X_train: {X_train.isna().sum().sum()}")
+    st.write(f"NaN em X_test: {X_test.isna().sum().sum()}")
+    st.write(f"NaN em y_train: {y_train.isna().sum()}")
+    st.write(f"NaN em y_test: {y_test.isna().sum()}")
+    
+    # Limpar dados
+    X_train = X_train.replace([np.inf, -np.inf], np.nan).fillna(0)
+    X_test = X_test.replace([np.inf, -np.inf], np.nan).fillna(0)
+    
     # Normalização
     if normalize_features and numeric_away_features:
-        scaler = StandardScaler()
-        X_train[numeric_away_features] = scaler.fit_transform(X_train[numeric_away_features])
-        X_test[numeric_away_features] = scaler.transform(X_test[numeric_away_features])
+        # Verificar se as colunas numéricas existem
+        available_numeric = [f for f in numeric_away_features if f in X_train.columns]
+        if available_numeric:
+            scaler = StandardScaler()
+            X_train[available_numeric] = scaler.fit_transform(X_train[available_numeric])
+            X_test[available_numeric] = scaler.transform(X_test[available_numeric])
+            
+            # Salvar scaler para uso futuro
+            joblib.dump(scaler, os.path.join(MODELS_FOLDER, "away_premium_scaler.pkl"))
+            st.success(f"✅ Normalizadas {len(available_numeric)} features")
+        else:
+            st.warning("⚠️ Nenhuma feature numérica disponível para normalização")
+    
+    # Modelo XGBoost otimizado para Away - CONFIGURAÇÃO SIMPLIFICADA
+    try:
+        model = XGBClassifier(
+            n_estimators=100,  # Reduzido para teste
+            max_depth=4,       # Reduzido para teste
+            learning_rate=0.1,
+            eval_metric='logloss',
+            random_state=42
+        )
         
-        # Salvar scaler para uso futuro
-        joblib.dump(scaler, os.path.join(MODELS_FOLDER, "away_premium_scaler.pkl"))
-    
-    # Modelo XGBoost otimizado para Away
-    model = XGBClassifier(
-        n_estimators=400,
-        max_depth=6,
-        learning_rate=0.05,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        eval_metric='logloss',
-        use_label_encoder=False,
-        random_state=42,
-        scale_pos_weight=len(y_train[y_train==0]) / len(y_train[y_train==1])  # Balanceamento
-    )
-    
-    # Treinar com early stopping
-    model.fit(
-        X_train, y_train,
-        eval_set=[(X_test, y_test)],
-        early_stopping_rounds=50,
-        verbose=False
-    )
+        st.write("🔍 **Iniciando treinamento...**")
+        
+        # Treinar sem early stopping primeiro
+        model.fit(X_train, y_train)
+        st.success("✅ Treinamento concluído com sucesso!")
+        
+    except Exception as e:
+        st.error(f"❌ Erro no treinamento: {e}")
+        
+        # Tentar com Random Forest como fallback
+        st.info("🔄 Tentando com Random Forest...")
+        from sklearn.ensemble import RandomForestClassifier
+        model = RandomForestClassifier(
+            n_estimators=100,
+            max_depth=5,
+            random_state=42
+        )
+        model.fit(X_train, y_train)
+        st.success("✅ Random Forest treinado com sucesso!")
     
     # Avaliação
-    preds = model.predict(X_test)
-    probs = model.predict_proba(X_test)
+    try:
+        preds = model.predict(X_test)
+        probs = model.predict_proba(X_test)
+        
+        st.write("📊 **Performance do Modelo Away Premium:**")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Acurácia", f"{accuracy_score(y_test, preds):.1%}")
+        with col2:
+            st.metric("Log Loss", f"{log_loss(y_test, probs):.3f}")
+        with col3:
+            st.metric("Brier Score", f"{brier_score_loss(y_test, probs[:,1]):.3f}")
+        
+    except Exception as e:
+        st.error(f"❌ Erro na avaliação: {e}")
     
-    st.write("📊 **Performance do Modelo Away Premium:**")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Acurácia", f"{accuracy_score(y_test, preds):.1%}")
-    with col2:
-        st.metric("Log Loss", f"{log_loss(y_test, probs):.3f}")
-    with col3:
-        st.metric("Brier Score", f"{brier_score_loss(y_test, probs[:,1]):.3f}")
-    
-    # Feature importance
-    feature_importance = pd.DataFrame({
-        'feature': X.columns,
-        'importance': model.feature_importances_
-    }).sort_values('importance', ascending=False)
-    
-    st.write("🎯 **Top 10 Features Mais Importantes:**")
-    st.dataframe(feature_importance.head(10), use_container_width=True)
+    # Feature importance (se disponível)
+    try:
+        if hasattr(model, 'feature_importances_'):
+            feature_importance = pd.DataFrame({
+                'feature': X.columns,
+                'importance': model.feature_importances_
+            }).sort_values('importance', ascending=False)
+            
+            st.write("🎯 **Top 10 Features Mais Importantes:**")
+            st.dataframe(feature_importance.head(10), use_container_width=True)
+    except Exception as e:
+        st.warning(f"⚠️ Não foi possível calcular feature importance: {e}")
     
     # Salvar modelo
-    save_model(model, X.columns.tolist(), filename)
-    st.success("✅ Modelo Away Premium treinado e salvo")
+    try:
+        save_model(model, X.columns.tolist(), filename)
+        st.success("✅ Modelo Away Premium salvo")
+    except Exception as e:
+        st.error(f"❌ Erro ao salvar modelo: {e}")
     
     return model, X.columns.tolist()
 
@@ -553,45 +611,26 @@ strategy_choice = st.sidebar.selectbox(
 ##################### BLOCO 8 – APLICAÇÃO DO MODELO AWAY PREMIUM #####################
 
 if strategy_choice == "Away Premium + Home Opportunities":
-    st.info("🤖 Treinando modelo Away Premium...")
-    away_model, away_feature_cols = train_away_premium_model(X_away, y_away, retrain)
-
-    # Aplicar modelo aos jogos de hoje
-    if not games_today.empty:
-        # Garantir que temos as mesmas features
-        X_today_away = X_today_away.reindex(columns=away_feature_cols, fill_value=0)
+    # VERIFICAÇÃO FINAL ANTES DO TREINAMENTO
+    st.info("🔍 Verificando dados antes do treinamento...")
+    
+    # Verificar se temos dados suficientes
+    if len(X_away) < 50:
+        st.error(f"❌ Dados históricos insuficientes: apenas {len(X_away)} amostras")
+        st.info("⚠️ Usando estratégia original por falta de dados")
+        strategy_choice = "Original Both Sides"
+    elif len(y_away.unique()) < 2:
+        st.error(f"❌ Target com apenas uma classe: {y_away.unique()}")
+        st.info("⚠️ Usando estratégia original por problema no target")
+        strategy_choice = "Original Both Sides"
+    else:
+        st.info("🤖 Treinando modelo Away Premium...")
+        away_model, away_feature_cols = train_away_premium_model(X_away, y_away, retrain)
         
-        # Normalizar dados de hoje
-        if normalize_features and numeric_away_features:
-            scaler_path = os.path.join(MODELS_FOLDER, "away_premium_scaler.pkl")
-            if os.path.exists(scaler_path):
-                scaler = joblib.load(scaler_path)
-                X_today_away[numeric_away_features] = scaler.transform(X_today_away[numeric_away_features])
-        
-        # Fazer previsões
-        away_probs = away_model.predict_proba(X_today_away)
-        games_today['p_ah_away_yes'] = away_probs[:, 1]  # Probabilidade classe 1 (win)
-        
-        # Aplicar sistema de confiança
-        confidence_data = []
-        for idx, row in games_today.iterrows():
-            prob_away = row['p_ah_away_yes']
-            confidence_info = calculate_confidence_system(row, prob_away)
-            confidence_info['prob_away'] = prob_away
-            confidence_info['prob_home'] = 1 - prob_away  # Oportunidade indireta
-            confidence_data.append(confidence_info)
-        
-        # Adicionar dados de confiança ao dataframe
-        confidence_df = pd.DataFrame(confidence_data)
-        games_today = pd.concat([games_today, confidence_df], axis=1)
-        
-        # Calcular stakes recomendados
-        games_today['stake_away'] = games_today['away_confidence'].apply(
-            lambda x: calculate_stake_recommendation(x, 100)
-        )
-        games_today['stake_home'] = games_today['home_opportunity'].apply(
-            lambda x: calculate_stake_recommendation(x, 100)
-        )
+        if away_model is None:
+            st.error("❌ Falha no treinamento do modelo Away Premium")
+            st.info("⚠️ Voltando para estratégia original")
+            strategy_choice = "Original Both Sides"
 
     ##################### BLOCO 9 – VISUALIZAÇÃO DOS RESULTADOS PREMIUM #####################
 
