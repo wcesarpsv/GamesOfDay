@@ -245,7 +245,7 @@ st.sidebar.markdown("""
 
 
 # ########################################################
-# Bloco 7 – Treino & Avaliação (COM SMOTE)
+# Bloco 7 – Treino & Avaliação (COM SMOTE - CORRIGIDO)
 # ########################################################
 def train_and_evaluate(X, y, name, num_classes):
     filename = f"{ml_model_choice.replace(' ', '')}_{name}_fc.pkl"
@@ -254,15 +254,51 @@ def train_and_evaluate(X, y, name, num_classes):
     if not retrain:
         model = load_model(filename)
 
-    # Split dos dados
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    # 🔥 CORREÇÃO: Limpeza CONSISTENTE de dados
+    # Remover NaN e infinitos ANTES do split
+    X_clean = X.copy()
+    y_clean = y.copy()
+    
+    # Combinar para limpeza consistente
+    data_clean = X_clean.copy()
+    data_clean['target'] = y_clean
+    
+    # Remover linhas com NaN ou infinitos
+    data_clean = data_clean.replace([np.inf, -np.inf], np.nan)
+    data_clean = data_clean.dropna()
+    
+    if data_clean.empty:
+        st.error(f"❌ No valid data after cleaning for {name}")
+        return {}, None
+        
+    # Separar novamente mantendo a mesma ordem
+    X_clean = data_clean.drop('target', axis=1)
+    y_clean = data_clean['target']
+    
+    st.info(f"📊 Dataset {name}: {len(X_clean)} samples after cleaning")
+
+    # 🔥 CORREÇÃO CRÍTICA: Garantir que as colunas são as mesmas
+    # Salvar os nomes das colunas originais
+    original_columns = X_clean.columns.tolist()
+    
+    # Split dos dados LIMPOS
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_clean, y_clean, test_size=0.2, random_state=42, stratify=y_clean
+    )
+    
+    # 🔥 GARANTIR que validação tem as mesmas colunas que treino
+    X_val = X_val[original_columns]
     
     # Aplicar SMOTE se selecionado
     if use_smote:
         st.info(f"🔄 Applying SMOTE for {name} (before: {dict(Counter(y_train))})")
-        smote = SMOTE(random_state=42, sampling_strategy='auto')
-        X_train, y_train = smote.fit_resample(X_train, y_train)
-        st.info(f"📊 After SMOTE: {dict(Counter(y_train))}")
+        try:
+            smote = SMOTE(random_state=42, sampling_strategy='auto')
+            X_train, y_train = smote.fit_resample(X_train, y_train)
+            st.info(f"📊 After SMOTE: {dict(Counter(y_train))}")
+        except Exception as e:
+            st.error(f"❌ SMOTE failed for {name}: {e}")
+            st.warning("🔄 Continuing without SMOTE...")
 
     if model is None:
         if ml_model_choice == "Random Forest":
@@ -296,6 +332,20 @@ def train_and_evaluate(X, y, name, num_classes):
         model.fit(X_train, y_train)
         save_model(model, filename)
 
+    # 🔥 CORREÇÃO: Garantir que X_val tem as mesmas colunas que o modelo espera
+    missing_cols = set(model.feature_names_in_) - set(X_val.columns)
+    extra_cols = set(X_val.columns) - set(model.feature_names_in_)
+    
+    if missing_cols:
+        st.warning(f"⚠️ Adding missing columns to validation set: {missing_cols}")
+        for col in missing_cols:
+            X_val[col] = 0
+    
+    if extra_cols:
+        st.warning(f"⚠️ Removing extra columns from validation set: {extra_cols}")
+        X_val = X_val[model.feature_names_in_]
+    
+    # Agora fazer as previsões
     preds = model.predict(X_val)
     probs = model.predict_proba(X_val)
 
@@ -315,11 +365,11 @@ def train_and_evaluate(X, y, name, num_classes):
         "Accuracy": f"{acc:.3f}",
         "LogLoss": f"{ll:.3f}",
         "Brier": bs,
-        "SMOTE": "Yes" if use_smote else "No"
+        "SMOTE": "Yes" if use_smote else "No",
+        "Samples": len(X_clean)
     }
 
     return metrics, model
-
 
 # ########################################################
 # Bloco 8 – Treinar Modelos
@@ -338,15 +388,40 @@ st.dataframe(df_stats, use_container_width=True)
 
 
 # ########################################################
-# Bloco 9 – Previsões
+# Bloco 9 – Previsões (COM CORREÇÃO DE FEATURES)
 # ########################################################
-games_today["p_home"], games_today["p_draw"], games_today["p_away"] = model_multi.predict_proba(X_today_1x2).T
-games_today["p_over25"], games_today["p_under25"] = model_ou.predict_proba(X_today_ou).T
-games_today["p_btts_yes"], games_today["p_btts_no"] = model_btts.predict_proba(X_today_btts).T
+
+def safe_predict_proba(model, X_data, feature_names):
+    """Previsão segura com alinhamento de features"""
+    # Criar DataFrame com as features que o modelo espera
+    X_aligned = pd.DataFrame(0, index=X_data.index, columns=feature_names)
+    
+    # Copiar as colunas que existem em ambos
+    common_cols = set(feature_names) & set(X_data.columns)
+    for col in common_cols:
+        X_aligned[col] = X_data[col].fillna(0)  # Preencher NaN
+    
+    try:
+        return model.predict_proba(X_aligned)
+    except Exception as e:
+        st.error(f"❌ Prediction error for {model.__class__.__name__}: {e}")
+        # Fallback: probabilidades uniformes
+        n_samples = len(X_data)
+        n_classes = len(model.classes_) if hasattr(model, 'classes_') else 2
+        return np.full((n_samples, n_classes), 1.0/n_classes)
+
+# Previsões com alinhamento correto de features
+probs_1x2 = safe_predict_proba(model_multi, X_today_1x2, model_multi.feature_names_in_)
+probs_ou = safe_predict_proba(model_ou, X_today_ou, model_ou.feature_names_in_)
+probs_btts = safe_predict_proba(model_btts, X_today_btts, model_btts.feature_names_in_)
+
+games_today["p_home"], games_today["p_draw"], games_today["p_away"] = probs_1x2.T
+games_today["p_over25"], games_today["p_under25"] = probs_ou.T
+games_today["p_btts_yes"], games_today["p_btts_no"] = probs_btts.T
 
 
 # ########################################################
-# Bloco 10 – Styling e Display
+# Bloco 10 – Styling e Display (ATUALIZADO COM PLACAR)
 # ########################################################
 def color_prob(val, color):
     alpha = int(val * 255)
@@ -362,21 +437,24 @@ def style_probs(val, col):
     elif col == "p_btts_no": return color_prob(val, "200,0,0")
     return ""
 
+# 🔥 COLUNAS ATUALIZADAS - Adicionando Goals_H_Today e Goals_A_Today
 cols_final = [
-    "Date","Time","League","Home","Away",
-    "Odd_H","Odd_D","Odd_A",
-    "p_home","p_draw","p_away",
-    "p_over25","p_under25",
-    "p_btts_yes","p_btts_no"
+    "Date", "Time", "League", "Home", "Away",
+    "Goals_H_Today", "Goals_A_Today",  # 🔥 NOVAS COLUNAS DE PLACAR
+    "Odd_H", "Odd_D", "Odd_A",
+    "p_home", "p_draw", "p_away",
+    "p_over25", "p_under25",
+    "p_btts_yes", "p_btts_no"
 ]
 
 styled_df = (
     games_today[cols_final]
     .style.format({
-        "Odd_H": "{:.2f}","Odd_D": "{:.2f}","Odd_A": "{:.2f}",
-        "p_home": "{:.1%}","p_draw": "{:.1%}","p_away": "{:.1%}",
-        "p_over25": "{:.1%}","p_under25": "{:.1%}",
-        "p_btts_yes": "{:.1%}","p_btts_no": "{:.1%}",
+        "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
+        "p_home": "{:.1%}", "p_draw": "{:.1%}", "p_away": "{:.1%}",
+        "p_over25": "{:.1%}", "p_under25": "{:.1%}",
+        "p_btts_yes": "{:.1%}", "p_btts_no": "{:.1%}",
+        "Goals_H_Today": "{:.0f}", "Goals_A_Today": "{:.0f}"  # 🔥 FORMATAÇÃO DO PLACAR
     }, na_rep="—")
     .applymap(lambda v: style_probs(v, "p_home"), subset=["p_home"])
     .applymap(lambda v: style_probs(v, "p_draw"), subset=["p_draw"])
@@ -385,12 +463,13 @@ styled_df = (
     .applymap(lambda v: style_probs(v, "p_under25"), subset=["p_under25"])
     .applymap(lambda v: style_probs(v, "p_btts_yes"), subset=["p_btts_yes"])
     .applymap(lambda v: style_probs(v, "p_btts_no"), subset=["p_btts_no"])
+
 )
 
 st.markdown("### 📌 Predictions for Selected Matches")
 st.dataframe(styled_df, use_container_width=True, height=1000)
 
-# 🔹 Botão para download do CSV (do Binary)
+# 🔹 Botão para download do CSV (ATUALIZADO)
 import io
 csv_buffer = io.BytesIO()
 games_today.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
@@ -402,7 +481,6 @@ st.download_button(
     file_name=f"Bet_Indicator_Triple_View_{datetime.now().strftime('%Y-%m-%d')}.csv",
     mime="text/csv"
 )
-
 
 # ########################################################
 # Block 11 – Hybrid Forecast (Historical vs ML)
