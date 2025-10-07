@@ -640,23 +640,23 @@ styled_simple = (
 st.dataframe(styled_simple, use_container_width=True)
 
 # RESUMO DOS SINAIS MELHORADO
-st.markdown("### 📊 RESUMO DOS SINAIS - AMBOS LADOS")
+st.markdown("### 📊 SUMMARY OF SIGNS - BOTH SIDES")
 
-apostar_home = len([x for x in games_today['AH_Recommendation'] if "APOSTAR HOME" in x])
-apostar_away = len([x for x in games_today['AH_Recommendation'] if "APOSTAR AWAY" in x])
-forte_home = len([x for x in games_today['AH_Recommendation'] if "FORTE SINAL HOME" in x])
-forte_away = len([x for x in games_today['AH_Recommendation'] if "FORTE SINAL AWAY" in x])
-aguardar_count = len([x for x in games_today['AH_Recommendation'] if "AGUARDAR" in x])
+apostar_home = len([x for x in games_today['AH_Recommendation'] if "TOP HOME" in x])
+apostar_away = len([x for x in games_today['AH_Recommendation'] if "TOP AWAY" in x])
+forte_home = len([x for x in games_today['AH_Recommendation'] if "GOOD HOME" in x])
+forte_away = len([x for x in games_today['AH_Recommendation'] if "GOOD AWAY" in x])
+aguardar_count = len([x for x in games_today['AH_Recommendation'] if "WAIT" in x])
 
 col1, col2, col3, col4, col5 = st.columns(5)
-col1.metric("✅ Apostar Home", apostar_home)
-col2.metric("✅ Apostar Away", apostar_away)
-col3.metric("🎯 Forte Home", forte_home)
-col4.metric("🎯 Forte Away", forte_away)
-col5.metric("⏸️ Aguardar", aguardar_count)
+col1.metric("✅ TOP HOME", apostar_home)
+col2.metric("✅ TOP AWAY", apostar_away)
+col3.metric("🎯 GOOD HOME", forte_home)
+col4.metric("🎯 GOOD Away", forte_away)
+col5.metric("⏸️ WAIT", aguardar_count)
 
 # ANÁLISE DE EFETIVIDADE
-st.markdown("### 🔍 ANÁLISE DE VANTAGEM")
+st.markdown("### 🔍 ADVANTAGE ANALYSIS")
 
 if not games_today.empty:
     avg_home_prob = games_today['p_ah_home_yes'].mean()
@@ -665,6 +665,6 @@ if not games_today.empty:
     away_advantage_count = len(games_today[games_today['p_ah_away_yes'] > games_today['p_ah_home_yes']])
     
     col1, col2, col3 = st.columns(3)
-    col1.metric("📊 Prob Média Home", f"{avg_home_prob:.1%}")
-    col2.metric("📊 Prob Média Away", f"{avg_away_prob:.1%}")
-    col3.metric("⚖️ Vantagem Home", f"{home_advantage_count}/{len(games_today)}")
+    col1.metric("📊 AVG Prob Home", f"{avg_home_prob:.1%}")
+    col2.metric("📊 AVG Prob Away", f"{avg_away_prob:.1%}")
+    col3.metric("⚖️ BALANCED", f"{home_advantage_count}/{len(games_today)}")
