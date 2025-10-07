@@ -518,3 +518,103 @@ if aggression_features:
                 aggression_display[col] = aggression_display[col].round(3)
         
         st.dataframe(aggression_display, use_container_width=True)
+
+
+
+##################### BLOCO 8.5 – ASIAN HANDICAP INDICATOR CLARO #####################
+
+def create_ah_indicator(row):
+    """
+    Cria um indicador claro para Asian Handicap baseado nas features de aggression
+    """
+    # Indicador principal: Underdog_Indicator
+    underdog_ind = row.get('Underdog_Indicator', 0)
+    handscore_diff = row.get('HandScore_Diff', 0)
+    p_ah_home = row.get('p_ah_home_yes', 0.5)
+    p_ah_away = row.get('p_ah_away_yes', 0.5)
+    
+    # Determinar força do sinal
+    if underdog_ind > 0.5:
+        # HOME UNDERDOG (recebe handicap)
+        strength = min(abs(underdog_ind), 2.0) / 2.0  # Normalizar para 0-1
+        confidence = (p_ah_away - 0.5) * 2  # Quanto mais longe de 50%, mais confiança
+        return f"🏠⤵️ HOME UNDERDOG (Strength: {strength:.1f}, Conf: {confidence:.1f})"
+    
+    elif underdog_ind < -0.5:
+        # HOME FAVORITO (dá handicap)
+        strength = min(abs(underdog_ind), 2.0) / 2.0
+        confidence = (p_ah_home - 0.5) * 2
+        return f"🏠⤴️ HOME FAVORITO (Strength: {strength:.1f}, Conf: {confidence:.1f})"
+    
+    else:
+        # EQUILIBRADO
+        home_adv = handscore_diff / 100.0 if abs(handscore_diff) > 10 else 0
+        if home_adv > 0.1:
+            return "⚖️~ EQUILIBRADO (Leve vantagem Home)"
+        elif home_adv < -0.1:
+            return "⚖️~ EQUILIBRADO (Leve vantagem Away)"
+        else:
+            return "⚖️ EQUILIBRADO (Jogo muito parelho)"
+
+def get_ah_recommendation(row):
+    """
+    Recomendação direta para apostar
+    """
+    underdog_ind = row.get('Underdog_Indicator', 0)
+    p_ah_home = row.get('p_ah_home_yes', 0.5)
+    p_ah_away = row.get('p_ah_away_yes', 0.5)
+    
+    # Limiar de confiança
+    confidence_threshold = 0.55
+    
+    if underdog_ind > 0.5 and p_ah_away > confidence_threshold:
+        return f"✅ APOSTAR: Away com handicap (Prob: {p_ah_away:.1%})"
+    elif underdog_ind < -0.5 and p_ah_home > confidence_threshold:
+        return f"✅ APOSTAR: Home com handicap (Prob: {p_ah_home:.1%})"
+    elif abs(underdog_ind) > 0.8 and max(p_ah_home, p_ah_away) > 0.6:
+        return f"🎯 FORTE SINAL: {'Home' if underdog_ind < 0 else 'Away'} com handicap"
+    else:
+        return "⏸️ AGUARDAR: Sinal fraco ou confiança insuficiente"
+
+# Aplicar aos dados
+games_today['AH_Indicator'] = games_today.apply(create_ah_indicator, axis=1)
+games_today['AH_Recommendation'] = games_today.apply(get_ah_recommendation, axis=1)
+
+# NOVA TABELA SIMPLIFICADA COM INDICADORES CLAROS
+st.markdown("### 🎯 ASIAN HANDICAP INDICATOR - SINAIS CLAROS")
+
+simple_display = games_today[[
+    "Home", "Away", "Asian_Line_Display",
+    "AH_Indicator", "AH_Recommendation",
+    "p_ah_home_yes", "p_ah_away_yes"
+]].copy()
+
+# Formatação
+simple_display["Asian_Line_Display"] = simple_display["Asian_Line_Display"].apply(
+    lambda x: f"+{x:.2f}" if x > 0 else f"{x:.2f}"
+)
+
+styled_simple = (
+    simple_display
+    .style.format({
+        "p_ah_home_yes": "{:.1%}",
+        "p_ah_away_yes": "{:.1%}"
+    })
+    .applymap(lambda v: "background-color: #90EE90" if "APOSTAR" in str(v) else "", 
+              subset=["AH_Recommendation"])
+    .applymap(lambda v: "background-color: #FFB6C1" if "AGUARDAR" in str(v) else "", 
+              subset=["AH_Recommendation"])
+)
+
+st.dataframe(styled_simple, use_container_width=True)
+
+# RESUMO DOS SINAIS
+st.markdown("### 📊 RESUMO DOS SINAIS")
+apostar_count = len([x for x in games_today['AH_Recommendation'] if "APOSTAR" in x])
+forte_count = len([x for x in games_today['AH_Recommendation'] if "FORTE SINAL" in x])
+aguardar_count = len([x for x in games_today['AH_Recommendation'] if "AGUARDAR" in x])
+
+col1, col2, col3 = st.columns(3)
+col1.metric("✅ Apostar", apostar_count)
+col2.metric("🎯 Forte Sinal", forte_count)
+col3.metric("⏸️ Aguardar", aguardar_count)
