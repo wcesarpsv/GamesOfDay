@@ -563,25 +563,25 @@ def get_ah_recommendation_both_sides(row):
     
     # Recomendações baseadas nas probabilidades
     if p_ah_home > 0.60 and home_consistent:
-        return f"✅ APOSTAR HOME AH (Prob: {p_ah_home:.1%}, Conf: Alta)"
+        return f"✅ TOP HOME AH (Prob: {p_ah_home:.1%}, Conf: Alta)"
     elif p_ah_away > 0.60 and away_consistent:
-        return f"✅ APOSTAR AWAY AH (Prob: {p_ah_away:.1%}, Conf: Alta)"
+        return f"✅ TOP AWAY AH (Prob: {p_ah_away:.1%}, Conf: Alta)"
     elif p_ah_home > 0.55 and home_consistent:
-        return f"🎯 FORTE SINAL HOME AH (Prob: {p_ah_home:.1%})"
+        return f"🎯 GOOD HOME AH (Prob: {p_ah_home:.1%})"
     elif p_ah_away > 0.55 and away_consistent:
-        return f"🎯 FORTE SINAL AWAY AH (Prob: {p_ah_away:.1%})"
+        return f"🎯 GOOD AWAY AH (Prob: {p_ah_away:.1%})"
     elif p_ah_home > p_ah_away and p_ah_home > 0.52:
-        return f"📈 SINAL HOME AH (Prob: {p_ah_home:.1%})"
+        return f"📈 LIGHT HOME AH (Prob: {p_ah_home:.1%})"
     elif p_ah_away > p_ah_home and p_ah_away > 0.52:
-        return f"📈 SINAL AWAY AH (Prob: {p_ah_away:.1%})"
+        return f"📈 LIGHT AWAY AH (Prob: {p_ah_away:.1%})"
     else:
         # Motivos específicos para aguardar
         if max(p_ah_home, p_ah_away) < 0.52:
-            return "⏸️ AGUARDAR: Probabilidades baixas"
+            return "⏸️ WAIT: LOW PROBABILITY"
         elif abs(prob_diff) < 0.03:
-            return "⏸️ AGUARDAR: Diferença muito pequena"
+            return "⏸️ WAIT: SMALL DIFFERENCE"
         else:
-            return "⏸️ AGUARDAR: Sinal insuficiente"
+            return "⏸️ WAIT: LOW SIGNAL"
 
 def get_ah_side_analysis(row):
     """
