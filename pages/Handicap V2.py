@@ -290,49 +290,49 @@ numeric_cols = (feature_blocks["odds"] + feature_blocks["strength"] +
                 feature_blocks["aggression"])
 numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
 
-# BLOCO EXTRA – ANÁLISE DAS NOVAS FEATURES
-st.markdown("### 🔍 Análise: Aggression vs Asian Handicap")
+# # BLOCO EXTRA – ANÁLISE DAS NOVAS FEATURES
+# st.markdown("### 🔍 Análise: Aggression vs Asian Handicap")
 
-if not history.empty and all(col in history.columns for col in ['Target_AH_Home', 'Target_AH_Away'] + aggression_features):
+# if not history.empty and all(col in history.columns for col in ['Target_AH_Home', 'Target_AH_Away'] + aggression_features):
     
-    # Análise de correlação
-    available_aggression_for_analysis = [f for f in aggression_features if f in history.columns]
+#     # Análise de correlação
+#     available_aggression_for_analysis = [f for f in aggression_features if f in history.columns]
     
-    if available_aggression_for_analysis:
-        # Correlação com target Home
-        corr_home = history[available_aggression_for_analysis + ['Target_AH_Home']].corr()['Target_AH_Home'].drop('Target_AH_Home')
+#     if available_aggression_for_analysis:
+#         # Correlação com target Home
+#         corr_home = history[available_aggression_for_analysis + ['Target_AH_Home']].corr()['Target_AH_Home'].drop('Target_AH_Home')
         
-        # Correlação com target Away  
-        corr_away = history[available_aggression_for_analysis + ['Target_AH_Away']].corr()['Target_AH_Away'].drop('Target_AH_Away')
+#         # Correlação com target Away  
+#         corr_away = history[available_aggression_for_analysis + ['Target_AH_Away']].corr()['Target_AH_Away'].drop('Target_AH_Away')
         
-        col1, col2 = st.columns(2)
+#         col1, col2 = st.columns(2)
         
-        with col1:
-            st.write("**Correlação com Handicap Home Win:**")
-            corr_df_home = pd.DataFrame({
-                'Feature': corr_home.index,
-                'Correlation': corr_home.values
-            }).sort_values('Correlation', key=abs, ascending=False)
-            st.dataframe(corr_df_home.style.format({'Correlation': '{:.3f}'}), use_container_width=True)
+#         with col1:
+#             st.write("**Correlação com Handicap Home Win:**")
+#             corr_df_home = pd.DataFrame({
+#                 'Feature': corr_home.index,
+#                 'Correlation': corr_home.values
+#             }).sort_values('Correlation', key=abs, ascending=False)
+#             st.dataframe(corr_df_home.style.format({'Correlation': '{:.3f}'}), use_container_width=True)
         
-        with col2:
-            st.write("**Correlação com Handicap Away Win:**")
-            corr_df_away = pd.DataFrame({
-                'Feature': corr_away.index, 
-                'Correlation': corr_away.values
-            }).sort_values('Correlation', key=abs, ascending=False)
-            st.dataframe(corr_df_away.style.format({'Correlation': '{:.3f}'}), use_container_width=True)
+#         with col2:
+#             st.write("**Correlação com Handicap Away Win:**")
+#             corr_df_away = pd.DataFrame({
+#                 'Feature': corr_away.index, 
+#                 'Correlation': corr_away.values
+#             }).sort_values('Correlation', key=abs, ascending=False)
+#             st.dataframe(corr_df_away.style.format({'Correlation': '{:.3f}'}), use_container_width=True)
         
-        # Destacar features mais promissoras
-        strong_features_home = corr_df_home[abs(corr_df_home['Correlation']) > 0.05]
-        strong_features_away = corr_df_away[abs(corr_df_away['Correlation']) > 0.05]
+#         # Destacar features mais promissoras
+#         strong_features_home = corr_df_home[abs(corr_df_home['Correlation']) > 0.05]
+#         strong_features_away = corr_df_away[abs(corr_df_away['Correlation']) > 0.05]
         
-        if not strong_features_home.empty or not strong_features_away.empty:
-            st.success("🎯 **Features mais promissoras (correlação > |0.05|):**")
-            if not strong_features_home.empty:
-                st.write("Para Handicap Home:", ", ".join(strong_features_home['Feature'].tolist()))
-            if not strong_features_away.empty:
-                st.write("Para Handicap Away:", ", ".join(strong_features_away['Feature'].tolist()))
+#         if not strong_features_home.empty or not strong_features_away.empty:
+#             st.success("🎯 **Features mais promissoras (correlação > |0.05|):**")
+#             if not strong_features_home.empty:
+#                 st.write("Para Handicap Home:", ", ".join(strong_features_home['Feature'].tolist()))
+#             if not strong_features_away.empty:
+#                 st.write("Para Handicap Away:", ", ".join(strong_features_away['Feature'].tolist()))
 
 
 ##################### BLOCO 5 – SIDEBAR CONFIG #####################
