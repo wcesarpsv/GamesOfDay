@@ -521,78 +521,121 @@ if aggression_features:
 
 
 
-##################### BLOCO 8.5 – ASIAN HANDICAP INDICATOR CLARO #####################
+##################### BLOCO 8.5 – ASIAN HANDICAP INDICATOR CLARO (AMBOS LADOS) #####################
 
-def create_ah_indicator(row):
+def create_ah_indicator_both_sides(row):
     """
-    Cria um indicador claro para Asian Handicap baseado nas features de aggression
+    Cria um indicador claro para Asian Handicap considerando ambos os lados
     """
-    # Indicador principal: Underdog_Indicator
     underdog_ind = row.get('Underdog_Indicator', 0)
     handscore_diff = row.get('HandScore_Diff', 0)
     p_ah_home = row.get('p_ah_home_yes', 0.5)
     p_ah_away = row.get('p_ah_away_yes', 0.5)
     
-    # Determinar força do sinal
-    if underdog_ind > 0.5:
-        # HOME UNDERDOG (recebe handicap)
-        strength = min(abs(underdog_ind), 2.0) / 2.0  # Normalizar para 0-1
-        confidence = (p_ah_away - 0.5) * 2  # Quanto mais longe de 50%, mais confiança
-        return f"🏠⤵️ HOME UNDERDOG (Strength: {strength:.1f}, Conf: {confidence:.1f})"
+    # Determinar vantagem clara
+    home_advantage = p_ah_home - 0.5
+    away_advantage = p_ah_away - 0.5
     
-    elif underdog_ind < -0.5:
-        # HOME FAVORITO (dá handicap)
-        strength = min(abs(underdog_ind), 2.0) / 2.0
-        confidence = (p_ah_home - 0.5) * 2
-        return f"🏠⤴️ HOME FAVORITO (Strength: {strength:.1f}, Conf: {confidence:.1f})"
+    # Força baseada nas probabilidades
+    home_strength = abs(home_advantage) * 2  # 0-1 scale
+    away_strength = abs(away_advantage) * 2  # 0-1 scale
     
+    if home_advantage > 0.1 and underdog_ind < -0.3:
+        return f"🏠⤴️ HOME FAVORITO (Strength: {home_strength:.1f}, Prob: {p_ah_home:.1%})"
+    elif away_advantage > 0.1 and underdog_ind > 0.3:
+        return f"🚌⤴️ AWAY FAVORITO (Strength: {away_strength:.1f}, Prob: {p_ah_away:.1%})"
+    elif home_advantage > away_advantage and home_advantage > 0.05:
+        return f"⚖️~ LEVE VANTAGEM HOME (Prob: {p_ah_home:.1%})"
+    elif away_advantage > home_advantage and away_advantage > 0.05:
+        return f"⚖️~ LEVE VANTAGEM AWAY (Prob: {p_ah_away:.1%})"
     else:
-        # EQUILIBRADO
-        home_adv = handscore_diff / 100.0 if abs(handscore_diff) > 10 else 0
-        if home_adv > 0.1:
-            return "⚖️~ EQUILIBRADO (Leve vantagem Home)"
-        elif home_adv < -0.1:
-            return "⚖️~ EQUILIBRADO (Leve vantagem Away)"
-        else:
-            return "⚖️ EQUILIBRADO (Jogo muito parelho)"
+        return "⚖️ EQUILIBRADO (Sem vantagem clara)"
 
-def get_ah_recommendation(row):
+def get_ah_recommendation_both_sides(row):
     """
-    Recomendação direta para apostar
+    Recomendação direta considerando ambos os lados com pesos das probabilidades
     """
     underdog_ind = row.get('Underdog_Indicator', 0)
     p_ah_home = row.get('p_ah_home_yes', 0.5)
     p_ah_away = row.get('p_ah_away_yes', 0.5)
+    aggression_home = row.get('Aggression_Home', 0)
+    aggression_away = row.get('Aggression_Away', 0)
     
-    # Limiar de confiança
-    confidence_threshold = 0.55
+    # Calcular vantagem líquida considerando aggression + probabilidades
+    home_net_advantage = (p_ah_home - 0.5) + (-underdog_ind * 0.2)  # Underdog negativo = home favorito
+    away_net_advantage = (p_ah_away - 0.5) + (underdog_ind * 0.2)   # Underdog positivo = away favorito
     
-    if underdog_ind > 0.5 and p_ah_away > confidence_threshold:
-        return f"✅ APOSTAR: Away com handicap (Prob: {p_ah_away:.1%})"
-    elif underdog_ind < -0.5 and p_ah_home > confidence_threshold:
-        return f"✅ APOSTAR: Home com handicap (Prob: {p_ah_home:.1%})"
-    elif abs(underdog_ind) > 0.8 and max(p_ah_home, p_ah_away) > 0.6:
-        return f"🎯 FORTE SINAL: {'Home' if underdog_ind < 0 else 'Away'} com handicap"
+    # Limiares com pesos
+    strong_threshold = 0.15  # 15% de vantagem líquida
+    medium_threshold = 0.08  # 8% de vantagem líquida
+    
+    # Verificar se há vantagem clara de algum lado
+    if home_net_advantage > strong_threshold and p_ah_home > 0.55:
+        confidence_score = min((home_net_advantage - strong_threshold) * 10, 1.0)
+        return f"✅ APOSTAR HOME AH (Conf: {confidence_score:.1f}, Prob: {p_ah_home:.1%})"
+    
+    elif away_net_advantage > strong_threshold and p_ah_away > 0.55:
+        confidence_score = min((away_net_advantage - strong_threshold) * 10, 1.0)
+        return f"✅ APOSTAR AWAY AH (Conf: {confidence_score:.1f}, Prob: {p_ah_away:.1%})"
+    
+    elif home_net_advantage > medium_threshold and p_ah_home > 0.52:
+        return f"🎯 FORTE SINAL HOME AH (Prob: {p_ah_home:.1%})"
+    
+    elif away_net_advantage > medium_threshold and p_ah_away > 0.52:
+        return f"🎯 FORTE SINAL AWAY AH (Prob: {p_ah_away:.1%})"
+    
     else:
-        return "⏸️ AGUARDAR: Sinal fraco ou confiança insuficiente"
+        # Analisar motivo do aguardar
+        if abs(home_net_advantage) < 0.05 and abs(away_net_advantage) < 0.05:
+            return "⏸️ AGUARDAR: Jogo muito equilibrado"
+        elif max(p_ah_home, p_ah_away) < 0.52:
+            return "⏸️ AGUARDAR: Probabilidades baixas"
+        else:
+            return "⏸️ AGUARDAR: Sinal insuficiente"
+
+def get_ah_side_analysis(row):
+    """
+    Análise detalhada de ambos os lados
+    """
+    p_ah_home = row.get('p_ah_home_yes', 0.5)
+    p_ah_away = row.get('p_ah_away_yes', 0.5)
+    underdog_ind = row.get('Underdog_Indicator', 0)
+    
+    home_analysis = f"Home: {p_ah_home:.1%} (Underdog: {'SIM' if underdog_ind > 0 else 'NÃO'})"
+    away_analysis = f"Away: {p_ah_away:.1%} (Underdog: {'SIM' if underdog_ind < 0 else 'NÃO'})"
+    
+    return f"{home_analysis} | {away_analysis}"
 
 # Aplicar aos dados
-games_today['AH_Indicator'] = games_today.apply(create_ah_indicator, axis=1)
-games_today['AH_Recommendation'] = games_today.apply(get_ah_recommendation, axis=1)
+games_today['AH_Indicator'] = games_today.apply(create_ah_indicator_both_sides, axis=1)
+games_today['AH_Recommendation'] = games_today.apply(get_ah_recommendation_both_sides, axis=1)
+games_today['AH_Side_Analysis'] = games_today.apply(get_ah_side_analysis, axis=1)
 
 # NOVA TABELA SIMPLIFICADA COM INDICADORES CLAROS
-st.markdown("### 🎯 ASIAN HANDICAP INDICATOR - SINAIS CLAROS")
+st.markdown("### 🎯 ASIAN HANDICAP INDICATOR - AMBOS LADOS")
 
 simple_display = games_today[[
     "Home", "Away", "Asian_Line_Display",
-    "AH_Indicator", "AH_Recommendation",
+    "AH_Indicator", "AH_Side_Analysis", "AH_Recommendation",
     "p_ah_home_yes", "p_ah_away_yes"
 ]].copy()
 
 # Formatação
 simple_display["Asian_Line_Display"] = simple_display["Asian_Line_Display"].apply(
-    lambda x: f"+{x:.2f}" if x > 0 else f"{x:.2f}"
+    lambda x: f"+{x:.2f}" if x > 0 else f"{x:.2f}" if pd.notnull(x) else "N/A"
 )
+
+# Função de estilo melhorada
+# def color_recommendation(val):
+#     if "APOSTAR HOME" in str(val):
+#         return "background-color: #90EE90; font-weight: bold"
+#     elif "APOSTAR AWAY" in str(val):
+#         return "background-color: #87CEEB; font-weight: bold"
+#     elif "FORTE SINAL" in str(val):
+#         return "background-color: #FFD700"
+#     elif "AGUARDAR" in str(val):
+#         return "background-color: #FFB6C1"
+#     return ""
 
 styled_simple = (
     simple_display
@@ -600,21 +643,37 @@ styled_simple = (
         "p_ah_home_yes": "{:.1%}",
         "p_ah_away_yes": "{:.1%}"
     })
-    # .applymap(lambda v: "background-color: #90EE90" if "APOSTAR" in str(v) else "", 
-    #           subset=["AH_Recommendation"])
-    # .applymap(lambda v: "background-color: #FFB6C1" if "AGUARDAR" in str(v) else "", 
-    #           subset=["AH_Recommendation"])
+    .applymap(color_recommendation, subset=["AH_Recommendation"])
 )
 
 st.dataframe(styled_simple, use_container_width=True)
 
-# RESUMO DOS SINAIS
-st.markdown("### 📊 RESUMO DOS SINAIS")
-apostar_count = len([x for x in games_today['AH_Recommendation'] if "APOSTAR" in x])
-forte_count = len([x for x in games_today['AH_Recommendation'] if "FORTE SINAL" in x])
+# RESUMO DOS SINAIS MELHORADO
+st.markdown("### 📊 RESUMO DOS SINAIS - AMBOS LADOS")
+
+apostar_home = len([x for x in games_today['AH_Recommendation'] if "APOSTAR HOME" in x])
+apostar_away = len([x for x in games_today['AH_Recommendation'] if "APOSTAR AWAY" in x])
+forte_home = len([x for x in games_today['AH_Recommendation'] if "FORTE SINAL HOME" in x])
+forte_away = len([x for x in games_today['AH_Recommendation'] if "FORTE SINAL AWAY" in x])
 aguardar_count = len([x for x in games_today['AH_Recommendation'] if "AGUARDAR" in x])
 
-col1, col2, col3 = st.columns(3)
-col1.metric("✅ Apostar", apostar_count)
-col2.metric("🎯 Forte Sinal", forte_count)
-col3.metric("⏸️ Aguardar", aguardar_count)
+col1, col2, col3, col4, col5 = st.columns(5)
+col1.metric("✅ Apostar Home", apostar_home)
+col2.metric("✅ Apostar Away", apostar_away)
+col3.metric("🎯 Forte Home", forte_home)
+col4.metric("🎯 Forte Away", forte_away)
+col5.metric("⏸️ Aguardar", aguardar_count)
+
+# ANÁLISE DE EFETIVIDADE
+st.markdown("### 🔍 ANÁLISE DE VANTAGEM")
+
+if not games_today.empty:
+    avg_home_prob = games_today['p_ah_home_yes'].mean()
+    avg_away_prob = games_today['p_ah_away_yes'].mean()
+    home_advantage_count = len(games_today[games_today['p_ah_home_yes'] > games_today['p_ah_away_yes']])
+    away_advantage_count = len(games_today[games_today['p_ah_away_yes'] > games_today['p_ah_home_yes']])
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("📊 Prob Média Home", f"{avg_home_prob:.1%}")
+    col2.metric("📊 Prob Média Away", f"{avg_away_prob:.1%}")
+    col3.metric("⚖️ Vantagem Home", f"{home_advantage_count}/{len(games_today)}")
