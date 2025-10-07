@@ -600,10 +600,10 @@ styled_simple = (
         "p_ah_home_yes": "{:.1%}",
         "p_ah_away_yes": "{:.1%}"
     })
-    .applymap(lambda v: "background-color: #90EE90" if "APOSTAR" in str(v) else "", 
-              subset=["AH_Recommendation"])
-    .applymap(lambda v: "background-color: #FFB6C1" if "AGUARDAR" in str(v) else "", 
-              subset=["AH_Recommendation"])
+    # .applymap(lambda v: "background-color: #90EE90" if "APOSTAR" in str(v) else "", 
+    #           subset=["AH_Recommendation"])
+    # .applymap(lambda v: "background-color: #FFB6C1" if "AGUARDAR" in str(v) else "", 
+    #           subset=["AH_Recommendation"])
 )
 
 st.dataframe(styled_simple, use_container_width=True)
