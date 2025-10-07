@@ -506,18 +506,18 @@ styled_df = (
 st.markdown(f"### 📌 Predictions for {selected_date_str} – Asian Handicap ({ml_version_choice})")
 st.dataframe(styled_df, use_container_width=True, height=800)
 
-# NOVO: MOSTRAR AS FEATURES DE AGGRESSION NOS JOGOS DE HOJE
-if aggression_features:
-    st.markdown("### 🔎 Aggression Features nos Jogos de Hoje")
-    aggression_cols = [col for col in aggression_features if col in games_today.columns]
-    if aggression_cols:
-        aggression_display = games_today[["Home", "Away"] + aggression_cols].copy()
-        # Formatar valores numéricos
-        for col in aggression_cols:
-            if aggression_display[col].dtype in ['float64', 'int64']:
-                aggression_display[col] = aggression_display[col].round(3)
+# # NOVO: MOSTRAR AS FEATURES DE AGGRESSION NOS JOGOS DE HOJE
+# if aggression_features:
+#     st.markdown("### 🔎 Aggression Features nos Jogos de Hoje")
+#     aggression_cols = [col for col in aggression_features if col in games_today.columns]
+#     if aggression_cols:
+#         aggression_display = games_today[["Home", "Away"] + aggression_cols].copy()
+#         # Formatar valores numéricos
+#         for col in aggression_cols:
+#             if aggression_display[col].dtype in ['float64', 'int64']:
+#                 aggression_display[col] = aggression_display[col].round(3)
         
-        st.dataframe(aggression_display, use_container_width=True)
+#         st.dataframe(aggression_display, use_container_width=True)
 
 
 
