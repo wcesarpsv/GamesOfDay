@@ -626,7 +626,7 @@ simple_display["Asian_Line_Display"] = simple_display["Asian_Line_Display"].appl
 )
 
 # Função de estilo melhorada
-# def color_recommendation(val):
+def color_recommendation(val):
 #     if "APOSTAR HOME" in str(val):
 #         return "background-color: #90EE90; font-weight: bold"
 #     elif "APOSTAR AWAY" in str(val):
@@ -635,7 +635,7 @@ simple_display["Asian_Line_Display"] = simple_display["Asian_Line_Display"].appl
 #         return "background-color: #FFD700"
 #     elif "AGUARDAR" in str(val):
 #         return "background-color: #FFB6C1"
-#     return ""
+    return ""
 
 styled_simple = (
     simple_display
