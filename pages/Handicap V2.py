@@ -536,15 +536,15 @@ def create_ah_indicator_both_sides(row):
     
     # Determinar vantagem baseada nas probabilidades (PRINCIPAL)
     if prob_diff > 0.15:  # Home tem vantagem forte
-        return f"🏠⤴️ VANTAGEM FORTE HOME (Prob: {p_ah_home:.1%} vs {p_ah_away:.1%})"
+        return f"🏠⤴️ STRONG HOME ADVANTAGE (Prob: {p_ah_home:.1%} vs {p_ah_away:.1%})"
     elif prob_diff > 0.05:  # Home tem vantagem
-        return f"🏠⤴️ VANTAGEM HOME (Prob: {p_ah_home:.1%} vs {p_ah_away:.1%})"
+        return f"🏠⤴️ HOME ADVANTAGE (Prob: {p_ah_home:.1%} vs {p_ah_away:.1%})"
     elif prob_diff < -0.15:  # Away tem vantagem forte
-        return f"🚌⤴️ VANTAGEM FORTE AWAY (Prob: {p_ah_away:.1%} vs {p_ah_home:.1%})"
+        return f"🚌⤴️ STRONG AWAY ADVANTAGE(Prob: {p_ah_away:.1%} vs {p_ah_home:.1%})"
     elif prob_diff < -0.05:  # Away tem vantagem
-        return f"🚌⤴️ VANTAGEM AWAY (Prob: {p_ah_away:.1%} vs {p_ah_home:.1%})"
+        return f"🚌⤴️ ADVANTAGE AWAY (Prob: {p_ah_away:.1%} vs {p_ah_home:.1%})"
     else:
-        return "⚖️ EQUILIBRADO (Sem vantagem clara)"
+        return "⚖️ BALANCED (No clear advantage)"
 
 def get_ah_recommendation_both_sides(row):
     """
