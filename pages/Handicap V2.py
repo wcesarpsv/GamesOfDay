@@ -652,7 +652,7 @@ col1, col2, col3, col4, col5 = st.columns(5)
 col1.metric("✅ TOP HOME", apostar_home)
 col2.metric("✅ TOP AWAY", apostar_away)
 col3.metric("🎯 GOOD HOME", forte_home)
-col4.metric("🎯 GOOD Away", forte_away)
+col4.metric("🎯 GOOD AWAY", forte_away)
 col5.metric("⏸️ WAIT", aguardar_count)
 
 # ANÁLISE DE EFETIVIDADE
