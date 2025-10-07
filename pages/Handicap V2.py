@@ -607,7 +607,7 @@ st.markdown("### 🎯 ASIAN HANDICAP INDICATOR - AMBOS LADOS")
 
 simple_display = games_today[[
     "Home", "Away", "Asian_Line_Display",
-    "AH_Indicator", "AH_Side_Analysis", "AH_Recommendation",
+    "AH_Indicator", "AH_Recommendation",
     "p_ah_home_yes", "p_ah_away_yes"
 ]].copy()
 
