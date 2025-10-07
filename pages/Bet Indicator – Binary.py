@@ -27,7 +27,7 @@ st.title("📊 AI-Powered Bet Indicator – Home vs Away (Binary)")
 GAMES_FOLDER = "GamesDay"
 LIVESCORE_FOLDER = "LiveScore"
 MODELS_FOLDER = "Models"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa","trophy"]
 
 os.makedirs(MODELS_FOLDER, exist_ok=True)
 
