@@ -528,83 +528,74 @@ def create_ah_indicator_both_sides(row):
     Cria um indicador claro para Asian Handicap considerando ambos os lados
     """
     underdog_ind = row.get('Underdog_Indicator', 0)
-    handscore_diff = row.get('HandScore_Diff', 0)
     p_ah_home = row.get('p_ah_home_yes', 0.5)
     p_ah_away = row.get('p_ah_away_yes', 0.5)
     
-    # Determinar vantagem clara
-    home_advantage = p_ah_home - 0.5
-    away_advantage = p_ah_away - 0.5
+    # Diferença de probabilidades
+    prob_diff = p_ah_home - p_ah_away
     
-    # Força baseada nas probabilidades
-    home_strength = abs(home_advantage) * 2  # 0-1 scale
-    away_strength = abs(away_advantage) * 2  # 0-1 scale
-    
-    if home_advantage > 0.1 and underdog_ind < -0.3:
-        return f"🏠⤴️ HOME FAVORITO (Strength: {home_strength:.1f}, Prob: {p_ah_home:.1%})"
-    elif away_advantage > 0.1 and underdog_ind > 0.3:
-        return f"🚌⤴️ AWAY FAVORITO (Strength: {away_strength:.1f}, Prob: {p_ah_away:.1%})"
-    elif home_advantage > away_advantage and home_advantage > 0.05:
-        return f"⚖️~ LEVE VANTAGEM HOME (Prob: {p_ah_home:.1%})"
-    elif away_advantage > home_advantage and away_advantage > 0.05:
-        return f"⚖️~ LEVE VANTAGEM AWAY (Prob: {p_ah_away:.1%})"
+    # Determinar vantagem baseada nas probabilidades (PRINCIPAL)
+    if prob_diff > 0.15:  # Home tem vantagem forte
+        return f"🏠⤴️ VANTAGEM FORTE HOME (Prob: {p_ah_home:.1%} vs {p_ah_away:.1%})"
+    elif prob_diff > 0.05:  # Home tem vantagem
+        return f"🏠⤴️ VANTAGEM HOME (Prob: {p_ah_home:.1%} vs {p_ah_away:.1%})"
+    elif prob_diff < -0.15:  # Away tem vantagem forte
+        return f"🚌⤴️ VANTAGEM FORTE AWAY (Prob: {p_ah_away:.1%} vs {p_ah_home:.1%})"
+    elif prob_diff < -0.05:  # Away tem vantagem
+        return f"🚌⤴️ VANTAGEM AWAY (Prob: {p_ah_away:.1%} vs {p_ah_home:.1%})"
     else:
         return "⚖️ EQUILIBRADO (Sem vantagem clara)"
 
 def get_ah_recommendation_both_sides(row):
     """
-    Recomendação direta considerando ambos os lados com pesos das probabilidades
+    Recomendação direta baseada PRINCIPALMENTE nas probabilidades
     """
     underdog_ind = row.get('Underdog_Indicator', 0)
     p_ah_home = row.get('p_ah_home_yes', 0.5)
     p_ah_away = row.get('p_ah_away_yes', 0.5)
-    aggression_home = row.get('Aggression_Home', 0)
-    aggression_away = row.get('Aggression_Away', 0)
     
-    # Calcular vantagem líquida considerando aggression + probabilidades
-    home_net_advantage = (p_ah_home - 0.5) + (-underdog_ind * 0.2)  # Underdog negativo = home favorito
-    away_net_advantage = (p_ah_away - 0.5) + (underdog_ind * 0.2)   # Underdog positivo = away favorito
+    # REGRA PRINCIPAL: Apostar no lado com maior probabilidade
+    prob_diff = p_ah_home - p_ah_away
     
-    # Limiares com pesos
-    strong_threshold = 0.15  # 15% de vantagem líquida
-    medium_threshold = 0.08  # 8% de vantagem líquida
+    # Verificar consistência com underdog indicator
+    home_consistent = (prob_diff > 0 and underdog_ind < 0)  # Home favorito e tem maior prob
+    away_consistent = (prob_diff < 0 and underdog_ind > 0)  # Away underdog e tem maior prob
     
-    # Verificar se há vantagem clara de algum lado
-    if home_net_advantage > strong_threshold and p_ah_home > 0.55:
-        confidence_score = min((home_net_advantage - strong_threshold) * 10, 1.0)
-        return f"✅ APOSTAR HOME AH (Conf: {confidence_score:.1f}, Prob: {p_ah_home:.1%})"
-    
-    elif away_net_advantage > strong_threshold and p_ah_away > 0.55:
-        confidence_score = min((away_net_advantage - strong_threshold) * 10, 1.0)
-        return f"✅ APOSTAR AWAY AH (Conf: {confidence_score:.1f}, Prob: {p_ah_away:.1%})"
-    
-    elif home_net_advantage > medium_threshold and p_ah_home > 0.52:
+    # Recomendações baseadas nas probabilidades
+    if p_ah_home > 0.60 and home_consistent:
+        return f"✅ APOSTAR HOME AH (Prob: {p_ah_home:.1%}, Conf: Alta)"
+    elif p_ah_away > 0.60 and away_consistent:
+        return f"✅ APOSTAR AWAY AH (Prob: {p_ah_away:.1%}, Conf: Alta)"
+    elif p_ah_home > 0.55 and home_consistent:
         return f"🎯 FORTE SINAL HOME AH (Prob: {p_ah_home:.1%})"
-    
-    elif away_net_advantage > medium_threshold and p_ah_away > 0.52:
+    elif p_ah_away > 0.55 and away_consistent:
         return f"🎯 FORTE SINAL AWAY AH (Prob: {p_ah_away:.1%})"
-    
+    elif p_ah_home > p_ah_away and p_ah_home > 0.52:
+        return f"📈 SINAL HOME AH (Prob: {p_ah_home:.1%})"
+    elif p_ah_away > p_ah_home and p_ah_away > 0.52:
+        return f"📈 SINAL AWAY AH (Prob: {p_ah_away:.1%})"
     else:
-        # Analisar motivo do aguardar
-        if abs(home_net_advantage) < 0.05 and abs(away_net_advantage) < 0.05:
-            return "⏸️ AGUARDAR: Jogo muito equilibrado"
-        elif max(p_ah_home, p_ah_away) < 0.52:
+        # Motivos específicos para aguardar
+        if max(p_ah_home, p_ah_away) < 0.52:
             return "⏸️ AGUARDAR: Probabilidades baixas"
+        elif abs(prob_diff) < 0.03:
+            return "⏸️ AGUARDAR: Diferença muito pequena"
         else:
             return "⏸️ AGUARDAR: Sinal insuficiente"
 
 def get_ah_side_analysis(row):
     """
-    Análise detalhada de ambos os lados
+    Análise detalhada de ambos os lados - MAIS CLARA
     """
     p_ah_home = row.get('p_ah_home_yes', 0.5)
     p_ah_away = row.get('p_ah_away_yes', 0.5)
     underdog_ind = row.get('Underdog_Indicator', 0)
     
-    home_analysis = f"Home: {p_ah_home:.1%} (Underdog: {'SIM' if underdog_ind > 0 else 'NÃO'})"
-    away_analysis = f"Away: {p_ah_away:.1%} (Underdog: {'SIM' if underdog_ind < 0 else 'NÃO'})"
+    # Determinar status mais claro
+    home_status = "FAVORITO" if underdog_ind < 0 else "UNDERDOG" if underdog_ind > 0 else "NEUTRO"
+    away_status = "UNDERDOG" if underdog_ind < 0 else "FAVORITO" if underdog_ind > 0 else "NEUTRO"
     
-    return f"{home_analysis} | {away_analysis}"
+    return f"Home: {p_ah_home:.1%} ({home_status}) | Away: {p_ah_away:.1%} ({away_status})"
 
 # Aplicar aos dados
 games_today['AH_Indicator'] = games_today.apply(create_ah_indicator_both_sides, axis=1)
