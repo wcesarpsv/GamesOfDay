@@ -139,6 +139,160 @@ def add_aggression_features(df: pd.DataFrame):
         aggression_features.extend(['OverScore_Diff', 'Total_OverScore'])
     return df, aggression_features
 
+########################################
+### BLOCO AIL – CORE FUNCTIONS (Option A)
+########################################
+import pandas as pd
+import numpy as np
+
+# =============================
+# CONFIGURAÇÕES PRINCIPAIS
+# =============================
+MMD_ABS_DIFF_POWER = 2.0
+MMD_ABS_HC_BALANCE = 0.05
+LEAGUE_MEI_MIN_N = 200
+WINSOR_P_LO, WINSOR_P_HI = 0.01, 0.99
+
+# =============================
+# FUNÇÕES BASE
+# =============================
+def _to_float_safe(x):
+    if pd.isna(x):
+        return None
+    try:
+        if isinstance(x, str):
+            x = x.strip().replace(",", ".")
+        return float(x)
+    except:
+        return None
+
+def invert_asian_line_str(line_str):
+    val = _to_float_safe(line_str)
+    if val is None:
+        return None
+    inv = -val
+    out = f"{inv:+g}"
+    return out.replace("+", "") if out.startswith("+") else out
+
+def make_display_lines(df):
+    df = df.copy()
+    df["Asian_Line_Away_Display"] = df["Asian_Line"]
+    df["Asian_Line_Home_Display"] = df["Asian_Line"].apply(invert_asian_line_str)
+    return df
+
+def deduplicate_matches(df):
+    df = df.copy()
+    if "Id" in df.columns:
+        df = df.sort_values(by=["Date", "Home", "Away"]).drop_duplicates("Id", keep="last")
+    else:
+        df = df.sort_values(by=["Date", "Home", "Away"]).drop_duplicates(["Date", "Home", "Away"], keep="last")
+    return df
+
+# =============================
+# TARGETS ASIAN HANDICAP
+# =============================
+def _ah_outcome(gf, ga, line):
+    diff = gf - ga
+    margin = diff - line
+    if margin > 0.5:
+        return "Win"
+    if margin < -0.5:
+        return "Lose"
+    return "Push"
+
+def compute_targets_home_away(df):
+    df = df.copy()
+    ah_away = df["Asian_Line"].apply(_to_float_safe)
+    ah_home = ah_away.apply(lambda v: -v if v is not None else None)
+    gH = df["Goals_H_FT"].fillna(0).astype(int)
+    gA = df["Goals_A_FT"].fillna(0).astype(int)
+    df["AH_Target_Home"] = [
+        _ah_outcome(h, a, l) if l is not None else None
+        for h, a, l in zip(gH, gA, ah_home)
+    ]
+    df["AH_Target_Away"] = [
+        _ah_outcome(a, h, l) if l is not None else None
+        for h, a, l in zip(gH, gA, ah_away)
+    ]
+    return df
+
+# =============================
+# INTERAÇÕES DE TREINO (3 famílias)
+# =============================
+def ensure_training_interactions(df):
+    df = df.copy()
+    cols = [
+        "Market_Error_Home","Market_Error_Away","Market_Error_Diff",
+        "Underdog_Value_Home","Underdog_Value_Away","Underdog_Value_Diff",
+        "Favorite_Crash_Home","Favorite_Crash_Away","Favorite_Crash_Diff"
+    ]
+    for c in cols:
+        if c not in df.columns:
+            df[c] = 0.0
+    return df
+
+# =============================
+# EXTRAS AIL – SOMENTE UI
+# =============================
+def compute_market_model_divergence(df):
+    df = df.copy()
+    df["Market_Model_Divergence"] = (
+        (df.get("Diff_Power", pd.Series(0)).abs() > MMD_ABS_DIFF_POWER)
+        & (df.get("Handicap_Balance", pd.Series(0)).abs() > MMD_ABS_HC_BALANCE)
+    ).astype(int)
+    return df
+
+def winsorize_series(s):
+    if s.notna().sum() < 5:
+        return s
+    lo, hi = np.nanpercentile(s, [WINSOR_P_LO * 100, WINSOR_P_HI * 100])
+    return s.clip(lo, hi)
+
+def compute_league_mei_and_bias(df):
+    df = df.copy()
+    for col in ["Agg_Home","Agg_Away","HandScore_Home","HandScore_Away","League"]:
+        if col not in df.columns:
+            df[col] = np.nan
+    df["HS_H_w"] = winsorize_series(df["HandScore_Home"])
+    df["HS_A_w"] = winsorize_series(df["HandScore_Away"])
+    df["Agg_Diff"] = df["Agg_Home"] - df["Agg_Away"]
+    df["HS_Diff"] = df["HS_H_w"] - df["HS_A_w"]
+    stats = []
+    for lg, g in df.groupby("League", dropna=False):
+        n = g[["Agg_Diff","HS_Diff"]].dropna().shape[0]
+        if n >= LEAGUE_MEI_MIN_N:
+            mei = g[["Agg_Diff","HS_Diff"]].corr().iloc[0,1]
+            bias = (g["Agg_Home"] - g["Agg_Away"]).mean()
+        else:
+            mei, bias = np.nan, np.nan
+        stats.append({"League": lg, "League_MEI": mei, "League_HomeBias": bias})
+    df = df.merge(pd.DataFrame(stats), on="League", how="left")
+    return df
+
+def compute_aggression_momentum_scores(df):
+    df = df.copy()
+    for c in ["Agg_Home","Agg_Away","Diff_HT_P"]:
+        if c not in df.columns:
+            df[c] = 0.0
+    df["Aggression_Momentum_Score_Home"] = (-df["Agg_Home"]) * df["Diff_HT_P"]
+    df["Aggression_Momentum_Score_Away"] = (-df["Agg_Away"]) * (-df["Diff_HT_P"])
+    return df
+
+def compute_ail_value_score(df):
+    df = df.copy()
+    for c in ["Market_Error_Diff","Underdog_Value_Diff","Favorite_Crash_Diff"]:
+        if c not in df.columns:
+            df[c] = 0.0
+    def robust_z(s):
+        q1, q3 = s.quantile(0.25), s.quantile(0.75)
+        iqr = (q3 - q1) if (q3 - q1) != 0 else 1
+        med = s.median()
+        return (s - med) / iqr
+    z_me = robust_z(df["Market_Error_Diff"])
+    z_udv = robust_z(df["Underdog_Value_Diff"])
+    z_fcr = robust_z(df["Favorite_Crash_Diff"])
+    df["AIL_Value_Score"] = (z_me + z_udv - z_fcr) / 3
+    return df
 
 
 
@@ -189,9 +343,6 @@ if history.empty:
     st.stop()
 
 # --- Importar funções do AIL Option A ---
-from AIL_OptionA_Module import (
-    deduplicate_matches, make_display_lines, compute_targets_home_away
-)
 
 # Deduplicação + displays + targets AH
 history = deduplicate_matches(history)
@@ -351,13 +502,6 @@ games_today = build_aggression_intelligence(history, games_today)
 ########################################
 #### BLOCO 4.5 – AIL-ML INTERACTIONS ###
 ########################################
-from AIL_OptionA_Module import (
-    ensure_training_interactions,
-    compute_market_model_divergence,
-    compute_aggression_momentum_scores,
-    compute_league_mei_and_bias,
-    compute_ail_value_score
-)
 
 # Garantir colunas de interações para treino
 history = ensure_training_interactions(history)
