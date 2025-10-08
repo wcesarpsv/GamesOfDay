@@ -378,10 +378,22 @@ def calculate_betting_value(row):
     return {"ev_home": ev_home, "ev_away": ev_away}
 
 def get_value_recommendation(row):
-    """Retorna recomendação baseada em value real"""
-    value_data = calculate_betting_value(row)
-    ev_home = value_data["ev_home"]
-    ev_away = value_data["ev_away"]
+    """Retorna recomendação baseada em value real - VERSÃO CORRIGIDA"""
+    p_home = row.get("p_ah_home_yes", 0)
+    p_away = row.get("p_ah_away_yes", 0)
+    odd_h_asi = row.get("Odd_H_Asi", 0)
+    odd_a_asi = row.get("Odd_A_Asi", 0)
+    
+    # Converter odds líquidas para brutas
+    odd_h_bruto = odd_h_asi + 1.0
+    odd_a_bruto = odd_a_asi + 1.0
+    
+    # Calcular Valor Esperado
+    ev_home = (p_home * odd_h_bruto) - 1
+    ev_away = (p_away * odd_a_bruto) - 1
+    
+    # Debug: verificar valores
+    print(f"DEBUG: p_home={p_home}, p_away={p_away}, ev_home={ev_home:.3f}, ev_away={ev_away:.3f}")
     
     if ev_away > 0.10 and ev_away > ev_home:
         return f"🎯 TOP VALUE: AWAY (EV: {ev_away:.1%})"
@@ -393,29 +405,6 @@ def get_value_recommendation(row):
         return f"✅ VALUE: HOME (EV: {ev_home:.1%})"
     else:
         return "⚖️ NO VALUE"
-
-def _match_value_tag(row) -> str:
-    """CORRIGIDA - seleção de value do AIL"""
-    home_tag = _classify_market_alignment(row.Aggression_Home, row.HandScore_Home)
-    away_tag = _classify_market_alignment(row.Aggression_Away, row.HandScore_Away)
-    
-    if "UNDERDOG VALUE" in str(home_tag): 
-        return "VALUE: HOME"
-    if "UNDERDOG VALUE" in str(away_tag): 
-        return "VALUE: AWAY"
-    if "MARKET OVERRATES" in str(home_tag): 
-        return "FADE: HOME"
-    if "MARKET OVERRATES" in str(away_tag): 
-        return "FADE: AWAY"
-    
-    dp = row.Diff_Power
-    if pd.notna(dp):
-        if _sign(dp) > 0: 
-            return "ALIGN: HOME"
-        if _sign(dp) < 0: 
-            return "ALIGN: AWAY"
-    
-    return "BALANCED"
 
 
 # 4.3 – Executar AIL (VERSÃO CORRIGIDA)
