@@ -140,27 +140,6 @@ def add_aggression_features(df: pd.DataFrame):
     return df, aggression_features
 
 
-########################################
-##### BLOCO 2.5 – VERIFICAÇÃO DE COLUNAS ####
-########################################
-
-def ensure_required_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Garante que todas as colunas necessárias existam no DataFrame"""
-    required_cols = [
-        "Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away",
-        "Diff_Power", "Diff_HT_P", "M_H", "M_A", "Diff_M", "M_HT_H", "M_HT_A"
-    ]
-    
-    for col in required_cols:
-        if col not in df.columns:
-            df[col] = np.nan
-            st.warning(f"⚠️ Coluna '{col}' não encontrada. Criada com valores NaN.")
-    
-    return df
-
-# Aplicar verificação nos dados
-history = ensure_required_columns(history)
-games_today = ensure_required_columns(games_today)
 
 
 
@@ -265,6 +244,29 @@ history["Handicap_Away_Result"] = history.apply(
 
 history["Target_AH_Home"] = history["Handicap_Home_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
 history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
+
+
+########################################
+##### BLOCO 2.5 – VERIFICAÇÃO DE COLUNAS ####
+########################################
+
+def ensure_required_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Garante que todas as colunas necessárias existam no DataFrame"""
+    required_cols = [
+        "Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away",
+        "Diff_Power", "Diff_HT_P", "M_H", "M_A", "Diff_M", "M_HT_H", "M_HT_A"
+    ]
+    
+    for col in required_cols:
+        if col not in df.columns:
+            df[col] = np.nan
+            st.warning(f"⚠️ Coluna '{col}' não encontrada. Criada com valores NaN.")
+    
+    return df
+
+# Aplicar verificação nos dados
+history = ensure_required_columns(history)
+games_today = ensure_required_columns(games_today)
 
 
 ########################################
