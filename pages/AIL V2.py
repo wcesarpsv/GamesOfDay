@@ -276,6 +276,89 @@ def _normalized_gap(a_home: float, a_away: float, eps: float = 1e-6) -> float:
     denom = abs(a_home) + abs(a_away) + eps
     return (a_home - a_away) / denom
 
+
+# 🔥 ADICIONE ISSO NO BLOCO 4.2 - ANTES DA FUNÇÃO calculate_betting_value:
+
+def calculate_rolling_league_stats(history: pd.DataFrame, window_days: int = 365) -> pd.DataFrame:
+    """
+    🛡️ Calcula estatísticas por liga usando janela de tempo (ex: último ano)
+    SEM data leakage - só usa dados anteriores a cada jogo
+    """
+    if "Date" not in history.columns or history.empty:
+        return history
+        
+    history_safe = history.copy()
+    
+    # Converter data e ordenar
+    history_safe["Date"] = pd.to_datetime(history_safe["Date"])
+    history_safe = history_safe.sort_values("Date").reset_index(drop=True)
+    
+    # Inicializar novas colunas
+    history_safe["League_MEI"] = np.nan
+    history_safe["League_HomeBias"] = np.nan
+    history_safe["Games_In_Window"] = 0
+    
+    # Funções auxiliares para cálculo
+    def _mei_grp_safe(g: pd.DataFrame) -> float:
+        parts = []
+        if {"Aggression_Home","HandScore_Home"}.issubset(g.columns):
+            parts.append(g[["Aggression_Home","HandScore_Home"]].rename(
+                columns={"Aggression_Home":"Aggression","HandScore_Home":"HandScore"}))
+        if {"Aggression_Away","HandScore_Away"}.issubset(g.columns):
+            parts.append(g[["Aggression_Away","HandScore_Away"]].rename(
+                columns={"Aggression_Away":"Aggression","HandScore_Away":"HandScore"}))
+        if not parts: 
+            return np.nan
+        cat = pd.concat(parts, axis=0).dropna()
+        if len(cat) < 5 or cat["Aggression"].nunique() < 2 or cat["HandScore"].nunique() < 2:
+            return np.nan
+        try:
+            return float(cat["Aggression"].corr(cat["HandScore"]))
+        except:
+            return np.nan
+
+    def _home_bias_safe(g: pd.DataFrame) -> float:
+        ah = g["Aggression_Home"].dropna()
+        aa = g["Aggression_Away"].dropna()
+        if ah.empty or aa.empty:
+            return np.nan
+        return float(ah.mean() - aa.mean())
+    
+    # Calcular para cada liga separadamente
+    leagues = history_safe["League"].unique()
+    
+    for league in leagues:
+        league_matches = history_safe[history_safe["League"] == league].copy()
+        
+        for idx in league_matches.index:
+            current_date = league_matches.loc[idx, "Date"]
+            window_start = current_date - pd.Timedelta(days=window_days)
+            
+            # Dados da janela (excluindo o jogo atual e futuros)
+            window_data = league_matches[
+                (league_matches["Date"] >= window_start) & 
+                (league_matches["Date"] < current_date)
+            ]
+            
+            games_in_window = len(window_data)
+            history_safe.loc[idx, "Games_In_Window"] = games_in_window
+            
+            if games_in_window >= 10:  # Mínimo de jogos para calcular estatísticas
+                try:
+                    # Calcular MEI e HomeBias na janela
+                    mei = _mei_grp_safe(window_data)
+                    homebias = _home_bias_safe(window_data)
+                    
+                    history_safe.loc[idx, "League_MEI"] = mei
+                    history_safe.loc[idx, "League_HomeBias"] = homebias
+                except Exception as e:
+                    continue
+    
+    return history_safe
+
+
+
+
 # 🔥 FUNÇÕES NOVAS - COPIE E COLE ISSO:
 def calculate_betting_value(row):
     """Calcula valor esperado baseado nas probabilidades vs odds"""
