@@ -140,6 +140,28 @@ def add_aggression_features(df: pd.DataFrame):
     return df, aggression_features
 
 
+########################################
+##### BLOCO 2.5 – VERIFICAÇÃO DE COLUNAS ####
+########################################
+
+def ensure_required_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Garante que todas as colunas necessárias existam no DataFrame"""
+    required_cols = [
+        "Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away",
+        "Diff_Power", "Diff_HT_P", "M_H", "M_A", "Diff_M", "M_HT_H", "M_HT_A"
+    ]
+    
+    for col in required_cols:
+        if col not in df.columns:
+            df[col] = np.nan
+            st.warning(f"⚠️ Coluna '{col}' não encontrada. Criada com valores NaN.")
+    
+    return df
+
+# Aplicar verificação nos dados
+history = ensure_required_columns(history)
+games_today = ensure_required_columns(games_today)
+
 
 
 ########################################
@@ -420,8 +442,12 @@ history_with_rolling = calculate_rolling_league_stats(history, window_days=365)
 def build_aggression_intelligence_safe(history: pd.DataFrame, games_today: pd.DataFrame) -> pd.DataFrame:
     df = games_today.copy()
 
+    # VERIFICAR E CRIAR COLUNAS AUSENTES DE FORMA SEGURA
     for col in ["Aggression_Home","HandScore_Home","Aggression_Away","HandScore_Away","Diff_Power","Diff_HT_P"]:
-        if col not in df.columns: df[col] = np.nan
+        if col not in df.columns: 
+            df[col] = np.nan
+    
+    # Criar Handicap_Balance se não existir
     if "Handicap_Balance" not in df.columns:
         df["Handicap_Balance"] = df["Aggression_Home"] - df["Aggression_Away"]
 
@@ -436,11 +462,22 @@ def build_aggression_intelligence_safe(history: pd.DataFrame, games_today: pd.Da
         latest_league_stats = history.dropna(subset=["League_MEI", "League_HomeBias"]).groupby("League").last().reset_index()
         df = df.merge(latest_league_stats, on="League", how="left")
 
-    # Updates 3-5 
-    df["Market_Model_Divergence"] = [1 if _sign(dp)!=_sign(hb) else 0 for dp,hb in zip(df["Diff_Power"], df["Handicap_Balance"])]
-    df["Aggression_Momentum_Score_Home"] = (-1.0 * df["Aggression_Home"]) * df["Diff_HT_P"]
-    df["Aggression_Momentum_Score_Away"] = (-1.0 * df["Aggression_Away"]) * (-df["Diff_HT_P"])
+    # Updates 3-5 - COM VERIFICAÇÃO DE SEGURANÇA
+    # Market_Model_Divergence com fallback seguro
+    if "Diff_Power" in df.columns and "Handicap_Balance" in df.columns:
+        df["Market_Model_Divergence"] = [1 if _sign(dp)!=_sign(hb) else 0 for dp,hb in zip(df["Diff_Power"], df["Handicap_Balance"])]
+    else:
+        df["Market_Model_Divergence"] = 0  # valor padrão se colunas não existirem
     
+    # Aggression Momentum Scores com fallback
+    if "Aggression_Home" in df.columns and "Diff_HT_P" in df.columns:
+        df["Aggression_Momentum_Score_Home"] = (-1.0 * df["Aggression_Home"]) * df["Diff_HT_P"]
+        df["Aggression_Momentum_Score_Away"] = (-1.0 * df["Aggression_Away"]) * (-df["Diff_HT_P"])
+    else:
+        df["Aggression_Momentum_Score_Home"] = np.nan
+        df["Aggression_Momentum_Score_Away"] = np.nan
+    
+    # Market Adjustment Scores com fallback
     if "HandScore_Home_Recent5" in df.columns:
         df["Market_Adjustment_Score_Home"] = df["HandScore_Home_Recent5"].astype(float) - df["HandScore_Home"].astype(float) - df["Aggression_Home"].astype(float)
     else:
@@ -451,7 +488,11 @@ def build_aggression_intelligence_safe(history: pd.DataFrame, games_today: pd.Da
     else:
         df["Market_Adjustment_Score_Away"] = np.nan
 
-    df["Aggression_Gap_Norm"] = [_normalized_gap(h,a) for h,a in zip(df["Aggression_Home"], df["Aggression_Away"])]
+    # Aggression Gap Norm com fallback
+    if "Aggression_Home" in df.columns and "Aggression_Away" in df.columns:
+        df["Aggression_Gap_Norm"] = [_normalized_gap(h,a) for h,a in zip(df["Aggression_Home"], df["Aggression_Away"])]
+    else:
+        df["Aggression_Gap_Norm"] = np.nan
 
     def _consolidated_value_score(row) -> float:
         score = 0.0
