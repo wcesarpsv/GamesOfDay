@@ -911,24 +911,78 @@ with col_a:
 st.markdown("### 🗒️ AIL – Explicações por Jogo")
 
 def explain_match(row: pd.Series) -> str:
-    home, away = row.get("Home","?"), row.get("Away","?")
-    p_home = row.get("p_ah_home_yes", np.nan)
-    p_away = row.get("p_ah_away_yes", np.nan)
-    tag = row.get("AIL_Match_Tag","—")
-    value_rec = row.get("Value_Analysis", "—")
-    
-    value_data = calculate_betting_value(row)
-    
-    return (
-        f"**{home} vs {away}**  \n"
-        f"🧮 Asian Line: {row.get('Asian_Line_Home_Display', '?'):.2f} (Home) / {row.get('Asian_Line_Away_Display', '?'):.2f} (Away)  \n"
-        f"🏷️ Classes – Home: {row.get('Market_Class_Home', '—')} | Away: {row.get('Market_Class_Away', '—')}  \n"
-        f"📊 Prob AH – Home: {p_home:.1%} | Away: {p_away:.1%}  \n"
-        f"💰 Odds – Home: {row.get('Odd_H_Asi', '?')} | Away: {row.get('Odd_A_Asi', '?')}  \n"
-        f"🎯 Value – Home: {value_data['ev_home']:.1%} | Away: {value_data['ev_away']:.1%}  \n"
-        f"🧠 Sinal AIL: **{tag}**  \n"
-        f"💎 Recomendação: **{value_rec}**"
-    )
+    try:
+        home = str(row.get("Home", "?"))
+        away = str(row.get("Away", "?"))
+        p_home = row.get("p_ah_home_yes", np.nan)
+        p_away = row.get("p_ah_away_yes", np.nan)
+        tag = str(row.get("AIL_Match_Tag", "—"))
+        value_rec = str(row.get("Value_Analysis", "—"))
+        
+        value_data = calculate_betting_value(row)
+        
+        # Formatar Asian Line com segurança
+        home_line = row.get('Asian_Line_Home_Display', np.nan)
+        away_line = row.get('Asian_Line_Away_Display', np.nan)
+        
+        home_line_str = "?"
+        away_line_str = "?"
+        try:
+            if pd.notna(home_line):
+                home_line_str = f"{float(home_line):.2f}"
+            if pd.notna(away_line):
+                away_line_str = f"{float(away_line):.2f}"
+        except:
+            pass
+        
+        # Formatar probabilidades
+        p_home_str = "—"
+        p_away_str = "—"
+        try:
+            if pd.notna(p_home):
+                p_home_str = f"{float(p_home):.1%}"
+            if pd.notna(p_away):
+                p_away_str = f"{float(p_away):.1%}"
+        except:
+            pass
+        
+        # Formatar odds
+        odd_h_asi = row.get('Odd_H_Asi', np.nan)
+        odd_a_asi = row.get('Odd_A_Asi', np.nan)
+        
+        odd_h_str = "?"
+        odd_a_str = "?"
+        try:
+            if pd.notna(odd_h_asi):
+                odd_h_str = f"{float(odd_h_asi):.2f}"
+            if pd.notna(odd_a_asi):
+                odd_a_str = f"{float(odd_a_asi):.2f}"
+        except:
+            pass
+        
+        # Formatar value
+        ev_home_str = "—"
+        ev_away_str = "—"
+        try:
+            if pd.notna(value_data['ev_home']):
+                ev_home_str = f"{float(value_data['ev_home']):.1%}"
+            if pd.notna(value_data['ev_away']):
+                ev_away_str = f"{float(value_data['ev_away']):.1%}"
+        except:
+            pass
+        
+        return (
+            f"**{home} vs {away}**  \n"
+            f"🧮 Asian Line: {home_line_str} (Home) / {away_line_str} (Away)  \n"
+            f"🏷️ Classes – Home: {row.get('Market_Class_Home', '—')} | Away: {row.get('Market_Class_Away', '—')}  \n"
+            f"📊 Prob AH – Home: {p_home_str} | Away: {p_away_str}  \n"
+            f"💰 Odds – Home: {odd_h_str} | Away: {odd_a_str}  \n"
+            f"🎯 Value – Home: {ev_home_str} | Away: {ev_away_str}  \n"
+            f"🧠 Sinal AIL: **{tag}**  \n"
+            f"💎 Recomendação: **{value_rec}**"
+        )
+    except Exception as e:
+        return f"**Erro ao processar jogo**: {str(e)}"
 
 for _, r in games_today.iterrows():
     st.markdown(explain_match(r))
