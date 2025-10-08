@@ -199,6 +199,13 @@ if games_today.empty:
 history["Asian_Line_Display"] = history["Asian_Line"].apply(convert_asian_line)
 games_today["Asian_Line_Display"] = games_today["Asian_Line"].apply(convert_asian_line)
 
+#####
+# Garantir tipo numérico (blinda CSVs com strings)
+history["Asian_Line_Display"] = pd.to_numeric(history["Asian_Line_Display"], errors="coerce")
+games_today["Asian_Line_Display"] = pd.to_numeric(games_today["Asian_Line_Display"], errors="coerce")
+
+#########
+
 history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
 history["Handicap_Home_Result"] = history.apply(lambda r: calc_handicap_result(r["Margin"], r["Asian_Line"], invert=False), axis=1)
 history["Handicap_Away_Result"] = history.apply(lambda r: calc_handicap_result(r["Margin"], r["Asian_Line"], invert=True), axis=1)
@@ -400,24 +407,15 @@ ail_new = [
 aggr_all = [c for c in (base_aggr + ail_new) if c in games_today.columns or c in history.columns]
 feature_blocks["aggression"] = aggr_all
 
-
-
-####################
-
 # --- NOVAS features AIL-ML (interações explícitas) ---
 ail_ml_interactions = [
     "Market_Error_Home","Market_Error_Away","Market_Error_Diff",
     "Underdog_Value_Home","Underdog_Value_Away","Underdog_Value_Diff",
     "Favorite_Crash_Home","Favorite_Crash_Away","Favorite_Crash_Diff"
 ]
-
-# Garantir que existam (em history/games_today) antes de incluir
+# Garantir que existam antes de incluir
 ail_ml_interactions = [c for c in ail_ml_interactions if (c in games_today.columns or c in history.columns)]
-
-# Injetar no bloco de aggression (numéricas)
 feature_blocks["aggression"] = list(dict.fromkeys(feature_blocks["aggression"] + ail_ml_interactions))
-
-##########
 
 # Categóricas: Ligas + classes AIL
 history_leagues = pd.get_dummies(history["League"], prefix="League")
@@ -441,6 +439,7 @@ def build_feature_matrix(df, leagues, blocks):
                 dfs.append(df[avail])
     return pd.concat(dfs, axis=1)
 
+# Montar matrizes
 X_ah_home = build_feature_matrix(history, history_leagues, feature_blocks)
 X_ah_away = X_ah_home.copy()
 
@@ -448,7 +447,7 @@ X_today_ah_home = build_feature_matrix(games_today, games_today_leagues, feature
 X_today_ah_home = X_today_ah_home.reindex(columns=X_ah_home.columns, fill_value=0)
 X_today_ah_away = X_today_ah_home.copy()
 
-# Numéricas para normalização
+# Numéricas para normalização (calcular SÓ agora)
 numeric_cols = (
     feature_blocks["odds"]
     + feature_blocks["strength"]
@@ -472,6 +471,7 @@ def train_and_evaluate(X, y, name):
     safe_model = ml_model_choice.replace(" ", "")
     filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2CH_v3.pkl"
     feature_cols = X.columns.tolist()
+
     if not retrain:
         loaded = load_model(filename)
         if loaded:
@@ -481,22 +481,33 @@ def train_and_evaluate(X, y, name):
             res = {"Model": f"{name}_v1", "Accuracy": accuracy_score(y, preds),
                    "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
             return res, (model, cols)
+
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+
     if normalize_features and numeric_cols:
+        # imputar mediana (só do treino) e então escalar
+        train_med = X_train[numeric_cols].median()
+        X_train[numeric_cols] = X_train[numeric_cols].fillna(train_med)
+        X_test[numeric_cols]  = X_test[numeric_cols].fillna(train_med)
+
         scaler = StandardScaler()
         X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
-        X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
+        X_test[numeric_cols]  = scaler.transform(X_test[numeric_cols])
+
     if ml_model_choice == "Random Forest":
         model = RandomForestClassifier(n_estimators=300, max_depth=8, random_state=42)
     else:
         model = XGBClassifier(n_estimators=400, max_depth=6, learning_rate=0.05,
                               subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
                               use_label_encoder=False, random_state=42)
+
     model.fit(X_train, y_train)
     preds = model.predict(X_test)
     probs = model.predict_proba(X_test)
+
     res = {"Model": f"{name}_v1", "Accuracy": accuracy_score(y_test, preds),
            "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
+
     save_model(model, feature_cols, filename)
     return res, (model, feature_cols)
 
@@ -505,6 +516,7 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
     safe_model = ml_model_choice.replace(" ", "")
     filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2CH_v3.pkl"
     feature_cols = X.columns.tolist()
+
     if not retrain:
         loaded = load_model(filename)
         if loaded:
@@ -514,11 +526,19 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
             res = {"Model": f"{name}_v2", "Accuracy": accuracy_score(y, preds),
                    "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
             return res, (model, cols)
+
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+
     if normalize_features and numeric_cols:
+        # imputar mediana (só do treino) e então escalar
+        train_med = X_train[numeric_cols].median()
+        X_train[numeric_cols] = X_train[numeric_cols].fillna(train_med)
+        X_test[numeric_cols]  = X_test[numeric_cols].fillna(train_med)
+
         scaler = StandardScaler()
         X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
-        X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
+        X_test[numeric_cols]  = scaler.transform(X_test[numeric_cols])
+
     if ml_model_choice == "Random Forest":
         base_model = RandomForestClassifier(n_estimators=500, max_depth=None, class_weight="balanced",
                                             random_state=42, n_jobs=-1)
@@ -527,6 +547,7 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
                                    subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
                                    use_label_encoder=False, random_state=42,
                                    scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1)
+
     if use_calibration:
         try:
             model = CalibratedClassifierCV(estimator=base_model, method="sigmoid", cv=2)
@@ -539,10 +560,13 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
         else:
             base_model.fit(X_train, y_train)
         model = base_model
+
     preds = model.predict(X_test)
     probs = model.predict_proba(X_test)
+
     res = {"Model": f"{name}_v2", "Accuracy": accuracy_score(y_test, preds),
            "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
+
     save_model(model, feature_cols, filename)
     return res, (model, feature_cols)
 
@@ -563,58 +587,23 @@ st.dataframe(stats_df, use_container_width=True)
 
 
 
-########################################
-######## BLOCO 8 – PREDICTIONS #########
-########################################
-if ml_version_choice == "v1":
-    model_ah_home, cols1 = model_ah_home_v1
-    model_ah_away, cols2 = model_ah_away_v1
-else:
-    model_ah_home, cols1 = model_ah_home_v2
-    model_ah_away, cols2 = model_ah_away_v2
-
-X_today_ah_home = X_today_ah_home.reindex(columns=cols1, fill_value=0)
-X_today_ah_away = X_today_ah_away.reindex(columns=cols2, fill_value=0)
-
+# --- Substituir o trecho de normalização do BLOCO 8 por este ---
 if normalize_features and numeric_cols:
     scaler = StandardScaler()
-    scaler.fit(X_ah_home[numeric_cols])
+
+    # mediana do histórico (usa X_ah_home do holdout/treino que você construiu acima)
+    med = X_ah_home[numeric_cols].median()
+
+    # preparar base para ajustar o scaler (sem NaN)
+    X_ah_home_fit = X_ah_home[numeric_cols].fillna(med)
+    scaler.fit(X_ah_home_fit)
+
+    # imputar + transformar hoje
+    X_today_ah_home[numeric_cols] = X_today_ah_home[numeric_cols].fillna(med)
+    X_today_ah_away[numeric_cols] = X_today_ah_away[numeric_cols].fillna(med)
     X_today_ah_home[numeric_cols] = scaler.transform(X_today_ah_home[numeric_cols])
     X_today_ah_away[numeric_cols] = scaler.transform(X_today_ah_away[numeric_cols])
 
-if not games_today.empty:
-    probs_home = model_ah_home.predict_proba(X_today_ah_home)
-    for cls, col in zip(model_ah_home.classes_, ["p_ah_home_no", "p_ah_home_yes"]):
-        games_today[col] = probs_home[:, cls]
-    probs_away = model_ah_away.predict_proba(X_today_ah_away)
-    for cls, col in zip(model_ah_away.classes_, ["p_ah_away_no", "p_ah_away_yes"]):
-        games_today[col] = probs_away[:, cls]
-
-def color_prob(val, color):
-    if pd.isna(val): return ""
-    alpha = float(np.clip(val, 0, 1))
-    return f"background-color: rgba({color}, {alpha:.2f})"
-
-st.markdown(f"### 📌 Predictions for {selected_date_str} – Asian Handicap ({ml_version_choice})")
-styled_df = (
-    games_today[[
-        "Date","Time","League","Home","Away",
-        "Goals_H_Today", "Goals_A_Today",
-        "Odd_H","Odd_D","Odd_A",
-        "Asian_Line_Display","Odd_H_Asi","Odd_A_Asi",
-        "p_ah_home_yes","p_ah_away_yes"
-    ]]
-    .style.format({
-        "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
-        "Asian_Line_Display": "{:.2f}",
-        "Odd_H_Asi": "{:.2f}", "Odd_A_Asi": "{:.2f}",
-        "p_ah_home_yes": "{:.1%}", "p_ah_away_yes": "{:.1%}",
-        "Goals_H_Today": "{:.0f}", "Goals_A_Today": "{:.0f}"
-    }, na_rep="—")
-    .applymap(lambda v: color_prob(v, "0,200,0"), subset=["p_ah_home_yes"])
-    .applymap(lambda v: color_prob(v, "255,140,0"), subset=["p_ah_away_yes"])
-)
-st.dataframe(styled_df, use_container_width=True, height=800)
 
 
 
@@ -643,38 +632,31 @@ for pcol in [c for c in ["p_ah_home_yes","p_ah_away_yes"] if c in radar.columns]
 st.dataframe(radar.sort_values("AIL_Value_Score", ascending=False), use_container_width=True)
 
 
-########################################
-### BLOCO 9.5 – AIL VIS: AGG x HS ######
-########################################
-import matplotlib.pyplot as plt
-
-st.markdown("### 📈 Aggression × HandScore – Quadrantes de Valor")
-
 def _plot_aggression_handscore(df: pd.DataFrame, side: str = "Home"):
     ax = plt.figure(figsize=(6, 5)).gca()
     ax.axvline(0, linewidth=1)
     ax.axhline(0, linewidth=1)
-    x = df[f"Aggression_{side}"].astype(float)
-    y = df[f"HandScore_{side}"].astype(float)
-    ax.scatter(x, y, alpha=0.6, s=20)
+
+    x = pd.to_numeric(df[f"Aggression_{side}"], errors="coerce")
+    y = pd.to_numeric(df[f"HandScore_{side}"], errors="coerce")
+    mask = x.notna() & y.notna()
+
+    ax.scatter(x[mask], y[mask], alpha=0.6, s=20)
 
     ax.set_xlabel(f"Aggression_{side} (−1 zebra ↔ +1 favorito)")
     ax.set_ylabel(f"HandScore_{side} (− falha ↔ + cobre)")
     ax.set_title(f"Aggression vs HandScore – {side}")
 
-    # Anotações dos quadrantes
-    ax.text(-0.95, max(y.fillna(0).max(), 0) if y.notna().any() else 0.5, "Underdog Value\n(x<0, y>0)", fontsize=9)
-    ax.text( 0.05, max(y.fillna(0).max(), 0) if y.notna().any() else 0.5, "Favorite Reliable\n(x>0, y>0)", fontsize=9)
-    ax.text( 0.05, min(y.fillna(0).min(), 0) if y.notna().any() else -0.5, "Market Overrates\n(x>0, y<0)", fontsize=9)
-    ax.text(-0.95, min(y.fillna(0).min(), 0) if y.notna().any() else -0.5, "Weak Underdog\n(x<0, y<0)", fontsize=9)
+    # Anotações dos quadrantes (usam limites do dado válido)
+    y_max = float(y[mask].max()) if mask.any() else 0.5
+    y_min = float(y[mask].min()) if mask.any() else -0.5
+    ax.text(-0.95, max(y_max, 0), "Underdog Value\n(x<0, y>0)", fontsize=9)
+    ax.text( 0.05, max(y_max, 0), "Favorite Reliable\n(x>0, y>0)", fontsize=9)
+    ax.text( 0.05, min(y_min, 0), "Market Overrates\n(x>0, y<0)", fontsize=9)
+    ax.text(-0.95, min(y_min, 0), "Weak Underdog\n(x<0, y<0)", fontsize=9)
 
     st.pyplot(ax.figure)
 
-col_h, col_a = st.columns(2)
-with col_h:
-    _plot_aggression_handscore(games_today, side="Home")
-with col_a:
-    _plot_aggression_handscore(games_today, side="Away")
 
 
 
