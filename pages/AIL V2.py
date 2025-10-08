@@ -81,17 +81,6 @@ def convert_asian_line(line_str):
     except:
         return None
 
-def invert_asian_line_str(line_str):
-    """Inverte o sinal de cada parte da linha (para trocar referência Away ↔ Home). Ex.: '-0.25/0' → '0.25/0'"""
-    if pd.isna(line_str):
-        return np.nan
-    try:
-        parts = [p.strip() for p in str(line_str).split('/')]
-        inv_parts = [str(-float(p)) for p in parts]
-        return '/'.join(inv_parts)
-    except:
-        return np.nan
-
 def calc_handicap_result(margin, asian_line_str, invert=False):
     """Retorna média de pontos por linha (1 win, 0.5 push, 0 loss)."""
     if pd.isna(asian_line_str):
@@ -559,7 +548,8 @@ X_today_ah_home = build_feature_matrix(games_today, games_today_leagues, feature
 X_today_ah_home = X_today_ah_home.reindex(columns=X_ah_home.columns, fill_value=0)
 X_today_ah_away = X_today_ah_home.copy()
 
-
+# Detectar colunas numéricas automaticamente
+numeric_cols = [c for c in X_ah_home.columns if np.issubdtype(X_ah_home[c].dtype, np.number)]
 
 ########################################
 ###### BLOCO 6 – SIDEBAR & ML ##########
@@ -675,18 +665,20 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
     return res, (model, feature_cols)
 
 
+
 ########################################
 ######## BLOCO 7 – TREINAMENTO #########
 ########################################
 stats = []
-res, model_ah_home_v1 = train_and_evaluate(X_ah_home, history["Target_AH_Home"], "AH_Home"); stats.append(res)
-res, model_ah_away_v1 = train_and_evaluate(X_ah_away, history["Target_AH_Away"], "AH_Away"); stats.append(res)
-res, model_ah_home_v2 = train_and_evaluate_v2(X_ah_home, history["Target_AH_Home"], "AH_Home"); stats.append(res)
-res, model_ah_away_v2 = train_and_evaluate_v2(X_ah_away, history["Target_AH_Away"], "AH_Away"); stats.append(res)
+res, model_ah_home_v1 = train_and_evaluate(X_ah_home, history["AH_Target_Home"], "AH_Home"); stats.append(res)
+res, model_ah_away_v1 = train_and_evaluate(X_ah_away, history["AH_Target_Away"], "AH_Away"); stats.append(res)
+res, model_ah_home_v2 = train_and_evaluate_v2(X_ah_home, history["AH_Target_Home"], "AH_Home"); stats.append(res)
+res, model_ah_away_v2 = train_and_evaluate_v2(X_ah_away, history["AH_Target_Away"], "AH_Away"); stats.append(res)
 
 stats_df = pd.DataFrame(stats)[["Model", "Accuracy", "LogLoss", "BrierScore"]]
 st.markdown("### 📊 Model Statistics (Validation) – v1 vs v2")
 st.dataframe(stats_df, use_container_width=True)
+
 
 
 
@@ -722,12 +714,12 @@ if normalize_features and numeric_cols:
 
 if not games_today.empty:
     probs_home = model_ah_home.predict_proba(X_today_ah_home)
-    for cls, col in zip(model_ah_home.classes_, ["p_ah_home_no", "p_ah_home_yes"]):
-        games_today[col] = probs_home[:, cls]
-
+    for i, cls in enumerate(model_ah_home.classes_):
+        games_today[f"p_ah_home_{cls.lower()}"] = probs_home[:, i]
+    
     probs_away = model_ah_away.predict_proba(X_today_ah_away)
-    for cls, col in zip(model_ah_away.classes_, ["p_ah_away_no", "p_ah_away_yes"]):
-        games_today[col] = probs_away[:, cls]
+    for i, cls in enumerate(model_ah_away.classes_):
+        games_today[f"p_ah_away_{cls.lower()}"] = probs_away[:, i]
 
 def color_prob(val, rgb):
     if pd.isna(val): return ""
