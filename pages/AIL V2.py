@@ -29,10 +29,6 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
 os.makedirs(MODELS_FOLDER, exist_ok=True)
 
-
-
-
-
 ########################################
 ###### BLOCO 2 – HELPERS BÁSICOS #######
 ########################################
@@ -139,10 +135,6 @@ def add_aggression_features(df: pd.DataFrame):
         aggression_features.extend(['OverScore_Diff', 'Total_OverScore'])
     return df, aggression_features
 
-
-
-
-
 ########################################
 ##### BLOCO 3 – LOAD + TARGETS AH ######
 ########################################
@@ -245,7 +237,6 @@ history["Handicap_Away_Result"] = history.apply(
 history["Target_AH_Home"] = history["Handicap_Home_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
 history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
 
-
 ########################################
 ##### BLOCO 2.5 – VERIFICAÇÃO DE COLUNAS ####
 ########################################
@@ -260,14 +251,12 @@ def ensure_required_columns(df: pd.DataFrame) -> pd.DataFrame:
     for col in required_cols:
         if col not in df.columns:
             df[col] = np.nan
-            st.warning(f"⚠️ Coluna '{col}' não encontrada. Criada com valores NaN.")
     
     return df
 
-# Aplicar verificação nos dados
+# Aplicar verificação nos dados - DEPOIS que os DataFrames foram criados
 history = ensure_required_columns(history)
 games_today = ensure_required_columns(games_today)
-
 
 ########################################
 #### BLOCO 4 – AIL (INTELIGÊNCIA) ######
@@ -434,7 +423,6 @@ def get_value_recommendation(row):
     else:
         return "⚖️ NO VALUE"
 
-
 # 4.3 – Executar AIL (VERSÃO CORRIGIDA)
 st.info("🛡️ Calculating rolling league statistics (no data leakage)...")
 
@@ -522,7 +510,6 @@ def build_aggression_intelligence_safe(history: pd.DataFrame, games_today: pd.Da
 games_today = build_aggression_intelligence_safe(history_with_rolling, games_today)
 history = history_with_rolling
 
-
 ########################################
 #### BLOCO 4.5 – AIL-ML INTERACTIONS ####
 ########################################
@@ -560,38 +547,6 @@ def add_ail_ml_interactions(df: pd.DataFrame) -> pd.DataFrame:
 # Aplicar nas bases
 history = add_ail_ml_interactions(history)
 games_today = add_ail_ml_interactions(games_today)
-
-
-########################################
-### BLOCO 4.7 – VERIFICAÇÃO DATA LEAKAGE #
-########################################
-
-st.markdown("### 🛡️ Data Leakage Prevention Verification")
-
-if "League_MEI" in games_today.columns:
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        non_na_mei = games_today["League_MEI"].notna().sum()
-        st.metric("Jogos com League_MEI", f"{non_na_mei}/{len(games_today)}")
-    
-    with col2:
-        avg_games_window = history["Games_In_Window"].mean() if "Games_In_Window" in history.columns else 0
-        st.metric("Avg Games in Window", f"{avg_games_window:.0f}")
-    
-    with col3:
-        mei_range = f"{games_today['League_MEI'].min():.2f} to {games_today['League_MEI'].max():.2f}"
-        st.metric("League_MEI Range", mei_range)
-
-# Mostrar exemplo de cálculo rolling
-if not history.empty and "Date" in history.columns:
-    sample_league = history["League"].iloc[0]
-    sample_data = history[history["League"] == sample_league][["Date", "League_MEI", "League_HomeBias", "Games_In_Window"]].head(10)
-    st.write(f"**Sample rolling calculation for {sample_league}:**")
-    st.dataframe(sample_data)
-
-
-
 
 ########################################
 ##### BLOCO 5 – FEATURE BLOCKS #########
