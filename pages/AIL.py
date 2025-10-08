@@ -337,6 +337,49 @@ def build_aggression_intelligence(history: pd.DataFrame, games_today: pd.DataFra
 games_today = build_aggression_intelligence(history, games_today)
 
 
+
+########################################
+#### BLOCO 4.5 – AIL-ML INTERACTIONS ####
+########################################
+def add_ail_ml_interactions(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Ensina explicitamente a lógica mercado x resultado:
+    - Market_Error: Aggression * HandScore (positivo = mercado acertou; negativo = errou)
+    - Underdog_Value: (-Aggression) * max(HandScore, 0)      (zebra que cobre)
+    - Favorite_Crash: ( Aggression) * min(HandScore, 0)      (favorito que falha)
+    Cria versões Home e Away e diffs.
+    """
+    out = df.copy()
+
+    # Safety
+    for c in ["Aggression_Home","Aggression_Away","HandScore_Home","HandScore_Away"]:
+        if c not in out.columns: out[c] = np.nan
+
+    # Home
+    out["Market_Error_Home"] = out["Aggression_Home"] * out["HandScore_Home"]
+    out["Underdog_Value_Home"] = (-out["Aggression_Home"]) * np.maximum(0.0, out["HandScore_Home"].astype(float))
+    out["Favorite_Crash_Home"] = ( out["Aggression_Home"]) * np.minimum(0.0, out["HandScore_Home"].astype(float))
+
+    # Away
+    out["Market_Error_Away"] = out["Aggression_Away"] * out["HandScore_Away"]
+    out["Underdog_Value_Away"] = (-out["Aggression_Away"]) * np.maximum(0.0, out["HandScore_Away"].astype(float))
+    out["Favorite_Crash_Away"] = ( out["Aggression_Away"]) * np.minimum(0.0, out["HandScore_Away"].astype(float))
+
+    # Diffs (sinal útil pra ML)
+    out["Market_Error_Diff"] = out["Market_Error_Home"] - out["Market_Error_Away"]
+    out["Underdog_Value_Diff"] = out["Underdog_Value_Home"] - out["Underdog_Value_Away"]
+    out["Favorite_Crash_Diff"] = out["Favorite_Crash_Home"] - out["Favorite_Crash_Away"]
+
+    return out
+
+# Aplicar nas bases
+history = add_ail_ml_interactions(history)
+games_today = add_ail_ml_interactions(games_today)
+
+
+
+
+
 ########################################
 ##### BLOCO 5 – FEATURE BLOCKS #########
 ########################################
@@ -356,6 +399,34 @@ ail_new = [
 ]
 aggr_all = [c for c in (base_aggr + ail_new) if c in games_today.columns or c in history.columns]
 feature_blocks["aggression"] = aggr_all
+
+
+
+####################
+
+# --- NOVAS features AIL-ML (interações explícitas) ---
+ail_ml_interactions = [
+    "Market_Error_Home","Market_Error_Away","Market_Error_Diff",
+    "Underdog_Value_Home","Underdog_Value_Away","Underdog_Value_Diff",
+    "Favorite_Crash_Home","Favorite_Crash_Away","Favorite_Crash_Diff"
+]
+
+# Garantir que existam (em history/games_today) antes de incluir
+ail_ml_interactions = [c for c in ail_ml_interactions if (c in games_today.columns or c in history.columns)]
+
+# Injetar no bloco de aggression (numéricas)
+feature_blocks["aggression"] = list(dict.fromkeys(feature_blocks["aggression"] + ail_ml_interactions))
+
+# Atualizar numeric_cols (mantendo binárias de fora)
+numeric_cols = (
+    feature_blocks["odds"]
+    + feature_blocks["strength"]
+    + [c for c in feature_blocks["aggression"] if c not in ["Market_Model_Divergence"]]
+)
+numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
+
+
+##########
 
 # Categóricas: Ligas + classes AIL
 history_leagues = pd.get_dummies(history["League"], prefix="League")
@@ -579,4 +650,91 @@ for pcol in [c for c in ["p_ah_home_yes","p_ah_away_yes"] if c in radar.columns]
     radar[pcol] = radar[pcol].apply(lambda x: f"{x:.1%}" if pd.notnull(x) else "—")
 
 st.dataframe(radar.sort_values("AIL_Value_Score", ascending=False), use_container_width=True)
+
+
+########################################
+### BLOCO 9.5 – AIL VIS: AGG x HS ######
+########################################
+import matplotlib.pyplot as plt
+
+st.markdown("### 📈 Aggression × HandScore – Quadrantes de Valor")
+
+def _plot_aggression_handscore(df: pd.DataFrame, side: str = "Home"):
+    ax = plt.figure(figsize=(6, 5)).gca()
+    ax.axvline(0, linewidth=1)
+    ax.axhline(0, linewidth=1)
+    x = df[f"Aggression_{side}"].astype(float)
+    y = df[f"HandScore_{side}"].astype(float)
+    ax.scatter(x, y, alpha=0.6, s=20)
+
+    ax.set_xlabel(f"Aggression_{side} (−1 zebra ↔ +1 favorito)")
+    ax.set_ylabel(f"HandScore_{side} (− falha ↔ + cobre)")
+    ax.set_title(f"Aggression vs HandScore – {side}")
+
+    # Anotações dos quadrantes
+    ax.text(-0.95, max(y.fillna(0).max(), 0) if y.notna().any() else 0.5, "Underdog Value\n(x<0, y>0)", fontsize=9)
+    ax.text( 0.05, max(y.fillna(0).max(), 0) if y.notna().any() else 0.5, "Favorite Reliable\n(x>0, y>0)", fontsize=9)
+    ax.text( 0.05, min(y.fillna(0).min(), 0) if y.notna().any() else -0.5, "Market Overrates\n(x>0, y<0)", fontsize=9)
+    ax.text(-0.95, min(y.fillna(0).min(), 0) if y.notna().any() else -0.5, "Weak Underdog\n(x<0, y<0)", fontsize=9)
+
+    st.pyplot(ax.figure)
+
+col_h, col_a = st.columns(2)
+with col_h:
+    _plot_aggression_handscore(games_today, side="Home")
+with col_a:
+    _plot_aggression_handscore(games_today, side="Away")
+
+
+
+########################################
+### BLOCO 9.6 – AIL EXPLANATIONS #######
+########################################
+st.markdown("### 🗒️ AIL – Explicações por Jogo")
+
+def explain_match(row: pd.Series) -> str:
+    home, away = row.get("Home","?"), row.get("Away","?")
+    asian_home = row.get("Asian_Line_Display", np.nan)
+
+    # Interpretação da linha: se Asian_Line_Display é do Home,
+    # então Home recebe esse valor, Away recebe o oposto.
+    if pd.notnull(asian_home):
+        try:
+            asian_home_f = float(asian_home)
+            line_txt = f"{home} {asian_home_f:+.2f} / {away} {(-asian_home_f):+.2f}"
+        except:
+            line_txt = f"{home} {asian_home} / {away} (oposto)"
+    else:
+        line_txt = "N/A"
+
+    p_home = row.get("p_ah_home_yes", np.nan)
+    p_away = row.get("p_ah_away_yes", np.nan)
+    p_txt = f"Prob AH – Home: {p_home:.1%} | Away: {p_away:.1%}" if pd.notnull(p_home) and pd.notnull(p_away) else "Prob AH – N/A"
+
+    tag = row.get("AIL_Match_Tag","—")
+    mclass_h = row.get("Market_Class_Home","—")
+    mclass_a = row.get("Market_Class_Away","—")
+
+    # Sinal curto
+    signal = ""
+    if "VALUE: AWAY" in tag: signal = "🎯 Valor no visitante"
+    elif "VALUE: HOME" in tag: signal = "🎯 Valor no mandante"
+    elif "FADE: HOME" in tag: signal = "📉 Fade no mandante"
+    elif "FADE: AWAY" in tag: signal = "📉 Fade no visitante"
+    else: signal = "⚖️ Equilíbrio/Alinhado"
+
+    return (
+        f"**{home} vs {away}**  \n"
+        f"🧮 Asian Line: {line_txt}  \n"
+        f"🏷️ Classes – Home: {mclass_h} | Away: {mclass_a}  \n"
+        f"📊 {p_txt}  \n"
+        f"🧠 Sinal AIL: **{tag}** → {signal}"
+    )
+
+# Render
+for _, r in games_today.iterrows():
+    st.markdown(explain_match(r))
+    st.markdown("---")
+
+
 
