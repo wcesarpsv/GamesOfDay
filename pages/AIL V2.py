@@ -455,8 +455,8 @@ def add_quadrant_features(df):
     # Away Quadrants (binárias)
     df['Away_Underdog_Value'] = ((df['Aggression_Away'] < 0) & (df['HandScore_Away'] > 0)).astype(int)
     df['Away_Favorite_Reliable'] = ((df['Aggression_Away'] > 0) & (df['HandScore_Away'] > 0)).astype(int)
-    df['Away_Market_Overrates'] = ((df['Aggression_Away'] > 0) & (df['HandScore_Away'] < 0)).astize(int)
-    df['Away_Weak_Underdog'] = ((df['Aggression_Away'] < 0) & (df['HandScore_Away'] < 0)).astize(int)
+    df['Away_Market_Overrates'] = ((df['Aggression_Away'] > 0) & (df['HandScore_Away'] < 0)).astype(int)
+    df['Away_Weak_Underdog'] = ((df['Aggression_Away'] < 0) & (df['HandScore_Away'] < 0)).astype(int)
     
     # Strength of signal (contínuas)
     df['Home_Value_Strength'] = (-df['Aggression_Home']) * df['HandScore_Home']
