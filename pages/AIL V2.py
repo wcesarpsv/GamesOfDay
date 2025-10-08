@@ -245,16 +245,15 @@ history["Target_AH_Home"] = history["Handicap_Home_Result"].apply(lambda x: 1 if
 history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
 
 
-
 ########################################
 #### BLOCO 4 – AIL (INTELIGÊNCIA) ######
 ########################################
 
-# 4.1 – Aggression features (seu bloco original)
+# 4.1 – Aggression features (seu bloco original - MANTENHA)
 history, aggression_features = add_aggression_features(history)
 games_today, _ = add_aggression_features(games_today)
 
-# 4.2 – AIL – funções (mantidas iguais)
+# 4.2 – AIL – funções COMPLETAS E CORRIGIDAS
 AIL_CFG = {"hs_neutral": 5.0, "aggr_neutral": 0.05}
 
 def _sign(x: float) -> int:
@@ -277,142 +276,98 @@ def _normalized_gap(a_home: float, a_away: float, eps: float = 1e-6) -> float:
     denom = abs(a_home) + abs(a_away) + eps
     return (a_home - a_away) / denom
 
-# 4.2.1 – FUNÇÕES ROLLING SEGURAS
-def calculate_rolling_league_stats(history: pd.DataFrame, window_days: int = 365) -> pd.DataFrame:
-    """
-    🛡️ Calcula estatísticas por liga usando janela de tempo (ex: último ano)
-    SEM data leakage - só usa dados anteriores a cada jogo
-    """
-    if "Date" not in history.columns or history.empty:
-        return history
-        
-    history_safe = history.copy()
+# 🔥 FUNÇÕES NOVAS - COPIE E COLE ISSO:
+def calculate_betting_value(row):
+    """Calcula valor esperado baseado nas probabilidades vs odds"""
+    p_home = row.get("p_ah_home_yes", 0)
+    p_away = row.get("p_ah_away_yes", 0)
+    odd_h_asi = row.get("Odd_H_Asi", 0)
+    odd_a_asi = row.get("Odd_A_Asi", 0)
     
-    # Converter data e ordenar
-    history_safe["Date"] = pd.to_datetime(history_safe["Date"])
-    history_safe = history_safe.sort_values("Date").reset_index(drop=True)
+    # Converter odds líquidas para brutas
+    odd_h_bruto = odd_h_asi + 1.0
+    odd_a_bruto = odd_a_asi + 1.0
     
-    # Inicializar novas colunas
-    history_safe["League_MEI"] = np.nan
-    history_safe["League_HomeBias"] = np.nan
-    history_safe["Games_In_Window"] = 0
+    # Calcular Valor Esperado
+    ev_home = (p_home * odd_h_bruto) - 1
+    ev_away = (p_away * odd_a_bruto) - 1
     
-    # Funções auxiliares para cálculo
-    def _mei_grp_safe(g: pd.DataFrame) -> float:
-        parts = []
-        if {"Aggression_Home","HandScore_Home"}.issubset(g.columns):
-            parts.append(g[["Aggression_Home","HandScore_Home"]].rename(
-                columns={"Aggression_Home":"Aggression","HandScore_Home":"HandScore"}))
-        if {"Aggression_Away","HandScore_Away"}.issubset(g.columns):
-            parts.append(g[["Aggression_Away","HandScore_Away"]].rename(
-                columns={"Aggression_Away":"Aggression","HandScore_Away":"HandScore"}))
-        if not parts: 
-            return np.nan
-        cat = pd.concat(parts, axis=0).dropna()
-        if len(cat) < 5 or cat["Aggression"].nunique() < 2 or cat["HandScore"].nunique() < 2:
-            return np.nan
-        try:
-            return float(cat["Aggression"].corr(cat["HandScore"]))
-        except:
-            return np.nan
+    return {"ev_home": ev_home, "ev_away": ev_away}
 
-    def _home_bias_safe(g: pd.DataFrame) -> float:
-        ah = g["Aggression_Home"].dropna()
-        aa = g["Aggression_Away"].dropna()
-        if ah.empty or aa.empty:
-            return np.nan
-        return float(ah.mean() - aa.mean())
+def get_value_recommendation(row):
+    """Retorna recomendação baseada em value real"""
+    value_data = calculate_betting_value(row)
+    ev_home = value_data["ev_home"]
+    ev_away = value_data["ev_away"]
     
-    # Calcular para cada liga separadamente
-    leagues = history_safe["League"].unique()
-    total_leagues = len(leagues)
-    
-    st.sidebar.info(f"📊 Calculando estatísticas rolling para {total_leagues} ligas...")
-    
-    progress_bar = st.sidebar.progress(0)
-    
-    for i, league in enumerate(leagues):
-        league_matches = history_safe[history_safe["League"] == league].copy()
-        
-        for idx in league_matches.index:
-            current_date = league_matches.loc[idx, "Date"]
-            window_start = current_date - pd.Timedelta(days=window_days)
-            
-            # Dados da janela (excluindo o jogo atual e futuros)
-            window_data = league_matches[
-                (league_matches["Date"] >= window_start) & 
-                (league_matches["Date"] < current_date)
-            ]
-            
-            games_in_window = len(window_data)
-            history_safe.loc[idx, "Games_In_Window"] = games_in_window
-            
-            if games_in_window >= 10:  # Mínimo de jogos para calcular estatísticas
-                try:
-                    # Calcular MEI e HomeBias na janela
-                    mei = _mei_grp_safe(window_data)
-                    homebias = _home_bias_safe(window_data)
-                    
-                    history_safe.loc[idx, "League_MEI"] = mei
-                    history_safe.loc[idx, "League_HomeBias"] = homebias
-                except Exception as e:
-                    continue
-        
-        progress_bar.progress((i + 1) / total_leagues)
-    
-    progress_bar.empty()
-    
-    return history_safe
+    if ev_away > 0.10 and ev_away > ev_home:
+        return f"🎯 TOP VALUE: AWAY (EV: {ev_away:.1%})"
+    elif ev_home > 0.10 and ev_home > ev_away:
+        return f"🎯 TOP VALUE: HOME (EV: {ev_home:.1%})"
+    elif ev_away > 0.05:
+        return f"✅ VALUE: AWAY (EV: {ev_away:.1%})"
+    elif ev_home > 0.05:
+        return f"✅ VALUE: HOME (EV: {ev_home:.1%})"
+    else:
+        return "⚖️ NO VALUE"
 
+def _match_value_tag(row) -> str:
+    """CORRIGIDA - seleção de value do AIL"""
+    home_tag = _classify_market_alignment(row.Aggression_Home, row.HandScore_Home)
+    away_tag = _classify_market_alignment(row.Aggression_Away, row.HandScore_Away)
+    
+    if "UNDERDOG VALUE" in str(home_tag): 
+        return "VALUE: HOME"
+    if "UNDERDOG VALUE" in str(away_tag): 
+        return "VALUE: AWAY"
+    if "MARKET OVERRATES" in str(home_tag): 
+        return "FADE: HOME"
+    if "MARKET OVERRATES" in str(away_tag): 
+        return "FADE: AWAY"
+    
+    dp = row.Diff_Power
+    if pd.notna(dp):
+        if _sign(dp) > 0: 
+            return "ALIGN: HOME"
+        if _sign(dp) < 0: 
+            return "ALIGN: AWAY"
+    
+    return "BALANCED"
+
+
+# 4.3 – Executar AIL (VERSÃO CORRIGIDA)
+st.info("🛡️ Calculating rolling league statistics (no data leakage)...")
+
+# Primeiro: calcular estatísticas rolling no histórico
+history_with_rolling = calculate_rolling_league_stats(history, window_days=365)
+
+# 🔥 SUBSTITUA a função build_aggression_intelligence por esta VERSÃO CORRIGIDA:
 def build_aggression_intelligence_safe(history: pd.DataFrame, games_today: pd.DataFrame) -> pd.DataFrame:
-    """
-    🛡️ Versão sem data leakage - usa apenas estatísticas rolling calculadas previamente
-    """
     df = games_today.copy()
 
-    # Garantir colunas necessárias
     for col in ["Aggression_Home","HandScore_Home","Aggression_Away","HandScore_Away","Diff_Power","Diff_HT_P"]:
-        if col not in df.columns: 
-            df[col] = np.nan
-    
+        if col not in df.columns: df[col] = np.nan
     if "Handicap_Balance" not in df.columns:
         df["Handicap_Balance"] = df["Aggression_Home"] - df["Aggression_Away"]
 
-    # Update 1 – Classes (sem data leakage)
+    # Update 1 – Classes
     df["Market_Class_Home"] = [_classify_market_alignment(a,h) for a,h in zip(df["Aggression_Home"], df["HandScore_Home"])]
     df["Market_Class_Away"] = [_classify_market_alignment(a,h) for a,h in zip(df["Aggression_Away"], df["HandScore_Away"])]
-
-    def _match_value_tag(row) -> str:
-        home_tag = _classify_market_alignment(row.Aggression_Home, row.HandScore_Home)
-        away_tag = _classify_market_alignment(row.Aggression_Away, row.HandScore_Away)
-        if "UNDERDOG VALUE" in home_tag: return "VALUE: HOME"
-        if "UNDERDOG VALUE" in away_tag: return "VALUE: AWAY"
-        if "MARKET OVERRATES" in home_tag: return "FADE: HOME"
-        if "MARKET OVERRATES" in away_tag: return "FADE: AWAY"
-        if _sign(row.Diff_Power) > 0: return "ALIGN: HOME"
-        if _sign(row.Diff_Power) < 0: return "ALIGN: AWAY"
-        return "BALANCED"
-    
     df["AIL_Match_Tag"] = df.apply(_match_value_tag, axis=1)
 
-    # Update 2/6 – MEI & HomeBias (AGORA SEGURO - já calculado no histórico)
-    if history is not None and not history.empty:
-        # Pegar os valores mais recentes de cada liga do histórico
+    # Update 2/6 – MEI & HomeBias 
+    if history is not None and not history.empty and "League" in history.columns:
         latest_league_stats = history.groupby("League").agg({
             "League_MEI": "last",
             "League_HomeBias": "last"
         }).reset_index()
-        
-        df = df.merge(latest_league_stats, on="League", how="left", suffixes=("", "_from_hist"))
+        df = df.merge(latest_league_stats, on="League", how="left")
 
-    # Updates 3-5 (sem data leakage - mantidos iguais)
+    # Updates 3-5 
     df["Market_Model_Divergence"] = [1 if _sign(dp)!=_sign(hb) else 0 for dp,hb in zip(df["Diff_Power"], df["Handicap_Balance"])]
-
-    # Update 4 – Aggression x Momentum
     df["Aggression_Momentum_Score_Home"] = (-1.0 * df["Aggression_Home"]) * df["Diff_HT_P"]
     df["Aggression_Momentum_Score_Away"] = (-1.0 * df["Aggression_Away"]) * (-df["Diff_HT_P"])
-
-    # Update 5 – Trend recentes
+    
     if "HandScore_Home_Recent5" in df.columns:
         df["Market_Adjustment_Score_Home"] = df["HandScore_Home_Recent5"].astype(float) - df["HandScore_Home"].astype(float) - df["Aggression_Home"].astype(float)
     else:
@@ -423,10 +378,8 @@ def build_aggression_intelligence_safe(history: pd.DataFrame, games_today: pd.Da
     else:
         df["Market_Adjustment_Score_Away"] = np.nan
 
-    # Gap normalizado
     df["Aggression_Gap_Norm"] = [_normalized_gap(h,a) for h,a in zip(df["Aggression_Home"], df["Aggression_Away"])]
 
-    # Score consolidado
     def _consolidated_value_score(row) -> float:
         score = 0.0
         score += 0.75 * row.get("Market_Model_Divergence", 0)
@@ -434,38 +387,24 @@ def build_aggression_intelligence_safe(history: pd.DataFrame, games_today: pd.Da
         if str(row.get("Market_Class_Away","")).startswith("UNDERDOG VALUE"): score += 0.5
         if str(row.get("Market_Class_Home","")).startswith("FAVORITE RELIABLE"): score += 0.25
         if str(row.get("Market_Class_Away","")).startswith("FAVORITE RELIABLE"): score += 0.25
-        
         am_h = row.get("Aggression_Momentum_Score_Home", 0.0)
         am_a = row.get("Aggression_Momentum_Score_Away", 0.0)
         for am in (am_h, am_a):
             if not pd.isna(am): score += 0.001 * am
-            
         mei = row.get("League_MEI", np.nan)
         if not pd.isna(mei): score += 0.25 * (0 - max(0.0, mei))
         return float(score)
     
     df["AIL_Value_Score"] = df.apply(_consolidated_value_score, axis=1)
+    
+    # 🔥 LINHA NOVA - ADICIONAR ANÁLISE DE VALUE
+    df["Value_Analysis"] = df.apply(get_value_recommendation, axis=1)
 
     return df
 
-# 4.3 – Executar AIL (VERSÃO SEGURA)
-st.info("🛡️ Calculating rolling league statistics (no data leakage)...")
-
-# Primeiro: calcular estatísticas rolling no histórico
-history_with_rolling = calculate_rolling_league_stats(history, window_days=365)
-
-# Depois aplicar nos jogos de hoje
+# Agora execute com a versão corrigida
 games_today = build_aggression_intelligence_safe(history_with_rolling, games_today)
-
-# Atualizar o histórico também para consistência
 history = history_with_rolling
-
-# Mostrar estatísticas de segurança
-st.sidebar.success("✅ Data leakage prevented")
-if "League_MEI" in history.columns:
-    coverage = history["League_MEI"].notna().mean()
-    st.sidebar.write(f"League stats coverage: {coverage:.1%}")
-
 
 
 ########################################
@@ -894,57 +833,24 @@ st.markdown("### 🗒️ AIL – Explicações por Jogo")
 
 def explain_match(row: pd.Series) -> str:
     home, away = row.get("Home","?"), row.get("Away","?")
-    # A linha armazenada é do AWAY; exibimos ambas as visões (Home = sinal invertido)
-    asian_away = row.get("Asian_Line_Away_Display", np.nan)
-    if pd.notnull(asian_away):
-        try:
-            asian_away_f = float(asian_away)
-            home_line = -asian_away_f
-            away_line =  asian_away_f
-            line_txt = f"{home} {home_line:+.2f} / {away} {away_line:+.2f}"
-        except:
-            # fallback textual
-            asian_home = row.get("Asian_Line_Home_Display", np.nan)
-            line_txt = f"{home} {asian_home} / {away} ({asian_away})"
-    else:
-        asian_home = row.get("Asian_Line_Home_Display", np.nan)
-        if pd.notnull(asian_home):
-            try:
-                asian_home_f = float(asian_home)
-                line_txt = f"{home} {asian_home_f:+.2f} / {away} {(-asian_home_f):+.2f}"
-            except:
-                line_txt = f"{home} {asian_home} / {away} (oposto)"
-        else:
-            line_txt = "N/A"
-
     p_home = row.get("p_ah_home_yes", np.nan)
     p_away = row.get("p_ah_away_yes", np.nan)
-    p_txt = f"Prob AH – Home: {p_home:.1%} | Away: {p_away:.1%}" if pd.notnull(p_home) and pd.notnull(p_away) else "Prob AH – N/A"
-
     tag = row.get("AIL_Match_Tag","—")
-    mclass_h = row.get("Market_Class_Home","—")
-    mclass_a = row.get("Market_Class_Away","—")
-
-    # Sinal curto
-    signal = ""
-    if isinstance(tag, str):
-        if "VALUE: AWAY" in tag: signal = "🎯 Valor no visitante"
-        elif "VALUE: HOME" in tag: signal = "🎯 Valor no mandante"
-        elif "FADE: HOME" in tag: signal = "📉 Fade no mandante"
-        elif "FADE: AWAY" in tag: signal = "📉 Fade no visitante"
-        else: signal = "⚖️ Equilíbrio/Alinhado"
-    else:
-        signal = "⚖️ Equilíbrio/Alinhado"
-
+    value_rec = row.get("Value_Analysis", "—")
+    
+    value_data = calculate_betting_value(row)
+    
     return (
         f"**{home} vs {away}**  \n"
-        f"🧮 Asian Line: {line_txt}  \n"
-        f"🏷️ Classes – Home: {mclass_h} | Away: {mclass_a}  \n"
-        f"📊 {p_txt}  \n"
-        f"🧠 Sinal AIL: **{tag}** → {signal}"
+        f"🧮 Asian Line: {home} {row.get('Asian_Line_Home_Display', '?'):.2f} / {away} {row.get('Asian_Line_Away_Display', '?'):.2f}  \n"
+        f"🏷️ Classes – Home: {row.get('Market_Class_Home', '—')} | Away: {row.get('Market_Class_Away', '—')}  \n"
+        f"📊 Prob AH – Home: {p_home:.1%} | Away: {p_away:.1%}  \n"
+        f"💰 Odds – Home: {row.get('Odd_H_Asi', '?')} | Away: {row.get('Odd_A_Asi', '?')}  \n"
+        f"🎯 Value – Home: {value_data['ev_home']:.1%} | Away: {value_data['ev_away']:.1%}  \n"
+        f"🧠 Sinal AIL: **{tag}**  \n"
+        f"💎 Recomendação: **{value_rec}**"
     )
 
-# Render
 for _, r in games_today.iterrows():
     st.markdown(explain_match(r))
     st.markdown("---")
