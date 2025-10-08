@@ -271,13 +271,24 @@ def _classify_market_alignment(agg: float, hs: float, cfg=AIL_CFG) -> str:
     if ag < 0 and hs_ < 0:  return "WEAK (Market Right)"
     return "ALIGNED: Neutral"
 
+def _match_value_tag(row) -> str:
+    """Classificação consolidada do mercado para o jogo inteiro"""
+    home_class = str(row.get("Market_Class_Home", ""))
+    away_class = str(row.get("Market_Class_Away", ""))
+    
+    if "UNDERDOG VALUE" in home_class or "UNDERDOG VALUE" in away_class:
+        return "UNDERDOG_VALUE_MATCH"
+    elif "MARKET OVERRATES" in home_class or "MARKET OVERRATES" in away_class:
+        return "MARKET_MISPRICE_MATCH" 
+    elif "FAVORITE RELIABLE" in home_class and "FAVORITE RELIABLE" in away_class:
+        return "FAVORITES_RELIABLE"
+    else:
+        return "NEUTRAL_MATCH"
+
 def _normalized_gap(a_home: float, a_away: float, eps: float = 1e-6) -> float:
     if pd.isna(a_home) or pd.isna(a_away): return np.nan
     denom = abs(a_home) + abs(a_away) + eps
     return (a_home - a_away) / denom
-
-
-# 🔥 ADICIONE ISSO NO BLOCO 4.2 - ANTES DA FUNÇÃO calculate_betting_value:
 
 def calculate_rolling_league_stats(history: pd.DataFrame, window_days: int = 365) -> pd.DataFrame:
     """
@@ -356,10 +367,6 @@ def calculate_rolling_league_stats(history: pd.DataFrame, window_days: int = 365
     
     return history_safe
 
-
-
-
-# 🔥 FUNÇÕES NOVAS - COPIE E COLE ISSO:
 def calculate_betting_value(row):
     """Calcula valor esperado baseado nas probabilidades vs odds"""
     p_home = row.get("p_ah_home_yes", 0)
@@ -368,12 +375,12 @@ def calculate_betting_value(row):
     odd_a_asi = row.get("Odd_A_Asi", 0)
     
     # Converter odds líquidas para brutas
-    odd_h_bruto = odd_h_asi + 1.0
-    odd_a_bruto = odd_a_asi + 1.0
+    odd_h_bruto = odd_h_asi + 1.0 if odd_h_asi else 0
+    odd_a_bruto = odd_a_asi + 1.0 if odd_a_asi else 0
     
     # Calcular Valor Esperado
-    ev_home = (p_home * odd_h_bruto) - 1
-    ev_away = (p_away * odd_a_bruto) - 1
+    ev_home = (p_home * odd_h_bruto) - 1 if odd_h_bruto else -1
+    ev_away = (p_away * odd_a_bruto) - 1 if odd_a_asi else -1
     
     return {"ev_home": ev_home, "ev_away": ev_away}
 
@@ -385,15 +392,12 @@ def get_value_recommendation(row):
     odd_a_asi = row.get("Odd_A_Asi", 0)
     
     # Converter odds líquidas para brutas
-    odd_h_bruto = odd_h_asi + 1.0
-    odd_a_bruto = odd_a_asi + 1.0
+    odd_h_bruto = odd_h_asi + 1.0 if odd_h_asi else 0
+    odd_a_bruto = odd_a_asi + 1.0 if odd_a_asi else 0
     
     # Calcular Valor Esperado
-    ev_home = (p_home * odd_h_bruto) - 1
-    ev_away = (p_away * odd_a_bruto) - 1
-    
-    # Debug: verificar valores
-    print(f"DEBUG: p_home={p_home}, p_away={p_away}, ev_home={ev_home:.3f}, ev_away={ev_away:.3f}")
+    ev_home = (p_home * odd_h_bruto) - 1 if odd_h_bruto else -1
+    ev_away = (p_away * odd_a_bruto) - 1 if odd_a_bruto else -1
     
     if ev_away > 0.10 and ev_away > ev_home:
         return f"🎯 TOP VALUE: AWAY (EV: {ev_away:.1%})"
@@ -413,7 +417,6 @@ st.info("🛡️ Calculating rolling league statistics (no data leakage)...")
 # Primeiro: calcular estatísticas rolling no histórico
 history_with_rolling = calculate_rolling_league_stats(history, window_days=365)
 
-# 🔥 SUBSTITUA a função build_aggression_intelligence por esta VERSÃO CORRIGIDA:
 def build_aggression_intelligence_safe(history: pd.DataFrame, games_today: pd.DataFrame) -> pd.DataFrame:
     df = games_today.copy()
 
@@ -429,10 +432,8 @@ def build_aggression_intelligence_safe(history: pd.DataFrame, games_today: pd.Da
 
     # Update 2/6 – MEI & HomeBias 
     if history is not None and not history.empty and "League" in history.columns:
-        latest_league_stats = history.groupby("League").agg({
-            "League_MEI": "last",
-            "League_HomeBias": "last"
-        }).reset_index()
+        # Usar apenas estatísticas válidas (sem data leakage)
+        latest_league_stats = history.dropna(subset=["League_MEI", "League_HomeBias"]).groupby("League").last().reset_index()
         df = df.merge(latest_league_stats, on="League", how="left")
 
     # Updates 3-5 
@@ -768,20 +769,28 @@ else:
 X_today_ah_home = X_today_ah_home.reindex(columns=cols1, fill_value=0)
 X_today_ah_away = X_today_ah_away.reindex(columns=cols2, fill_value=0)
 
-# Normalização/Imputação para o "hoje"
+# Normalização/Imputação para o "hoje" - CORRIGIDO
 if normalize_features and numeric_cols:
-    scaler = StandardScaler()
-
-    # mediana do histórico (usa X_ah_home construído acima)
-    med = X_ah_home[numeric_cols].median()
-
-    # preparar base para ajustar o scaler (sem NaN)
-    X_ah_home_fit = X_ah_home[numeric_cols].fillna(med)
-    scaler.fit(X_ah_home_fit)
-
-    # imputar + transformar hoje
+    # Usar mediana do TREINO histórico, não de todo o histórico
+    if ml_version_choice == "v1":
+        # Para v1, usar parte de treino do split original
+        X_train_ref = X_ah_home.iloc[:int(0.8*len(X_ah_home))]  
+    else:
+        # Para v2, já foi feito split interno, usar dados completos
+        X_train_ref = X_ah_home
+        
+    med = X_train_ref[numeric_cols].median()
+    
+    # Aplicar mesma imputação e scaling ao hoje
     X_today_ah_home[numeric_cols] = X_today_ah_home[numeric_cols].fillna(med)
     X_today_ah_away[numeric_cols] = X_today_ah_away[numeric_cols].fillna(med)
+    
+    # Re-treinar scaler apenas com dados de treino para consistência
+    scaler = StandardScaler()
+    X_train_fit = X_train_ref[numeric_cols].fillna(med)
+    scaler.fit(X_train_fit)
+    
+    # Aplicar transformação
     X_today_ah_home[numeric_cols] = scaler.transform(X_today_ah_home[numeric_cols])
     X_today_ah_away[numeric_cols] = scaler.transform(X_today_ah_away[numeric_cols])
 
@@ -914,7 +923,7 @@ def explain_match(row: pd.Series) -> str:
     
     return (
         f"**{home} vs {away}**  \n"
-        f"🧮 Asian Line: {home} {row.get('Asian_Line_Home_Display', '?'):.2f} / {away} {row.get('Asian_Line_Away_Display', '?'):.2f}  \n"
+        f"🧮 Asian Line: {row.get('Asian_Line_Home_Display', '?'):.2f} (Home) / {row.get('Asian_Line_Away_Display', '?'):.2f} (Away)  \n"
         f"🏷️ Classes – Home: {row.get('Market_Class_Home', '—')} | Away: {row.get('Market_Class_Away', '—')}  \n"
         f"📊 Prob AH – Home: {p_home:.1%} | Away: {p_away:.1%}  \n"
         f"💰 Odds – Home: {row.get('Odd_H_Asi', '?')} | Away: {row.get('Odd_A_Asi', '?')}  \n"
