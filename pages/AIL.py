@@ -417,15 +417,6 @@ ail_ml_interactions = [c for c in ail_ml_interactions if (c in games_today.colum
 # Injetar no bloco de aggression (numéricas)
 feature_blocks["aggression"] = list(dict.fromkeys(feature_blocks["aggression"] + ail_ml_interactions))
 
-# Atualizar numeric_cols (mantendo binárias de fora)
-numeric_cols = (
-    feature_blocks["odds"]
-    + feature_blocks["strength"]
-    + [c for c in feature_blocks["aggression"] if c not in ["Market_Model_Divergence"]]
-)
-numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
-
-
 ##########
 
 # Categóricas: Ligas + classes AIL
