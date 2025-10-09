@@ -421,7 +421,7 @@ if not games_today.empty:
         if pd.isna(val):
             return ""
         alpha = float(np.clip(val, 0, 1))
-        return f"background-color: rgba({color_rgb}, {alpha:.2f}); color: black; font-weight: bold;"
+        return f"background-color: rgba({color_rgb}, {alpha:.2f}); color: white; font-weight: bold;"
 
     styled_df = (
         games_today[[
