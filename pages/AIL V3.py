@@ -396,33 +396,49 @@ if normalize_features:
     scaler.fit(X[numeric_cols])
     X_today[numeric_cols] = scaler.transform(X_today[numeric_cols])
 
+# ✅ Desempacotar corretamente o modelo e colunas
+model_ah_home, cols_home = model2_home
+model_ah_away, cols_away = model2_away
+
+# Garantir compatibilidade (caso algum modelo não tenha predict_proba)
+if not hasattr(model_ah_home, "predict_proba"):
+    model_ah_home.predict_proba = lambda X: np.stack(
+        [1 - model_ah_home.predict(X), model_ah_home.predict(X)], axis=1
+    )
+if not hasattr(model_ah_away, "predict_proba"):
+    model_ah_away.predict_proba = lambda X: np.stack(
+        [1 - model_ah_away.predict(X), model_ah_away.predict(X)], axis=1
+    )
+
+# ------------------------------------------
+# 5️⃣ Fazer as previsões com degradê
+# ------------------------------------------
 if not games_today.empty:
     games_today["p_ah_home_yes"] = model_ah_home.predict_proba(X_today)[:, 1]
     games_today["p_ah_away_yes"] = model_ah_away.predict_proba(X_today)[:, 1]
 
-# ------------------------------------------
-# 5️⃣ COLOR DEGRADE (HOME → verde, AWAY → amarelo)
-# ------------------------------------------
-def color_prob(val, color_rgb):
-    if pd.isna(val):
-        return ""
-    alpha = float(np.clip(val, 0, 1))
-    return f"background-color: rgba({color_rgb}, {alpha:.2f}); color: black; font-weight: bold;"
+    def color_prob(val, color_rgb):
+        if pd.isna(val):
+            return ""
+        alpha = float(np.clip(val, 0, 1))
+        return f"background-color: rgba({color_rgb}, {alpha:.2f}); color: black; font-weight: bold;"
 
-styled_df = (
-    games_today[[
-        "Date", "League", "Home", "Away",
-        "Odd_H", "Odd_D", "Odd_A",
-        "Asian_Line_Display",
-        "p_ah_home_yes", "p_ah_away_yes"
-    ]]
-    .style.format({
-        "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
-        "Asian_Line_Display": "{:.2f}",
-        "p_ah_home_yes": "{:.1%}", "p_ah_away_yes": "{:.1%}"
-    })
-    .applymap(lambda v: color_prob(v, "0,180,0"), subset=["p_ah_home_yes"])   # Verde (Home)
-    .applymap(lambda v: color_prob(v, "255,210,0"), subset=["p_ah_away_yes"]) # Amarelo (Away)
-)
+    styled_df = (
+        games_today[[
+            "Date", "League", "Home", "Away",
+            "Odd_H", "Odd_D", "Odd_A",
+            "Asian_Line_Display",
+            "p_ah_home_yes", "p_ah_away_yes"
+        ]]
+        .style.format({
+            "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
+            "Asian_Line_Display": "{:.2f}",
+            "p_ah_home_yes": "{:.1%}", "p_ah_away_yes": "{:.1%}"
+        })
+        .applymap(lambda v: color_prob(v, "0,180,0"), subset=["p_ah_home_yes"])   # Verde → Home
+        .applymap(lambda v: color_prob(v, "255,210,0"), subset=["p_ah_away_yes"]) # Amarelo → Away
+    )
 
-st.dataframe(styled_df, use_container_width=True, height=800)
+    st.dataframe(styled_df, width="stretch", height=800)
+else:
+    st.warning("⚠️ Nenhum jogo encontrado para previsão.")
