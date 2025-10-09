@@ -134,7 +134,7 @@ history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
 history["Handicap_Home_Result"] = history.apply(lambda r: calc_handicap_result(r["Margin"], r["Asian_Line"], invert=False), axis=1)
 history["Handicap_Away_Result"] = history.apply(lambda r: calc_handicap_result(r["Margin"], r["Asian_Line"], invert=True), axis=1)
 history["Target_AH_Home"] = (history["Handicap_Home_Result"] > 0.5).astype(int)
-history["Target_AH_Away"] = (history["Handicap_Away_Result"] >= 0.5).astype(int)
+history["Target_AH_Away"] = (history["Handicap_Away_Result"] > 0.5).astype(int)
 
 
 ##################### BLOCO 4 – FEATURE ENGINEERING (AGGRESSION) #####################
