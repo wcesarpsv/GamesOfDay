@@ -266,7 +266,7 @@ history["Handicap_Away_Result"] = history.apply(
     lambda r: calc_handicap_result(r["Margin"], r["Asian_Line"], invert=True), axis=1
 )
 
-history["Target_AH_Home"] = history["Handicap_Home_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
+history["Target_AH_Home"] = history["Handicap_Home_Result"].apply(lambda x: 1 if x > 0.5 else 0)
 history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
 
 
