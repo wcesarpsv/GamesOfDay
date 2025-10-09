@@ -312,29 +312,84 @@ def train_and_evaluate(X, y, name):
     return res, (model, feature_cols)
 
 
-##################### BLOCO 7 – TRAINING #####################
-st.info("🚀 Training AIL v2.0 models...")
+##################### BLOCO 7 – TRAINING & COMPARISON #####################
+st.info("🚀 Training and Comparing AIL v1 vs AIL v2.0 models...")
+
+# ------------------------------------------
+# 1️⃣ TRAIN V1 (BASELINE)
+# ------------------------------------------
+def train_v1_baseline(X, y, name):
+    model = RandomForestClassifier(n_estimators=300, max_depth=8, random_state=42, n_jobs=-1)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+    model.fit(X_train, y_train)
+    preds = model.predict(X_test)
+    probs = model.predict_proba(X_test)
+    return {
+        "Model": f"{name}_v1",
+        "Accuracy": accuracy_score(y_test, preds),
+        "LogLoss": log_loss(y_test, probs),
+        "BrierScore": brier_score_loss(y_test, probs[:, 1])
+    }, model
+
+# ------------------------------------------
+# 2️⃣ TRAIN V2 (AIL+)
+# ------------------------------------------
 stats = []
 X = history[numeric_cols].dropna()
 y_home = history["Target_AH_Home"].loc[X.index]
 y_away = history["Target_AH_Away"].loc[X.index]
 
-res, model_home = train_and_evaluate(X, y_home, "AH_Home"); stats.append(res)
-res, model_away = train_and_evaluate(X, y_away, "AH_Away"); stats.append(res)
+# AIL v1 baseline
+res1_home, model1_home = train_v1_baseline(X, y_home, "AH_Home")
+res1_away, model1_away = train_v1_baseline(X, y_away, "AH_Away")
 
+# AIL v2.0 (atual)
+res2_home, model2_home = train_and_evaluate(X, y_home, "AH_Home")
+res2_away, model2_away = train_and_evaluate(X, y_away, "AH_Away")
+
+stats.extend([res1_home, res1_away, res2_home, res2_away])
 stats_df = pd.DataFrame(stats)[["Model", "Accuracy", "LogLoss", "BrierScore"]]
-st.markdown("### 📊 Model Statistics (Validation) – AIL v2.0")
-st.dataframe(stats_df, use_container_width=True)
+
+# ------------------------------------------
+# 3️⃣ COMPARATIVO (Δ entre versões)
+# ------------------------------------------
+def compare_metrics(v1, v2):
+    df = pd.DataFrame({
+        "Metric": ["Accuracy", "LogLoss", "BrierScore"],
+        "v1": [v1["Accuracy"], v1["LogLoss"], v1["BrierScore"]],
+        "v2": [v2["Accuracy"], v2["LogLoss"], v2["BrierScore"]]
+    })
+    df["Δ (v2-v1)"] = df["v2"] - df["v1"]
+    df["Trend"] = df["Δ (v2-v1)"].apply(lambda x: "🟢↑" if x > 0 else "🔻↓" if x < 0 else "⚪")
+    return df
+
+compare_home = compare_metrics(res1_home, res2_home)
+compare_away = compare_metrics(res1_away, res2_away)
+
+st.markdown("### 📊 Model Statistics – AIL v1 vs AIL v2.0")
+col1, col2 = st.columns(2)
+with col1:
+    st.subheader("🏠 AH_Home Comparison")
+    st.dataframe(compare_home.style.format({
+        "v1": "{:.3f}", "v2": "{:.3f}", "Δ (v2-v1)": "{:+.3f}"
+    }), use_container_width=True)
+with col2:
+    st.subheader("🚌 AH_Away Comparison")
+    st.dataframe(compare_away.style.format({
+        "v1": "{:.3f}", "v2": "{:.3f}", "Δ (v2-v1)": "{:+.3f}"
+    }), use_container_width=True)
+
+# ------------------------------------------
+# 4️⃣ ESCOLHER MODELOS (usar v2 por padrão)
+# ------------------------------------------
+model_ah_home, model_ah_away = model2_home, model2_away
 
 
 ##################### BLOCO 8 – PREDICTIONS #####################
-st.markdown("### 🎯 Predictions – Today’s Matches")
-
-model_ah_home, cols1 = model_home
-model_ah_away, cols2 = model_away
+st.markdown("### 🎯 Predictions – Today's Matches")
 
 X_today = games_today[numeric_cols].copy()
-X_today = X_today.reindex(columns=cols1, fill_value=0)
+X_today = X_today.reindex(columns=X.columns, fill_value=0)
 
 if normalize_features:
     scaler = StandardScaler()
@@ -342,17 +397,32 @@ if normalize_features:
     X_today[numeric_cols] = scaler.transform(X_today[numeric_cols])
 
 if not games_today.empty:
-    games_today["p_ah_home_yes"] = model_ah_home.predict_proba(X_today)[:,1]
-    games_today["p_ah_away_yes"] = model_ah_away.predict_proba(X_today)[:,1]
+    games_today["p_ah_home_yes"] = model_ah_home.predict_proba(X_today)[:, 1]
+    games_today["p_ah_away_yes"] = model_ah_away.predict_proba(X_today)[:, 1]
 
-styled_df = games_today[[
-    "Date", "League", "Home", "Away",
-    "Odd_H", "Odd_D", "Odd_A", "Asian_Line_Display",
-    "p_ah_home_yes", "p_ah_away_yes"
-]].style.format({
-    "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
-    "Asian_Line_Display": "{:.2f}",
-    "p_ah_home_yes": "{:.1%}", "p_ah_away_yes": "{:.1%}"
-})
+# ------------------------------------------
+# 5️⃣ COLOR DEGRADE (HOME → verde, AWAY → amarelo)
+# ------------------------------------------
+def color_prob(val, color_rgb):
+    if pd.isna(val):
+        return ""
+    alpha = float(np.clip(val, 0, 1))
+    return f"background-color: rgba({color_rgb}, {alpha:.2f}); color: black; font-weight: bold;"
 
-st.dataframe(styled_df, use_container_width=True)
+styled_df = (
+    games_today[[
+        "Date", "League", "Home", "Away",
+        "Odd_H", "Odd_D", "Odd_A",
+        "Asian_Line_Display",
+        "p_ah_home_yes", "p_ah_away_yes"
+    ]]
+    .style.format({
+        "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
+        "Asian_Line_Display": "{:.2f}",
+        "p_ah_home_yes": "{:.1%}", "p_ah_away_yes": "{:.1%}"
+    })
+    .applymap(lambda v: color_prob(v, "0,180,0"), subset=["p_ah_home_yes"])   # Verde (Home)
+    .applymap(lambda v: color_prob(v, "255,210,0"), subset=["p_ah_away_yes"]) # Amarelo (Away)
+)
+
+st.dataframe(styled_df, use_container_width=True, height=800)
