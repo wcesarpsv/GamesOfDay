@@ -836,6 +836,84 @@ with col_a:
 
 
 
+
+
+
+########################################
+### BLOCO 9.55 – AIL Confronto Analyzer #
+########################################
+st.markdown("### ⚔️ AIL – Análise de Confrontos (Quadrantes)")
+
+# --- Funções auxiliares ---
+def classify_quadrant(x, y):
+    if pd.isna(x) or pd.isna(y):
+        return "Neutral"
+    if x > 0 and y > 0:
+        return "Favorite Reliable"
+    if x < 0 and y > 0:
+        return "Underdog Value"
+    if x > 0 and y < 0:
+        return "Market Overrates"
+    if x < 0 and y < 0:
+        return "Weak Underdog"
+    return "Neutral"
+
+# Determina quadrante para cada time
+games_today["Quadrant_Home"] = games_today.apply(
+    lambda r: classify_quadrant(r.get("Aggression_Home"), r.get("HandScore_Home")), axis=1
+)
+games_today["Quadrant_Away"] = games_today.apply(
+    lambda r: classify_quadrant(r.get("Aggression_Away"), r.get("HandScore_Away")), axis=1
+)
+
+# --- Classificação do confronto (Home vs Away) ---
+def classify_match(row):
+    h, a = row["Quadrant_Home"], row["Quadrant_Away"]
+    if h == "Favorite Reliable" and a == "Weak Underdog":
+        return "✅ CONFIRM: Home Strong"
+    if h == "Market Overrates" and a == "Underdog Value":
+        return "💥 VALUE: Away"
+    if h == "Underdog Value" and a == "Market Overrates":
+        return "💥 VALUE: Home"
+    if h == "Favorite Reliable" and a == "Underdog Value":
+        return "⚖️ Both Performing (Monitor Odds)"
+    if h == "Weak Underdog" and a == "Favorite Reliable":
+        return "⚖️ Likely Correct Market"
+    return "— Balanced / Neutral"
+
+games_today["AIL_Confronto_Label"] = games_today.apply(classify_match, axis=1)
+
+# --- Exibir resumo visual ---
+cols_to_show = [
+    "Home","Away","Quadrant_Home","Quadrant_Away",
+    "AIL_Confronto_Label","AIL_Value_Score",
+    "p_ah_home_yes","p_ah_away_yes"
+]
+cols_to_show = [c for c in cols_to_show if c in games_today.columns]
+
+df_confrontos = games_today[cols_to_show].copy()
+fmt = {
+    "p_ah_home_yes": "{:.1%}",
+    "p_ah_away_yes": "{:.1%}",
+    "AIL_Value_Score": "{:.2f}"
+}
+st.dataframe(df_confrontos.style.format(fmt), use_container_width=True)
+
+# --- Destaque de confrontos de valor ---
+highlight_df = df_confrontos[
+    df_confrontos["AIL_Confronto_Label"].str.contains("VALUE", na=False)
+].sort_values("AIL_Value_Score", ascending=False)
+
+if not highlight_df.empty:
+    st.markdown("#### 💎 Confrontos com Potencial de Valor")
+    st.dataframe(highlight_df.style.format(fmt), use_container_width=True)
+else:
+    st.info("Nenhum confronto de alto valor detectado hoje.")
+
+
+
+
+
 ########################################
 ### BLOCO 9.6 – AIL EXPLANATIONS #######
 ########################################
