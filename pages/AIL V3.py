@@ -442,3 +442,40 @@ if not games_today.empty:
     st.dataframe(styled_df, width="stretch", height=800)
 else:
     st.warning("⚠️ Nenhum jogo encontrado para previsão.")
+
+
+##################### BLOCO 9 – PERFORMANCE DASHBOARD #####################
+st.markdown("### 📊 AIL v2.0 – Daily Performance Overview")
+
+if not games_today.empty and "p_ah_home_yes" in games_today.columns:
+
+    avg_home = games_today["p_ah_home_yes"].mean()
+    avg_away = games_today["p_ah_away_yes"].mean()
+
+    strong_home = (games_today["p_ah_home_yes"] > 0.60).sum()
+    strong_away = (games_today["p_ah_away_yes"] > 0.60).sum()
+
+    gap_mean = (games_today["p_ah_home_yes"] - games_today["p_ah_away_yes"]).abs().mean()
+
+    # ROI proxy simples (média das diferenças entre probabilidade prevista e implícita)
+    if all(col in games_today.columns for col in ["Odd_H", "Odd_A"]):
+        games_today["Implied_H"] = 1 / games_today["Odd_H"]
+        games_today["Implied_A"] = 1 / games_today["Odd_A"]
+        roi_home = (games_today["p_ah_home_yes"] - games_today["Implied_H"]).mean()
+        roi_away = (games_today["p_ah_away_yes"] - games_today["Implied_A"]).mean()
+    else:
+        roi_home = roi_away = np.nan
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("🏠 Avg Prob (Home)", f"{avg_home:.1%}")
+    col2.metric("🚌 Avg Prob (Away)", f"{avg_away:.1%}")
+    col3.metric("🔥 Strong Signals", f"{strong_home + strong_away}")
+    col4.metric("⚖️ Balance Gap", f"{gap_mean:.1%}")
+
+    col5, col6 = st.columns(2)
+    col5.metric("💵 ROI Proxy Home", f"{roi_home:+.2%}")
+    col6.metric("💵 ROI Proxy Away", f"{roi_away:+.2%}")
+
+else:
+    st.warning("⚠️ No predictions available to summarize.")
+
