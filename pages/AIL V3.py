@@ -232,37 +232,81 @@ def train_and_evaluate(X, y, name):
     filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_v5.pkl"
     feature_cols = X.columns.tolist()
 
+    # ------------------------------------------
+    # 1️⃣ Verifica se modelo já salvo deve ser carregado
+    # ------------------------------------------
     if not retrain:
         loaded = load_model(filename)
         if loaded:
             model, cols = loaded
             preds = model.predict(X)
             probs = model.predict_proba(X)
-            res = {"Model": f"{name}_v2", "Accuracy": accuracy_score(y, preds),
-                   "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
+            res = {
+                "Model": f"{name}_v2",
+                "Accuracy": accuracy_score(y, preds),
+                "LogLoss": log_loss(y, probs),
+                "BrierScore": brier_score_loss(y, probs[:, 1])
+            }
             return res, (model, cols)
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+    # ------------------------------------------
+    # 2️⃣ Split de treino e teste
+    # ------------------------------------------
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, shuffle=False
+    )
 
+    # ------------------------------------------
+    # 3️⃣ Normalização opcional
+    # ------------------------------------------
     if normalize_features:
         scaler = StandardScaler()
         X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
         X_test[numeric_cols] = scaler.transform(X_test[numeric_cols])
 
+    # ------------------------------------------
+    # 4️⃣ Seleção do modelo base
+    # ------------------------------------------
     if ml_model_choice == "Random Forest":
-        base_model = RandomForestClassifier(n_estimators=400, max_depth=10, random_state=42, n_jobs=-1)
+        base_model = RandomForestClassifier(
+            n_estimators=400,
+            max_depth=10,
+            random_state=42,
+            n_jobs=-1
+        )
     else:
-        base_model = XGBClassifier(n_estimators=600, max_depth=6, learning_rate=0.05,
-                                   subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
-                                   use_label_encoder=False, random_state=42)
+        base_model = XGBClassifier(
+            n_estimators=600,
+            max_depth=6,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            eval_metric="logloss",
+            use_label_encoder=False,
+            random_state=42
+        )
 
-    model = CalibratedClassifierCV(base_estimator=base_model, method="sigmoid", cv=2)
+    # ------------------------------------------
+    # 5️⃣ Calibração (compatível com qualquer versão sklearn)
+    # ------------------------------------------
+    try:
+        model = CalibratedClassifierCV(estimator=base_model, method="sigmoid", cv=2)
+    except TypeError:
+        model = CalibratedClassifierCV(base_estimator=base_model, method="sigmoid", cv=2)
+
+    # ------------------------------------------
+    # 6️⃣ Treino e avaliação
+    # ------------------------------------------
     model.fit(X_train, y_train)
     preds = model.predict(X_test)
     probs = model.predict_proba(X_test)
 
-    res = {"Model": f"{name}_v2", "Accuracy": accuracy_score(y_test, preds),
-           "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
+    res = {
+        "Model": f"{name}_v2",
+        "Accuracy": accuracy_score(y_test, preds),
+        "LogLoss": log_loss(y_test, probs),
+        "BrierScore": brier_score_loss(y_test, probs[:, 1])
+    }
 
     save_model(model, feature_cols, filename)
     return res, (model, feature_cols)
