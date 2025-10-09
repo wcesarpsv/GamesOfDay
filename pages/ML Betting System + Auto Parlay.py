@@ -561,6 +561,12 @@ def calculate_parlay_odds(games_list, games_df):
     expected_value = total_prob * total_odds - 1
     return total_prob, round(total_odds, 2), expected_value, game_details
 
+########################################
+#### Bloco 10 – Auto Parlay System #####
+########################################
+
+# ... (parâmetros do sidebar se mantêm iguais)
+
 def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, max_suggestions=5, min_legs=2, max_legs=4, weekend_filter=True, max_eligible=20):
     games_today_filtered = games_df.copy()
     
@@ -600,118 +606,153 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
             
             # 🔥 FILTROS MAIS RIGOROSOS PARA FINS DE SEMANA
             if weekend_filter and len(games_today_filtered) > 15:
-                # Critérios mais rigorosos quando há muitos jogos
-                if prob > (min_prob + 0.05) and edge > -0.05:  # Prob maior e edge menos negativo
-                    eligible_games.append((idx, bet_type, prob, round(odds, 2), edge))
+                if prob > (min_prob + 0.05) and edge > -0.05:
+                    eligible_games.append((idx, bet_type, prob, round(odds, 2), edge, f"{row['Home']} vs {row['Away']}"))
             else:
-                # Critérios normais para poucos jogos
                 if prob > min_prob:
-                    eligible_games.append((idx, bet_type, prob, round(odds, 2), edge))
+                    eligible_games.append((idx, bet_type, prob, round(odds, 2), edge, f"{row['Home']} vs {row['Away']}"))
     
     # 🔥 LIMITAR NÚMERO DE JOGOS ELEGÍVEIS
     if len(eligible_games) > max_eligible:
-        # Ordenar por probabilidade e pegar os melhores
-        eligible_games.sort(key=lambda x: x[2], reverse=True)  # Ordenar por prob
+        eligible_games.sort(key=lambda x: x[2], reverse=True)
         eligible_games = eligible_games[:max_eligible]
         st.warning(f"⚡ Limite ativado: {len(eligible_games)} jogos elegíveis (de {len(games_today_filtered)} totais)")
     
     st.info(f"🎯 Jogos elegíveis para parlays: {len(eligible_games)}")
     
-    # 🔥 CALCULAR QUANTIDADE MÁXIMA DE COMBINAÇÕES
-    total_combinations = 0
-    if min_legs <= 2 and len(eligible_games) >= 2:
-        total_combinations += math.comb(len(eligible_games), 2)
-    if min_legs <= 3 and max_legs >= 3 and len(eligible_games) >= 3:
-        total_combinations += math.comb(len(eligible_games), 3)
-    if max_legs >= 4 and len(eligible_games) >= 4:
-        total_combinations += math.comb(len(eligible_games), 4)
-    
-    st.info(f"🧮 Combinações possíveis: {total_combinations:,}")
-    
-    # 🔥 AVISO SE MUITAS COMBINAÇÕES
-    if total_combinations > 1000:
-        st.warning("⚠️ Muitas combinações! Use filtros mais rigorosos.")
-    
+    # 🔥 NOVA ESTRATÉGIA: EVITAR REPETIÇÃO DE JOGOS ENTRE PARLAYS
     parlay_suggestions = []
+    used_games = set()  # Controlar jogos já usados
     
-    # 🔥 PARLAYS DE 2 LEGS - CRITÉRIOS MAIS RIGOROSOS PARA FDS
+    # 🔥 PARLAYS DE 2 LEGS
     if min_legs <= 2 and len(eligible_games) >= 2:
         ev_threshold = 0.08 if weekend_filter and len(eligible_games) > 15 else 0.05
         prob_threshold = 0.30 if weekend_filter and len(eligible_games) > 15 else 0.25
         
-        for combo in itertools.combinations(eligible_games, 2):
-            games_list = [(game[0], game[1]) for game in combo]
-            prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
-            
-            if ev > ev_threshold and prob > prob_threshold:
-                stake = min(parlay_bankroll * 0.08, parlay_bankroll * 0.12 * prob)
-                stake = round(stake, 2)
+        # Ordenar por EV e probabilidade
+        eligible_games_sorted = sorted(eligible_games, key=lambda x: (x[4], x[2]), reverse=True)
+        
+        for i in range(len(eligible_games_sorted)):
+            for j in range(i + 1, len(eligible_games_sorted)):
+                game1 = eligible_games_sorted[i]
+                game2 = eligible_games_sorted[j]
                 
-                if stake >= 5:
-                    parlay_suggestions.append({
-                        'type': '2-Leg Parlay',
-                        'games': games_list,
-                        'probability': prob,
-                        'odds': odds,
-                        'ev': ev,
-                        'stake': stake,
-                        'potential_win': round(stake * odds - stake, 2),
-                        'details': details
-                    })
+                # Verificar se os jogos já foram usados
+                if game1[0] in used_games or game2[0] in used_games:
+                    continue
+                
+                games_list = [(game1[0], game1[1]), (game2[0], game2[1])]
+                prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
+                
+                if ev > ev_threshold and prob > prob_threshold:
+                    stake = min(parlay_bankroll * 0.08, parlay_bankroll * 0.12 * prob)
+                    stake = round(stake, 2)
+                    
+                    if stake >= 5:
+                        parlay_suggestions.append({
+                            'type': '2-Leg Parlay',
+                            'games': games_list,
+                            'probability': prob,
+                            'odds': odds,
+                            'ev': ev,
+                            'stake': stake,
+                            'potential_win': round(stake * odds - stake, 2),
+                            'details': details
+                        })
+                        
+                        # Marcar jogos como usados
+                        used_games.add(game1[0])
+                        used_games.add(game2[0])
+                        
+                        # Limitar número de sugestões
+                        if len(parlay_suggestions) >= max_suggestions:
+                            break
+            
+            if len(parlay_suggestions) >= max_suggestions:
+                break
     
-    # 🔥 PARLAYS DE 3 LEGS
-    if min_legs <= 3 and max_legs >= 3 and len(eligible_games) >= 3:
+    # 🔥 PARLAYS DE 3 LEGS (apenas se não atingiu max_suggestions)
+    if len(parlay_suggestions) < max_suggestions and min_legs <= 3 and max_legs >= 3 and len(eligible_games) >= 3:
         ev_threshold = 0.05 if weekend_filter and len(eligible_games) > 15 else 0.02
         prob_threshold = 0.20 if weekend_filter and len(eligible_games) > 15 else 0.15
         
-        for combo in itertools.combinations(eligible_games, 3):
-            games_list = [(game[0], game[1]) for game in combo]
-            prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
-            
-            if ev > ev_threshold and prob > prob_threshold:
-                stake = min(parlay_bankroll * 0.05, parlay_bankroll * 0.08 * prob)
-                stake = round(stake, 2)
+        # Jogos ainda não usados
+        unused_games = [game for game in eligible_games if game[0] not in used_games]
+        
+        if len(unused_games) >= 3:
+            # Combinar jogos não usados
+            for combo in itertools.combinations(unused_games, 3):
+                games_list = [(game[0], game[1]) for game in combo]
+                prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
                 
-                if stake >= 3:
-                    parlay_suggestions.append({
-                        'type': '3-Leg Parlay',
-                        'games': games_list,
-                        'probability': prob,
-                        'odds': odds,
-                        'ev': ev,
-                        'stake': stake,
-                        'potential_win': round(stake * odds - stake, 2),
-                        'details': details
-                    })
+                if ev > ev_threshold and prob > prob_threshold:
+                    stake = min(parlay_bankroll * 0.05, parlay_bankroll * 0.08 * prob)
+                    stake = round(stake, 2)
+                    
+                    if stake >= 3:
+                        parlay_suggestions.append({
+                            'type': '3-Leg Parlay',
+                            'games': games_list,
+                            'probability': prob,
+                            'odds': odds,
+                            'ev': ev,
+                            'stake': stake,
+                            'potential_win': round(stake * odds - stake, 2),
+                            'details': details
+                        })
+                        
+                        # Marcar jogos como usados
+                        for game in combo:
+                            used_games.add(game[0])
+                        
+                        # Limitar número de sugestões
+                        if len(parlay_suggestions) >= max_suggestions:
+                            break
     
-    # 🔥 PARLAYS DE 4 LEGS - APENAS SE POUCOS JOGOS
-    if max_legs >= 4 and len(eligible_games) >= 4 and len(eligible_games) <= 25:  # Só calcular se até 25 jogos
-        for combo in itertools.combinations(eligible_games, 4):
-            games_list = [(game[0], game[1]) for game in combo]
-            prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
-            
-            if ev > 0.10 and prob > 0.10:
-                stake = min(parlay_bankroll * 0.03, parlay_bankroll * 0.05 * prob)
-                stake = round(stake, 2)
+    # 🔥 PARLAYS DE 4 LEGS (apenas se não atingiu max_suggestions)
+    if len(parlay_suggestions) < max_suggestions and max_legs >= 4 and len(eligible_games) >= 4:
+        unused_games = [game for game in eligible_games if game[0] not in used_games]
+        
+        if len(unused_games) >= 4:
+            for combo in itertools.combinations(unused_games, 4):
+                games_list = [(game[0], game[1]) for game in combo]
+                prob, odds, ev, details = calculate_parlay_odds(games_list, games_today_filtered)
                 
-                if stake >= 2:
-                    parlay_suggestions.append({
-                        'type': '4-Leg Parlay',
-                        'games': games_list,
-                        'probability': prob,
-                        'odds': odds,
-                        'ev': ev,
-                        'stake': stake,
-                        'potential_win': round(stake * odds - stake, 2),
-                        'details': details
-                    })
+                if ev > 0.10 and prob > 0.10:
+                    stake = min(parlay_bankroll * 0.03, parlay_bankroll * 0.05 * prob)
+                    stake = round(stake, 2)
+                    
+                    if stake >= 2:
+                        parlay_suggestions.append({
+                            'type': '4-Leg Parlay',
+                            'games': games_list,
+                            'probability': prob,
+                            'odds': odds,
+                            'ev': ev,
+                            'stake': stake,
+                            'potential_win': round(stake * odds - stake, 2),
+                            'details': details
+                        })
+                        
+                        # Marcar jogos como usados
+                        for game in combo:
+                            used_games.add(game[0])
+                        
+                        if len(parlay_suggestions) >= max_suggestions:
+                            break
     
     # Ordenar por Expected Value
     parlay_suggestions.sort(key=lambda x: x['ev'], reverse=True)
     
     st.info(f"🎰 Total de parlays gerados: {len(parlay_suggestions)}")
+    st.info(f"🎯 Jogos utilizados: {len(used_games)} de {len(eligible_games)} elegíveis")
     
     return parlay_suggestions[:max_suggestions]
+
+
+
+
+
 
 # Gerar sugestões de parlay COM NOVOS PARÂMETROS
 parlay_suggestions = generate_parlay_suggestions(
