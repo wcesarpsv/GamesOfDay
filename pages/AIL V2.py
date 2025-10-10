@@ -765,7 +765,8 @@ st.dataframe(styled_df, use_container_width=True, height=800)
 ########################################
 st.markdown("### 🧠 AIL – Today's Value Radar")
 radar_cols = [
-    "Home","Away","League","Asian_Line_Home_Display",
+    "Time","League",
+    "Home","Away","Asian_Line_Home_Display",
     "Market_Class_Home","Market_Class_Away","AIL_Match_Tag",
     "p_ah_home_yes","p_ah_away_yes",
     "Aggression_Home","Aggression_Away","HandScore_Home","HandScore_Away",
