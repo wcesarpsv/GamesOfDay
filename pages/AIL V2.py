@@ -267,7 +267,7 @@ history["Handicap_Away_Result"] = history.apply(
 )
 
 history["Target_AH_Home"] = history["Handicap_Home_Result"].apply(lambda x: 1 if x > 0.5 else 0)
-history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
+history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if x > 0.5 else 0)
 
 
 
