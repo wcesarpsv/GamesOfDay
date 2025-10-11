@@ -1133,15 +1133,24 @@ def compute_umc(df):
 # Aplicar
 if not games_today.empty:
     games_today = compute_umc(games_today)
-    umc_cols = ["Home","Away","Goals_H_Today","Goals_A_Today","UMC_home","UMC_away","UMC_Best","UMC_Pick"]
+    umc_cols = ["Home", "Away", "Goals_H_Today", "Goals_A_Today",
+                "UMC_home", "UMC_away", "UMC_Best", "UMC_Pick"]
     umc_cols = [c for c in umc_cols if c in games_today.columns]
+
     st.markdown("### 🎯 Universal Match Confidence (Top Picks)")
     st.dataframe(
-        games_today[umc_cols].sort_values("UMC_Best", ascending=False).head(30)
-        .style.format( "Goals_H_Today": "{:.1%}", "Goals_A_Today": "{:.1%}",
-                      {"UMC_home":"{:.1f}","UMC_away":"{:.1f}","UMC_Best":"{:.1f}"})
-        .applymap(lambda v: f"background-color: rgba(0,200,0,{v/100:.3f})" if isinstance(v,(int,float)) else "")
+        games_today[umc_cols]
+        .sort_values("UMC_Best", ascending=False)
+        .style.format({
+            "Goals_H_Today": "{:.0f}",
+            "Goals_A_Today": "{:.0f}",
+            "UMC_home": "{:.1f}",
+            "UMC_away": "{:.1f}",
+            "UMC_Best": "{:.1f}"
+        }),
+        use_container_width=True
     )
 else:
     st.info("No active matches to compute UMC today.")
+
 
