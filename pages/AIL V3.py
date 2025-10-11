@@ -804,71 +804,223 @@ st.dataframe(styled_df, use_container_width=True, height=800)
 
 
 ########################################
-### BLOCO 8.5 – AH PROBABILITIES (POISSON)
+### BLOCO 8.4 – XG ESTIMATOR VIA MODEL METRICS
+########################################
+st.markdown("### ⚙️ Gerando Expected Goals (xG2_H / xG2_A) via Métricas Internas")
+
+def model_based_xg(row, total_goals_avg=2.6):
+    """
+    Gera xG2_H e xG2_A baseados em métricas internas (M, HandScore).
+    Mantém escala média de gols total (~2.6).
+    """
+    # pega métricas principais
+    m_h = row.get("M_H", np.nan)
+    m_a = row.get("M_A", np.nan)
+    hs_h = row.get("HandScore_Home", np.nan)
+    hs_a = row.get("HandScore_Away", np.nan)
+
+    if pd.isna(m_h) or pd.isna(m_a):
+        return np.nan, np.nan
+
+    # pesos: prioriza M_, mas mistura com HandScore (0.7/0.3)
+    w_m, w_hs = 0.7, 0.3
+    s_home = (w_m * m_h) + (w_hs * (hs_h if not pd.isna(hs_h) else 0))
+    s_away = (w_m * m_a) + (w_hs * (hs_a if not pd.isna(hs_a) else 0))
+
+    s_home = max(0.01, s_home)
+    s_away = max(0.01, s_away)
+
+    total_s = s_home + s_away
+    if total_s == 0:
+        return np.nan, np.nan
+
+    xg_home = total_goals_avg * (s_home / total_s)
+    xg_away = total_goals_avg * (s_away / total_s)
+
+    xg_home = np.clip(xg_home, 0.3, 3.5)
+    xg_away = np.clip(xg_away, 0.3, 3.5)
+
+    return xg_home, xg_away
+
+
+if not {"XG2_H", "XG2_A"}.issubset(games_today.columns):
+    st.info("Gerando xG2_H e xG2_A a partir das métricas internas do modelo...")
+    est = games_today.apply(lambda r: model_based_xg(r), axis=1, result_type="expand")
+    est.columns = ["XG2_H", "XG2_A"]
+    games_today = pd.concat([games_today, est], axis=1)
+else:
+    st.success("XG2_H e XG2_A já presentes no dataset.")
+
+st.write("📊 Exemplo de xG interno (5 primeiros):")
+st.dataframe(games_today[["Home","Away","M_H","M_A","HandScore_Home","HandScore_Away","XG2_H","XG2_A"]].head(5))
+
+
+
+########################################
+### BLOCO 8.6 – AH PROBABILITIES (HOME & AWAY, POISSON)
 ########################################
 from scipy.stats import poisson
 
-st.markdown("### 🎯 Probabilidade AH – Distribuição de Resultados (Poisson)")
+st.markdown("### 🎯 Probabilidade AH – Home & Away (Poisson via xG interno)")
 
-def asian_handicap_probs(xG_home, xG_away, line, max_goals=10):
-    """
-    Retorna P_win, P_push, P_lose para o time da casa dado o handicap (ex: -1.0).
-    Baseado em distribuição de Poisson.
-    """
-    if any(pd.isna([xG_home, xG_away, line])):
-        return np.nan, np.nan, np.nan
+def _expand_quarter_line(line_value):
+    if pd.isna(line_value):
+        return []
+    frac = abs(line_value) - abs(int(line_value))
+    s = 1.0 if line_value >= 0 else -1.0
+    if np.isclose(frac, 0.25):
+        a = int(line_value)
+        b = a - 0.5 * s
+        return [a, b]
+    if np.isclose(frac, 0.75):
+        a = int(line_value) + 0.5 * s
+        b = int(line_value) + 1.0 * s
+        return [a, b]
+    return [line_value]
 
-    probs = np.zeros((max_goals+1, max_goals+1))
-    for gh in range(max_goals+1):
-        for ga in range(max_goals+1):
-            probs[gh, ga] = poisson.pmf(gh, xG_home) * poisson.pmf(ga, xG_away)
+def _parse_home_line_parts(row):
+    try:
+        if "Asian_Line" in row and pd.notna(row["Asian_Line"]):
+            s = invert_asian_line_str(row["Asian_Line"])
+            parts = [float(x) for x in str(s).split("/")]
+            return parts
+    except Exception:
+        pass
+    line = row.get("Asian_Line_Home_Display", np.nan)
+    if pd.isna(line): return []
+    return _expand_quarter_line(float(line))
 
-    margins = np.subtract.outer(np.arange(max_goals+1), np.arange(max_goals+1))
-    p_win = probs[margins > line].sum()
-    p_push = probs[margins == line].sum()
-    p_lose = probs[margins < line].sum()
+def _parse_away_line_parts(row):
+    try:
+        if "Asian_Line" in row and pd.notna(row["Asian_Line"]):
+            parts = [float(x) for x in str(row["Asian_Line"]).split("/")]
+            return parts
+    except Exception:
+        pass
+    line = row.get("Asian_Line_Away_Display", np.nan)
+    if pd.isna(line):
+        alt = row.get("Asian_Line_Home_Display", np.nan)
+        if pd.notna(alt): line = -float(alt)
+    if pd.isna(line): return []
+    return _expand_quarter_line(float(line))
 
-    # Normaliza (garantia contra arredondamento)
+def _score_matrix(xGh, xGa, max_goals=10):
+    gh = np.arange(0, max_goals + 1)
+    ga = np.arange(0, max_goals + 1)
+    P = np.outer(poisson.pmf(gh, xGh), poisson.pmf(ga, xGa))
+    return P
+
+def _ah_probs_single_line(P, line):
+    max_goals = P.shape[0] - 1
+    margins = np.subtract.outer(np.arange(0, max_goals + 1), np.arange(0, max_goals + 1))
+    p_win  = float(P[margins > line].sum())
+    p_push = float(P[np.isclose(margins, line)].sum())
+    p_lose = float(P[margins < line].sum())
     total = p_win + p_push + p_lose
     if total > 0:
-        p_win /= total
-        p_push /= total
-        p_lose /= total
-
+        p_win /= total; p_push /= total; p_lose /= total
     return p_win, p_push, p_lose
 
-# Cálculo para todos os jogos
-if {"XG2_H", "XG2_A", "Asian_Line_Home_Display"}.issubset(games_today.columns):
-    probs_ah = games_today.apply(
-        lambda r: asian_handicap_probs(r["XG2_H"], r["XG2_A"], r["Asian_Line_Home_Display"]),
-        axis=1, result_type="expand"
-    )
-    probs_ah.columns = ["p_AH_Win", "p_AH_Push", "p_AH_Lose"]
-    games_today = pd.concat([games_today, probs_ah], axis=1)
+def _ah_probs_split(P, parts):
+    if not parts:
+        return np.nan, np.nan, np.nan
+    acc = np.zeros(3)
+    for lp in parts:
+        acc += _ah_probs_single_line(P, lp)
+    return tuple(acc / len(parts))
 
-    # Exibir tabela resumida
-    cols_show = [
-        "Time","League","Home","Away","Asian_Line_Home_Display",
-        "XG2_H","XG2_A","p_AH_Win","p_AH_Push","p_AH_Lose"
-    ]
-    cols_show = [c for c in cols_show if c in games_today.columns]
-    
+def _add_fair_odds(df, cols):
+    out = df.copy()
+    for c in cols:
+        if c in out.columns:
+            out[c + "_FairOdd"] = np.where(out[c] > 0, 1.0 / out[c], np.nan)
+    return out
+
+
+# ---- Processamento principal ----
+if {"XG2_H", "XG2_A"}.issubset(games_today.columns):
+    matrices = []
+    for _, r in games_today.iterrows():
+        if pd.isna(r["XG2_H"]) or pd.isna(r["XG2_A"]):
+            matrices.append(None)
+        else:
+            matrices.append(_score_matrix(r["XG2_H"], r["XG2_A"], 10))
+
+    home_probs, away_probs = [], []
+    for i, r in games_today.iterrows():
+        P = matrices[i]
+        if P is None:
+            home_probs.append((np.nan, np.nan, np.nan))
+            away_probs.append((np.nan, np.nan, np.nan))
+            continue
+
+        home_parts = _parse_home_line_parts(r)
+        h_w, h_p, h_l = _ah_probs_split(P, home_parts)
+        home_probs.append((h_w, h_p, h_l))
+
+        away_parts = _parse_away_line_parts(r)
+        aw_w, aw_p, aw_l = (np.nan, np.nan, np.nan)
+        if away_parts:
+            parts_home_equiv = [-lp for lp in away_parts]
+            w_h, u_h, l_h = _ah_probs_split(P, parts_home_equiv)
+            aw_w, aw_p, aw_l = l_h, u_h, w_h
+        away_probs.append((aw_w, aw_p, aw_l))
+
+    games_today[["p_AH_Home_Win","p_AH_Home_Push","p_AH_Home_Lose"]] = pd.DataFrame(home_probs, index=games_today.index)
+    games_today[["p_AH_Away_Win","p_AH_Away_Push","p_AH_Away_Lose"]] = pd.DataFrame(away_probs, index=games_today.index)
+    games_today = _add_fair_odds(games_today, [
+        "p_AH_Home_Win","p_AH_Home_Push","p_AH_Home_Lose",
+        "p_AH_Away_Win","p_AH_Away_Push","p_AH_Away_Lose"
+    ])
+
+    # ---- Exibição HOME ----
+    st.markdown("#### 🏠 Home – Probabilidades AH (Win/Push/Lose) + Fair Odds")
+    cols_home = ["Home","Away","Asian_Line_Home_Display","XG2_H","XG2_A",
+                 "p_AH_Home_Win","p_AH_Home_Push","p_AH_Home_Lose",
+                 "p_AH_Home_Win_FairOdd","p_AH_Home_Push_FairOdd","p_AH_Home_Lose_FairOdd"]
+    cols_home = [c for c in cols_home if c in games_today.columns]
     fmt = {
         "Asian_Line_Home_Display": "{:+.2f}",
-        "XG2_H": "{:.2f}", "XG2_A": "{:.2f}",
-        "p_AH_Win": "{:.1%}", "p_AH_Push": "{:.1%}", "p_AH_Lose": "{:.1%}"
+        "XG2_H": "{:.2f}","XG2_A": "{:.2f}",
+        "p_AH_Home_Win": "{:.1%}","p_AH_Home_Push": "{:.1%}","p_AH_Home_Lose": "{:.1%}",
+        "p_AH_Home_Win_FairOdd": "{:.2f}","p_AH_Home_Push_FairOdd": "{:.2f}","p_AH_Home_Lose_FairOdd": "{:.2f}"
     }
-
-    styled = (
-        games_today[cols_show]
+    st.dataframe(
+        games_today[cols_home]
         .style.format(fmt)
-        .applymap(lambda v: color_prob(v, "0,200,0"), subset=["p_AH_Win"])
-        .applymap(lambda v: color_prob(v, "255,255,0"), subset=["p_AH_Push"])
-        .applymap(lambda v: color_prob(v, "255,140,0"), subset=["p_AH_Lose"])
+        .applymap(lambda v: color_prob(v, "0,200,0"), subset=["p_AH_Home_Win"])
+        .applymap(lambda v: color_prob(v, "255,255,0"), subset=["p_AH_Home_Push"])
+        .applymap(lambda v: color_prob(v, "255,140,0"), subset=["p_AH_Home_Lose"]),
+        use_container_width=True, height=520
     )
-    st.dataframe(styled, use_container_width=True, height=700)
+
+    # ---- Exibição AWAY ----
+    st.markdown("#### 🚗 Away – Probabilidades AH (Win/Push/Lose) + Fair Odds")
+    if "Asian_Line_Away_Display" not in games_today.columns:
+        games_today["Asian_Line_Away_Display"] = -games_today["Asian_Line_Home_Display"]
+    cols_away = ["Home","Away","Asian_Line_Away_Display","XG2_H","XG2_A",
+                 "p_AH_Away_Win","p_AH_Away_Push","p_AH_Away_Lose",
+                 "p_AH_Away_Win_FairOdd","p_AH_Away_Push_FairOdd","p_AH_Away_Lose_FairOdd"]
+    cols_away = [c for c in cols_away if c in games_today.columns]
+    fmt_away = {
+        "Asian_Line_Away_Display": "{:+.2f}",
+        "XG2_H": "{:.2f}","XG2_A": "{:.2f}",
+        "p_AH_Away_Win": "{:.1%}","p_AH_Away_Push": "{:.1%}","p_AH_Away_Lose": "{:.1%}",
+        "p_AH_Away_Win_FairOdd": "{:.2f}","p_AH_Away_Push_FairOdd": "{:.2f}","p_AH_Away_Lose_FairOdd": "{:.2f}"
+    }
+    st.dataframe(
+        games_today[cols_away]
+        .style.format(fmt_away)
+        .applymap(lambda v: color_prob(v, "0,200,0"), subset=["p_AH_Away_Win"])
+        .applymap(lambda v: color_prob(v, "255,255,0"), subset=["p_AH_Away_Push"])
+        .applymap(lambda v: color_prob(v, "255,140,0"), subset=["p_AH_Away_Lose"]),
+        use_container_width=True, height=520
+    )
+
 else:
-    st.warning("⚠️ É necessário ter as colunas XG2_H, XG2_A e Asian_Line_Home_Display no dataset para calcular as probabilidades Poisson.")
+    st.warning("⚠️ Para cálculo Poisson AH é necessário ter XG2_H e XG2_A.")
+
+
 
 
 
