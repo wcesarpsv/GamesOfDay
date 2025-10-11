@@ -710,9 +710,16 @@ else:
 stats = []
 mode_col = model_mode_label  # captura modo atual (With Odds / No Odds)
 res, model_ah_home_v1 = train_and_evaluate(X_ah_home, history["Target_AH_Home"], "AH_Home"); stats.append(res)
+res["Mode"] = mode_col
+
 res, model_ah_away_v1 = train_and_evaluate(X_ah_away, history["Target_AH_Away"], "AH_Away"); stats.append(res)
+res["Mode"] = mode_col
+
 res, model_ah_home_v2 = train_and_evaluate_v2(X_ah_home, history["Target_AH_Home"], "AH_Home"); stats.append(res)
+res["Mode"] = mode_col
+
 res, model_ah_away_v2 = train_and_evaluate_v2(X_ah_away, history["Target_AH_Away"], "AH_Away"); stats.append(res)
+res["Mode"] = mode_col
 
 stats_df = pd.DataFrame(stats)[["Model", "Accuracy", "LogLoss", "BrierScore"]]
 st.markdown("### 📊 Model Statistics (Validation) – v1 vs v2")
