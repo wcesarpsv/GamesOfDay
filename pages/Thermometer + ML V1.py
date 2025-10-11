@@ -836,3 +836,80 @@ st.dataframe(
     use_container_width=True,
     height=1200,
 )
+
+
+
+########################################
+##### BLOCO 10 – MARKET ERROR INTELLIGENCE (MEI LAYER) #####
+########################################
+st.markdown("### 💡 Market Error Intelligence (Value Detector)")
+
+# Calcular probabilidades implícitas das odds de fechamento
+if all(col in games_today.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
+    probs = pd.DataFrame()
+    probs['p_H'] = 1 / games_today['Odd_H']
+    probs['p_D'] = 1 / games_today['Odd_D']
+    probs['p_A'] = 1 / games_today['Odd_A']
+    probs = probs.div(probs.sum(axis=1), axis=0)
+
+    games_today['Imp_Prob_H'] = probs['p_H']
+    games_today['Imp_Prob_D'] = probs['p_D']
+    games_today['Imp_Prob_A'] = probs['p_A']
+
+    # Calcular o erro de mercado (quanto o modelo discorda das odds)
+    games_today['Market_Error_Home'] = games_today['ML_Proba_Home'] - games_today['Imp_Prob_H']
+    games_today['Market_Error_Away'] = games_today['ML_Proba_Away'] - games_today['Imp_Prob_A']
+    games_today['Market_Error_Draw'] = games_today['ML_Proba_Draw'] - games_today['Imp_Prob_D']
+
+    # Classificar o lado de valor
+    def classify_value_pick(row, min_gap=0.05):
+        me_home = row['Market_Error_Home']
+        me_away = row['Market_Error_Away']
+        if (me_home > min_gap) and (me_home > me_away):
+            return "🟢 Value on Home"
+        elif (me_away > min_gap) and (me_away > me_home):
+            return "🟠 Value on Away"
+        elif abs(me_home - me_away) <= 0.03 and max(me_home, me_away) > min_gap:
+            return "⚪ Balanced Value (Both sides close)"
+        return "❌ No clear value"
+
+    games_today['Value_Pick'] = games_today.apply(classify_value_pick, axis=1)
+
+    # Exibir ranking dos maiores gaps
+    value_cols = [
+        'League', 'Home', 'Away', 
+        'Odd_H', 'Odd_D', 'Odd_A',
+        'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away',
+        'Imp_Prob_H', 'Imp_Prob_D', 'Imp_Prob_A',
+        'Market_Error_Home', 'Market_Error_Away', 'Value_Pick'
+    ]
+
+    st.dataframe(
+        games_today[value_cols]
+        .sort_values(['Market_Error_Home','Market_Error_Away'], ascending=False)
+        .style.format({
+            'Odd_H':'{:.2f}', 'Odd_D':'{:.2f}', 'Odd_A':'{:.2f}',
+            'ML_Proba_Home':'{:.3f}', 'ML_Proba_Draw':'{:.3f}', 'ML_Proba_Away':'{:.3f}',
+            'Imp_Prob_H':'{:.3f}', 'Imp_Prob_D':'{:.3f}', 'Imp_Prob_A':'{:.3f}',
+            'Market_Error_Home':'{:+.3f}', 'Market_Error_Away':'{:+.3f}'
+        }),
+        use_container_width=True,
+        height=800
+    )
+
+    # Estatísticas rápidas de valor
+    avg_me_home = games_today['Market_Error_Home'].mean()
+    avg_me_away = games_today['Market_Error_Away'].mean()
+    pct_value_home = (games_today['Market_Error_Home'] > 0.05).mean() * 100
+    pct_value_away = (games_today['Market_Error_Away'] > 0.05).mean() * 100
+
+    st.info(f"""
+    **📊 Diagnóstico de Valor de Mercado**
+    - Média Market_Error_Home: {avg_me_home:+.3f}
+    - Média Market_Error_Away: {avg_me_away:+.3f}
+    - % de jogos com valor em Home: {pct_value_home:.1f}%
+    - % de jogos com valor em Away: {pct_value_away:.1f}%
+    """)
+
+else:
+    st.warning("Odds ausentes — impossível calcular Market Error Intelligence.")
