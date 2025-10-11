@@ -975,13 +975,14 @@ if {"XG2_H", "XG2_A"}.issubset(games_today.columns):
 
     # ---- Exibição HOME ----
     st.markdown("#### 🏠 Home – Probabilidades AH (Win/Push/Lose) + Fair Odds")
-    cols_home = ["Home","Away","Asian_Line_Home_Display","XG2_H","XG2_A",
+    cols_home = ["Home","Away","Goals_H_Today","Goals_A_Today","Asian_Line_Home_Display","XG2_H","XG2_A",
                  "p_AH_Home_Win","p_AH_Home_Push","p_AH_Home_Lose",
                  "p_AH_Home_Win_FairOdd","p_AH_Home_Push_FairOdd","p_AH_Home_Lose_FairOdd"]
     cols_home = [c for c in cols_home if c in games_today.columns]
     fmt = {
         "Asian_Line_Home_Display": "{:+.2f}",
         "XG2_H": "{:.2f}","XG2_A": "{:.2f}",
+        "Goals_H_Today": "{:.2f}","Goals_A_Today": "{:.2f}"
         "p_AH_Home_Win": "{:.1%}","p_AH_Home_Push": "{:.1%}","p_AH_Home_Lose": "{:.1%}",
         "p_AH_Home_Win_FairOdd": "{:.2f}","p_AH_Home_Push_FairOdd": "{:.2f}","p_AH_Home_Lose_FairOdd": "{:.2f}"
     }
