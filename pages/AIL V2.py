@@ -1133,7 +1133,7 @@ def compute_umc(df):
 # Aplicar
 if not games_today.empty:
     games_today = compute_umc(games_today)
-    umc_cols = ["Home", "Away", "Goals_H_Today", "Goals_A_Today",
+    umc_cols = ["Time","Home", "Away", "Goals_H_Today", "Goals_A_Today",
                 "UMC_home", "UMC_away", "UMC_Best", "UMC_Pick"]
     umc_cols = [c for c in umc_cols if c in games_today.columns]
 
