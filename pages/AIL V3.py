@@ -995,28 +995,28 @@ if {"XG2_H", "XG2_A"}.issubset(games_today.columns):
         use_container_width=True, height=520
     )
 
-    # ---- Exibição AWAY ----
-    st.markdown("#### 🚗 Away – Probabilidades AH (Win/Push/Lose) + Fair Odds")
-    if "Asian_Line_Away_Display" not in games_today.columns:
-        games_today["Asian_Line_Away_Display"] = -games_today["Asian_Line_Home_Display"]
-    cols_away = ["Home","Away","Asian_Line_Away_Display","XG2_H","XG2_A",
-                 "p_AH_Away_Win","p_AH_Away_Push","p_AH_Away_Lose",
-                 "p_AH_Away_Win_FairOdd","p_AH_Away_Push_FairOdd","p_AH_Away_Lose_FairOdd"]
-    cols_away = [c for c in cols_away if c in games_today.columns]
-    fmt_away = {
-        "Asian_Line_Away_Display": "{:+.2f}",
-        "XG2_H": "{:.2f}","XG2_A": "{:.2f}",
-        "p_AH_Away_Win": "{:.1%}","p_AH_Away_Push": "{:.1%}","p_AH_Away_Lose": "{:.1%}",
-        "p_AH_Away_Win_FairOdd": "{:.2f}","p_AH_Away_Push_FairOdd": "{:.2f}","p_AH_Away_Lose_FairOdd": "{:.2f}"
-    }
-    st.dataframe(
-        games_today[cols_away]
-        .style.format(fmt_away)
-        .applymap(lambda v: color_prob(v, "0,200,0"), subset=["p_AH_Away_Win"])
-        .applymap(lambda v: color_prob(v, "255,255,0"), subset=["p_AH_Away_Push"])
-        .applymap(lambda v: color_prob(v, "255,140,0"), subset=["p_AH_Away_Lose"]),
-        use_container_width=True, height=520
-    )
+    # # ---- Exibição AWAY ----
+    # st.markdown("#### 🚗 Away – Probabilidades AH (Win/Push/Lose) + Fair Odds")
+    # if "Asian_Line_Away_Display" not in games_today.columns:
+    #     games_today["Asian_Line_Away_Display"] = -games_today["Asian_Line_Home_Display"]
+    # cols_away = ["Home","Away","Asian_Line_Away_Display","XG2_H","XG2_A",
+    #              "p_AH_Away_Win","p_AH_Away_Push","p_AH_Away_Lose",
+    #              "p_AH_Away_Win_FairOdd","p_AH_Away_Push_FairOdd","p_AH_Away_Lose_FairOdd"]
+    # cols_away = [c for c in cols_away if c in games_today.columns]
+    # fmt_away = {
+    #     "Asian_Line_Away_Display": "{:+.2f}",
+    #     "XG2_H": "{:.2f}","XG2_A": "{:.2f}",
+    #     "p_AH_Away_Win": "{:.1%}","p_AH_Away_Push": "{:.1%}","p_AH_Away_Lose": "{:.1%}",
+    #     "p_AH_Away_Win_FairOdd": "{:.2f}","p_AH_Away_Push_FairOdd": "{:.2f}","p_AH_Away_Lose_FairOdd": "{:.2f}"
+    # }
+    # st.dataframe(
+    #     games_today[cols_away]
+    #     .style.format(fmt_away)
+    #     .applymap(lambda v: color_prob(v, "0,200,0"), subset=["p_AH_Away_Win"])
+    #     .applymap(lambda v: color_prob(v, "255,255,0"), subset=["p_AH_Away_Push"])
+    #     .applymap(lambda v: color_prob(v, "255,140,0"), subset=["p_AH_Away_Lose"]),
+    #     use_container_width=True, height=520
+    # )
 
 else:
     st.warning("⚠️ Para cálculo Poisson AH é necessário ter XG2_H e XG2_A.")
