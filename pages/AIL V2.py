@@ -1032,3 +1032,115 @@ def explain_match(row: pd.Series) -> str:
 for _, r in games_today.iterrows():
     st.markdown(explain_match(r))
     st.markdown("---")
+
+
+
+
+
+########################################
+### BLOCO 10 – UNIVERSAL MATCH CONFIDENCE (UMC)
+########################################
+import numpy as np
+import pandas as pd
+
+st.markdown("## 💎 Universal Match Confidence (UMC)")
+
+def compute_umc(df):
+    df = df.copy()
+
+    # Subscore A – Confiança da ML
+    for side in ["home", "away"]:
+        pcol = f"p_ah_{side}_yes"
+        df[f"A_{side}"] = np.clip((df[pcol] - 0.5) / 0.5, 0, 1) if pcol in df else 0.0
+
+    # Subscore B – Divergência Mercado × Modelo
+    if "Market_Model_Divergence" in df.columns:
+        df["B_base"] = df["Market_Model_Divergence"].fillna(0).astype(float)
+    else:
+        df["B_base"] = 0.0
+    for side in ["home", "away"]:
+        pcol = f"p_ah_{side}_yes"
+        oddcol = f"Odd_{side[0].upper()}_Asi"
+        if pcol in df and oddcol in df:
+            implied = 1 / df[oddcol].replace(0, np.nan)
+            df[f"B_{side}"] = 0.6 * df["B_base"] + 0.4 * np.clip((df[pcol] - implied) / 0.2, 0, 1)
+        else:
+            df[f"B_{side}"] = df["B_base"]
+
+    # Subscore C – Quadrantes de Valor
+    for side in ["home", "away"]:
+        val = np.zeros(len(df))
+        if f"{side.capitalize()}_Underdog_Value" in df.columns:
+            val += df[f"{side.capitalize()}_Underdog_Value"] * 1.0
+        if f"{side.capitalize()}_Favorite_Reliable" in df.columns:
+            val += df[f"{side.capitalize()}_Favorite_Reliable"] * 0.5
+        if f"{side.capitalize()}_Market_Overrates" in df.columns:
+            val -= df[f"{side.capitalize()}_Market_Overrates"] * 0.5
+        df[f"C_{side}"] = np.clip(val, 0, 1)
+
+    # Subscore D – Power vs Perception
+    for side in ["home", "away"]:
+        col = f"Power_vs_Perception_{side.capitalize()}"
+        if col in df:
+            df[f"D_{side}"] = 1 / (1 + np.exp(-df[col].fillna(0)))
+        else:
+            df[f"D_{side}"] = 0.5
+
+    # Subscore E – Momentum alinhado
+    for side in ["home", "away"]:
+        col = f"Aggression_Momentum_Score_{side.capitalize()}"
+        if col in df:
+            q95 = df[col].quantile(0.95)
+            q05 = df[col].quantile(0.05)
+            df[f"E_{side}"] = np.clip((df[col] - q05) / (q95 - q05 + 1e-9), 0, 1)
+        else:
+            df[f"E_{side}"] = 0.5
+
+    # Subscore F – Ineficiência de liga
+    if "League_MEI" in df.columns:
+        q95 = df["League_MEI"].quantile(0.95)
+        q05 = df["League_MEI"].quantile(0.05)
+        df["F_league"] = np.clip((q95 - df["League_MEI"]) / (q95 - q05 + 1e-9), 0, 1)
+    else:
+        df["F_league"] = 0.5
+
+    # Subscore G – Higiene do jogo (penalidades leves)
+    df["G_quality"] = 1.0
+    for c in ["Odd_H_Asi", "Odd_A_Asi", "M_H", "M_A", "Aggression_Home", "Aggression_Away"]:
+        if c in df.columns:
+            df["G_quality"] -= df[c].isna() * 0.05
+    df["G_quality"] = np.clip(df["G_quality"], 0.5, 1.0)
+
+    # Combinar subscores
+    weights = {"A":0.30, "B":0.20, "C":0.15, "D":0.15, "E":0.10, "F":0.05, "G":0.05}
+    for side in ["home", "away"]:
+        df[f"UMC_{side}"] = 100 * (
+            weights["A"] * df[f"A_{side}"] +
+            weights["B"] * df[f"B_{side}"] +
+            weights["C"] * df[f"C_{side}"] +
+            weights["D"] * df[f"D_{side}"] +
+            weights["E"] * df[f"E_{side}"] +
+            weights["F"] * df["F_league"] +
+            weights["G"] * df["G_quality"]
+        )
+
+    # Escolher melhor lado e decisão
+    df["UMC_Best"] = df[["UMC_home", "UMC_away"]].max(axis=1)
+    df["UMC_Pick"] = np.where(df["UMC_home"] > df["UMC_away"], "AH Home", "AH Away")
+    df.loc[df["UMC_Best"] < 60, "UMC_Pick"] = "No Bet"
+    return df
+
+# Aplicar
+if not games_today.empty:
+    games_today = compute_umc(games_today)
+    umc_cols = ["Home","Away","UMC_home","UMC_away","UMC_Best","UMC_Pick"]
+    umc_cols = [c for c in umc_cols if c in games_today.columns]
+    st.markdown("### 🎯 Universal Match Confidence (Top Picks)")
+    st.dataframe(
+        games_today[umc_cols].sort_values("UMC_Best", ascending=False).head(15)
+        .style.format({"UMC_home":"{:.1f}","UMC_away":"{:.1f}","UMC_Best":"{:.1f}"})
+        .applymap(lambda v: f"background-color: rgba(0,200,0,{v/100:.3f})" if isinstance(v,(int,float)) else "")
+    )
+else:
+    st.info("No active matches to compute UMC today.")
+
