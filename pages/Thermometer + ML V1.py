@@ -913,3 +913,121 @@ if all(col in games_today.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
 
 else:
     st.warning("Odds ausentes — impossível calcular Market Error Intelligence.")
+
+
+
+
+########################################
+##### BLOCO 11 – MARKET ERROR ML (VALUE LEARNING) #####
+########################################
+st.markdown("### 🧠 Market Error ML – Aprendizado de Valor (Meta-Modelo)")
+
+# Garantir que Market_Error_Home/Away estão disponíveis
+if all(col in games_today.columns for col in ['Market_Error_Home', 'Market_Error_Away']):
+    # Preparar dataset de treinamento com histórico (jogos finalizados)
+    value_history = history.copy()
+
+    required_cols = ['Odd_H', 'Odd_A', 'Odd_D', 'M_H', 'M_A', 'Diff_Power', 'M_Diff']
+    available_cols = [c for c in required_cols if c in value_history.columns]
+
+    # Calcular probabilidades implícitas e simular previsões históricas
+    for col in ['Odd_H', 'Odd_D', 'Odd_A']:
+        value_history[f'Imp_{col}'] = 1 / value_history[col]
+    imp_sum = value_history[['Imp_Odd_H', 'Imp_Odd_D', 'Imp_Odd_A']].sum(axis=1)
+    for col in ['Imp_Odd_H', 'Imp_Odd_D', 'Imp_Odd_A']:
+        value_history[col] = value_history[col] / imp_sum
+
+    # Mapear resultado
+    def map_result(row):
+        if row['Goals_H_FT'] > row['Goals_A_FT']:
+            return "Home"
+        elif row['Goals_H_FT'] < row['Goals_A_FT']:
+            return "Away"
+        return "Draw"
+
+    value_history['Result'] = value_history.apply(map_result, axis=1)
+
+    # Targets binários: se o lado "ganhou contra o mercado"
+    value_history['Target_Value_Home'] = (
+        (value_history['Result'] == "Home") &
+        (1 / value_history['Odd_H'] > value_history['Imp_Odd_H'])
+    ).astype(int)
+
+    value_history['Target_Value_Away'] = (
+        (value_history['Result'] == "Away") &
+        (1 / value_history['Odd_A'] > value_history['Imp_Odd_A'])
+    ).astype(int)
+
+    # Features básicas
+    features_value = [
+        'M_H', 'M_A', 'Diff_Power', 'M_Diff',
+        'Odd_H', 'Odd_D', 'Odd_A'
+    ]
+    X_val = value_history[features_value].fillna(0)
+    y_val = value_history['Target_Value_Home']  # modelo exemplo para o lado Home
+
+    from sklearn.ensemble import RandomForestClassifier
+    value_model = RandomForestClassifier(
+        n_estimators=400,
+        max_depth=10,
+        min_samples_split=8,
+        min_samples_leaf=3,
+        class_weight='balanced',
+        random_state=42,
+        n_jobs=-1
+    )
+    value_model.fit(X_val, y_val)
+
+    # Aplicar modelo de valor aos jogos do dia
+    X_today_val = games_today[features_value].fillna(0)
+    val_pred_home = value_model.predict_proba(X_today_val)[:, 1]
+    games_today['Value_Prob_Home'] = val_pred_home
+
+    # Fazer o mesmo para o lado Away
+    y_val_away = value_history['Target_Value_Away']
+    value_model_away = RandomForestClassifier(
+        n_estimators=400,
+        max_depth=10,
+        min_samples_split=8,
+        min_samples_leaf=3,
+        class_weight='balanced',
+        random_state=24,
+        n_jobs=-1
+    )
+    value_model_away.fit(X_val, y_val_away)
+    val_pred_away = value_model_away.predict_proba(X_today_val)[:, 1]
+    games_today['Value_Prob_Away'] = val_pred_away
+
+    # Escolher lado com maior confiança de valor
+    def pick_value_side(row, min_threshold=0.55):
+        v_home, v_away = row['Value_Prob_Home'], row['Value_Prob_Away']
+        if v_home >= min_threshold and v_home > v_away:
+            return f"🟢 Value ML: Back Home ({v_home:.2f})"
+        elif v_away >= min_threshold and v_away > v_home:
+            return f"🟠 Value ML: Back Away ({v_away:.2f})"
+        else:
+            return "❌ No Value Signal"
+
+    games_today['Value_ML_Pick'] = games_today.apply(pick_value_side, axis=1)
+
+    # Exibir tabela
+    st.dataframe(
+        games_today[['League', 'Home', 'Away',
+                     'Odd_H', 'Odd_D', 'Odd_A',
+                     'Market_Error_Home', 'Market_Error_Away',
+                     'Value_Prob_Home', 'Value_Prob_Away', 'Value_ML_Pick']]
+        .sort_values(['Value_Prob_Home','Value_Prob_Away'], ascending=False)
+        .style.format({
+            'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
+            'Market_Error_Home': '{:+.3f}', 'Market_Error_Away': '{:+.3f}',
+            'Value_Prob_Home': '{:.2f}', 'Value_Prob_Away': '{:.2f}'
+        }),
+        use_container_width=True,
+        height=900
+    )
+
+    st.success("✅ Meta-Modelo de Valor treinado e aplicado com sucesso!")
+
+else:
+    st.warning("Market Error ainda não calculado — execute o Bloco 10 primeiro.")
+
