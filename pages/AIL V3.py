@@ -982,7 +982,7 @@ if {"XG2_H", "XG2_A"}.issubset(games_today.columns):
     fmt = {
         "Asian_Line_Home_Display": "{:+.2f}",
         "XG2_H": "{:.2f}","XG2_A": "{:.2f}",
-        "Goals_H_Today": "{:.2f}","Goals_A_Today": "{:.2f}"
+        "Goals_H_Today": "{:.2f}","Goals_A_Today": "{:.2f}",
         "p_AH_Home_Win": "{:.1%}","p_AH_Home_Push": "{:.1%}","p_AH_Home_Lose": "{:.1%}",
         "p_AH_Home_Win_FairOdd": "{:.2f}","p_AH_Home_Push_FairOdd": "{:.2f}","p_AH_Home_Lose_FairOdd": "{:.2f}"
     }
