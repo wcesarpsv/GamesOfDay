@@ -679,21 +679,26 @@ ignore_odds = st.sidebar.checkbox("🎯 Ignore Odds Features (No Odds Mode)", va
 # Aplicar lógica condicional
 if ignore_odds:
     st.sidebar.info("Odds removidas do modelo para avaliar sensibilidade e valor real.")
-    # Remover blocos de odds do conjunto de features
+    
+    # Remover blocos de odds
     feature_blocks["odds"] = []
     
-    # Ajustar nome do modelo salvo (sem sobrescrever o original)
+    # Atualizar prefixo de salvamento (sem sobrescrever os modelos padrão)
     PAGE_PREFIX = PAGE_PREFIX + "_NoOdds"
 
-    # Atualizar as colunas numéricas, removendo as odds
+    # Atualizar lista de colunas numéricas (sem odds)
     numeric_cols = (
         feature_blocks["strength"]
         + [c for c in feature_blocks["aggression"] if c not in ["Market_Model_Divergence"]]
         + [c for c in feature_blocks["quadrants"] if not c.endswith(('Value', 'Reliable', 'Overrates', 'Underdog'))]
     )
     numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
+
+    model_mode_label = "No Odds"
 else:
     st.sidebar.info("Odds incluídas no modelo (modo padrão).")
+    model_mode_label = "With Odds"
+
 
 
 
@@ -703,6 +708,7 @@ else:
 ######## BLOCO 7 – TREINAMENTO #########
 ########################################
 stats = []
+mode_col = model_mode_label  # captura modo atual (With Odds / No Odds)
 res, model_ah_home_v1 = train_and_evaluate(X_ah_home, history["Target_AH_Home"], "AH_Home"); stats.append(res)
 res, model_ah_away_v1 = train_and_evaluate(X_ah_away, history["Target_AH_Away"], "AH_Away"); stats.append(res)
 res, model_ah_home_v2 = train_and_evaluate_v2(X_ah_home, history["Target_AH_Home"], "AH_Home"); stats.append(res)
