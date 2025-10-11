@@ -1137,8 +1137,9 @@ if not games_today.empty:
     umc_cols = [c for c in umc_cols if c in games_today.columns]
     st.markdown("### 🎯 Universal Match Confidence (Top Picks)")
     st.dataframe(
-        games_today[umc_cols].sort_values("UMC_Best", ascending=False).head(15)
-        .style.format({"UMC_home":"{:.1f}","UMC_away":"{:.1f}","UMC_Best":"{:.1f}"})
+        games_today[umc_cols].sort_values("UMC_Best", ascending=False).head(30)
+        .style.format( "Goals_H_Today": "{:.1%}", "Goals_A_Today": "{:.1%}",
+                      {"UMC_home":"{:.1f}","UMC_away":"{:.1f}","UMC_Best":"{:.1f}"})
         .applymap(lambda v: f"background-color: rgba(0,200,0,{v/100:.3f})" if isinstance(v,(int,float)) else "")
     )
 else:
