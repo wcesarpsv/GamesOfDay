@@ -267,7 +267,7 @@ history["Handicap_Away_Result"] = history.apply(
 )
 
 history["Target_AH_Home"] = history["Handicap_Home_Result"].apply(lambda x: 1 if x > 0.5 else 0)
-history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if x > 0.5 else 0)
+history["Target_AH_Away"] = history["Handicap_Away_Result"].apply(lambda x: 1 if x >= 0.5 else 0)
 
 
 
@@ -668,6 +668,35 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
 
     save_model(model, feature_cols, filename)
     return res, (model, feature_cols)
+
+
+########################################
+###### BLOCO 6.5 – NO ODDS MODE ########
+########################################
+# Adiciona opção na sidebar
+ignore_odds = st.sidebar.checkbox("🎯 Ignore Odds Features (No Odds Mode)", value=False)
+
+# Aplicar lógica condicional
+if ignore_odds:
+    st.sidebar.info("Odds removidas do modelo para avaliar sensibilidade e valor real.")
+    # Remover blocos de odds do conjunto de features
+    feature_blocks["odds"] = []
+    
+    # Ajustar nome do modelo salvo (sem sobrescrever o original)
+    PAGE_PREFIX = PAGE_PREFIX + "_NoOdds"
+
+    # Atualizar as colunas numéricas, removendo as odds
+    numeric_cols = (
+        feature_blocks["strength"]
+        + [c for c in feature_blocks["aggression"] if c not in ["Market_Model_Divergence"]]
+        + [c for c in feature_blocks["quadrants"] if not c.endswith(('Value', 'Reliable', 'Overrates', 'Underdog'))]
+    )
+    numeric_cols = [c for c in numeric_cols if c in X_ah_home.columns]
+else:
+    st.sidebar.info("Odds incluídas no modelo (modo padrão).")
+
+
+
 
 
 ########################################
