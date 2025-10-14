@@ -163,7 +163,7 @@ if not files:
     st.warning("No CSV files found in GamesDay folder.")
     st.stop()
 
-options = files[-2:] if len(files) >= 2 else files
+options = files[-7:] if len(files) >= 7 else files
 selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
 
 date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
