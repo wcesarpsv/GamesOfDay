@@ -1164,7 +1164,7 @@ for idx, r in games_today.iterrows():
     pW, pP, pL = skellam_probs(xh_hand, xa)
 
     # Melhor lado
-    best_side = "BackHome" if pW > 0.41 else "BackAway"
+    best_side = "BackHome" if pW > 0.50 else "BackAway"
 
     rows.append((xh_hand, pW, pP, pL, fair_odds(pW), best_side))
 
