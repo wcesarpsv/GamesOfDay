@@ -591,7 +591,7 @@ normalize_features = st.sidebar.checkbox("Normalize features", value=True)
 def train_and_evaluate(X, y, name):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
-    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2CH_v6.pkl"
+    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2CH_v7.pkl"
     feature_cols = X.columns.tolist()
 
     if not retrain:
@@ -636,7 +636,7 @@ def train_and_evaluate(X, y, name):
 def train_and_evaluate_v2(X, y, name, use_calibration=True):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
-    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2CH_v6.pkl"
+    filename = f"{PAGE_PREFIX}_{safe_model}_{safe_name}_2CH_v7.pkl"
     feature_cols = X.columns.tolist()
 
     if not retrain:
