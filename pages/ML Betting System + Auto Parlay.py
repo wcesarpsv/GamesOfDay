@@ -150,6 +150,32 @@ else:
 
 
 ########################################
+### 🔒 PROTEÇÃO ANTI-LEAK – GOALS SAFE ###
+########################################
+
+# Garantir que a ML NUNCA veja gols do dia atual
+# Mesmo que estejam presentes no arquivo CSV
+goal_cols = [c for c in games_today.columns if 'Goal' in c or 'Goals_' in c]
+
+if goal_cols:
+    # Cria cópia de segurança para exibir resultados no final
+    goals_snapshot = games_today[goal_cols + ['Home', 'Away']].copy()
+    
+    # Remove todas as colunas de gols do dataset de entrada do modelo
+    games_today = games_today.drop(columns=goal_cols, errors='ignore')
+
+    # (opcional) Recriar colunas vazias para visualização posterior
+    for c in goal_cols:
+        games_today[c] = np.nan
+
+# Assim a ML nunca acessa dados de gols futuros,
+# mas o app ainda pode exibir os placares lidos do LiveScore
+
+
+
+
+
+########################################
 ####### Bloco 5 – Features Engineering ##
 ########################################
 games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
