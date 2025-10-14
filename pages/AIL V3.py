@@ -851,8 +851,8 @@ if not {"XG2_H", "XG2_A"}.issubset(games_today.columns):
 else:
     st.success("XG2_H e XG2_A já presentes no dataset.")
 
-st.write("📊 Exemplo de xG interno (5 primeiros):")
-st.dataframe(games_today[["Home","Away","M_H","M_A","HandScore_Home","HandScore_Away","XG2_H","XG2_A"]].head(5))
+# st.write("📊 Exemplo de xG interno (5 primeiros):")
+# st.dataframe(games_today[["Home","Away","M_H","M_A","HandScore_Home","HandScore_Away","XG2_H","XG2_A"]].head(5))
 
 
 
