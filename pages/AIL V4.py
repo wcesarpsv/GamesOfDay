@@ -794,35 +794,35 @@ def color_prob(val, rgb):
     alpha = float(np.clip(val, 0, 1))
     return f"background-color: rgba({rgb}, {alpha:.2f})"
 
-st.markdown(f"### 📌 Predictions for {selected_date_str} – Asian Handicap ({ml_version_choice})")
+# st.markdown(f"### 📌 Predictions for {selected_date_str} – Asian Handicap ({ml_version_choice})")
 
-# montar colunas disponíveis de forma segura
-cols_show = [
-    "Date","Time","League","Home","Away",
-    "Goals_H_Today", "Goals_A_Today",
-    "Odd_H","Odd_D","Odd_A",
-    "Asian_Line_Home_Display","Odd_H_Asi","Odd_A_Asi",
-    "p_ah_home_yes","p_ah_away_yes"
-]
-cols_show = [c for c in cols_show if c in games_today.columns]
-pred_df = games_today[cols_show].copy()
+# # montar colunas disponíveis de forma segura
+# cols_show = [
+#     "Date","Time","League","Home","Away",
+#     "Goals_H_Today", "Goals_A_Today",
+#     "Odd_H","Odd_D","Odd_A",
+#     "Asian_Line_Home_Display","Odd_H_Asi","Odd_A_Asi",
+#     "p_ah_home_yes","p_ah_away_yes"
+# ]
+# cols_show = [c for c in cols_show if c in games_today.columns]
+# pred_df = games_today[cols_show].copy()
 
-fmt_map = {
-    "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
-    "Asian_Line_Home_Display": "{:.2f}",
-    "Odd_H_Asi": "{:.2f}", "Odd_A_Asi": "{:.2f}",
-    "p_ah_home_yes": "{:.1%}", "p_ah_away_yes": "{:.1%}",
-    "Goals_H_Today": "{:.0f}", "Goals_A_Today": "{:.0f}"
-}
-fmt_map = {k:v for k,v in fmt_map.items() if k in pred_df.columns}
+# fmt_map = {
+#     "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
+#     "Asian_Line_Home_Display": "{:.2f}",
+#     "Odd_H_Asi": "{:.2f}", "Odd_A_Asi": "{:.2f}",
+#     "p_ah_home_yes": "{:.1%}", "p_ah_away_yes": "{:.1%}",
+#     "Goals_H_Today": "{:.0f}", "Goals_A_Today": "{:.0f}"
+# }
+# fmt_map = {k:v for k,v in fmt_map.items() if k in pred_df.columns}
 
-styled_df = (
-    pred_df
-    .style.format(fmt_map, na_rep="—")
-    .applymap(lambda v: color_prob(v, "0,200,0"), subset=[c for c in ["p_ah_home_yes"] if c in pred_df.columns])
-    .applymap(lambda v: color_prob(v, "255,140,0"), subset=[c for c in ["p_ah_away_yes"] if c in pred_df.columns])
-)
-st.dataframe(styled_df, use_container_width=True, height=800)
+# styled_df = (
+#     pred_df
+#     .style.format(fmt_map, na_rep="—")
+#     .applymap(lambda v: color_prob(v, "0,200,0"), subset=[c for c in ["p_ah_home_yes"] if c in pred_df.columns])
+#     .applymap(lambda v: color_prob(v, "255,140,0"), subset=[c for c in ["p_ah_away_yes"] if c in pred_df.columns])
+# )
+# st.dataframe(styled_df, use_container_width=True, height=800)
 
 
 
