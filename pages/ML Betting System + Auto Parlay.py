@@ -565,7 +565,77 @@ def calculate_parlay_odds(games_list, games_df):
 #### Bloco 10 – Auto Parlay System #####
 ########################################
 
-# ... (parâmetros do sidebar se mantêm iguais)
+########################################
+####### Bloco 10B – Parlay Validator ###
+########################################
+
+def check_bet_hit(result, bet_type):
+    """Retorna True, False ou None dependendo se a aposta bateu"""
+    if result not in ["Home", "Away", "Draw"]:
+        return None
+    if bet_type == "Home":
+        return result == "Home"
+    elif bet_type == "Away":
+        return result == "Away"
+    elif bet_type == "Draw":
+        return result == "Draw"
+    elif bet_type == "1X":
+        return result in ["Home", "Draw"]
+    elif bet_type == "X2":
+        return result in ["Away", "Draw"]
+    return None
+
+
+def authenticate_parlay(parlay, games_df):
+    """Valida automaticamente cada jogo do parlay com base nos resultados"""
+    updated_details = []
+    all_hits = []
+    pending = False
+
+    for detail in parlay["details"]:
+        game = games_df[
+            (games_df["Home"] == detail["game"].split(" vs ")[0]) &
+            (games_df["Away"] == detail["game"].split(" vs ")[1])
+        ]
+        if not game.empty:
+            gh = game.iloc[0].get("Goals_H_Today", np.nan)
+            ga = game.iloc[0].get("Goals_A_Today", np.nan)
+            result_today = game.iloc[0].get("Result_Today", None)
+
+            if pd.isna(gh) or pd.isna(ga):
+                status = "⏳"
+                hit = None
+                pending = True
+            else:
+                hit = check_bet_hit(result_today, detail["bet"])
+                status = "✅" if hit else "❌"
+            score = f" ({int(gh)}-{int(ga)})" if pd.notna(gh) and pd.notna(ga) else ""
+        else:
+            status = "⏳"
+            hit = None
+            score = ""
+            pending = True
+
+        updated_details.append({
+            **detail,
+            "status": status,
+            "score": score
+        })
+        if hit is not None:
+            all_hits.append(hit)
+
+    # Determinar status final
+    if pending:
+        final_status = "⚪ PENDING"
+    elif all(all_hits):
+        final_status = "🟢 HIT"
+    else:
+        final_status = "🔴 LOST"
+
+    parlay["details"] = updated_details
+    parlay["final_status"] = final_status
+    return parlay
+
 
 def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, max_suggestions=5, min_legs=2, max_legs=4, weekend_filter=True, max_eligible=20):
     games_today_filtered = games_df.copy()
@@ -968,36 +1038,49 @@ st.dataframe(
 )
     
 
+########################################
+##### Bloco 13A – Auto Parlay Display ###
+########################################
 st.header("🎰 Auto Parlay Recommendations")
 
 if parlay_suggestions:
+    # Validar resultados de cada parlay
+    for i in range(len(parlay_suggestions)):
+        parlay_suggestions[i] = authenticate_parlay(parlay_suggestions[i], games_today)
+
     # Mostrar estatísticas dos parlays
     legs_count = {}
     for parlay in parlay_suggestions:
-        leg_type = parlay['type']
+        leg_type = parlay["type"]
         legs_count[leg_type] = legs_count.get(leg_type, 0) + 1
-    
+
     stats_text = " | ".join([f"{count}x {leg}" for leg, count in legs_count.items()])
     st.success(f"📊 Distribuição: {stats_text}")
-    
+
     for i, parlay in enumerate(parlay_suggestions):
-        with st.expander(f"#{i+1} {parlay['type']} - Prob: {parlay['probability']:.1%} | Odds: {parlay['odds']} | EV: {parlay['ev']:+.1%}"):
-            st.write(f"**Stake Sugerido:** ${parlay['stake']} | **Potencial:** ${parlay['potential_win']}")
-            
-            for detail in parlay['details']:
-                st.write(f"• {detail['game']} - {detail['bet']} (Prob: {detail['prob']:.1%}, Odd: {detail['odds']})")
+        status = parlay.get("final_status", "⚪ PENDING")
+        with st.expander(f"#{i+1} {parlay['type']} – {status} | Prob: {parlay['probability']:.1%} | Odds: {parlay['odds']} | EV: {parlay['ev']:+.1%}"):
+            st.write(f"**Stake:** ${parlay['stake']} | **Potencial:** ${parlay['potential_win']}")
+            for detail in parlay["details"]:
+                st.write(f"{detail['status']} {detail['game']} – {detail['bet']} (Odd: {detail['odds']}, Prob: {detail['prob']:.1%}){detail['score']}")
 else:
     st.info("No profitable parlay suggestions found for today.")
+
     
     
 
 # 🔥🔥🔥 SUPER PARLAY SECTION - AGORA AQUI! 🔥🔥🔥
+########################################
+##### Bloco 13B – Super Parlay Display ###
+########################################
 st.header("🎉 SUPER PARLAY OF THE DAY")
 
 if super_parlay:
-    # Display especial para o SUPER PARLAY
-    st.success("🔥 **SPECIAL OF THE DAY!** 🔥")
-    
+    super_parlay = authenticate_parlay(super_parlay, games_today)
+    status = super_parlay.get("final_status", "⚪ PENDING")
+
+    st.success(f"🔥 **SPECIAL OF THE DAY!** – {status}")
+
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Probabilidade", f"{super_parlay['probability']:.1%}")
@@ -1005,24 +1088,19 @@ if super_parlay:
         st.metric("Odds", f"{super_parlay['odds']:.2f}")
     with col3:
         st.metric("Potencial", f"${super_parlay['potential_win']:.2f}")
-    
+
     st.write(f"**Stake Recomendado:** ${super_parlay['stake']} | **Expected Value:** {super_parlay['ev']:+.1%}")
-    
-    # Mostrar jogos em formato mais visual
+
     st.subheader("🎯 Jogos Selecionados:")
-    for i, detail in enumerate(super_parlay['details'], 1):
+    for i, detail in enumerate(super_parlay["details"], 1):
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.write(f"**{i}. {detail['game']}** ({detail['league']})")
+            st.write(f"{detail['status']} **{i}. {detail['game']}** ({detail['league']}){detail['score']}")
         with col2:
             st.write(f"**{detail['bet']}** (Odd: {detail['odds']})")
-    
-    # Botão para compartilhar (simulado)
-    st.markdown("---")
-    st.markdown("**📱 Compartilhe este Super Parlay!**")
-    
 else:
     st.info("Não foi possível gerar um Super Parlay hoje. Tente ajustar a odd alvo ou aguarde mais jogos.")
+
 
 
 
