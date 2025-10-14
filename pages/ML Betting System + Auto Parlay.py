@@ -10,7 +10,7 @@ import itertools
 from datetime import datetime
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import OneHotEncoder
-
+import re
 
 ########################################
 ########## Bloco 2 – Configs ############
@@ -107,6 +107,23 @@ if 'Date' in history.columns:
 if history.empty:
     st.error("No valid historical data found.")
     st.stop()
+
+# Extrair data do arquivo selecionado (usado também no LiveScore)
+
+date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
+if date_match:
+    selected_date_str = date_match.group(0)
+    selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d")
+else:
+    selected_date_str = datetime.now().strftime("%Y-%m-%d")
+    selected_date = datetime.now()
+
+# 🔒 Garantir que o histórico não contenha jogos do dia selecionado
+if 'Date' in history.columns:
+    history = history[
+        pd.to_datetime(history['Date'], errors='coerce') < selected_date
+    ]
+
 
 
 ########################################
