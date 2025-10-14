@@ -84,11 +84,26 @@ selected_file = st.selectbox("Select Matchday File (up to last 5 days):", option
 games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
 games_today = filter_leagues(games_today)
 
-# 🔒 Garantir que a ML NÃO veja gols do dia (sem vazamento)
-if 'Goals_H_FT' in games_today.columns:
-    games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
+########################################
+### 🔒 PROTEÇÃO ANTI-LEAK – GOALS SAFE ###
+########################################
+# Garantir que a ML NUNCA veja gols do dia atual
+# Mesmo que estejam presentes no arquivo CSV (ou colunas como home_goal, Goals_H_FT etc.)
+goal_cols = [c for c in games_today.columns if 'Goal' in c or 'Goals_' in c]
 
-# Carregar histórico completo (treino)
+if goal_cols:
+    # Cópia de segurança apenas para exibição posterior
+    goals_snapshot = games_today[goal_cols + ['Home', 'Away']].copy()
+    # Remover colunas de gols antes de qualquer uso pela ML
+    games_today = games_today.drop(columns=goal_cols, errors='ignore')
+    # Recriar colunas vazias para compatibilidade
+    for c in goal_cols:
+        games_today[c] = np.nan
+
+# Assim a ML nunca acessa dados de gols futuros,
+# mas o app ainda pode exibir placares depois do LiveScore merge.
+
+# Carregar histórico completo (para treino)
 all_games = load_all_games(GAMES_FOLDER)
 all_games = filter_leagues(all_games)
 history = prepare_history(all_games)
@@ -105,9 +120,7 @@ else:
 
 # 🔒 Garantir que o histórico não contenha jogos do dia selecionado (time-safe)
 if 'Date' in history.columns:
-    history = history[
-        pd.to_datetime(history['Date'], errors='coerce') < selected_date
-    ]
+    history = history[pd.to_datetime(history['Date'], errors='coerce') < selected_date]
 
 if history.empty:
     st.error("No valid historical data found.")
@@ -149,27 +162,7 @@ else:
     st.warning(f"No LiveScore results file found for selected date: {selected_date_str}")
 
 
-########################################
-### 🔒 PROTEÇÃO ANTI-LEAK – GOALS SAFE ###
-########################################
 
-# Garantir que a ML NUNCA veja gols do dia atual
-# Mesmo que estejam presentes no arquivo CSV
-goal_cols = [c for c in games_today.columns if 'Goal' in c or 'Goals_' in c]
-
-if goal_cols:
-    # Cria cópia de segurança para exibir resultados no final
-    goals_snapshot = games_today[goal_cols + ['Home', 'Away']].copy()
-    
-    # Remove todas as colunas de gols do dataset de entrada do modelo
-    games_today = games_today.drop(columns=goal_cols, errors='ignore')
-
-    # (opcional) Recriar colunas vazias para visualização posterior
-    for c in goal_cols:
-        games_today[c] = np.nan
-
-# Assim a ML nunca acessa dados de gols futuros,
-# mas o app ainda pode exibir os placares lidos do LiveScore
 
 
 
