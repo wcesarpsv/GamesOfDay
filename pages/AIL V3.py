@@ -1125,7 +1125,7 @@ else:
 
 
 ########################################
-#### BLOCO 8.7 – AH (Skellam via xG ajustado por Handicap)
+#### BLOCO 8.7 – AH (Skellam via xG ajustado por Handicap) – versão final corrigida
 ########################################
 from scipy.stats import skellam
 import math
@@ -1142,13 +1142,18 @@ def adjust_xg_for_handicap(xg_home: float, line_home: float):
         return xg_home + abs(line_home)
 
 def skellam_probs(mu_h, mu_a):
-    """Retorna P(Home> Away), P(Home=Away), P(Home<Away) via distribuição Skellam."""
-    if any(pd.isna([mu_h, mu_a])):
-        return np.nan, np.nan, np.nan
-    p_win = 1 - skellam.cdf(0, mu_h, mu_a)   # margem > 0
-    p_push = skellam.pmf(0, mu_h, mu_a)      # empate
-    p_lose = 1 - p_win - p_push
-    return p_win, p_push, p_lose
+    """Probabilidades via Skellam (Home>0, Home=0, Home<0) com estabilidade numérica."""
+    try:
+        mu_h = float(np.clip(mu_h, 0.01, 5.0))
+        mu_a = float(np.clip(mu_a, 0.01, 5.0))
+        p_win = 1 - skellam.cdf(0, mu_h, mu_a)
+        p_push = skellam.pmf(0, mu_h, mu_a)
+        p_lose = 1 - p_win - p_push
+        if np.isnan(p_win) or np.isnan(p_push) or np.isnan(p_lose):
+            return 0.0, 0.0, 0.0
+        return p_win, p_push, p_lose
+    except Exception:
+        return 0.0, 0.0, 0.0
 
 def fair_odds(p):
     return (1/p) if (p and p > 0) else np.nan
@@ -1162,18 +1167,23 @@ if "Asian_Line_Home_Display" not in games_today.columns:
 
 rows = []
 for idx, r in games_today.iterrows():
-    xh = r.get("XG2_H", np.nan)
-    xa = r.get("XG2_A", np.nan)
-    Lh = r.get("Asian_Line_Home_Display", np.nan)
+    try:
+        xh = float(r.get("XG2_H", np.nan))
+        xa = float(r.get("XG2_A", np.nan))
+        Lh = float(np.clip(r.get("Asian_Line_Home_Display", np.nan), -3, 3))
+    except Exception:
+        rows.append((np.nan, np.nan, np.nan, np.nan, np.nan, np.nan))
+        continue
 
     if pd.isna(xh) or pd.isna(xa) or pd.isna(Lh):
         rows.append((np.nan, np.nan, np.nan, np.nan, np.nan, np.nan))
         continue
 
-    # Ajusta xG do Home pelo handicap
+    # ✅ Ajusta xG do Home e aplica limite mínimo de 0.01
     xh_hand = adjust_xg_for_handicap(xh, Lh)
+    xh_hand = max(xh_hand, 0.01)
 
-    # Probabilidades Skellam com xG ajustado
+    # Probabilidades via Skellam
     pW, pP, pL = skellam_probs(xh_hand, xa)
 
     # Melhor lado
@@ -1184,7 +1194,6 @@ for idx, r in games_today.iterrows():
 games_today[["XG2_H_Hand","p_AH_Home_Win_Sk","p_AH_Home_Push_Sk",
              "p_AH_Home_Lose_Sk","p_AH_Home_Win_Sk_FairOdd","Best_Side"]] = pd.DataFrame(rows, index=games_today.index)
 
-# Monta tabela final
 cols_home_sk = [
     "Home","Away","Asian_Line_Home_Display",
     "XG2_H","XG2_A","XG2_H_Hand",
@@ -1208,8 +1217,7 @@ st.dataframe(
     use_container_width=True, height=520
 )
 
-st.caption("Cálculo: XG2_H_Hand = XG2_H ± |Handicap| (negativo subtrai, positivo soma). Probabilidades Skellam são baseadas no xG ajustado.")
-
+st.caption("xG ajustado: XG2_H_Hand = XG2_H ± |Handicap| (negativo subtrai, positivo soma). Probabilidades calculadas via Skellam (Home>0, =0, <0). Linhas extremas são limitadas entre -3 e +3 para estabilidade numérica.")
 
 
 
