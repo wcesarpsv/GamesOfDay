@@ -251,8 +251,13 @@ history = correct_asiatic_odds(history)
 games_today = correct_asiatic_odds(games_today)
 
 # Apenas jogos sem FT hoje (para prever)
+# 🔁 Para simular dias passados: manter todos os jogos, mesmo com resultados
 if "Goals_H_FT" in games_today.columns:
-    games_today = games_today[games_today["Goals_H_FT"].isna()].copy()
+    if games_today["Goals_H_FT"].isna().all():
+        st.info("✅ Todos os jogos do dia ainda sem resultado (modo previsão).")
+    else:
+        st.info("📊 Exibindo todos os jogos (modo simulação histórica / backtest).")
+
 if games_today.empty:
     st.warning("⚠️ No matches found for today (or yesterday, if selected).")
     st.stop()
