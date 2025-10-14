@@ -73,33 +73,40 @@ if not files:
     st.warning("No CSV files found in GamesDay folder.")
     st.stop()
 
-options = files[-2:] if len(files) >= 2 else files
-selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
+# 🔥 Permitir até os últimos 5 dias (em ordem cronológica)
+options = files[-5:] if len(files) >= 5 else files
+selected_file = st.selectbox("Select Matchday File (up to last 5 days):", options, index=len(options)-1)
 
 # Carregar os jogos do dia selecionado
 games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
 games_today = filter_leagues(games_today)
 
-# Apenas jogos sem placar final
+# 🔒 Importante: garantir que a ML NÃO veja gols do dia (sem vazamento)
+# Mesmo que existam no CSV, serão ignorados no treino
 if 'Goals_H_FT' in games_today.columns:
     games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
 
-# Carregar histórico para treinar o modelo
+# Carregar histórico completo (treino) — SEM ver gols do dia selecionado
 all_games = load_all_games(GAMES_FOLDER)
 all_games = filter_leagues(all_games)
 history = prepare_history(all_games)
 
+# 🔒 Garantir que o histórico não contenha jogos do dia selecionado
+if 'Date' in history.columns:
+    try:
+        date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
+        if date_match:
+            selected_date_str = date_match.group(0)
+            selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d")
+            history = history[
+                pd.to_datetime(history['Date'], errors='coerce') < selected_date
+            ]
+    except Exception:
+        pass
+
 if history.empty:
     st.error("No valid historical data found.")
     st.stop()
-
-# Extrair data do arquivo selecionado
-import re
-date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
-if date_match:
-    selected_date_str = date_match.group(0)
-else:
-    selected_date_str = datetime.now().strftime("%Y-%m-%d")
 
 
 ########################################
