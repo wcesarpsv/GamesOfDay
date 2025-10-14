@@ -1282,81 +1282,81 @@ else:
 
 
 
-########################################
-### BLOCO 9.6 – AIL EXPLANATIONS #######
-########################################
-st.markdown("### 🗒️ AIL – Explicações por Jogo")
+# ########################################
+# ### BLOCO 9.6 – AIL EXPLANATIONS #######
+# ########################################
+# st.markdown("### 🗒️ AIL – Explicações por Jogo")
 
-def explain_match(row: pd.Series) -> str:
-    home, away = row.get("Home","?"), row.get("Away","?")
-    # A linha armazenada é do AWAY; exibimos ambas as visões (Home = sinal invertido)
-    asian_away = row.get("Asian_Line_Away_Display", np.nan)
-    if pd.notnull(asian_away):
-        try:
-            asian_away_f = float(asian_away)
-            home_line = -asian_away_f
-            away_line =  asian_away_f
-            line_txt = f"{home} {home_line:+.2f} / {away} {away_line:+.2f}"
-        except:
-            # fallback textual
-            asian_home = row.get("Asian_Line_Home_Display", np.nan)
-            line_txt = f"{home} {asian_home} / {away} ({asian_away})"
-    else:
-        asian_home = row.get("Asian_Line_Home_Display", np.nan)
-        if pd.notnull(asian_home):
-            try:
-                asian_home_f = float(asian_home)
-                line_txt = f"{home} {asian_home_f:+.2f} / {away} {(-asian_home_f):+.2f}"
-            except:
-                line_txt = f"{home} {asian_home} / {away} (oposto)"
-        else:
-            line_txt = "N/A"
+# def explain_match(row: pd.Series) -> str:
+#     home, away = row.get("Home","?"), row.get("Away","?")
+#     # A linha armazenada é do AWAY; exibimos ambas as visões (Home = sinal invertido)
+#     asian_away = row.get("Asian_Line_Away_Display", np.nan)
+#     if pd.notnull(asian_away):
+#         try:
+#             asian_away_f = float(asian_away)
+#             home_line = -asian_away_f
+#             away_line =  asian_away_f
+#             line_txt = f"{home} {home_line:+.2f} / {away} {away_line:+.2f}"
+#         except:
+#             # fallback textual
+#             asian_home = row.get("Asian_Line_Home_Display", np.nan)
+#             line_txt = f"{home} {asian_home} / {away} ({asian_away})"
+#     else:
+#         asian_home = row.get("Asian_Line_Home_Display", np.nan)
+#         if pd.notnull(asian_home):
+#             try:
+#                 asian_home_f = float(asian_home)
+#                 line_txt = f"{home} {asian_home_f:+.2f} / {away} {(-asian_home_f):+.2f}"
+#             except:
+#                 line_txt = f"{home} {asian_home} / {away} (oposto)"
+#         else:
+#             line_txt = "N/A"
 
-    p_home = row.get("p_ah_home_yes", np.nan)
-    p_away = row.get("p_ah_away_yes", np.nan)
-    p_txt = f"Prob AH – Home: {p_home:.1%} | Away: {p_away:.1%}" if pd.notnull(p_home) and pd.notnull(p_away) else "Prob AH – N/A"
+#     p_home = row.get("p_ah_home_yes", np.nan)
+#     p_away = row.get("p_ah_away_yes", np.nan)
+#     p_txt = f"Prob AH – Home: {p_home:.1%} | Away: {p_away:.1%}" if pd.notnull(p_home) and pd.notnull(p_away) else "Prob AH – N/A"
 
-    tag = row.get("AIL_Match_Tag","—")
-    mclass_h = row.get("Market_Class_Home","—")
-    mclass_a = row.get("Market_Class_Away","—")
+#     tag = row.get("AIL_Match_Tag","—")
+#     mclass_h = row.get("Market_Class_Home","—")
+#     mclass_a = row.get("Market_Class_Away","—")
 
-    # CORREÇÃO 3: Incluir informações dos quadrantes na explicação
-    quadrant_info = []
-    if 'Home_Underdog_Value' in row and row['Home_Underdog_Value'] == 1:
-        quadrant_info.append("Home: UNDERDOG VALUE")
-    if 'Home_Favorite_Reliable' in row and row['Home_Favorite_Reliable'] == 1:
-        quadrant_info.append("Home: FAVORITE RELIABLE")
-    if 'Away_Underdog_Value' in row and row['Away_Underdog_Value'] == 1:
-        quadrant_info.append("Away: UNDERDOG VALUE")
-    if 'Away_Favorite_Reliable' in row and row['Away_Favorite_Reliable'] == 1:
-        quadrant_info.append("Away: FAVORITE RELIABLE")
+#     # CORREÇÃO 3: Incluir informações dos quadrantes na explicação
+#     quadrant_info = []
+#     if 'Home_Underdog_Value' in row and row['Home_Underdog_Value'] == 1:
+#         quadrant_info.append("Home: UNDERDOG VALUE")
+#     if 'Home_Favorite_Reliable' in row and row['Home_Favorite_Reliable'] == 1:
+#         quadrant_info.append("Home: FAVORITE RELIABLE")
+#     if 'Away_Underdog_Value' in row and row['Away_Underdog_Value'] == 1:
+#         quadrant_info.append("Away: UNDERDOG VALUE")
+#     if 'Away_Favorite_Reliable' in row and row['Away_Favorite_Reliable'] == 1:
+#         quadrant_info.append("Away: FAVORITE RELIABLE")
     
-    quadrant_txt = " | ".join(quadrant_info) if quadrant_info else "Quadrantes: —"
+#     quadrant_txt = " | ".join(quadrant_info) if quadrant_info else "Quadrantes: —"
 
-    # Sinal curto
-    signal = ""
-    if isinstance(tag, str):
-        if "VALUE: AWAY" in tag: signal = "🎯 Valor no visitante"
-        elif "VALUE: HOME" in tag: signal = "🎯 Valor no mandante"
-        elif "FADE: HOME" in tag: signal = "📉 Fade no mandante"
-        elif "FADE: AWAY" in tag: signal = "📉 Fade no visitante"
-        else: signal = "⚖️ Equilíbrio/Alinhado"
-    else:
-        signal = "⚖️ Equilíbrio/Alinhado"
+#     # Sinal curto
+#     signal = ""
+#     if isinstance(tag, str):
+#         if "VALUE: AWAY" in tag: signal = "🎯 Valor no visitante"
+#         elif "VALUE: HOME" in tag: signal = "🎯 Valor no mandante"
+#         elif "FADE: HOME" in tag: signal = "📉 Fade no mandante"
+#         elif "FADE: AWAY" in tag: signal = "📉 Fade no visitante"
+#         else: signal = "⚖️ Equilíbrio/Alinhado"
+#     else:
+#         signal = "⚖️ Equilíbrio/Alinhado"
 
-    return (
-        f"**{home} vs {away}**  \n"
-        f"🧮 Asian Line: {line_txt}  \n"
-        f"🏷️ Classes – Home: {mclass_h} | Away: {mclass_a}  \n"
-        f"📊 {p_txt}  \n"
-        f"🧠 {quadrant_txt}  \n"
-        f"🚦 Sinal AIL: **{tag}** → {signal}"
-    )
+#     return (
+#         f"**{home} vs {away}**  \n"
+#         f"🧮 Asian Line: {line_txt}  \n"
+#         f"🏷️ Classes – Home: {mclass_h} | Away: {mclass_a}  \n"
+#         f"📊 {p_txt}  \n"
+#         f"🧠 {quadrant_txt}  \n"
+#         f"🚦 Sinal AIL: **{tag}** → {signal}"
+#     )
 
-# Render
-for _, r in games_today.iterrows():
-    st.markdown(explain_match(r))
-    st.markdown("---")
+# # Render
+# for _, r in games_today.iterrows():
+#     st.markdown(explain_match(r))
+#     st.markdown("---")
 
 
 
