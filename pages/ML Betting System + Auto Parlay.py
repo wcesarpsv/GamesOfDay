@@ -66,6 +66,9 @@ def compute_double_chance_odds(df):
 ########################################
 ####### Bloco 4 – Load Data ############
 ########################################
+import re
+
+# Buscar arquivos de jogos
 files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
 files = sorted(files)
 
@@ -73,7 +76,7 @@ if not files:
     st.warning("No CSV files found in GamesDay folder.")
     st.stop()
 
-# 🔥 Permitir até os últimos 5 dias (em ordem cronológica)
+# 🔥 Exibir até os últimos 5 dias (mantendo ordem cronológica)
 options = files[-5:] if len(files) >= 5 else files
 selected_file = st.selectbox("Select Matchday File (up to last 5 days):", options, index=len(options)-1)
 
@@ -81,48 +84,35 @@ selected_file = st.selectbox("Select Matchday File (up to last 5 days):", option
 games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
 games_today = filter_leagues(games_today)
 
-# 🔒 Importante: garantir que a ML NÃO veja gols do dia (sem vazamento)
-# Mesmo que existam no CSV, serão ignorados no treino
+# 🔒 Garantir que a ML NÃO veja gols do dia (sem vazamento)
 if 'Goals_H_FT' in games_today.columns:
     games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
 
-# Carregar histórico completo (treino) — SEM ver gols do dia selecionado
+# Carregar histórico completo (treino)
 all_games = load_all_games(GAMES_FOLDER)
 all_games = filter_leagues(all_games)
 history = prepare_history(all_games)
 
-# 🔒 Garantir que o histórico não contenha jogos do dia selecionado
-if 'Date' in history.columns:
-    try:
-        date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
-        if date_match:
-            selected_date_str = date_match.group(0)
-            selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d")
-            history = history[
-                pd.to_datetime(history['Date'], errors='coerce') < selected_date
-            ]
-    except Exception:
-        pass
-
-if history.empty:
-    st.error("No valid historical data found.")
-    st.stop()
-
-# Extrair data do arquivo selecionado (usado também no LiveScore)
-
+# ✅ Extrair data do arquivo selecionado
 date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
 if date_match:
     selected_date_str = date_match.group(0)
     selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d")
 else:
+    # fallback seguro caso o nome do arquivo não tenha data
     selected_date_str = datetime.now().strftime("%Y-%m-%d")
     selected_date = datetime.now()
 
-# 🔒 Garantir que o histórico não contenha jogos do dia selecionado
+# 🔒 Garantir que o histórico não contenha jogos do dia selecionado (time-safe)
 if 'Date' in history.columns:
     history = history[
         pd.to_datetime(history['Date'], errors='coerce') < selected_date
     ]
+
+if history.empty:
+    st.error("No valid historical data found.")
+    st.stop()
+
 
 
 
