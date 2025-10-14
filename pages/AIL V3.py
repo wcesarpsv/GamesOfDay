@@ -218,6 +218,24 @@ else:
 if history.empty:
     st.stop()
 
+# ==============================
+# 🔒 ANTI-LEAKAGE FILTER
+# ==============================
+# Filtra o histórico para incluir apenas jogos anteriores à data selecionada
+if "Date" in history.columns:
+    try:
+        selected_date = pd.to_datetime(selected_date_str)
+        history["Date"] = pd.to_datetime(history["Date"], errors="coerce")
+        history = history[history["Date"] < selected_date].copy()
+        st.info(f"Treinando modelo apenas com jogos até {selected_date_str} (sem vazamento temporal).")
+        if history.empty:
+            st.warning("⚠️ Nenhum dado histórico anterior à data selecionada — não é possível treinar.")
+            st.stop()
+    except Exception as e:
+        st.error(f"Erro ao aplicar filtro temporal: {e}")
+
+
+
 # CORREÇÃO 2: Corrigir odds asiáticas (valor líquido → bruto)
 def correct_asiatic_odds(df):
     """Corrige odds asiáticas de valor líquido para valor bruto"""
