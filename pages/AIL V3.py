@@ -878,6 +878,85 @@ else:
 # st.dataframe(games_today[["Home","Away","M_H","M_A","HandScore_Home","HandScore_Away","XG2_H","XG2_A"]].head(5))
 
 
+########################################
+### BLOCO 8.5 – ML-BASED XG ESTIMATOR (xG2_H, xG2_A)
+########################################
+from sklearn.ensemble import RandomForestRegressor
+
+st.markdown("### 🤖 ML-based xG Estimator (Experimental)")
+
+use_ml_xg = st.checkbox("Use ML-based xG Estimator", value=False)
+
+# Features para treinar o modelo
+xg_features = [
+    "M_H", "M_A",
+    "HandScore_Home", "HandScore_Away",
+    "Aggression_Home", "Aggression_Away",
+    "Diff_Power"
+]
+
+# Verifica se as colunas estão disponíveis
+missing_cols = [c for c in xg_features if c not in history.columns]
+if missing_cols:
+    st.warning(f"⚠️ Não é possível treinar o modelo de xG — faltando colunas: {missing_cols}")
+    use_ml_xg = False
+
+if use_ml_xg and not history.empty and set(["Goals_H_FT","Goals_A_FT"]).issubset(history.columns):
+    # Prepara dados
+    X_xg = history[xg_features].copy()
+    y_h = history["Goals_H_FT"].astype(float)
+    y_a = history["Goals_A_FT"].astype(float)
+
+    # Imputação simples
+    X_xg = X_xg.fillna(X_xg.median())
+
+    # Treina dois modelos separados (Home e Away)
+    model_xg_home = RandomForestRegressor(
+        n_estimators=300, max_depth=8, random_state=42, n_jobs=-1
+    )
+    model_xg_away = RandomForestRegressor(
+        n_estimators=300, max_depth=8, random_state=42, n_jobs=-1
+    )
+
+    model_xg_home.fit(X_xg, y_h)
+    model_xg_away.fit(X_xg, y_a)
+
+    # Gera previsões para os jogos de hoje
+    X_today_xg = games_today[xg_features].copy()
+    X_today_xg = X_today_xg.fillna(X_xg.median())
+
+    games_today["XG2_H"] = model_xg_home.predict(X_today_xg)
+    games_today["XG2_A"] = model_xg_away.predict(X_today_xg)
+
+    # Clamping dos valores
+    games_today["XG2_H"] = games_today["XG2_H"].clip(0.3, 3.5)
+    games_today["XG2_A"] = games_today["XG2_A"].clip(0.3, 3.5)
+
+    st.success("✅ xG2_H e xG2_A gerados via modelo ML (RandomForest).")
+
+    # Exemplo visual (opcional)
+    st.dataframe(
+        games_today[["Home","Away","M_H","M_A","HandScore_Home","HandScore_Away",
+                     "Aggression_Home","Aggression_Away","Diff_Power","XG2_H","XG2_A"]]
+        .head(10)
+        .style.format({"M_H":"{:.2f}","M_A":"{:.2f}",
+                       "HandScore_Home":"{:.2f}","HandScore_Away":"{:.2f}",
+                       "Aggression_Home":"{:.2f}","Aggression_Away":"{:.2f}",
+                       "Diff_Power":"{:.2f}","XG2_H":"{:.2f}","XG2_A":"{:.2f}"})
+    )
+
+else:
+    if not use_ml_xg:
+        st.info("Modo ML-based xG desativado. Usando modelo analítico (model_based_xg).")
+    elif history.empty:
+        st.warning("Histórico vazio — não foi possível treinar o modelo ML.")
+
+
+
+
+
+
+
 
 ########################################
 ### BLOCO 8.6 – AH PROBABILITIES (HOME & AWAY, POISSON)
