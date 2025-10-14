@@ -1124,85 +1124,42 @@ else:
     st.warning("⚠️ Para cálculo Poisson AH é necessário ter XG2_H e XG2_A.")
 
 
-
 ########################################
-#### BLOCO 8.7 – AH (Skellam + HAXG) – Tabela Comparativa (Home)
+#### BLOCO 8.7 – AH (Skellam via xG ajustado por Handicap)
 ########################################
 from scipy.stats import skellam
 import math
 
-st.markdown("#### 🏠 Home – Probabilidades AH (Skellam via xG + HAXG)")
+st.markdown("#### 🏠 Home – Probabilidades AH (Skellam via xG ajustado por Handicap)")
 
-def _expand_quarter_line_parts_home(line_value: float):
-    """
-    Divide linhas em ¼/¾ no referencial do HOME (float único).
-    Ex.: -0.75  -> [-0.5, -1.0]
-         +0.25  -> [ 0.0, +0.5]
-    Linhas inteiras/half retornam [line_value].
-    """
-    if pd.isna(line_value):
-        return []
-    frac = abs(line_value) - abs(int(line_value))
-    s = 1.0 if line_value >= 0 else -1.0
-    if np.isclose(frac, 0.25):
-        a = int(line_value)
-        b = a + 0.5 * s
-        return [float(a), float(b)]
-    if np.isclose(frac, 0.75):
-        a = int(line_value) + 0.5 * s
-        b = int(line_value) + 1.0 * s
-        return [float(a), float(b)]
-    return [float(line_value)]
+def adjust_xg_for_handicap(xg_home: float, line_home: float):
+    """Aplica o handicap diretamente no xG do Home."""
+    if pd.isna(xg_home) or pd.isna(line_home):
+        return np.nan
+    if line_home < 0:  # favorito
+        return xg_home - abs(line_home)
+    else:  # zebra
+        return xg_home + abs(line_home)
 
-def _skellam_probs_for_line(mu_h: float, mu_a: float, L: float):
-    """
-    Probabilidades para o HOME considerando margem (Home-Away) ~ Skellam(mu_h, mu_a):
-      - P(win)  = P(Margin > L)  = 1 - CDF(floor(L))
-      - P(push) = PMF(L) se L for inteiro; senão 0
-      - P(lose) = 1 - P(win) - P(push)
-    """
-    if any(pd.isna([mu_h, mu_a, L])):
+def skellam_probs(mu_h, mu_a):
+    """Retorna P(Home> Away), P(Home=Away), P(Home<Away) via distribuição Skellam."""
+    if any(pd.isna([mu_h, mu_a])):
         return np.nan, np.nan, np.nan
-
-    # P(Margin > L) para L real: evento equivale a Margin >= floor(L)+1
-    thr = math.floor(L)
-    p_win = 1.0 - skellam.cdf(thr, mu_h, mu_a)
-
-    # push só existe quando L é inteiro
-    p_push = skellam.pmf(int(L), mu_h, mu_a) if np.isclose(L, int(L)) else 0.0
-
-    p_lose = 1.0 - p_win - p_push
-    # defesa numérica
-    p_win  = float(max(min(p_win, 1.0), 0.0))
-    p_push = float(max(min(p_push, 1.0), 0.0))
-    p_lose = float(max(min(p_lose, 1.0), 0.0))
+    p_win = 1 - skellam.cdf(0, mu_h, mu_a)   # margem > 0
+    p_push = skellam.pmf(0, mu_h, mu_a)      # empate
+    p_lose = 1 - p_win - p_push
     return p_win, p_push, p_lose
 
-def _skellam_probs_split_home(mu_h: float, mu_a: float, line_home: float):
-    """
-    Para linhas ¼/¾, calcula em cada parte e tira a média simples.
-    """
-    parts = _expand_quarter_line_parts_home(line_home)
-    if not parts:
-        return np.nan, np.nan, np.nan, np.nan
-    acc = np.zeros(3)
-    for L in parts:
-        acc += _skellam_probs_for_line(mu_h, mu_a, L)
-    p_win, p_push, p_lose = (acc / len(parts))
-    L_mean = float(np.mean(parts))
-    return float(p_win), float(p_push), float(p_lose), L_mean
+def fair_odds(p):
+    return (1/p) if (p and p > 0) else np.nan
 
-def _fair_odds(p):
-    return (1.0 / p) if (p is not None and not pd.isna(p) and p > 0) else np.nan
-
-# Garante a coluna de linha do HOME
+# Garante coluna da linha do HOME
 if "Asian_Line_Home_Display" not in games_today.columns:
     if "Asian_Line_Away_Display" in games_today.columns:
         games_today["Asian_Line_Home_Display"] = -games_today["Asian_Line_Away_Display"]
     else:
         games_today["Asian_Line_Home_Display"] = np.nan
 
-# Computa HAXG e probabilidades Skellam (HOME)
 rows = []
 for idx, r in games_today.iterrows():
     xh = r.get("XG2_H", np.nan)
@@ -1210,55 +1167,49 @@ for idx, r in games_today.iterrows():
     Lh = r.get("Asian_Line_Home_Display", np.nan)
 
     if pd.isna(xh) or pd.isna(xa) or pd.isna(Lh):
-        rows.append((np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan))
+        rows.append((np.nan, np.nan, np.nan, np.nan, np.nan, np.nan))
         continue
 
-    # Probabilidades via Skellam (com split para ¼/¾)
-    pW, pP, pL, L_mean = _skellam_probs_split_home(xh, xa, float(Lh))
+    # Ajusta xG do Home pelo handicap
+    xh_hand = adjust_xg_for_handicap(xh, Lh)
 
-    # HAXG médio (nas partes, para ¼/¾)
-    parts = _expand_quarter_line_parts_home(float(Lh))
-    haxg_vals = [ (xh - xa) - L for L in parts ] if parts else [np.nan]
-    HAXG = float(np.mean(haxg_vals)) if len(haxg_vals) > 0 else np.nan
+    # Probabilidades Skellam com xG ajustado
+    pW, pP, pL = skellam_probs(xh_hand, xa)
 
-    # Z-score opcional (aprox. Normal) usando L_mean
-    denom = math.sqrt(max(xh + xa, 1e-9))
-    Z = ((xh - xa) - (L_mean if not pd.isna(L_mean) else 0.0)) / denom
+    # Melhor lado
+    best_side = "BackHome" if pW > 0.5 else "BackAway"
 
-    rows.append((HAXG, Z, pW, pP, pL, _fair_odds(pW), _fair_odds(pP)))
+    rows.append((xh_hand, pW, pP, pL, fair_odds(pW), best_side))
 
-games_today[["HAXG_Home","HAXG_Z_Home","p_AH_Home_Win_Sk","p_AH_Home_Push_Sk","p_AH_Home_Lose_Sk",
-             "p_AH_Home_Win_Sk_FairOdd","p_AH_Home_Push_Sk_FairOdd"]] = pd.DataFrame(rows, index=games_today.index)
+games_today[["XG2_H_Hand","p_AH_Home_Win_Sk","p_AH_Home_Push_Sk",
+             "p_AH_Home_Lose_Sk","p_AH_Home_Win_Sk_FairOdd","Best_Side"]] = pd.DataFrame(rows, index=games_today.index)
 
-# Monta a tabela comparativa (Home – Skellam + HAXG)
+# Monta tabela final
 cols_home_sk = [
-    "Home","Away","Goals_H_Today","Goals_A_Today",
-    "Asian_Line_Home_Display","XG2_H","XG2_A",
-    "HAXG_Home","HAXG_Z_Home",
+    "Home","Away","Asian_Line_Home_Display",
+    "XG2_H","XG2_A","XG2_H_Hand",
     "p_AH_Home_Win_Sk","p_AH_Home_Push_Sk","p_AH_Home_Lose_Sk",
-    "p_AH_Home_Win_Sk_FairOdd","p_AH_Home_Push_Sk_FairOdd"
+    "p_AH_Home_Win_Sk_FairOdd","Best_Side"
 ]
 cols_home_sk = [c for c in cols_home_sk if c in games_today.columns]
 
 fmt_sk = {
     "Asian_Line_Home_Display": "{:+.2f}",
-    "XG2_H": "{:.2f}","XG2_A": "{:.2f}",
-    "HAXG_Home": "{:+.2f}","HAXG_Z_Home": "{:+.2f}",
-    "Goals_H_Today": "{:.0f}","Goals_A_Today": "{:.0f}",
+    "XG2_H": "{:.2f}","XG2_A": "{:.2f}","XG2_H_Hand": "{:.2f}",
     "p_AH_Home_Win_Sk": "{:.1%}","p_AH_Home_Push_Sk": "{:.1%}","p_AH_Home_Lose_Sk": "{:.1%}",
-    "p_AH_Home_Win_Sk_FairOdd": "{:.2f}","p_AH_Home_Push_Sk_FairOdd": "{:.2f}"
+    "p_AH_Home_Win_Sk_FairOdd": "{:.2f}"
 }
 
 st.dataframe(
     games_today[cols_home_sk]
     .style.format(fmt_sk)
-    .applymap(lambda v: color_prob(v, "0,200,0"), subset=["p_AH_Home_Win_Sk"] if "p_AH_Home_Win_Sk" in cols_home_sk else [])
-    .applymap(lambda v: color_prob(v, "255,255,0"), subset=["p_AH_Home_Push_Sk"] if "p_AH_Home_Push_Sk" in cols_home_sk else [])
-    .applymap(lambda v: color_prob(v, "255,140,0"), subset=["p_AH_Home_Lose_Sk"] if "p_AH_Home_Lose_Sk" in cols_home_sk else []),
+    .applymap(lambda v: "background-color: rgba(0,200,0,0.2);" if isinstance(v,str) and v=="BackHome" else
+                        ("background-color: rgba(255,100,100,0.2);" if isinstance(v,str) and v=="BackAway" else ""), subset=["Best_Side"]),
     use_container_width=True, height=520
 )
 
-st.caption("Obs.: Skellam usa a diferença de Poisson com médias (XG2_H, XG2_A). Para linhas ¼/¾, as probabilidades são a média das partes.")
+st.caption("Cálculo: XG2_H_Hand = XG2_H ± |Handicap| (negativo subtrai, positivo soma). Probabilidades Skellam são baseadas no xG ajustado.")
+
 
 
 
