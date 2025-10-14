@@ -1204,7 +1204,7 @@ cols_home_sk = [c for c in cols_home_sk if c in games_today.columns]
 
 fmt_sk = {
     "Asian_Line_Home_Display": "{:+.2f}",
-    "Goals_H_Today": "{:.2f}","Goals_H_Today": "{:.2f}",
+    "Goals_H_Today": "{:.0f}","Goals_A_Today": "{:.0f}",
     "XG2_H": "{:.2f}","XG2_A": "{:.2f}","XG2_H_Hand": "{:.2f}",
     "p_AH_Home_Win_Sk": "{:.1%}","p_AH_Home_Push_Sk": "{:.1%}","p_AH_Home_Lose_Sk": "{:.1%}",
     "p_AH_Home_Win_Sk_FairOdd": "{:.2f}"
