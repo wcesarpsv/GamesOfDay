@@ -806,7 +806,7 @@ st.dataframe(styled_df, use_container_width=True, height=800)
 ########################################
 ### BLOCO 8.4 – XG ESTIMATOR VIA MODEL METRICS
 ########################################
-st.markdown("### ⚙️ Gerando Expected Goals (xG2_H / xG2_A) via Métricas Internas")
+# st.markdown("### ⚙️ Gerando Expected Goals (xG2_H / xG2_A) via Métricas Internas")
 
 def model_based_xg(row, total_goals_avg=2.6):
     """
@@ -844,7 +844,7 @@ def model_based_xg(row, total_goals_avg=2.6):
 
 
 if not {"XG2_H", "XG2_A"}.issubset(games_today.columns):
-    st.info("Gerando xG2_H e xG2_A a partir das métricas internas do modelo...")
+    # st.info("Gerando xG2_H e xG2_A a partir das métricas internas do modelo...")
     est = games_today.apply(lambda r: model_based_xg(r), axis=1, result_type="expand")
     est.columns = ["XG2_H", "XG2_A"]
     games_today = pd.concat([games_today, est], axis=1)
