@@ -233,7 +233,7 @@ from math import isfinite
 from scipy.stats import skellam
 import json
 
-st.markdown("#### ⚙️ Otimização de α por Liga (Skellam 1X2)")
+# st.markdown("#### ⚙️ Otimização de α por Liga (Skellam 1X2)")
 
 # ===== 1) Conversões base (reaproveita Odds + Momentum) =====
 def odds_to_mu(odd_home, odd_draw, odd_away):
@@ -382,7 +382,7 @@ games_today["XG2_H"], games_today["XG2_A"], games_today["Alpha_League"] = zip(
 ########################################
 from scipy.stats import poisson
 
-st.markdown("#### ⚙️ Otimização de α por Liga (Over/Under 2.5)")
+# st.markdown("#### ⚙️ Otimização de α por Liga (Over/Under 2.5)")
 
 def prob_over25(mu_h, mu_a):
     """P(Over 2.5 gols) assumindo Poisson independentes."""
@@ -443,7 +443,7 @@ games_today["XG2_H_OU"], games_today["XG2_A_OU"], games_today["Alpha_OU25"] = zi
 ########################################
 #### Bloco 5.3 – α por Liga (Skellam BTTS)
 ########################################
-st.markdown("#### ⚙️ Otimização de α por Liga (BTTS Yes/No)")
+# st.markdown("#### ⚙️ Otimização de α por Liga (BTTS Yes/No)")
 
 def prob_btts_yes(mu_h, mu_a):
     """P(Ambos marcam) assumindo Poisson independentes."""
