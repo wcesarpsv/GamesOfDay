@@ -345,11 +345,11 @@ else:
         alpha_by_league[lg] = round(a_shr, 3)
 
     # Tabela de diagnóstico
-    if per_league_rows:
-        df_alpha = pd.DataFrame(per_league_rows).sort_values(["N"], ascending=False)
-        df_alpha["Alpha_shrunk"] = df_alpha["League"].map(alpha_by_league)
-        st.markdown("##### 📊 α por liga (raw vs shrunk)")
-        st.dataframe(df_alpha, use_container_width=True)
+    # if per_league_rows:
+    #     df_alpha = pd.DataFrame(per_league_rows).sort_values(["N"], ascending=False)
+    #     df_alpha["Alpha_shrunk"] = df_alpha["League"].map(alpha_by_league)
+    #     st.markdown("##### 📊 α por liga (raw vs shrunk)")
+    #     st.dataframe(df_alpha, use_container_width=True)
 
 # ===== 6) Persistir mapeamento (opcional)
 try:
@@ -423,9 +423,9 @@ for lg, df_lg in hist_ou.groupby("League"):
         records.append({"League": lg, "Alpha_OU25": best_alpha, "LogLoss": round(best_ll, 4), "N": len(df_lg)})
         alpha_by_league_ou[lg] = best_alpha
 
-if records:
-    df_ou = pd.DataFrame(records).sort_values("N", ascending=False)
-    st.dataframe(df_ou, use_container_width=True)
+# if records:
+#     df_ou = pd.DataFrame(records).sort_values("N", ascending=False)
+#     st.dataframe(df_ou, use_container_width=True)
 
 def get_alpha_ou(lg):
     return alpha_by_league_ou.get(lg, alpha_global_prior)
@@ -475,9 +475,9 @@ for lg, df_lg in hist_btts.groupby("League"):
         records.append({"League": lg, "Alpha_BTTS": best_alpha, "LogLoss": round(best_ll, 4), "N": len(df_lg)})
         alpha_by_league_btts[lg] = best_alpha
 
-if records:
-    df_btts = pd.DataFrame(records).sort_values("N", ascending=False)
-    st.dataframe(df_btts, use_container_width=True)
+# if records:
+#     df_btts = pd.DataFrame(records).sort_values("N", ascending=False)
+#     st.dataframe(df_btts, use_container_width=True)
 
 def get_alpha_btts(lg):
     return alpha_by_league_btts.get(lg, alpha_global_prior)
