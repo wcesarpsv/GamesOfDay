@@ -224,6 +224,163 @@ X_today_ou = pd.concat([games_today[features_ou_btts], games_today_leagues], axi
 X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
 
 
+
+
+########################################
+#### Bloco 5.1 – XG2 + α por Liga (Skellam 1X2)
+########################################
+from math import isfinite
+from scipy.stats import skellam
+import json
+
+st.markdown("#### ⚙️ Otimização de α por Liga (Skellam 1X2)")
+
+# ===== 1) Conversões base (reaproveita Odds + Momentum) =====
+def odds_to_mu(odd_home, odd_draw, odd_away):
+    if pd.isna(odd_home) or pd.isna(odd_draw) or pd.isna(odd_away):
+        return np.nan, np.nan
+    if min(odd_home, odd_away) <= 1.0:
+        return np.nan, np.nan
+    inv = (1/odd_home + 1/odd_draw + 1/odd_away)
+    p_home = (1/odd_home) / inv
+    p_away = (1/odd_away) / inv
+    # mapeamento simples p→μ (ajuste fino depois, se quiser)
+    mu_h = 0.4 + 2.4 * p_home
+    mu_a = 0.4 + 2.4 * p_away
+    return mu_h, mu_a
+
+def xg_from_momentum(row):
+    base = 1.3
+    denom = abs(row.get("M_H", 0.0)) + abs(row.get("M_A", 0.0)) + 1e-6
+    mu_h = base + 0.8 * (row.get("M_H", 0.0)/denom) + 0.4 * (row.get("Diff_Power", 0.0)/100)
+    mu_a = base + 0.8 * (row.get("M_A", 0.0)/denom) - 0.4 * (row.get("Diff_Power", 0.0)/100)
+    return max(mu_h, 0.05), max(mu_a, 0.05)
+
+def blend_xg(row, alpha):
+    mu_odd_h, mu_odd_a = odds_to_mu(row["Odd_H"], row["Odd_D"], row["Odd_A"])
+    mu_perf_h, mu_perf_a = xg_from_momentum(row)
+    if not (np.isfinite(mu_odd_h) and np.isfinite(mu_odd_a) and np.isfinite(mu_perf_h) and np.isfinite(mu_perf_a)):
+        return np.nan, np.nan
+    mu_h = alpha * mu_odd_h + (1 - alpha) * mu_perf_h
+    mu_a = alpha * mu_odd_a + (1 - alpha) * mu_perf_a
+    # clamps leves para estabilidade numérica da Skellam
+    mu_h = float(np.clip(mu_h, 0.05, 5.0))
+    mu_a = float(np.clip(mu_a, 0.05, 5.0))
+    return mu_h, mu_a
+
+def skellam_probs_1x2(mu_h, mu_a):
+    """Retorna (p_home, p_draw, p_away) usando Skellam."""
+    p_home = 1 - skellam.cdf(0, mu_h, mu_a)
+    p_draw = skellam.pmf(0, mu_h, mu_a)
+    p_away = skellam.cdf(-1, mu_h, mu_a)
+    return float(p_home), float(p_draw), float(p_away)
+
+def mc_logloss_1x2(p, y):
+    """LogLoss multiclasses: y ∈ {0:Home,1:Draw,2:Away}; p = (pH,pD,pA)."""
+    eps = 1e-12
+    return -np.log(max(p[y], eps))
+
+# ===== 2) Hiperparâmetros de otimização =====
+alpha_grid = np.round(np.arange(0.0, 1.0 + 1e-9, 0.05), 2)  # 0.00, 0.05, ..., 1.00
+alpha_global_prior = st.sidebar.slider("α global (prior)", 0.0, 1.0, 0.50, 0.05)
+shrinkage_m = st.sidebar.slider("Força da suavização (m)", 50, 1000, 300, 50)
+min_samples_per_league = st.sidebar.slider("Mínimo de jogos/ligas para α próprio", 50, 1000, 200, 50)
+
+# ===== 3) Preparar base histórica limpa e target 1X2 =====
+hist = history.copy()
+hist = hist.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Odd_H", "Odd_D", "Odd_A", "League"])
+if hist.empty:
+    st.warning("Histórico insuficiente para otimizar α por liga.")
+    alpha_by_league = {}
+else:
+    # target 1X2
+    hist["Target_1X2"] = np.where(
+        hist["Goals_H_FT"] > hist["Goals_A_FT"], 0,
+        np.where(hist["Goals_H_FT"] < hist["Goals_A_FT"], 2, 1)
+    )
+
+    # ===== 4) Otimização por liga =====
+    per_league_rows = []
+    alpha_raw = {}   # melhor α puro por liga (sem shrink)
+    n_by_lg = {}
+
+    leagues = hist["League"].dropna().unique().tolist()
+    for lg in leagues:
+        df_lg = hist[hist["League"] == lg].copy()
+        df_lg = df_lg.dropna(subset=["Odd_H", "Odd_D", "Odd_A"])
+        if len(df_lg) < 5:
+            continue
+
+        # Avaliar grid de α
+        best_alpha, best_ll = None, np.inf
+        for a in alpha_grid:
+            ll_sum, n_ok = 0.0, 0
+            for _, r in df_lg.iterrows():
+                mu_pair = blend_xg(r, a)
+                if not np.isfinite(mu_pair[0]) or not np.isfinite(mu_pair[1]):
+                    continue
+                pH, pD, pA = skellam_probs_1x2(mu_pair[0], mu_pair[1])
+                y = int(r["Target_1X2"])
+                ll_sum += mc_logloss_1x2((pH, pD, pA), y)
+                n_ok += 1
+            if n_ok >= 20 and ll_sum / n_ok < best_ll:
+                best_ll = ll_sum / n_ok
+                best_alpha = float(a)
+
+        if best_alpha is not None:
+            alpha_raw[lg] = best_alpha
+            n_by_lg[lg] = len(df_lg)
+            per_league_rows.append({"League": lg, "N": len(df_lg), "Alpha_raw": best_alpha, "LogLoss": round(best_ll, 4)})
+
+    # ===== 5) Suavização Bayesiana (shrink para α global) =====
+    # alpha_shrunk = (n / (n + m)) * alpha_raw + (m / (n + m)) * alpha_global_prior
+    alpha_by_league = {}
+    for lg, a_raw in alpha_raw.items():
+        n = n_by_lg.get(lg, 0)
+        if n < min_samples_per_league:
+            w = n / (n + shrinkage_m)
+        else:
+            w = n / (n + shrinkage_m)  # ainda suaviza, só que pesa mais os dados
+        a_shr = float(w * a_raw + (1 - w) * alpha_global_prior)
+        alpha_by_league[lg] = round(a_shr, 3)
+
+    # Tabela de diagnóstico
+    if per_league_rows:
+        df_alpha = pd.DataFrame(per_league_rows).sort_values(["N"], ascending=False)
+        df_alpha["Alpha_shrunk"] = df_alpha["League"].map(alpha_by_league)
+        st.markdown("##### 📊 α por liga (raw vs shrunk)")
+        st.dataframe(df_alpha, use_container_width=True)
+
+# ===== 6) Persistir mapeamento (opcional)
+try:
+    path_alpha = os.path.join(MODELS_FOLDER, "alpha_by_league.json")
+    with open(path_alpha, "w", encoding="utf-8") as f:
+        json.dump({"alpha_global": alpha_global_prior,
+                   "alpha_by_league": alpha_by_league,
+                   "updated_at": datetime.now().isoformat()}, f, ensure_ascii=False, indent=2)
+    st.caption(f"α por liga salvo em {path_alpha}")
+except Exception as e:
+    st.warning(f"Não foi possível salvar alpha_by_league: {e}")
+
+# ===== 7) Aplicar α por liga para jogos de hoje e calcular XG2 =====
+def get_alpha_for_league(lg):
+    if isinstance(lg, str) and lg in alpha_by_league:
+        return alpha_by_league[lg]
+    return alpha_global_prior  # fallback
+
+def compute_xg2_row_today(row):
+    a = get_alpha_for_league(row.get("League", None))
+    mu_h, mu_a = blend_xg(row, a)
+    return mu_h, mu_a, a
+
+games_today["XG2_H"], games_today["XG2_A"], games_today["Alpha_League"] = zip(
+    *games_today.apply(compute_xg2_row_today, axis=1)
+)
+
+
+
+
+
 # ########################################################
 # Bloco 6 – Configurações ML (Sidebar) - ATUALIZADO
 # ########################################################
