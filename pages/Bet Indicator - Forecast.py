@@ -692,6 +692,143 @@ games_today["p_over25"], games_today["p_under25"] = probs_ou.T
 games_today["p_btts_yes"], games_today["p_btts_no"] = probs_btts.T
 
 
+
+########################################
+#### 🧮 Bloco 8.7 – Probabilidades via Skellam (1X2 + AH)
+########################################
+from scipy.stats import skellam
+import math
+
+st.markdown("### 🎯 Skellam Probabilities (1X2 + AH)")
+
+# ----------------------------
+# CONFIGURAÇÕES
+# ----------------------------
+handicap_line = st.sidebar.slider("Handicap Line (Home)", -2.5, 2.5, 0.0, 0.25)
+min_xg_clip, max_xg_clip = 0.05, 5.0
+
+# ----------------------------
+# FUNÇÕES AUXILIARES
+# ----------------------------
+def skellam_1x2(mu_h, mu_a):
+    """Probabilidades 1X2 via Skellam."""
+    mu_h = float(np.clip(mu_h, min_xg_clip, max_xg_clip))
+    mu_a = float(np.clip(mu_a, min_xg_clip, max_xg_clip))
+    p_home = 1 - skellam.cdf(0, mu_h, mu_a)
+    p_draw = skellam.pmf(0, mu_h, mu_a)
+    p_away = skellam.cdf(-1, mu_h, mu_a)
+    return p_home, p_draw, p_away
+
+def skellam_handicap(mu_h, mu_a, line):
+    """Probabilidade de vencer, push ou perder no AH (home line)."""
+    mu_h = float(np.clip(mu_h, min_xg_clip, max_xg_clip))
+    mu_a = float(np.clip(mu_a, min_xg_clip, max_xg_clip))
+    if line == 0:
+        win = 1 - skellam.cdf(0, mu_h, mu_a)
+        push = skellam.pmf(0, mu_h, mu_a)
+        lose = skellam.cdf(-1, mu_h, mu_a)
+    elif line < 0:
+        # Mandante favorito: precisa vencer por mais que |line|
+        win = 1 - skellam.cdf(abs(line), mu_h, mu_a)
+        push = skellam.pmf(abs(line), mu_h, mu_a)
+        lose = skellam.cdf(abs(line) - 1, mu_h, mu_a)
+    else:
+        # Mandante azarão (recebe gols de vantagem)
+        win = skellam.cdf(-abs(line) - 1, mu_h, mu_a)
+        push = skellam.pmf(-abs(line), mu_h, mu_a)
+        lose = 1 - skellam.cdf(-abs(line), mu_h, mu_a)
+    return win, push, lose
+
+def implied_prob(odd):
+    """Probabilidade implícita sem vig."""
+    if pd.isna(odd) or odd <= 1.0: return np.nan
+    return 1 / odd
+
+def expected_value(prob, odd):
+    """Valor esperado (EV) simples."""
+    if pd.isna(prob) or pd.isna(odd) or odd <= 1: return np.nan
+    return prob * (odd - 1) - (1 - prob)
+
+# ----------------------------
+# CÁLCULOS PARA JOGOS DE HOJE
+# ----------------------------
+games_today["Skellam_pH"], games_today["Skellam_pD"], games_today["Skellam_pA"] = zip(
+    *games_today.apply(
+        lambda r: skellam_1x2(r["XG2_H"], r["XG2_A"]) 
+        if pd.notna(r["XG2_H"]) and pd.notna(r["XG2_A"]) else (np.nan, np.nan, np.nan),
+        axis=1
+    )
+)
+
+# Handicap
+games_today["Skellam_AH_Win"], games_today["Skellam_AH_Push"], games_today["Skellam_AH_Lose"] = zip(
+    *games_today.apply(
+        lambda r: skellam_handicap(r["XG2_H"], r["XG2_A"], handicap_line)
+        if pd.notna(r["XG2_H"]) and pd.notna(r["XG2_A"]) else (np.nan, np.nan, np.nan),
+        axis=1
+    )
+)
+
+# Odds implícitas
+games_today["Impl_H"] = games_today["Odd_H"].apply(implied_prob)
+games_today["Impl_D"] = games_today["Odd_D"].apply(implied_prob)
+games_today["Impl_A"] = games_today["Odd_A"].apply(implied_prob)
+
+# EVs simples
+games_today["EV_H"] = games_today.apply(lambda r: expected_value(r["Skellam_pH"], r["Odd_H"]), axis=1)
+games_today["EV_A"] = games_today.apply(lambda r: expected_value(r["Skellam_pA"], r["Odd_A"]), axis=1)
+
+# Divergência entre ML e Skellam
+games_today["Δ_ML_H"] = games_today["p_home"] - games_today["Skellam_pH"]
+games_today["Δ_ML_D"] = games_today["p_draw"] - games_today["Skellam_pD"]
+games_today["Δ_ML_A"] = games_today["p_away"] - games_today["Skellam_pA"]
+
+# ----------------------------
+# EXIBIÇÃO VISUAL
+# ----------------------------
+cols = ["Date", "Time", "League", "Home", "Away",
+        "Odd_H", "Odd_D", "Odd_A",
+        "p_home", "p_draw", "p_away",
+        "Skellam_pH", "Skellam_pD", "Skellam_pA",
+        "Impl_H", "Impl_D", "Impl_A",
+        "EV_H", "EV_A",
+        "Δ_ML_H", "Δ_ML_D", "Δ_ML_A",
+        "Skellam_AH_Win", "Skellam_AH_Push", "Skellam_AH_Lose",
+        "XG2_H", "XG2_A", "Alpha_League"]
+
+def color_gradient(val, low_color, high_color):
+    if pd.isna(val): return ""
+    v = float(np.clip(val, 0, 1))
+    alpha = int(v * 255)
+    return f"background-color: rgba({high_color},{v:.2f})"
+
+def style_value_diff(val):
+    if pd.isna(val): return ""
+    if val > 0.05: return "background-color: rgba(0,200,0,0.2)"  # ML maior que Skellam
+    elif val < -0.05: return "background-color: rgba(255,0,0,0.2)"  # Skellam maior
+    return ""
+
+styled_skellam = (
+    games_today[cols]
+    .style.format({
+        "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
+        "p_home": "{:.1%}", "p_draw": "{:.1%}", "p_away": "{:.1%}",
+        "Skellam_pH": "{:.1%}", "Skellam_pD": "{:.1%}", "Skellam_pA": "{:.1%}",
+        "Impl_H": "{:.1%}", "Impl_D": "{:.1%}", "Impl_A": "{:.1%}",
+        "EV_H": "{:.2f}", "EV_A": "{:.2f}",
+        "Δ_ML_H": "{:+.1%}", "Δ_ML_D": "{:+.1%}", "Δ_ML_A": "{:+.1%}",
+        "Skellam_AH_Win": "{:.1%}", "Skellam_AH_Push": "{:.1%}", "Skellam_AH_Lose": "{:.1%}",
+        "XG2_H": "{:.2f}", "XG2_A": "{:.2f}", "Alpha_League": "{:.2f}"
+    }, na_rep="—")
+    .applymap(style_value_diff, subset=["Δ_ML_H","Δ_ML_D","Δ_ML_A"])
+)
+
+st.markdown(f"#### 📊 Skellam vs ML vs Odds (Handicap {handicap_line:+.2f})")
+st.dataframe(styled_skellam, use_container_width=True, height=1000)
+
+
+
+
 # ########################################################
 # Bloco 10 – Styling e Display (ATUALIZADO COM PLACAR)
 # ########################################################
