@@ -1199,3 +1199,101 @@ st.caption("xG ajustado: XG2_H_Hand = XG2_H ± |Handicap| (negativo subtrai, pos
 
 
 
+########################################
+#### BLOCO 8.8 – AH (Skellam via xG ajustado por Handicap) – Versão Away
+########################################
+from scipy.stats import skellam
+import math
+
+st.markdown("#### 🛫 Away – Probabilidades AH (Skellam via xG ajustado por Handicap)")
+
+def adjust_xg_for_handicap_away(xg_away: float, line_away: float):
+    """Aplica o handicap diretamente no xG do Away."""
+    if pd.isna(xg_away) or pd.isna(line_away):
+        return np.nan
+    if line_away < 0:  # Away é favorito (dá gols)
+        return xg_away - abs(line_away)
+    else:  # Away é zebra (recebe gols)
+        return xg_away + abs(line_away)
+
+def skellam_probs_away(mu_a, mu_h):
+    """Probabilidades para o Away vencer, empatar, perder (Skellam simétrico)."""
+    try:
+        mu_a = float(np.clip(mu_a, 0.01, 5.0))
+        mu_h = float(np.clip(mu_h, 0.01, 5.0))
+        p_win = 1 - skellam.cdf(0, mu_a, mu_h)
+        p_push = skellam.pmf(0, mu_a, mu_h)
+        p_lose = 1 - p_win - p_push
+        if np.isnan(p_win) or np.isnan(p_push) or np.isnan(p_lose):
+            return 0.0, 0.0, 0.0
+        return p_win, p_push, p_lose
+    except Exception:
+        return 0.0, 0.0, 0.0
+
+def fair_odds(p):
+    return (1/p) if (p and p > 0) else np.nan
+
+# Garante coluna da linha do AWAY
+if "Asian_Line_Away_Display" not in games_today.columns:
+    if "Asian_Line_Home_Display" in games_today.columns:
+        games_today["Asian_Line_Away_Display"] = -games_today["Asian_Line_Home_Display"]
+    else:
+        games_today["Asian_Line_Away_Display"] = np.nan
+
+rows = []
+for idx, r in games_today.iterrows():
+    try:
+        xa = float(r.get("XG2_A", np.nan))
+        xh = float(r.get("XG2_H", np.nan))
+        La = float(np.clip(r.get("Asian_Line_Away_Display", np.nan), -3, 3))
+    except Exception:
+        rows.append((np.nan, np.nan, np.nan, np.nan, np.nan, np.nan))
+        continue
+
+    if pd.isna(xa) or pd.isna(xh) or pd.isna(La):
+        rows.append((np.nan, np.nan, np.nan, np.nan, np.nan, np.nan))
+        continue
+
+    # ✅ Ajusta xG do Away e aplica limite mínimo de 0.01
+    xa_hand = adjust_xg_for_handicap_away(xa, La)
+    xa_hand = max(xa_hand, 0.01)
+
+    # Probabilidades via Skellam (agora Away como "mu1")
+    pW, pP, pL = skellam_probs_away(xa_hand, xh)
+
+    # Melhor lado
+    best_side = "BackAway" if pW > 0.5 else "BackHome"
+
+    rows.append((xa_hand, pW, pP, pL, fair_odds(pW), best_side))
+
+games_today[["XG2_A_Hand","p_AH_Away_Win_Sk","p_AH_Away_Push_Sk",
+             "p_AH_Away_Lose_Sk","p_AH_Away_Win_Sk_FairOdd","Best_Side_Away"]] = pd.DataFrame(rows, index=games_today.index)
+
+cols_away_sk = [
+    "Home","Away","Asian_Line_Away_Display",
+    "XG2_H","XG2_A","XG2_A_Hand",
+    "p_AH_Away_Win_Sk","p_AH_Away_Push_Sk","p_AH_Away_Lose_Sk",
+    "p_AH_Away_Win_Sk_FairOdd","Best_Side_Away"
+]
+cols_away_sk = [c for c in cols_away_sk if c in games_today.columns]
+
+fmt_sk = {
+    "Asian_Line_Away_Display": "{:+.2f}",
+    "XG2_H": "{:.2f}","XG2_A": "{:.2f}","XG2_A_Hand": "{:.2f}",
+    "p_AH_Away_Win_Sk": "{:.1%}","p_AH_Away_Push_Sk": "{:.1%}","p_AH_Away_Lose_Sk": "{:.1%}",
+    "p_AH_Away_Win_Sk_FairOdd": "{:.2f}"
+}
+
+st.dataframe(
+    games_today[cols_away_sk]
+    .style.format(fmt_sk)
+    .applymap(lambda v: "background-color: rgba(0,200,0,0.2);" if isinstance(v,str) and v=="BackAway" else
+                        ("background-color: rgba(255,100,100,0.2);" if isinstance(v,str) and v=="BackHome" else ""), subset=["Best_Side_Away"]),
+    use_container_width=True, height=520
+)
+
+st.caption("xG ajustado: XG2_A_Hand = XG2_A ± |Handicap| (negativo subtrai, positivo soma). Probabilidades calculadas via Skellam (Away>0, =0, <0). Linhas extremas são limitadas entre -3 e +3 para estabilidade numérica.")
+
+
+
+
