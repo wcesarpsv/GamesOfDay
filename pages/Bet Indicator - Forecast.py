@@ -377,6 +377,121 @@ games_today["XG2_H"], games_today["XG2_A"], games_today["Alpha_League"] = zip(
     *games_today.apply(compute_xg2_row_today, axis=1)
 )
 
+########################################
+#### Bloco 5.2 – α por Liga (Skellam Over/Under 2.5)
+########################################
+from scipy.stats import poisson
+
+st.markdown("#### ⚙️ Otimização de α por Liga (Over/Under 2.5)")
+
+def prob_over25(mu_h, mu_a):
+    """P(Over 2.5 gols) assumindo Poisson independentes."""
+    p_under = 0.0
+    for i in range(3):
+        for j in range(3 - i):
+            p_under += poisson.pmf(i, mu_h) * poisson.pmf(j, mu_a)
+    return 1 - p_under
+
+def bin_logloss(p, y):
+    eps = 1e-12
+    p = np.clip(p, eps, 1 - eps)
+    return - (y * np.log(p) + (1 - y) * np.log(1 - p))
+
+hist_ou = history.dropna(subset=["Goals_H_FT","Goals_A_FT","League","Odd_H","Odd_D","Odd_A"]).copy()
+hist_ou["Target_OU25"] = (hist_ou["Goals_H_FT"] + hist_ou["Goals_A_FT"] > 2.5).astype(int)
+
+alpha_grid = np.round(np.arange(0.0, 1.0 + 1e-9, 0.05), 2)
+alpha_by_league_ou = {}
+records = []
+
+for lg, df_lg in hist_ou.groupby("League"):
+    if len(df_lg) < 20:
+        continue
+    best_alpha, best_ll = None, np.inf
+    for a in alpha_grid:
+        ll_sum, n_ok = 0.0, 0
+        for _, r in df_lg.iterrows():
+            mu_h, mu_a = blend_xg(r, a)
+            if not (np.isfinite(mu_h) and np.isfinite(mu_a)):
+                continue
+            p_over = prob_over25(mu_h, mu_a)
+            ll_sum += bin_logloss(p_over, r["Target_OU25"])
+            n_ok += 1
+        if n_ok >= 20 and ll_sum / n_ok < best_ll:
+            best_alpha, best_ll = a, ll_sum / n_ok
+    if best_alpha is not None:
+        records.append({"League": lg, "Alpha_OU25": best_alpha, "LogLoss": round(best_ll, 4), "N": len(df_lg)})
+        alpha_by_league_ou[lg] = best_alpha
+
+if records:
+    df_ou = pd.DataFrame(records).sort_values("N", ascending=False)
+    st.dataframe(df_ou, use_container_width=True)
+
+def get_alpha_ou(lg):
+    return alpha_by_league_ou.get(lg, alpha_global_prior)
+
+def compute_xg2_ou(row):
+    a = get_alpha_ou(row.get("League"))
+    mu_h, mu_a = blend_xg(row, a)
+    return mu_h, mu_a, a
+
+games_today["XG2_H_OU"], games_today["XG2_A_OU"], games_today["Alpha_OU25"] = zip(
+    *games_today.apply(compute_xg2_ou, axis=1)
+)
+
+
+########################################
+#### Bloco 5.3 – α por Liga (Skellam BTTS)
+########################################
+st.markdown("#### ⚙️ Otimização de α por Liga (BTTS Yes/No)")
+
+def prob_btts_yes(mu_h, mu_a):
+    """P(Ambos marcam) assumindo Poisson independentes."""
+    p_no = poisson.pmf(0, mu_h) + poisson.pmf(0, mu_a) - poisson.pmf(0, mu_h)*poisson.pmf(0, mu_a)
+    return 1 - p_no
+
+hist_btts = history.dropna(subset=["Goals_H_FT","Goals_A_FT","League","Odd_H","Odd_D","Odd_A"]).copy()
+hist_btts["Target_BTTS"] = ((hist_btts["Goals_H_FT"] > 0) & (hist_btts["Goals_A_FT"] > 0)).astype(int)
+
+alpha_by_league_btts = {}
+records = []
+
+for lg, df_lg in hist_btts.groupby("League"):
+    if len(df_lg) < 20:
+        continue
+    best_alpha, best_ll = None, np.inf
+    for a in alpha_grid:
+        ll_sum, n_ok = 0.0, 0
+        for _, r in df_lg.iterrows():
+            mu_h, mu_a = blend_xg(r, a)
+            if not (np.isfinite(mu_h) and np.isfinite(mu_a)):
+                continue
+            p_yes = prob_btts_yes(mu_h, mu_a)
+            ll_sum += bin_logloss(p_yes, r["Target_BTTS"])
+            n_ok += 1
+        if n_ok >= 20 and ll_sum / n_ok < best_ll:
+            best_alpha, best_ll = a, ll_sum / n_ok
+    if best_alpha is not None:
+        records.append({"League": lg, "Alpha_BTTS": best_alpha, "LogLoss": round(best_ll, 4), "N": len(df_lg)})
+        alpha_by_league_btts[lg] = best_alpha
+
+if records:
+    df_btts = pd.DataFrame(records).sort_values("N", ascending=False)
+    st.dataframe(df_btts, use_container_width=True)
+
+def get_alpha_btts(lg):
+    return alpha_by_league_btts.get(lg, alpha_global_prior)
+
+def compute_xg2_btts(row):
+    a = get_alpha_btts(row.get("League"))
+    mu_h, mu_a = blend_xg(row, a)
+    return mu_h, mu_a, a
+
+games_today["XG2_H_BTTS"], games_today["XG2_A_BTTS"], games_today["Alpha_BTTS"] = zip(
+    *games_today.apply(compute_xg2_btts, axis=1)
+)
+
+
 
 
 
