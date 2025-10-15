@@ -1275,7 +1275,7 @@ cols_away_sk = [
     "Asian_Line_Away_Display",
     "XG2_H","XG2_A","XG2_A_Hand",
     "p_AH_Away_Win_Sk","p_AH_Away_Push_Sk","p_AH_Away_Lose_Sk",
-    "p_AH_Away_Win_Sk_FairOdd","Best_Side_Away"
+    "Best_Side_Away"
 ]
 cols_away_sk = [c for c in cols_away_sk if c in games_today.columns]
 
