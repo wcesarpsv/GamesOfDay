@@ -1270,7 +1270,9 @@ games_today[["XG2_A_Hand","p_AH_Away_Win_Sk","p_AH_Away_Push_Sk",
              "p_AH_Away_Lose_Sk","p_AH_Away_Win_Sk_FairOdd","Best_Side_Away"]] = pd.DataFrame(rows, index=games_today.index)
 
 cols_away_sk = [
-    "Home","Away","Asian_Line_Away_Display",
+    "Home","Away",
+    "Goals_H_Today","Goals_A_Today",
+    "Asian_Line_Away_Display",
     "XG2_H","XG2_A","XG2_A_Hand",
     "p_AH_Away_Win_Sk","p_AH_Away_Push_Sk","p_AH_Away_Lose_Sk",
     "p_AH_Away_Win_Sk_FairOdd","Best_Side_Away"
@@ -1279,6 +1281,7 @@ cols_away_sk = [c for c in cols_away_sk if c in games_today.columns]
 
 fmt_sk = {
     "Asian_Line_Away_Display": "{:+.2f}",
+    "Goals_H_Today": "{:.0f}","Goals_A_Today": "{:.0f}",
     "XG2_H": "{:.2f}","XG2_A": "{:.2f}","XG2_A_Hand": "{:.2f}",
     "p_AH_Away_Win_Sk": "{:.1%}","p_AH_Away_Push_Sk": "{:.1%}","p_AH_Away_Lose_Sk": "{:.1%}",
     "p_AH_Away_Win_Sk_FairOdd": "{:.2f}"
