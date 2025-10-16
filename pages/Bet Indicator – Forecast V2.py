@@ -224,6 +224,37 @@ def convert_asian_line(line_str):
     except:
         return np.nan
 
+def odds_to_mu(odd_home, odd_draw, odd_away):
+    if pd.isna(odd_home) or pd.isna(odd_draw) or pd.isna(odd_away):
+        return np.nan, np.nan
+    inv = (1/odd_home + 1/odd_draw + 1/odd_away)
+    p_home = (1/odd_home) / inv
+    p_away = (1/odd_away) / inv
+    mu_h = 0.4 + 2.4 * p_home
+    mu_a = 0.4 + 2.4 * p_away
+    return mu_h, mu_a
+
+def xg_from_momentum(row):
+    base = 1.3
+    denom = abs(row.get("M_H", 0.0)) + abs(row.get("M_A", 0.0)) + 1e-6
+    mu_h = base + 0.8 * (row.get("M_H", 0.0)/denom) + 0.4 * (row.get("Diff_Power", 0.0)/100)
+    mu_a = base + 0.8 * (row.get("M_A", 0.0)/denom) - 0.4 * (row.get("Diff_Power", 0.0)/100)
+    return max(mu_h, 0.05), max(mu_a, 0.05)
+
+def compute_xg2_all(row):
+    def blend(alpha):
+        mu_odd_h, mu_odd_a = odds_to_mu(row["Odd_H"], row["Odd_D"], row["Odd_A"])
+        mu_perf_h, mu_perf_a = xg_from_momentum(row)
+        mu_h = alpha * mu_odd_h + (1 - alpha) * mu_perf_h
+        mu_a = alpha * mu_odd_a + (1 - alpha) * mu_perf_a
+        return float(np.clip(mu_h, 0.05, 5.0)), float(np.clip(mu_a, 0.05, 5.0))
+    a1 = 0.5  # ou melhor: recuperar alpha_by_league se já tiver cacheado
+    mu1_h, mu1_a = blend(a1)
+    return mu1_h, mu1_a
+
+games_today[["XG2_H", "XG2_A"]] = games_today.apply(compute_xg2_all, axis=1, result_type="expand")
+
+
 def skellam_handicap(mu_h, mu_a, line):
     try:
         mu_h = float(np.clip(mu_h, 0.05, 5.0))
