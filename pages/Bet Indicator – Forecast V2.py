@@ -711,7 +711,7 @@ with tab2:
     # ------------------------------------------------------
     df_skellam = games_today[
         [
-            "League", "Home", "Away", "Asian_Line", "Asian_Home",
+            "League", "Home", "Away", "Asian_Home",
             "XG2_H", "XG2_A", "Alpha_League",
             "Skellam_pH", "Skellam_pD", "Skellam_pA",
             "Skellam_AH_Win", "Skellam_AH_Push", "Skellam_AH_Lose",
