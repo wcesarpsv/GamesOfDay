@@ -198,8 +198,11 @@ def train_and_evaluate(X, y, name, num_classes):
 # Bloco 8 – Treinar Modelo + Previsões ML
 ########################################################
 features = ["Odd_H", "Odd_D", "Odd_A", "Diff_Power", "M_H", "M_A", "M_Diff", "Diff_HT_P"]
-X_1x2 = history[features].dropna()
-y_1x2 = history["Target"]
+# Remover NaNs de forma sincronizada entre features e target
+data_train = history.dropna(subset=features + ["Target"]).copy()
+X_1x2 = data_train[features]
+y_1x2 = data_train["Target"]
+
 
 res, model_multi = train_and_evaluate(X_1x2, y_1x2, "1X2", 3)
 games_today = games_today.dropna(subset=features)
