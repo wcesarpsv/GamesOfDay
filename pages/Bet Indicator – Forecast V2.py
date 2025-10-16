@@ -522,7 +522,7 @@ else:
 # =========================================================
 # TAB 2 – Skellam Model (1X2 + AH) – versão calibrada
 # =========================================================
-with tab2:
+tab1, tab2 = st.tabs(["📊 Forecast V2 (ML)", "🎲 Skellam Model (1X2 + AH)"])
     st.markdown("### 🎲 Skellam Model (1X2 + AH) – α por Liga (calibrado)")
 
     # ------------------------------------------------------
