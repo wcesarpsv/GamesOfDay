@@ -641,13 +641,22 @@ with tab2:
             "Impl_H": "{:.1%}", "Impl_A": "{:.1%}",
             "EV_H_Skellam": "{:+.1%}", "EV_A_Skellam": "{:+.1%}",
         })
-        .apply(apply_row_style, axis=1, subset=["Skellam_pH", "Skellam_pD", "Skellam_pA"])
+        # ✅ Corrigido: passa Max_Outcome junto à linha do subset
+        .apply(
+            lambda row: apply_row_style(
+                row.assign(Max_Outcome=df_skellam.loc[row.name, "Max_Outcome"])
+            ),
+            axis=1,
+            subset=["Skellam_pH", "Skellam_pD", "Skellam_pA"]
+        )
         .applymap(
             lambda v: "background-color: rgba(0,200,0,0.25)" if pd.notna(v) and v > 0
             else "background-color: rgba(255,0,0,0.1)",
             subset=["EV_H_Skellam", "EV_A_Skellam"]
         )
     )
+
+                                
     
     st.dataframe(styled_sk, use_container_width=True, height=700)
 
