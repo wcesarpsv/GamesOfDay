@@ -581,6 +581,18 @@ with tab2:
     games_today["EV_H_Skellam"] = games_today["Skellam_pH"] - games_today["Impl_H"]
     games_today["EV_A_Skellam"] = games_today["Skellam_pA"] - games_today["Impl_A"]
 
+    df_skellam = games_today[[
+        "League", "Home", "Away",
+        "Asian_Line", "Asian_Home",
+        "XG2_H", "XG2_A",
+        "Skellam_pH", "Skellam_pD", "Skellam_pA",
+        "Skellam_AH_Win", "Skellam_AH_Push", "Skellam_AH_Lose",
+        "Odd_H", "Odd_A",
+        "Impl_H", "Impl_A",
+        "EV_H_Skellam", "EV_A_Skellam"
+    ]].copy()
+
+
     # ------------------------------------------------------
     # 6️⃣ Exibir tabela Skellam com o mesmo degradê do V2
     # ------------------------------------------------------
