@@ -307,6 +307,19 @@ games_today[["XG2_H","XG2_A","Alpha_League"]] = games_today.apply(compute_xg2_al
 # -------------------------
 # Bloco 7 – Treino & Avaliação (ML)
 # -------------------------
+
+
+# sidebar settings de modelos (inclui Retrain models)
+st.sidebar.header("⚙️ Settings")
+ml_model_choice = st.sidebar.selectbox(
+    "Choose ML Model",
+    ["Random Forest", "Random Forest Tuned", "XGBoost Tuned"]
+)
+use_smote = st.sidebar.checkbox("Use SMOTE for balancing", value=True)
+retrain = st.sidebar.checkbox("Retrain models", value=False)
+
+
+
 def train_and_evaluate(X, y, name, num_classes):
     filename = f"{ml_model_choice.replace(' ', '')}_{name}_fc.pkl"
     model = None
