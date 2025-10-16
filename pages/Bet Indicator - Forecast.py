@@ -203,8 +203,10 @@ history = compute_double_chance_odds(history)
 games_today = compute_double_chance_odds(games_today)
 
 
-features_1x2 = [ "Odd_H", "Odd_D", "Odd_A","Odd_1X,"Odd_X2","Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "M_HT_H", "M_HT_A",
+features_1x2 = [ "Odd_H", "Odd_D", "Odd_A","Odd_1X","Odd_X2","Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "M_HT_H", "M_HT_A",
                 "Diff_Abs", "PesoMomentum_H", "PesoMomentum_A", "CustoMomentum_H", "CustoMomentum_A"]
+
+                
 features_ou_btts = ["Odd_H", "Odd_D", "Odd_A", "Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "OU_Total",
                    "Diff_Abs", "PesoMomentum_H", "PesoMomentum_A", "CustoMomentum_H", "CustoMomentum_A",
                    "OverScore_Home", "OverScore_Away"]
