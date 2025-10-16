@@ -204,11 +204,10 @@ X_today_ou = pd.concat([games_today[features_ou_btts], games_today_leagues], axi
 X_today_btts = pd.concat([games_today[features_ou_btts], games_today_leagues], axis=1)
 
 # ------------------------------------------------------
-# Bloco 5.x – α por Liga (Otimizado + Cache) – SILENCIOSO
+# Bloco 5.x – α por Liga (Otimizado + Cache)
 # ------------------------------------------------------
 st.markdown("#### ⚙️ Calibrating α by League (auto-optimized, cached)")
 
-# sliders do α (na sidebar)
 alpha_global_prior = st.sidebar.slider("α global (prior)", 0.0, 1.0, 0.50, 0.05)
 shrinkage_m = st.sidebar.slider("Força da suavização (m)", 50, 1000, 300, 50)
 min_samples_per_league = st.sidebar.slider("Mínimo de jogos/ligas para α próprio", 50, 1000, 200, 50)
@@ -235,36 +234,19 @@ def compute_alpha_by_league_all(history_df, alpha_global_prior, shrinkage_m, min
     def blend_xg(row, alpha):
         mu_odd_h, mu_odd_a = odds_to_mu(row["Odd_H"], row["Odd_D"], row["Odd_A"])
         mu_perf_h, mu_perf_a = xg_from_momentum(row)
-        if not (np.isfinite(mu_odd_h) and np.isfinite(mu_odd_a) and np.isfinite(mu_perf_h) and np.isfinite(mu_perf_a)):
+        if not (np.isfinite(mu_odd_h) and np.isfinite(mu_odd_a)):
             return np.nan, np.nan
         mu_h = alpha * mu_odd_h + (1 - alpha) * mu_perf_h
         mu_a = alpha * mu_odd_a + (1 - alpha) * mu_perf_a
         return float(np.clip(mu_h, 0.05, 5.0)), float(np.clip(mu_a, 0.05, 5.0))
 
-    def mc_logloss_1x2(p, y):
-        eps = 1e-12
-        return -np.log(max(p[y], eps))
-
-    def bin_logloss(p, y):
-        eps = 1e-12
-        p = np.clip(p, eps, 1 - eps)
-        return - (y * np.log(p) + (1 - y) * np.log(1 - p))
-
-    def prob_over25(mu_h, mu_a):
-        p_under = 0.0
-        for i in range(3):
-            for j in range(3 - i):
-                p_under += poisson.pmf(i, mu_h) * poisson.pmf(j, mu_a)
-        return 1 - p_under
-
     alpha_grid = np.round(np.arange(0.0, 1.0 + 1e-9, 0.1), 2)
-
-    # 1X2
     hist = history_df.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Odd_H", "Odd_D", "Odd_A", "League"]).copy()
     hist["Target_1X2"] = np.where(
         hist["Goals_H_FT"] > hist["Goals_A_FT"], 0,
         np.where(hist["Goals_H_FT"] < hist["Goals_A_FT"], 2, 1)
     )
+
     alpha_raw, n_by_lg = {}, {}
     for lg, df_lg in hist.groupby("League"):
         if len(df_lg) < 20:
@@ -280,96 +262,29 @@ def compute_alpha_by_league_all(history_df, alpha_global_prior, shrinkage_m, min
                 pD = skellam.pmf(0, mu_h, mu_a)
                 pA = skellam.cdf(-1, mu_h, mu_a)
                 y = int(r["Target_1X2"])
-                ll_sum += mc_logloss_1x2((pH, pD, pA), y)
+                ll_sum += -np.log(max([pH, pD, pA][y], 1e-12))
                 n_ok += 1
             if n_ok >= 20 and ll_sum / n_ok < best_ll:
-                best_ll = ll_sum / n_ok
-                best_alpha = a
+                best_ll, best_alpha = ll_sum / n_ok, a
         if best_alpha is not None:
             alpha_raw[lg] = best_alpha
             n_by_lg[lg] = len(df_lg)
+
     alpha_by_league = {
         lg: round((n_by_lg[lg]/(n_by_lg[lg]+shrinkage_m))*alpha_raw[lg] + (shrinkage_m/(n_by_lg[lg]+shrinkage_m))*alpha_global_prior, 3)
         for lg in alpha_raw
     }
+    return alpha_by_league
 
-    # OU 2.5
-    hist_ou = hist.copy()
-    hist_ou["Target_OU25"] = (hist_ou["Goals_H_FT"] + hist_ou["Goals_A_FT"] > 2.5).astype(int)
-    alpha_by_league_ou = {}
-    for lg, df_lg in hist_ou.groupby("League"):
-        if len(df_lg) < 20:
-            continue
-        best_alpha, best_ll = None, np.inf
-        for a in alpha_grid:
-            ll_sum, n_ok = 0.0, 0
-            for _, r in df_lg.iterrows():
-                mu_h, mu_a = blend_xg(r, a)
-                if not np.isfinite(mu_h) or not np.isfinite(mu_a):
-                    continue
-                p_over = prob_over25(mu_h, mu_a)
-                ll_sum += bin_logloss(p_over, r["Target_OU25"])
-                n_ok += 1
-            if n_ok >= 20 and ll_sum / n_ok < best_ll:
-                best_alpha, best_ll = a, ll_sum / n_ok
-        if best_alpha is not None:
-            alpha_by_league_ou[lg] = best_alpha
-
-    # BTTS
-    hist_btts = hist.copy()
-    hist_btts["Target_BTTS"] = ((hist_btts["Goals_H_FT"] > 0) & (hist_btts["Goals_A_FT"] > 0)).astype(int)
-    alpha_by_league_btts = {}
-    for lg, df_lg in hist_btts.groupby("League"):
-        if len(df_lg) < 20:
-            continue
-        best_alpha, best_ll = None, np.inf
-        for a in alpha_grid:
-            ll_sum, n_ok = 0.0, 0
-            for _, r in df_lg.iterrows():
-                mu_h, mu_a = blend_xg(r, a)
-                if not np.isfinite(mu_h) or not np.isfinite(mu_a):
-                    continue
-                p_yes = 1 - (poisson.pmf(0, mu_h) + poisson.pmf(0, mu_a) - poisson.pmf(0, mu_h)*poisson.pmf(0, mu_a))
-                ll_sum += bin_logloss(p_yes, r["Target_BTTS"])
-                n_ok += 1
-            if n_ok >= 20 and ll_sum / n_ok < best_ll:
-                best_alpha, best_ll = a, ll_sum / n_ok
-        if best_alpha is not None:
-            alpha_by_league_btts[lg] = best_alpha
-
-    return alpha_by_league, alpha_by_league_ou, alpha_by_league_btts
-
-# sidebar settings de modelos (inclui Retrain models)
-st.sidebar.header("⚙️ Settings")
-ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest", "Random Forest Tuned", "XGBoost Tuned"])
-use_smote = st.sidebar.checkbox("Use SMOTE for balancing", value=True)
-retrain = st.sidebar.checkbox("Retrain models", value=False)
-
-# cache em disco (json) + cache do streamlit
-import json
 path_alpha = os.path.join(MODELS_FOLDER, "alpha_by_league.json")
-alpha_by_league, alpha_by_league_ou, alpha_by_league_btts = {}, {}, {}
-
-if os.path.exists(path_alpha) and not retrain:
+if os.path.exists(path_alpha):
     with open(path_alpha, "r", encoding="utf-8") as f:
         data = json.load(f)
     alpha_by_league = data.get("alpha_by_league", {})
-    alpha_by_league_ou = data.get("alpha_by_league_ou", {})
-    alpha_by_league_btts = data.get("alpha_by_league_btts", {})
-    st.caption(f"✅ α loaded from cache ({len(alpha_by_league)} leagues)")
 else:
-    alpha_by_league, alpha_by_league_ou, alpha_by_league_btts = compute_alpha_by_league_all(
-        history, alpha_global_prior, shrinkage_m, min_samples_per_league
-    )
+    alpha_by_league = compute_alpha_by_league_all(history, alpha_global_prior, shrinkage_m, min_samples_per_league)
     with open(path_alpha, "w", encoding="utf-8") as f:
-        json.dump({
-            "alpha_global": alpha_global_prior,
-            "alpha_by_league": alpha_by_league,
-            "alpha_by_league_ou": alpha_by_league_ou,
-            "alpha_by_league_btts": alpha_by_league_btts,
-            "updated_at": datetime.now().isoformat()
-        }, f, ensure_ascii=False, indent=2)
-    st.caption(f"💾 α computed & saved for {len(alpha_by_league)} leagues")
+        json.dump({"alpha_by_league": alpha_by_league}, f, ensure_ascii=False, indent=2)
 
 def get_alpha(lg, mapping, default):
     return mapping.get(lg, default)
@@ -382,18 +297,11 @@ def compute_xg2_all(row):
         mu_a = alpha * mu_odd_a + (1 - alpha) * mu_perf_a
         return float(np.clip(mu_h, 0.05, 5.0)), float(np.clip(mu_a, 0.05, 5.0))
     a1 = get_alpha(row.get("League"), alpha_by_league, alpha_global_prior)
-    a2 = get_alpha(row.get("League"), alpha_by_league_ou, alpha_global_prior)
-    a3 = get_alpha(row.get("League"), alpha_by_league_btts, alpha_global_prior)
     mu1_h, mu1_a = blend(a1)
-    mu2_h, mu2_a = blend(a2)
-    mu3_h, mu3_a = blend(a3)
-    return mu1_h, mu1_a, a1, mu2_h, mu2_a, a2, mu3_h, mu3_a, a3
+    return mu1_h, mu1_a, a1
 
-games_today[
-    ["XG2_H","XG2_A","Alpha_League",
-     "XG2_H_OU","XG2_A_OU","Alpha_OU25",
-     "XG2_H_BTTS","XG2_A_BTTS","Alpha_BTTS"]
-] = games_today.apply(compute_xg2_all, axis=1, result_type="expand")
+games_today[["XG2_H","XG2_A","Alpha_League"]] = games_today.apply(compute_xg2_all, axis=1, result_type="expand")
+
 
 # -------------------------
 # Bloco 7 – Treino & Avaliação (ML)
@@ -793,149 +701,81 @@ with tab1:
 #### 🎲 TAB 2 – SKELLAM MODEL (1X2 + AH)
 ########################################
 with tab2:
+    st.markdown("### 🎲 Skellam Model (1X2 + AH)")
 
-    st.markdown("### 🎲 Skellam Model (1X2 + AH) – Auto Mode")
+    # Cálculo padrão Skellam
+    def skellam_1x2(mu_h, mu_a):
+        mu_h = float(np.clip(mu_h, 0.05, 5.0))
+        mu_a = float(np.clip(mu_a, 0.05, 5.0))
+        p_home = 1 - skellam.cdf(0, mu_h, mu_a)
+        p_draw = skellam.pmf(0, mu_h, mu_a)
+        p_away = skellam.cdf(-1, mu_h, mu_a)
+        return p_home, p_draw, p_away
 
-    # =====================================================
-    # 1️⃣ Converter linha asiática (AWAY → HOME)
-    # =====================================================
-    def convert_asian_line(line_str):
-        """Converte string tipo '-0.25/0' para média float."""
-        try:
-            if pd.isna(line_str) or line_str == "":
-                return None
-            line_str = str(line_str).strip()
-            if "/" not in line_str:
-                val = float(line_str)
-                return 0.0 if abs(val) < 1e-10 else val
-            parts = [float(x) for x in line_str.split("/")]
-            avg = sum(parts) / len(parts)
-            return 0.0 if abs(avg) < 1e-10 else avg
-        except:
-            return None
-
-    def fix_zero_display(line):
-        """Corrige zeros residuais."""
-        if pd.isna(line):
-            return line
-        return 0.0 if abs(line) < 1e-10 else line
-
-    # Cria colunas da linha asiática HOME
-    games_today["Asian_Line_Away_Display"] = games_today["Asian_Line"].apply(convert_asian_line)
-    games_today["Home_Asian"] = games_today["Asian_Line_Away_Display"].apply(
-        lambda x: -fix_zero_display(x) if pd.notna(x) else x
-    )
-
-    # =====================================================
-    # 2️⃣ Cálculo Skellam AH Automático
-    # =====================================================
-    from scipy.stats import skellam
-
-    def calc_skellam_ah(mu_h, mu_a, line):
-        """Calcula P(win/push/lose) do Home, via Skellam."""
-        try:
-            if pd.isna(mu_h) or pd.isna(mu_a) or pd.isna(line):
-                return np.nan, np.nan, np.nan
-
-            mu_h = float(np.clip(mu_h, 0.01, 5.0))
-            mu_a = float(np.clip(mu_a, 0.01, 5.0))
-
-            # linha dupla (+0.25, -0.75 etc.)
-            if abs(line * 4) % 2 == 1:
-                # exemplo: +0.25 → [0.0, +0.5], -0.75 → [-0.5, -1.0]
-                if line > 0:
-                    lines = [line - 0.25, line + 0.25]
-                else:
-                    lines = [line + 0.25, line - 0.25]
-                p_win = np.mean([1 - skellam.cdf(L, mu_h, mu_a) for L in lines])
-                p_push = np.mean([skellam.pmf(L, mu_h, mu_a) for L in lines])
-                p_lose = 1 - (p_win + p_push)
+    def skellam_handicap(mu_h, mu_a, line):
+        mu_h = float(np.clip(mu_h, 0.05, 5.0))
+        mu_a = float(np.clip(mu_a, 0.05, 5.0))
+        if abs(line - round(line)) < 1e-9:  # push possível
+            k = int(round(line))
+            win = 1 - skellam.cdf(k, mu_h, mu_a)
+            push = skellam.pmf(k, mu_h, mu_a)
+            lose = skellam.cdf(k-1, mu_h, mu_a)
+        else:  # linhas fracionárias
+            if line > 0:
+                win = 1 - skellam.cdf(-1, mu_h, mu_a)
+                push = 0.0
+                lose = skellam.cdf(-1, mu_h, mu_a)
             else:
-                # linha inteira (0, ±0.5, ±1 etc.)
-                p_win = 1 - skellam.cdf(line, mu_h, mu_a)
-                p_push = skellam.pmf(line, mu_h, mu_a)
-                p_lose = 1 - (p_win + p_push)
+                win = 1 - skellam.cdf(0, mu_h, mu_a)
+                push = 0.0
+                lose = skellam.cdf(0, mu_h, mu_a)
+        return win, push, lose
 
-            return float(p_win), float(p_push), float(p_lose)
-        except Exception:
-            return np.nan, np.nan, np.nan
-
-    # Aplicar no games_today
-    games_today["Skellam_AH_Win"], games_today["Skellam_AH_Push"], games_today["Skellam_AH_Lose"] = zip(
-        *games_today.apply(lambda r: calc_skellam_ah(r["XG2_H"], r["XG2_A"], r["Home_Asian"]), axis=1)
-    )
-
-    # =====================================================
-    # 3️⃣ Exibição das probabilidades Skellam (1X2 + AH)
-    # =====================================================
-    st.markdown("#### 📊 Skellam Probabilities (1X2 + AH) – Auto")
-
-    cols_skellam = [
-        "Time", "Home", "Away",
-        "Home_Asian", "XG2_H", "XG2_A",
-        "p_home", "p_draw", "p_away",
-        "Skellam_AH_Win", "Skellam_AH_Push", "Skellam_AH_Lose"
-    ]
-
-    def color_prob(val, color):
-        try:
-            if pd.isna(val) or not isinstance(val, (int, float)):
-                return ""
-            alpha = max(0, min(255, int(float(val) * 255)))
-            return f"background-color: rgba({color}, {alpha/255:.2f})"
-        except Exception:
-            return ""
-
-
-    def style_probs(val, col):
-        if col in ["p_home", "Skellam_AH_Win"]: return color_prob(val, "0,200,0")
-        elif col in ["p_draw", "Skellam_AH_Push"]: return color_prob(val, "150,150,150")
-        elif col in ["p_away", "Skellam_AH_Lose"]: return color_prob(val, "255,140,0")
-        return ""
-
-    styled_skellam = (
-        games_today[cols_skellam]
-        .style.format({
-            "Home_Asian": "{:+.2f}",
-            "XG2_H": "{:.2f}", "XG2_A": "{:.2f}",
-            "p_home": "{:.1%}", "p_draw": "{:.1%}", "p_away": "{:.1%}",
-            "Skellam_AH_Win": "{:.1%}", "Skellam_AH_Push": "{:.1%}", "Skellam_AH_Lose": "{:.1%}",
-        }, na_rep="—")
-        .applymap(lambda v: style_probs(v, "p_home"), subset=["p_home"])
-        .applymap(lambda v: style_probs(v, "p_draw"), subset=["p_draw"])
-        .applymap(lambda v: style_probs(v, "p_away"), subset=["p_away"])
-        .applymap(lambda v: style_probs(v, "Skellam_AH_Win"), subset=["Skellam_AH_Win"])
-        .applymap(lambda v: style_probs(v, "Skellam_AH_Push"), subset=["Skellam_AH_Push"])
-        .applymap(lambda v: style_probs(v, "Skellam_AH_Lose"), subset=["Skellam_AH_Lose"])
-    )
-
-    st.dataframe(styled_skellam, use_container_width=True, height=900)
-
-    # =====================================================
-    # 4️⃣ EV Teórico (Skellam) vs Odds
-    # =====================================================
-    st.markdown("#### 💰 EV teórico (Skellam) vs Odds")
-
-    if all(col in games_today.columns for col in ["Odd_H", "Odd_D", "Odd_A"]):
-        games_today["Impl_H"] = 1 / games_today["Odd_H"]
-        games_today["Impl_D"] = 1 / games_today["Odd_D"]
-        games_today["Impl_A"] = 1 / games_today["Odd_A"]
-
-        games_today["EV_H"] = games_today["Skellam_AH_Win"] - games_today["Impl_H"]
-        games_today["EV_A"] = games_today["Skellam_AH_Lose"] - games_today["Impl_A"]
-
-        ev_cols = ["Time", "Home", "Away", "Home_Asian", "Odd_H", "Odd_D", "Odd_A", "EV_H", "EV_A"]
-        st.dataframe(
-            games_today[ev_cols].style.format({
-                "Home_Asian": "{:+.2f}",
-                "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
-                "EV_H": "{:+.1%}", "EV_A": "{:+.1%}"
-            })
-            .background_gradient(subset=["EV_H"], cmap="Greens")
-            .background_gradient(subset=["EV_A"], cmap="Oranges"),
-            use_container_width=True,
-            height=400,
+    # Aplicar o cálculo 1X2
+    games_today["Skellam_pH"], games_today["Skellam_pD"], games_today["Skellam_pA"] = zip(
+        *games_today.apply(
+            lambda r: skellam_1x2(r["XG2_H"], r["XG2_A"]) if pd.notna(r["XG2_H"]) else (np.nan, np.nan, np.nan),
+            axis=1
         )
+    )
+
+    # Slider para handicap dinâmico (Home)
+    line_home = st.slider("Asian Handicap (Home)", -2.0, 2.0, 0.0, 0.25)
+
+    # Aplicar cálculo de Handicap Skellam
+    games_today["Skellam_AH_Win"], games_today["Skellam_AH_Push"], games_today["Skellam_AH_Lose"] = zip(
+        *games_today.apply(
+            lambda r: skellam_handicap(r["XG2_H"], r["XG2_A"], line_home),
+            axis=1
+        )
+    )
+
+    # EV teórico igual ao Modelo
+    games_today["Impl_H"] = 1 / games_today["Odd_H"]
+    games_today["Impl_D"] = 1 / games_today["Odd_D"]
+    games_today["Impl_A"] = 1 / games_today["Odd_A"]
+    games_today["EV_H_Skellam"] = games_today["Skellam_pH"] - games_today["Impl_H"]
+    games_today["EV_A_Skellam"] = games_today["Skellam_pA"] - games_today["Impl_A"]
+
+    # Exibição
+    st.markdown("#### 💰 EV Teórico (Skellam) vs Odds")
+    ev_cols = [
+        "Time", "Home", "Away", "Home_Asian",
+        "Odd_H", "Odd_D", "Odd_A",
+        "EV_H_Skellam", "EV_A_Skellam"
+    ]
+    st.dataframe(
+        games_today[ev_cols].style.format({
+            "Home_Asian": "{:+.2f}",
+            "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
+            "EV_H_Skellam": "{:+.1%}", "EV_A_Skellam": "{:+.1%}"
+        })
+        .background_gradient(subset=["EV_H_Skellam"], cmap="Greens")
+        .background_gradient(subset=["EV_A_Skellam"], cmap="Oranges"),
+        use_container_width=True,
+        height=400,
+    )
+
 
     # =====================================================
     # 5️⃣ Download (opcional)
