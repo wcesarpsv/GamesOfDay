@@ -598,8 +598,11 @@ with tab2:
     ]].copy()
     
     def color_prob(val, color):
-        alpha = int(val * 255)
+        if pd.isna(val):
+            return ""
+        alpha = int(max(0, min(255, val * 255)))  # evita NaN e valores fora do range
         return f"background-color: rgba({color}, {alpha/255:.2f})"
+
     
     def style_skellam(val, col):
         if col == "Skellam_pH": return color_prob(val, "0,200,0")       # verde
