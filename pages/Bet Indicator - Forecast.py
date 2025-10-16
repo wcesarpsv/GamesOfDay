@@ -1,6 +1,8 @@
 # =========================================================
-# Bet Indicator – Triple View (1X2 + OU + BTTS)
-# Versão final otimizada (α com cache) + layout enxuto
+# Bet Indicator – Dual View (ML + Skellam)
+#  - Aba 1: ML Predictions + EV + Hybrid + Divergence
+#  - Aba 2: Skellam Model (1X2 + AH) + EV (teórico) + CSV
+#  - α por liga (1X2/OU/BTTS) com cache; reotimiza só com "Retrain models"
 # =========================================================
 
 # -------------------------
@@ -29,8 +31,8 @@ from scipy.stats import skellam, poisson
 import plotly.graph_objects as go
 
 # UI
-st.set_page_config(page_title="Bet Indicator – Triple View", layout="wide")
-st.title("📊 Bet Indicator – Triple View (1X2 + OU + BTTS)")
+st.set_page_config(page_title="Bet Indicator – Dual View", layout="wide")
+st.title("📊 Bet Indicator – Dual View (ML + Skellam)")
 
 # -------------------------
 # Paths e Constantes
@@ -91,7 +93,6 @@ def load_selected_csvs(folder):
         games_today['Goals_A_Today'] = np.nan
 
     if os.path.exists(livescore_file):
-        st.info(f"LiveScore file found: {livescore_file}")
         results_df = pd.read_csv(livescore_file)
         results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
         required_cols = [
@@ -118,7 +119,7 @@ def load_selected_csvs(folder):
             games_today['Home_Red'] = games_today['home_red']
             games_today['Away_Red'] = games_today['away_red']
     else:
-        st.warning(f"No LiveScore results file found for selected date: {selected_date_str}")
+        st.info(f"No LiveScore results file found for selected date: {selected_date_str}")
 
     if 'Goals_H_FT' in games_today.columns:
         games_today = games_today[games_today['Goals_H_FT'].isna()].copy()
@@ -212,7 +213,6 @@ alpha_global_prior = st.sidebar.slider("α global (prior)", 0.0, 1.0, 0.50, 0.05
 shrinkage_m = st.sidebar.slider("Força da suavização (m)", 50, 1000, 300, 50)
 min_samples_per_league = st.sidebar.slider("Mínimo de jogos/ligas para α próprio", 50, 1000, 200, 50)
 
-# helpers compartilhados (também usados fora do cache)
 def odds_to_mu(odd_home, odd_draw, odd_away):
     if pd.isna(odd_home) or pd.isna(odd_draw) or pd.isna(odd_away):
         return np.nan, np.nan
@@ -256,10 +256,6 @@ def compute_alpha_by_league_all(history_df, alpha_global_prior, shrinkage_m, min
             for j in range(3 - i):
                 p_under += poisson.pmf(i, mu_h) * poisson.pmf(j, mu_a)
         return 1 - p_under
-
-    def prob_btts_yes(mu_h, mu_a):
-        p_no = poisson.pmf(0, mu_h) + poisson.pmf(0, mu_a) - poisson.pmf(0, mu_h)*poisson.pmf(0, mu_a)
-        return 1 - p_no
 
     alpha_grid = np.round(np.arange(0.0, 1.0 + 1e-9, 0.1), 2)
 
@@ -343,11 +339,18 @@ def compute_alpha_by_league_all(history_df, alpha_global_prior, shrinkage_m, min
 
     return alpha_by_league, alpha_by_league_ou, alpha_by_league_btts
 
+# sidebar settings de modelos (inclui Retrain models)
+st.sidebar.header("⚙️ Settings")
+ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest", "Random Forest Tuned", "XGBoost Tuned"])
+use_smote = st.sidebar.checkbox("Use SMOTE for balancing", value=True)
+retrain = st.sidebar.checkbox("Retrain models", value=False)
+
 # cache em disco (json) + cache do streamlit
+import json
 path_alpha = os.path.join(MODELS_FOLDER, "alpha_by_league.json")
 alpha_by_league, alpha_by_league_ou, alpha_by_league_btts = {}, {}, {}
-if os.path.exists(path_alpha):
-    import json
+
+if os.path.exists(path_alpha) and not retrain:
     with open(path_alpha, "r", encoding="utf-8") as f:
         data = json.load(f)
     alpha_by_league = data.get("alpha_by_league", {})
@@ -358,7 +361,6 @@ else:
     alpha_by_league, alpha_by_league_ou, alpha_by_league_btts = compute_alpha_by_league_all(
         history, alpha_global_prior, shrinkage_m, min_samples_per_league
     )
-    import json
     with open(path_alpha, "w", encoding="utf-8") as f:
         json.dump({
             "alpha_global": alpha_global_prior,
@@ -394,23 +396,7 @@ games_today[
 ] = games_today.apply(compute_xg2_all, axis=1, result_type="expand")
 
 # -------------------------
-# Bloco 6 – Configs ML
-# -------------------------
-st.sidebar.header("⚙️ Settings")
-ml_model_choice = st.sidebar.selectbox("Choose ML Model", ["Random Forest", "Random Forest Tuned", "XGBoost Tuned"])
-use_smote = st.sidebar.checkbox("Use SMOTE for balancing", value=True)
-retrain = st.sidebar.checkbox("Retrain models", value=False)
-
-st.sidebar.markdown("""
-**ℹ️ Usage recommendations:**
-- 🔹 *Random Forest*: simple and fast baseline.  
-- 🔹 *Random Forest Tuned*: suitable for **1X2**.  
-- 🔹 *XGBoost Tuned*: suitable for **Over/Under 2.5** e **BTTS**.  
-- 🔹 *SMOTE*: recommended for imbalanced datasets
-""")
-
-# -------------------------
-# Bloco 7 – Treino & Avaliação
+# Bloco 7 – Treino & Avaliação (ML)
 # -------------------------
 def train_and_evaluate(X, y, name, num_classes):
     filename = f"{ml_model_choice.replace(' ', '')}_{name}_fc.pkl"
@@ -507,20 +493,15 @@ def train_and_evaluate(X, y, name, num_classes):
     }
     return metrics, model
 
-# -------------------------
-# Bloco 8 – Treinar Modelos
-# -------------------------
+# Treino 3 modelos
 stats = []
 res, model_multi = train_and_evaluate(X_1x2, history["Target"], "1X2", 3); stats.append(res)
 res, model_ou = train_and_evaluate(X_ou, history["Target_OU25"], "OverUnder25", 2); stats.append(res)
 res, model_btts = train_and_evaluate(X_btts, history["Target_BTTS"], "BTTS", 2); stats.append(res)
-
 df_stats = pd.DataFrame(stats)
-st.markdown("### 📊 Model Statistics (Validation)")
-st.dataframe(df_stats, use_container_width=True)
 
 # -------------------------
-# Bloco 9 – Previsões
+# Bloco 8 – Previsões (ML)
 # -------------------------
 def safe_predict_proba(model, X_data, feature_names):
     X_aligned = pd.DataFrame(0, index=X_data.index, columns=feature_names)
@@ -543,340 +524,390 @@ games_today["p_home"], games_today["p_draw"], games_today["p_away"] = probs_1x2.
 games_today["p_over25"], games_today["p_under25"] = probs_ou.T
 games_today["p_btts_yes"], games_today["p_btts_no"] = probs_btts.T
 
-# -------------------------
-# Bloco 10 – Tabela Principal
-# -------------------------
-def color_prob(val, color):
-    alpha = int(val * 255)
-    return f"background-color: rgba({color}, {alpha/255:.2f})"
-
-def style_probs(val, col):
-    if col == "p_home": return color_prob(val, "0,200,0")
-    elif col == "p_draw": return color_prob(val, "150,150,150")
-    elif col == "p_away": return color_prob(val, "255,140,0")
-    elif col == "p_over25": return color_prob(val, "0,100,255")
-    elif col == "p_under25": return color_prob(val, "128,0,128")
-    elif col == "p_btts_yes": return color_prob(val, "0,200,200")
-    elif col == "p_btts_no": return color_prob(val, "200,0,0")
-    return ""
-
-cols_final = [
-    "Date", "Time", "League", "Home", "Away",
-    "Goals_H_Today", "Goals_A_Today",
-    "Odd_H", "Odd_D", "Odd_A",
-    "p_home", "p_draw", "p_away",
-    "p_over25", "p_under25",
-    "p_btts_yes", "p_btts_no"
-]
-
-styled_df = (
-    games_today[cols_final]
-    .style.format({
-        "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
-        "p_home": "{:.1%}", "p_draw": "{:.1%}", "p_away": "{:.1%}",
-        "p_over25": "{:.1%}", "p_under25": "{:.1%}",
-        "p_btts_yes": "{:.1%}", "p_btts_no": "{:.1%}",
-        "Goals_H_Today": "{:.0f}", "Goals_A_Today": "{:.0f}"
-    }, na_rep="—")
-    .applymap(lambda v: style_probs(v, "p_home"), subset=["p_home"])
-    .applymap(lambda v: style_probs(v, "p_draw"), subset=["p_draw"])
-    .applymap(lambda v: style_probs(v, "p_away"), subset=["p_away"])
-    .applymap(lambda v: style_probs(v, "p_over25"), subset=["p_over25"])
-    .applymap(lambda v: style_probs(v, "p_under25"), subset=["p_under25"])
-    .applymap(lambda v: style_probs(v, "p_btts_yes"), subset=["p_btts_yes"])
-    .applymap(lambda v: style_probs(v, "p_btts_no"), subset=["p_btts_no"])
-)
-st.markdown("### 📌 Predictions for Selected Matches")
-st.dataframe(styled_df, use_container_width=True, height=800)
-
-# Download Predictions CSV
-import io
-csv_buffer = io.BytesIO()
-games_today.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
-csv_buffer.seek(0)
-st.download_button(
-    label="📥 Download Predictions CSV",
-    data=csv_buffer,
-    file_name=f"Bet_Indicator_Triple_View_{datetime.now().strftime('%Y-%m-%d')}.csv",
-    mime="text/csv"
-)
-
-# ---------------------------------------------------------
-# Bloco 10.1 – Skellam Probabilities (1X2 + AH) (logo abaixo)
-# ---------------------------------------------------------
-st.markdown("### 🎲 Skellam Probabilities (1X2 + AH)")
-
-def skellam_1x2(mu_h, mu_a):
-    mu_h = float(np.clip(mu_h, 0.05, 5.0))
-    mu_a = float(np.clip(mu_a, 0.05, 5.0))
-    p_home = 1 - skellam.cdf(0, mu_h, mu_a)
-    p_draw = skellam.pmf(0, mu_h, mu_a)
-    p_away = skellam.cdf(-1, mu_h, mu_a)
-    return p_home, p_draw, p_away
-
-def skellam_handicap(mu_h, mu_a, line):
-    mu_h = float(np.clip(mu_h, 0.05, 5.0))
-    mu_a = float(np.clip(mu_a, 0.05, 5.0))
-    if line == 0:
-        win = 1 - skellam.cdf(0, mu_h, mu_a)
-        push = skellam.pmf(0, mu_h, mu_a)
-        lose = skellam.cdf(-1, mu_h, mu_a)
-    elif line < 0:
-        win = 1 - skellam.cdf(abs(line), mu_h, mu_a)
-        push = skellam.pmf(abs(line), mu_h, mu_a)
-        lose = skellam.cdf(abs(line) - 1, mu_h, mu_a)
-    else:
-        win = skellam.cdf(-abs(line) - 1, mu_h, mu_a)
-        push = skellam.pmf(-abs(line), mu_h, mu_a)
-        lose = 1 - skellam.cdf(-abs(line), mu_h, mu_a)
-    return win, push, lose
-
-# calcula Skellam 1X2 e AH (line 0; ajuste com slider se quiser)
-games_today["Skellam_pH"], games_today["Skellam_pD"], games_today["Skellam_pA"] = zip(
-    *games_today.apply(
-        lambda r: skellam_1x2(r["XG2_H"], r["XG2_A"]) if pd.notna(r["XG2_H"]) and pd.notna(r["XG2_A"]) else (np.nan, np.nan, np.nan),
-        axis=1
-    )
-)
-games_today["Skellam_AH_Win"], games_today["Skellam_AH_Push"], games_today["Skellam_AH_Lose"] = zip(
-    *games_today.apply(
-        lambda r: skellam_handicap(r["XG2_H"], r["XG2_A"], line=0) if pd.notna(r["XG2_H"]) and pd.notna(r["XG2_A"]) else (np.nan, np.nan, np.nan),
-        axis=1
-    )
-)
-
-st.dataframe(
-    games_today[[
-        "League", "Home", "Away",
-        "XG2_H", "XG2_A",
-        "Skellam_pH", "Skellam_pD", "Skellam_pA",
-        "Skellam_AH_Win", "Skellam_AH_Push", "Skellam_AH_Lose"
-    ]].style.format({
-        "XG2_H": "{:.2f}", "XG2_A": "{:.2f}",
-        "Skellam_pH": "{:.1%}", "Skellam_pD": "{:.1%}", "Skellam_pA": "{:.1%}",
-        "Skellam_AH_Win": "{:.1%}", "Skellam_AH_Push": "{:.1%}", "Skellam_AH_Lose": "{:.1%}",
-    }),
-    use_container_width=True, height=400
-)
+# ==========================================================
+# 🔹 Layout em Abas (Dual View)
+# ==========================================================
+tab1, tab2 = st.tabs(["📊 ML Predictions", "🎲 Skellam Model (1X2 + AH)"])
 
 # -------------------------
-# Bloco 13 – Value Scanner (EV)
+# TAB 1 – ML Predictions
 # -------------------------
-st.markdown("## 🎯 Value Scanner – Apostas de Valor (com EV e Lucro Esperado)")
+with tab1:
+    st.markdown("### 📊 Model Statistics (Validation)")
+    st.dataframe(df_stats, use_container_width=True)
 
-def implied_prob(odd): return 1/odd if pd.notna(odd) and odd > 0 else np.nan
+    # Tabela Principal (ML)
+    def color_prob(val, color):
+        alpha = int(val * 255)
+        return f"background-color: rgba({color}, {alpha/255:.2f})"
 
-games_today["Impl_H"] = games_today["Odd_H"].apply(implied_prob)
-games_today["Impl_D"] = games_today["Odd_D"].apply(implied_prob)
-games_today["Impl_A"] = games_today["Odd_A"].apply(implied_prob)
+    def style_probs(val, col):
+        if col == "p_home": return color_prob(val, "0,200,0")
+        elif col == "p_draw": return color_prob(val, "150,150,150")
+        elif col == "p_away": return color_prob(val, "255,140,0")
+        elif col == "p_over25": return color_prob(val, "0,100,255")
+        elif col == "p_under25": return color_prob(val, "128,0,128")
+        elif col == "p_btts_yes": return color_prob(val, "0,200,200")
+        elif col == "p_btts_no": return color_prob(val, "200,0,0")
+        return ""
 
-# EV simples (modelo ML vs odds implícitas)
-games_today["EV_H"] = games_today["p_home"] - games_today["Impl_H"]
-games_today["EV_D"] = games_today["p_draw"] - games_today["Impl_D"]
-games_today["EV_A"] = games_today["p_away"] - games_today["Impl_A"]
-
-def best_pick(row):
-    evs = {"Home": row["EV_H"], "Draw": row["EV_D"], "Away": row["EV_A"]}
-    best = max(evs, key=evs.get)
-    return best if evs[best] > 0 else "NoValue"
-
-games_today["Best_Pick"] = games_today.apply(best_pick, axis=1)
-games_today["EV_Best"] = games_today[["EV_H","EV_D","EV_A"]].max(axis=1)
-
-EV_THRESHOLD = st.sidebar.slider("EV mínimo para exibir (valor esperado)", 0.01, 0.10, 0.03, 0.01)
-value_df = games_today[games_today["EV_Best"] > EV_THRESHOLD].copy().sort_values("EV_Best", ascending=False)
-
-def highlight_ev(val):
-    color = "rgba(0,200,0,0.25)" if val > 0 else "rgba(255,0,0,0.25)"
-    return f"background-color: {color}"
-
-if not value_df.empty:
-    st.success(f"🎯 {len(value_df)} apostas de valor encontradas (EV > {EV_THRESHOLD:.0%})")
-    st.dataframe(
-        value_df[[
-            "League", "Home", "Away",
-            "Odd_H", "Odd_D", "Odd_A",
-            "p_home", "p_draw", "p_away",
-            "EV_H", "EV_D", "EV_A",
-            "Best_Pick", "EV_Best"
-        ]]
+    cols_final = [
+        "Date", "Time", "League", "Home", "Away",
+        "Goals_H_Today", "Goals_A_Today",
+        "Odd_H", "Odd_D", "Odd_A",
+        "p_home", "p_draw", "p_away",
+        "p_over25", "p_under25",
+        "p_btts_yes", "p_btts_no"
+    ]
+    styled_df = (
+        games_today[cols_final]
         .style.format({
             "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
             "p_home": "{:.1%}", "p_draw": "{:.1%}", "p_away": "{:.1%}",
-            "EV_H": "{:+.1%}", "EV_D": "{:+.1%}", "EV_A": "{:+.1%}",
-            "EV_Best": "{:+.1%}"
-        })
-        .applymap(highlight_ev, subset=["EV_H","EV_D","EV_A","EV_Best"]),
-        use_container_width=True
+            "p_over25": "{:.1%}", "p_under25": "{:.1%}",
+            "p_btts_yes": "{:.1%}", "p_btts_no": "{:.1%}",
+            "Goals_H_Today": "{:.0f}", "Goals_A_Today": "{:.0f}"
+        }, na_rep="—")
+        .applymap(lambda v: style_probs(v, "p_home"), subset=["p_home"])
+        .applymap(lambda v: style_probs(v, "p_draw"), subset=["p_draw"])
+        .applymap(lambda v: style_probs(v, "p_away"), subset=["p_away"])
+        .applymap(lambda v: style_probs(v, "p_over25"), subset=["p_over25"])
+        .applymap(lambda v: style_probs(v, "p_under25"), subset=["p_under25"])
+        .applymap(lambda v: style_probs(v, "p_btts_yes"), subset=["p_btts_yes"])
+        .applymap(lambda v: style_probs(v, "p_btts_no"), subset=["p_btts_no"])
     )
-else:
-    st.warning("Nenhuma aposta de valor significativa encontrada hoje.")
+    st.markdown("### 📌 Predictions for Selected Matches")
+    st.dataframe(styled_df, use_container_width=True, height=600)
 
-stake = st.sidebar.number_input("Stake fixo por aposta ($)", 10.0, 1000.0, 100.0, 10.0)
-expected_profit = (value_df["EV_Best"] * stake).sum()
-st.metric("💰 Expected Profit (simulado)", f"${expected_profit:,.2f}")
+    # Download Predictions CSV
+    import io
+    csv_buffer = io.BytesIO()
+    games_today.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
+    csv_buffer.seek(0)
+    st.download_button(
+        label="📥 Download Predictions CSV",
+        data=csv_buffer,
+        file_name=f"Bet_Indicator_Triple_View_{datetime.now().strftime('%Y-%m-%d')}.csv",
+        mime="text/csv"
+    )
 
-# download das picks
-csv_buf = io.BytesIO()
-value_df.to_csv(csv_buf, index=False, encoding="utf-8-sig")
-csv_buf.seek(0)
-st.download_button(
-    label="📥 Download Picks CSV",
-    data=csv_buf,
-    file_name=f"ValueScanner_Picks_{datetime.now().strftime('%Y-%m-%d')}.csv",
-    mime="text/csv"
-)
+    # Value Scanner (ML EV)
+    st.markdown("## 🎯 Value Scanner – Apostas de Valor (ML)")
+    def implied_prob(odd): return 1/odd if pd.notna(odd) and odd > 0 else np.nan
+    games_today["Impl_H"] = games_today["Odd_H"].apply(implied_prob)
+    games_today["Impl_D"] = games_today["Odd_D"].apply(implied_prob)
+    games_today["Impl_A"] = games_today["Odd_A"].apply(implied_prob)
+    games_today["EV_H"] = games_today["p_home"] - games_today["Impl_H"]
+    games_today["EV_D"] = games_today["p_draw"] - games_today["Impl_D"]
+    games_today["EV_A"] = games_today["p_away"] - games_today["Impl_A"]
 
-# -------------------------
-# Bloco 11 – Hybrid Forecast
-# -------------------------
-st.markdown("## 🔮 Hybrid Forecast – Perspective vs ML")
-try:
-    if not games_today.empty and "Date" in games_today.columns:
-        selected_date = pd.to_datetime(games_today["Date"], errors="coerce").dt.date.iloc[0]
+    def best_pick(row):
+        evs = {"Home": row["EV_H"], "Draw": row["EV_D"], "Away": row["EV_A"]}
+        best = max(evs, key=evs.get)
+        return best if evs[best] > 0 else "NoValue"
+
+    games_today["Best_Pick"] = games_today.apply(best_pick, axis=1)
+    games_today["EV_Best"] = games_today[["EV_H","EV_D","EV_A"]].max(axis=1)
+
+    EV_THRESHOLD = st.sidebar.slider("EV mínimo (ML)", 0.01, 0.10, 0.03, 0.01)
+    value_df = games_today[games_today["EV_Best"] > EV_THRESHOLD].copy().sort_values("EV_Best", ascending=False)
+
+    def highlight_ev(val):
+        color = "rgba(0,200,0,0.25)" if val > 0 else "rgba(255,0,0,0.25)"
+        return f"background-color: {color}"
+
+    if not value_df.empty:
+        st.success(f"🎯 {len(value_df)} apostas de valor (ML) – EV > {EV_THRESHOLD:.0%}")
+        st.dataframe(
+            value_df[[
+                "League", "Home", "Away",
+                "Odd_H", "Odd_D", "Odd_A",
+                "p_home", "p_draw", "p_away",
+                "EV_H", "EV_D", "EV_A",
+                "Best_Pick", "EV_Best"
+            ]]
+            .style.format({
+                "Odd_H": "{:.2f}", "Odd_D": "{:.2f}", "Odd_A": "{:.2f}",
+                "p_home": "{:.1%}", "p_draw": "{:.1%}", "p_away": "{:.1%}",
+                "EV_H": "{:+.1%}", "EV_D": "{:+.1%}", "EV_A": "{:+.1%}",
+                "EV_Best": "{:+.1%}"
+            })
+            .applymap(highlight_ev, subset=["EV_H","EV_D","EV_A","EV_Best"]),
+            use_container_width=True
+        )
     else:
-        selected_date = None
+        st.warning("Nenhuma aposta de valor (ML) acima do threshold.")
 
-    all_dfs = []
-    for f in os.listdir(GAMES_FOLDER):
-        if f.lower().endswith(".csv"):
-            try:
-                df_tmp = pd.read_csv(os.path.join(GAMES_FOLDER, f))
-                df_tmp = df_tmp.loc[:, ~df_tmp.columns.str.contains('^Unnamed')]
-                df_tmp.columns = df_tmp.columns.str.strip()
-                all_dfs.append(df_tmp)
-            except:
-                continue
+    stake = st.sidebar.number_input("Stake fixo por aposta ($)", 10.0, 1000.0, 100.0, 10.0)
+    expected_profit = (value_df["EV_Best"] * stake).sum()
+    st.metric("💰 Expected Profit (simulado – ML)", f"${expected_profit:,.2f}")
 
-    if all_dfs and selected_date is not None:
-        df_history = pd.concat(all_dfs, ignore_index=True)
-        df_history = df_history.drop_duplicates(subset=["Date","Home","Away","Goals_H_FT","Goals_A_FT"], keep="first")
+    # Hybrid + Divergence
+    st.markdown("## 🔮 Hybrid Forecast – Perspective vs ML")
+    try:
+        if not games_today.empty and "Date" in games_today.columns:
+            selected_date = pd.to_datetime(games_today["Date"], errors="coerce").dt.date.iloc[0]
+        else:
+            selected_date = None
 
-        if "Date" in df_history.columns:
-            df_history["Date"] = pd.to_datetime(df_history["Date"], errors="coerce").dt.date
-            df_history = df_history[df_history["Date"] != selected_date]
-
-        df_history["Diff_M"] = df_history["M_H"] - df_history["M_A"]
-        df_history["DiffPower_bin"] = pd.cut(df_history["Diff_Power"], bins=range(-50, 55, 10))
-        df_history["DiffM_bin"] = pd.cut(df_history["Diff_M"], bins=np.arange(-10, 10.5, 1.0))
-        df_history["DiffHTP_bin"] = pd.cut(df_history["Diff_HT_P"], bins=range(-30, 35, 5))
-
-        def get_result(row):
-            if row["Goals_H_FT"] > row["Goals_A_FT"]:
-                return "Home"
-            elif row["Goals_H_FT"] < row["Goals_A_FT"]:
-                return "Away"
-            else:
-                return "Draw"
-        df_history["Result"] = df_history.apply(get_result, axis=1)
-
-        df_day = games_today.copy()
-        df_day = df_day.loc[:, ~df_day.columns.str.contains('^Unnamed')]
-        df_day.columns = df_day.columns.str.strip()
-        df_day["Date"] = pd.to_datetime(df_day["Date"], errors="coerce").dt.date
-        df_day = df_day[df_day["Date"] == selected_date]
-        df_day["Diff_M"] = df_day["M_H"] - df_day["M_A"]
-        df_day = df_day.dropna(subset=["Diff_Power", "Diff_M", "Diff_HT_P"])
-
-        dp_bins = pd.IntervalIndex(df_history["DiffPower_bin"].cat.categories)
-        dm_bins = pd.IntervalIndex(df_history["DiffM_bin"].cat.categories)
-        dhtp_bins = pd.IntervalIndex(df_history["DiffHTP_bin"].cat.categories)
-
-        total_matches, home_wins, away_wins, draws = 0, 0, 0, 0
-        for _, game in df_day.iterrows():
-            try:
-                if (
-                    dp_bins.contains(game["Diff_Power"]).any() and
-                    dm_bins.contains(game["Diff_M"]).any() and
-                    dhtp_bins.contains(game["Diff_HT_P"]).any()
-                ):
-                    dp_bin = dp_bins.get_loc(game["Diff_Power"])
-                    dm_bin = dm_bins.get_loc(game["Diff_M"])
-                    dhtp_bin = dhtp_bins.get_loc(game["Diff_HT_P"])
-                else:
+        all_dfs = []
+        for f in os.listdir(GAMES_FOLDER):
+            if f.lower().endswith(".csv"):
+                try:
+                    df_tmp = pd.read_csv(os.path.join(GAMES_FOLDER, f))
+                    df_tmp = df_tmp.loc[:, ~df_tmp.columns.str.contains('^Unnamed')]
+                    df_tmp.columns = df_tmp.columns.str.strip()
+                    all_dfs.append(df_tmp)
+                except:
                     continue
 
-                subset = df_history[
-                    (df_history["DiffPower_bin"] == dp_bins[dp_bin]) &
-                    (df_history["DiffM_bin"] == dm_bins[dm_bin]) &
-                    (df_history["DiffHTP_bin"] == dhtp_bins[dhtp_bin])
-                ]
-                if not subset.empty:
-                    total_matches += len(subset)
-                    home_wins += (subset["Result"] == "Home").sum()
-                    away_wins += (subset["Result"] == "Away").sum()
-                    draws += (subset["Result"] == "Draw").sum()
-            except:
-                continue
+        if all_dfs and selected_date is not None:
+            df_history = pd.concat(all_dfs, ignore_index=True)
+            df_history = df_history.drop_duplicates(subset=["Date","Home","Away","Goals_H_FT","Goals_A_FT"], keep="first")
 
-        if total_matches > 0:
-            pct_home = 100 * home_wins / total_matches
-            pct_away = 100 * away_wins / total_matches
-            pct_draw = 100 * draws / total_matches
+            if "Date" in df_history.columns:
+                df_history["Date"] = pd.to_datetime(df_history["Date"], errors="coerce").dt.date
+                df_history = df_history[df_history["Date"] != selected_date]
+
+            df_history["Diff_M"] = df_history["M_H"] - df_history["M_A"]
+            df_history["DiffPower_bin"] = pd.cut(df_history["Diff_Power"], bins=range(-50, 55, 10))
+            df_history["DiffM_bin"] = pd.cut(df_history["Diff_M"], bins=np.arange(-10, 10.5, 1.0))
+            df_history["DiffHTP_bin"] = pd.cut(df_history["Diff_HT_P"], bins=range(-30, 35, 5))
+
+            def get_result(row):
+                if row["Goals_H_FT"] > row["Goals_A_FT"]:
+                    return "Home"
+                elif row["Goals_H_FT"] < row["Goals_A_FT"]:
+                    return "Away"
+                else:
+                    return "Draw"
+            df_history["Result"] = df_history.apply(get_result, axis=1)
+
+            df_day = games_today.copy()
+            df_day = df_day.loc[:, ~df_day.columns.str.contains('^Unnamed')]
+            df_day.columns = df_day.columns.str.strip()
+            df_day["Date"] = pd.to_datetime(df_day["Date"], errors="coerce").dt.date
+            df_day = df_day[df_day["Date"] == selected_date]
+            df_day["Diff_M"] = df_day["M_H"] - df_day["M_A"]
+            df_day = df_day.dropna(subset=["Diff_Power", "Diff_M", "Diff_HT_P"])
+
+            dp_bins = pd.IntervalIndex(df_history["DiffPower_bin"].cat.categories)
+            dm_bins = pd.IntervalIndex(df_history["DiffM_bin"].cat.categories)
+            dhtp_bins = pd.IntervalIndex(df_history["DiffHTP_bin"].cat.categories)
+
+            total_matches, home_wins, away_wins, draws = 0, 0, 0, 0
+            for _, game in df_day.iterrows():
+                try:
+                    if (
+                        dp_bins.contains(game["Diff_Power"]).any() and
+                        dm_bins.contains(game["Diff_M"]).any() and
+                        dhtp_bins.contains(game["Diff_HT_P"]).any()
+                    ):
+                        dp_bin = dp_bins.get_loc(game["Diff_Power"])
+                        dm_bin = dm_bins.get_loc(game["Diff_M"])
+                        dhtp_bin = dhtp_bins.get_loc(game["Diff_HT_P"])
+                    else:
+                        continue
+
+                    subset = df_history[
+                        (df_history["DiffPower_bin"] == dp_bins[dp_bin]) &
+                        (df_history["DiffM_bin"] == dm_bins[dm_bin]) &
+                        (df_history["DiffHTP_bin"] == dhtp_bins[dhtp_bin])
+                    ]
+                    if not subset.empty:
+                        total_matches += len(subset)
+                        home_wins += (subset["Result"] == "Home").sum()
+                        away_wins += (subset["Result"] == "Away").sum()
+                        draws += (subset["Result"] == "Draw").sum()
+                except:
+                    continue
+
+            if total_matches > 0:
+                pct_home = 100 * home_wins / total_matches
+                pct_away = 100 * away_wins / total_matches
+                pct_draw = 100 * draws / total_matches
+            else:
+                pct_home, pct_away, pct_draw = 0, 0, 0
+
+        if not games_today.empty:
+            ml_probs = model_multi.predict_proba(X_today_1x2)
+            df_preds = pd.DataFrame(ml_probs, columns=["p_home", "p_draw", "p_away"])
+            ml_home = df_preds["p_home"].mean() * 100
+            ml_draw = df_preds["p_draw"].mean() * 100
+            ml_away = df_preds["p_away"].mean() * 100
         else:
-            pct_home, pct_away, pct_draw = 0, 0, 0
+            ml_home, ml_draw, ml_away = 0, 0, 0
 
-    if not games_today.empty:
-        ml_probs = model_multi.predict_proba(X_today_1x2)
-        df_preds = pd.DataFrame(ml_probs, columns=["p_home", "p_draw", "p_away"])
-        ml_home = df_preds["p_home"].mean() * 100
-        ml_draw = df_preds["p_draw"].mean() * 100
-        ml_away = df_preds["p_away"].mean() * 100
-    else:
-        ml_home, ml_draw, ml_away = 0, 0, 0
+        cols = st.columns(2)
+        with cols[0]:
+            st.markdown("### 📊 Historical Perspective")
+            st.write(f"**Home Wins:** {pct_home:.1f}%")
+            st.write(f"**Draws:** {pct_draw:.1f}%")
+            st.write(f"**Away Wins:** {pct_away:.1f}%")
+            st.caption(f"Based on {total_matches:,} similar historical matches (excluding today)")
+        with cols[1]:
+            st.markdown("### 🤖 ML Forecast (Trained Model)")
+            st.write(f"**Home Wins:** {ml_home:.1f}%")
+            st.write(f"**Draws:** {ml_draw:.1f}%")
+            st.write(f"**Away Wins:** {ml_away:.1f}%")
+            st.caption(f"Based on {len(games_today)} matches today")
 
-    cols = st.columns(2)
-    with cols[0]:
-        st.markdown("### 📊 Historical Perspective")
-        st.write(f"**Home Wins:** {pct_home:.1f}%")
-        st.write(f"**Draws:** {pct_draw:.1f}%")
-        st.write(f"**Away Wins:** {pct_away:.1f}%")
-        st.caption(f"Based on {total_matches:,} similar historical matches (excluding today)")
-    with cols[1]:
-        st.markdown("### 🤖 ML Forecast (Trained Model)")
-        st.write(f"**Home Wins:** {ml_home:.1f}%")
-        st.write(f"**Draws:** {ml_draw:.1f}%")
-        st.write(f"**Away Wins:** {ml_away:.1f}%")
-        st.caption(f"Based on {len(games_today)} matches today")
-except Exception as e:
-    st.warning(f"⚠️ Hybrid Forecast could not be generated: {e}")
+        # Divergence
+        divergence = abs(ml_home - pct_home) + abs(ml_draw - pct_draw) + abs(ml_away - pct_away)
+        if divergence < 10:
+            status_icon, status_text = "🟢", "High confidence (ML aligned with historical)"
+        elif divergence < 25:
+            status_icon, status_text = "🟡", "Medium confidence (some divergence)"
+        else:
+            status_icon, status_text = "🔴", "Low confidence (ML diverges strongly from historical)"
+
+        st.markdown("### 🔍 Difference: Historical vs ML")
+        st.write(f"- Home: {ml_home - pct_home:+.1f} pp")
+        st.write(f"- Draw: {ml_draw - pct_draw:+.1f} pp")
+        st.write(f"- Away: {ml_away - pct_away:+.1f} pp")
+
+        st.markdown("### 📈 Global Divergence Index")
+        st.write(f"{status_icon} {status_text}")
+        st.caption(f"Total divergence index: {divergence:.1f} percentage points")
+
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=divergence,
+            title={'text': "Divergence Index"},
+            gauge={
+                'axis': {'range': [0, 50]},
+                'bar': {'color': "darkblue"},
+                'steps': [
+                    {'range': [0, 10], 'color': "lightgreen"},
+                    {'range': [10, 25], 'color': "khaki"},
+                    {'range': [25, 50], 'color': "lightcoral"}
+                ],
+                'threshold': {'line': {'color': "black", 'width': 4}, 'thickness': 0.75, 'value': divergence}
+            }
+        ))
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.warning(f"⚠️ Hybrid/Divergence could not be generated: {e}")
 
 # -------------------------
-# Bloco 12 – Divergence Index (Gauge)
+# TAB 2 – Skellam Model (1X2 + AH)
 # -------------------------
-try:
-    divergence = abs(ml_home - pct_home) + abs(ml_draw - pct_draw) + abs(ml_away - pct_away)
-    if divergence < 10:
-        status_icon, status_text = "🟢", "High confidence (ML aligned with historical)"
-    elif divergence < 25:
-        status_icon, status_text = "🟡", "Medium confidence (some divergence)"
+with tab2:
+    st.markdown("### 🎲 Skellam Probabilities (1X2 + Asian Handicap)")
+    # Slider de AH (Home)
+    line_home = st.slider("Asian Handicap (Home)", -2.0, 2.0, 0.0, 0.25)
+
+    def skellam_1x2(mu_h, mu_a):
+        mu_h = float(np.clip(mu_h, 0.05, 5.0))
+        mu_a = float(np.clip(mu_a, 0.05, 5.0))
+        p_home = 1 - skellam.cdf(0, mu_h, mu_a)
+        p_draw = skellam.pmf(0, mu_h, mu_a)
+        p_away = skellam.cdf(-1, mu_h, mu_a)
+        return p_home, p_draw, p_away
+
+    def skellam_handicap(mu_h, mu_a, line):
+        mu_h = float(np.clip(mu_h, 0.05, 5.0))
+        mu_a = float(np.clip(mu_a, 0.05, 5.0))
+        # usa diferença de gols Skellam(k); para linhas fracionárias ±0.25/±0.75, trata como sem push.
+        if abs(line - round(line)) < 1e-9:  # linha inteira (push possível)
+            k = int(round(line))
+            win = 1 - skellam.cdf(k, mu_h, mu_a)
+            push = skellam.pmf(k, mu_h, mu_a)
+            lose = skellam.cdf(k-1, mu_h, mu_a)
+        else:
+            # aproximação: linha fracionária → sem push (equivale a split nos books)
+            # para exibição simples:
+            if line > 0:
+                # ex: +0.5: ganhar se diff >= 0
+                win = 1 - skellam.cdf(-1, mu_h, mu_a)
+                push = 0.0
+                lose = skellam.cdf(-1, mu_h, mu_a)
+            else:
+                # ex: -0.5: ganhar se diff >= 1
+                win = 1 - skellam.cdf(0, mu_h, mu_a)
+                push = 0.0
+                lose = skellam.cdf(0, mu_h, mu_a)
+        return win, push, lose
+
+    # Skellam 1X2 + AH (dinâmico com slider)
+    games_today["Skellam_pH"], games_today["Skellam_pD"], games_today["Skellam_pA"] = zip(
+        *games_today.apply(
+            lambda r: skellam_1x2(r["XG2_H"], r["XG2_A"]) if pd.notna(r["XG2_H"]) and pd.notna(r["XG2_A"]) else (np.nan, np.nan, np.nan),
+            axis=1
+        )
+    )
+    games_today["Skellam_AH_Win"], games_today["Skellam_AH_Push"], games_today["Skellam_AH_Lose"] = zip(
+        *games_today.apply(
+            lambda r: skellam_handicap(r["XG2_H"], r["XG2_A"], line_home) if pd.notna(r["XG2_H"]) and pd.notna(r["XG2_A"]) else (np.nan, np.nan, np.nan),
+            axis=1
+        )
+    )
+
+    # EV teórico (Skellam) vs odds
+    def implied_prob(odd): return 1/odd if pd.notna(odd) and odd > 0 else np.nan
+    games_today["Impl_H"] = games_today["Odd_H"].apply(implied_prob)
+    games_today["Impl_A"] = games_today["Odd_A"].apply(implied_prob)
+    games_today["EV_H_Skellam"] = games_today["Skellam_pH"] - games_today["Impl_H"]
+    games_today["EV_A_Skellam"] = games_today["Skellam_pA"] - games_today["Impl_A"]
+
+    df_skellam = games_today[[
+        "League", "Home", "Away",
+        "XG2_H", "XG2_A",
+        "Skellam_pH", "Skellam_pD", "Skellam_pA",
+        "Skellam_AH_Win", "Skellam_AH_Push", "Skellam_AH_Lose",
+        "Odd_H", "Odd_A",
+        "Impl_H", "Impl_A",
+        "EV_H_Skellam", "EV_A_Skellam"
+    ]].copy()
+
+    def hl(val):
+        color = "rgba(0,200,0,0.25)" if pd.notna(val) and val > 0 else "rgba(255,0,0,0.15)"
+        return f"background-color: {color}"
+
+    st.dataframe(
+        df_skellam.style.format({
+            "XG2_H": "{:.2f}", "XG2_A": "{:.2f}",
+            "Skellam_pH": "{:.1%}", "Skellam_pD": "{:.1%}", "Skellam_pA": "{:.1%}",
+            "Skellam_AH_Win": "{:.1%}", "Skellam_AH_Push": "{:.1%}", "Skellam_AH_Lose": "{:.1%}",
+            "Odd_H": "{:.2f}", "Odd_A": "{:.2f}",
+            "Impl_H": "{:.1%}", "Impl_A": "{:.1%}",
+            "EV_H_Skellam": "{:+.1%}", "EV_A_Skellam": "{:+.1%}"
+        }).applymap(hl, subset=["EV_H_Skellam","EV_A_Skellam"]),
+        use_container_width=True, height=600
+    )
+
+    # Value Scanner – Skellam
+    st.markdown("## 🎯 Value Scanner – (Skellam Model)")
+    EV_SK_THRESHOLD = st.sidebar.slider("EV mínimo (Skellam)", 0.01, 0.10, 0.03, 0.01)
+    df_val_sk = df_skellam.copy()
+    df_val_sk["Best_Skellam"] = np.where(
+        df_val_sk["EV_H_Skellam"] >= df_val_sk["EV_A_Skellam"], "Home", "Away"
+    )
+    df_val_sk["EV_Best_Skellam"] = df_val_sk[["EV_H_Skellam", "EV_A_Skellam"]].max(axis=1)
+    picks_sk = df_val_sk[df_val_sk["EV_Best_Skellam"] > EV_SK_THRESHOLD].sort_values("EV_Best_Skellam", ascending=False)
+
+    if not picks_sk.empty:
+        st.success(f"🎯 {len(picks_sk)} apostas de valor (Skellam) – EV > {EV_SK_THRESHOLD:.0%}")
+        st.dataframe(
+            picks_sk[["League","Home","Away","Best_Skellam","EV_Best_Skellam","Odd_H","Odd_A","Skellam_pH","Skellam_pA"]]
+            .style.format({
+                "EV_Best_Skellam": "{:+.1%}",
+                "Odd_H": "{:.2f}", "Odd_A": "{:.2f}",
+                "Skellam_pH": "{:.1%}", "Skellam_pA": "{:.1%}"
+            }),
+            use_container_width=True
+        )
     else:
-        status_icon, status_text = "🔴", "Low confidence (ML diverges strongly from historical)"
+        st.warning("Nenhuma aposta de valor (Skellam) acima do threshold.")
 
-    st.markdown("### 🔍 Difference: Historical vs ML")
-    st.write(f"- Home: {ml_home - pct_home:+.1f} pp")
-    st.write(f"- Draw: {ml_draw - pct_draw:+.1f} pp")
-    st.write(f"- Away: {ml_away - pct_away:+.1f} pp")
-
-    st.markdown("### 📈 Global Divergence Index")
-    st.write(f"{status_icon} {status_text}")
-    st.caption(f"Total divergence index: {divergence:.1f} percentage points")
-
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=divergence,
-        title={'text': "Divergence Index"},
-        gauge={
-            'axis': {'range': [0, 50]},
-            'bar': {'color': "darkblue"},
-            'steps': [
-                {'range': [0, 10], 'color': "lightgreen"},
-                {'range': [10, 25], 'color': "khaki"},
-                {'range': [25, 50], 'color': "lightcoral"}
-            ],
-            'threshold': {'line': {'color': "black", 'width': 4}, 'thickness': 0.75, 'value': divergence}
-        }
-    ))
-    st.plotly_chart(fig, use_container_width=True)
-except Exception as e:
-    st.warning(f"⚠️ Divergence Block could not be generated: {e}")
+    # Download CSV – Skellam
+    import io
+    sk_buf = io.BytesIO()
+    df_skellam.to_csv(sk_buf, index=False, encoding="utf-8-sig")
+    sk_buf.seek(0)
+    st.download_button(
+        label="📥 Download Skellam Analysis CSV",
+        data=sk_buf,
+        file_name=f"Skellam_Analysis_{datetime.now().strftime('%Y-%m-%d')}.csv",
+        mime="text/csv"
+    )
