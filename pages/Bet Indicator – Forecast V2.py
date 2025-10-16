@@ -582,33 +582,53 @@ with tab2:
     games_today["EV_A_Skellam"] = games_today["Skellam_pA"] - games_today["Impl_A"]
 
     # ------------------------------------------------------
-    # 6️⃣ Exibir tabela Skellam com o mesmo degradê do V2
+    # 6️⃣ Exibir tabela Skellam com cores degradê
     # ------------------------------------------------------
+    from matplotlib import cm
     
-    # ✅ Criação do DataFrame base
-    df_skellam = games_today[[
-        "League", "Home", "Away",
-        "Asian_Line", "Asian_Home",
-        "XG2_H", "XG2_A",
-        "Skellam_pH", "Skellam_pD", "Skellam_pA",
-        "Skellam_AH_Win", "Skellam_AH_Push", "Skellam_AH_Lose",
-        "Odd_H", "Odd_A",
-        "Impl_H", "Impl_A",
-        "EV_H_Skellam", "EV_A_Skellam"
-    ]].copy()
+    def color_scale(val, vmin=0, vmax=1):
+        """Retorna cor RGBA em degradê de vermelho → amarelo → verde."""
+        cmap = cm.get_cmap('RdYlGn')  # verde = bom, vermelho = ruim
+        norm = np.clip((val - vmin) / (vmax - vmin), 0, 1)
+        r, g, b, a = cmap(norm)
+        return f"background-color: rgba({int(r*255)}, {int(g*255)}, {int(b*255)}, 0.6)"
     
-    def color_prob(val, color):
+    # 🔹 Criação da tabela base
+    df_skellam = games_today[
+        [
+            "League", "Home", "Away", "Asian_Line", "Asian_Home",
+            "XG2_H", "XG2_A",
+            "Skellam_pH", "Skellam_pD", "Skellam_pA",
+            "Skellam_AH_Win", "Skellam_AH_Push", "Skellam_AH_Lose",
+            "Odd_H", "Odd_A", "Impl_H", "Impl_A",
+            "EV_H_Skellam", "EV_A_Skellam",
+        ]
+    ].copy()
+    
+    # ✅ Garante que colunas existem e converte valores para numéricos
+    for c in ["Skellam_pH", "Skellam_pD", "Skellam_pA"]:
+        if c not in df_skellam.columns:
+            st.warning(f"⚠️ Column {c} not found in df_skellam – skipping highlight.")
+            df_skellam[c] = np.nan
+        else:
+            df_skellam[c] = pd.to_numeric(df_skellam[c], errors="coerce")
+    
+    # 🔹 Calcula qual das 3 tem maior probabilidade por linha
+    df_skellam["Max_Outcome"] = df_skellam[["Skellam_pH", "Skellam_pD", "Skellam_pA"]].idxmax(axis=1)
+    
+    def highlight_probs(val, col, max_col):
         if pd.isna(val):
             return ""
-        alpha = int(max(0, min(255, val * 255)))  # evita NaN e valores fora do range
-        return f"background-color: rgba({color}, {alpha/255:.2f})"
-
+        if col == max_col:
+            return "font-weight: bold; border: 1px solid #333; background-color: rgba(0,200,0,0.25)"
+        return color_scale(val)
     
-    def style_skellam(val, col):
-        if col == "Skellam_pH": return color_prob(val, "0,200,0")       # verde
-        elif col == "Skellam_pD": return color_prob(val, "150,150,150")  # cinza
-        elif col == "Skellam_pA": return color_prob(val, "255,140,0")    # laranja
-        return ""
+    def apply_row_style(row):
+        max_col = row["Max_Outcome"]
+        styles = {}
+        for col in ["Skellam_pH", "Skellam_pD", "Skellam_pA"]:
+            styles[col] = highlight_probs(row[col], col, max_col)
+        return pd.Series(styles)
     
     styled_sk = (
         df_skellam.style
@@ -621,19 +641,19 @@ with tab2:
             "Impl_H": "{:.1%}", "Impl_A": "{:.1%}",
             "EV_H_Skellam": "{:+.1%}", "EV_A_Skellam": "{:+.1%}",
         })
-        .applymap(lambda v: style_skellam(v, "Skellam_pH"), subset=["Skellam_pH"])
-        .applymap(lambda v: style_skellam(v, "Skellam_pD"), subset=["Skellam_pD"])
-        .applymap(lambda v: style_skellam(v, "Skellam_pA"), subset=["Skellam_pA"])
-        .applymap(
-            lambda v: "background-color: rgba(0,200,0,0.25)" if pd.notna(v) and v > 0
-            else "background-color: rgba(255,0,0,0.1)",
-            subset=["EV_H_Skellam", "EV_A_Skellam"]
-        )
+            .apply(
+        lambda row: apply_row_style(
+            pd.concat([row, pd.Series({"Max_Outcome": df_skellam.loc[row.name, "Max_Outcome"]})])
+        ),
+        axis=1,
+        subset=["Skellam_pH", "Skellam_pD", "Skellam_pA"]
     )
     
+        )
+
+                                
+    
     st.dataframe(styled_sk, use_container_width=True, height=700)
-
-
 
 
 
