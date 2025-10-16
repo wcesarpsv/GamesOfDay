@@ -519,6 +519,19 @@ else:
 
 
 
+# =========================================================
+# 🔹 Dual View Tabs (Add-on after Forecast V2)
+# =========================================================
+tab1, tab2 = st.tabs(["📊 Forecast V2 (ML)", "🎲 Skellam Model (1X2 + AH)"])
+
+# =========================================================
+# TAB 1 – Forecast V2 (ML)
+# =========================================================
+with tab1:
+    st.markdown("### 📌 Predictions for Selected Matches (Forecast V2)")
+    st.dataframe(styled_df, use_container_width=True, height=1000)
+
+
 # Hybrid + Divergence
 st.markdown("## 🔮 Hybrid Forecast – Perspective vs ML")
 try:
@@ -667,20 +680,6 @@ except Exception as e:
     st.warning(f"⚠️ Hybrid/Divergence could not be generated: {e}")
 
 
-
-
-
-# =========================================================
-# 🔹 Dual View Tabs (Add-on after Forecast V2)
-# =========================================================
-tab1, tab2 = st.tabs(["📊 Forecast V2 (ML)", "🎲 Skellam Model (1X2 + AH)"])
-
-# =========================================================
-# TAB 1 – Forecast V2 (ML)
-# =========================================================
-with tab1:
-    st.markdown("### 📌 Predictions for Selected Matches (Forecast V2)")
-    st.dataframe(styled_df, use_container_width=True, height=1000)
 
 # =========================================================
 # TAB 2 – Skellam Model (1X2 + AH)
