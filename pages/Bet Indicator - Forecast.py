@@ -878,8 +878,14 @@ with tab2:
     ]
 
     def color_prob(val, color):
-        alpha = int(val * 255)
+    try:
+        if pd.isna(val) or not isinstance(val, (int, float)):
+            return ""
+        alpha = max(0, min(255, int(float(val) * 255)))
         return f"background-color: rgba({color}, {alpha/255:.2f})"
+    except Exception:
+        return ""
+
 
     def style_probs(val, col):
         if col in ["p_home", "Skellam_AH_Win"]: return color_prob(val, "0,200,0")
