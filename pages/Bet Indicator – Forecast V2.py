@@ -739,6 +739,17 @@ with tab2:
     # )
     # --- Substitua o st.dataframe atual por este bloco ---
 
+    # --- versão robusta para aplicar degradê no Skellam (1X2 + AH) ---
+
+    def safe_style_probs(val, col):
+        """Evita erro se valor for NaN, None ou não numérico."""
+        try:
+            if pd.isna(val):
+                return ""
+            return style_probs(float(val), col)
+        except Exception:
+            return ""
+    
     styled_sk = (
         df_skellam.style
         .format({
@@ -751,15 +762,16 @@ with tab2:
             "Impl_H": "{:.1%}", "Impl_A": "{:.1%}",
             "EV_H_Skellam": "{:+.1%}", "EV_A_Skellam": "{:+.1%}",
         }, na_rep="—")
-        # degradê padronizado igual ao Forecast V2:
-        .applymap(lambda v: style_probs(v, "p_home"), subset=["Skellam_pH"])
-        .applymap(lambda v: style_probs(v, "p_draw"), subset=["Skellam_pD"])
-        .applymap(lambda v: style_probs(v, "p_away"), subset=["Skellam_pA"])
+        # degradê seguro igual ao Forecast V2:
+        .applymap(lambda v: safe_style_probs(v, "p_home"), subset=["Skellam_pH"])
+        .applymap(lambda v: safe_style_probs(v, "p_draw"), subset=["Skellam_pD"])
+        .applymap(lambda v: safe_style_probs(v, "p_away"), subset=["Skellam_pA"])
         # mantém o highlight de EV:
         .applymap(hl, subset=["EV_H_Skellam", "EV_A_Skellam"])
     )
     
     st.dataframe(styled_sk, use_container_width=True, height=700)
+
 
 
     # ------------------------------------------------------
