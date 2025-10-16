@@ -852,6 +852,7 @@ with tab2:
 
     df_skellam = games_today[[
         "League", "Home", "Away",
+        "Goals_H_Today","Goals_A_Today",
         "XG2_H", "XG2_A",
         "Skellam_pH", "Skellam_pD", "Skellam_pA",
         "Skellam_AH_Win", "Skellam_AH_Push", "Skellam_AH_Lose",
@@ -866,6 +867,7 @@ with tab2:
 
     st.dataframe(
         df_skellam.style.format({
+             "Goals_H_Today": "{:.0f}", "Goals_A_Today": "{:.0f}",
             "XG2_H": "{:.2f}", "XG2_A": "{:.2f}",
             "Skellam_pH": "{:.1%}", "Skellam_pD": "{:.1%}", "Skellam_pA": "{:.1%}",
             "Skellam_AH_Win": "{:.1%}", "Skellam_AH_Push": "{:.1%}", "Skellam_AH_Lose": "{:.1%}",
