@@ -581,6 +581,11 @@ with tab2:
     games_today["EV_H_Skellam"] = games_today["Skellam_pH"] - games_today["Impl_H"]
     games_today["EV_A_Skellam"] = games_today["Skellam_pA"] - games_today["Impl_A"]
 
+    # ------------------------------------------------------
+    # 6️⃣ Exibir tabela Skellam com o mesmo degradê do V2
+    # ------------------------------------------------------
+    
+    # ✅ Criação do DataFrame base
     df_skellam = games_today[[
         "League", "Home", "Away",
         "Asian_Line", "Asian_Home",
@@ -591,11 +596,6 @@ with tab2:
         "Impl_H", "Impl_A",
         "EV_H_Skellam", "EV_A_Skellam"
     ]].copy()
-
-
-    # ------------------------------------------------------
-    # 6️⃣ Exibir tabela Skellam com o mesmo degradê do V2
-    # ------------------------------------------------------
     
     def color_prob(val, color):
         alpha = int(val * 255)
@@ -629,6 +629,7 @@ with tab2:
     )
     
     st.dataframe(styled_sk, use_container_width=True, height=700)
+
 
 
 
