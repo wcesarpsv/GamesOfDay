@@ -518,6 +518,10 @@ else:
     st.success(f"💾 α computed & saved for {len(alpha_by_league)} leagues")
 
 
+# =========================================================
+# 🔹 Dual View Tabs (Add-on after Forecast V2)
+# =========================================================
+tab1, tab2 = st.tabs(["📊 Forecast V2 (ML)", "🎲 Skellam Model (1X2 + AH)"])
 
 # =========================================================
 # TAB 1 – Forecast V2 (ML)
