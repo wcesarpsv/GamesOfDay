@@ -186,11 +186,13 @@ games_today["Diff_M"] = games_today["M_H"] - games_today["M_A"]
 history['Diff_Abs'] = (history['M_H'] - history['M_A']).abs()
 games_today['Diff_Abs'] = (games_today['M_H'] - games_today['M_A']).abs()
 
-features_1x2 = ["Odd_H", "Odd_D", "Odd_A", "Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "M_HT_H", "M_HT_A",
+features_1x2 = [ "Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "M_HT_H", "M_HT_A",
                 "Diff_Abs", "PesoMomentum_H", "PesoMomentum_A", "CustoMomentum_H", "CustoMomentum_A"]
 features_ou_btts = ["Odd_H", "Odd_D", "Odd_A", "Diff_Power", "M_H", "M_A", "Diff_M", "Diff_HT_P", "OU_Total",
                    "Diff_Abs", "PesoMomentum_H", "PesoMomentum_A", "CustoMomentum_H", "CustoMomentum_A",
                    "OverScore_Home", "OverScore_Away"]
+
+# "Odd_H", "Odd_D", "Odd_A",
 
 history_leagues = pd.get_dummies(history["League"], prefix="League")
 games_today_leagues = pd.get_dummies(games_today["League"], prefix="League")
