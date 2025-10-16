@@ -533,6 +533,14 @@ with tab1:
 
 
 # Hybrid + Divergence
+
+import plotly.graph_objects as go
+
+pct_home = pct_draw = pct_away = 0
+ml_home = ml_draw = ml_away = 0
+total_matches = 0
+divergence = 0
+
 st.markdown("## 🔮 Hybrid Forecast – Perspective vs ML")
 try:
     if not games_today.empty and "Date" in games_today.columns:
