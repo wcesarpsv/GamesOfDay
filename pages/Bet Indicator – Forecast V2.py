@@ -441,8 +441,6 @@ styled_df = (
 # st.dataframe(styled_df, use_container_width=True, height=1000)
 
 
-
-
 # =========================================================
 # 🔹 Dual View Tabs (Add-on after Forecast V2)
 # =========================================================
@@ -582,18 +580,8 @@ with tab2:
     games_today["EV_A_Skellam"] = games_today["Skellam_pA"] - games_today["Impl_A"]
 
     # ------------------------------------------------------
-    # 6️⃣ Exibir tabela Skellam com cores degradê
+    # 6️⃣ Exibir tabela Skellam
     # ------------------------------------------------------
-    from matplotlib import cm
-    
-    def color_scale(val, vmin=0, vmax=1):
-        """Retorna cor RGBA em degradê de vermelho → amarelo → verde."""
-        cmap = cm.get_cmap('RdYlGn')  # verde = bom, vermelho = ruim
-        norm = np.clip((val - vmin) / (vmax - vmin), 0, 1)
-        r, g, b, a = cmap(norm)
-        return f"background-color: rgba({int(r*255)}, {int(g*255)}, {int(b*255)}, 0.6)"
-    
-    # 🔹 Criação da tabela base
     df_skellam = games_today[
         [
             "League", "Home", "Away", "Asian_Line", "Asian_Home",
@@ -604,35 +592,13 @@ with tab2:
             "EV_H_Skellam", "EV_A_Skellam",
         ]
     ].copy()
-    
-    # ✅ Garante que colunas existem e converte valores para numéricos
-    for c in ["Skellam_pH", "Skellam_pD", "Skellam_pA"]:
-        if c not in df_skellam.columns:
-            st.warning(f"⚠️ Column {c} not found in df_skellam – skipping highlight.")
-            df_skellam[c] = np.nan
-        else:
-            df_skellam[c] = pd.to_numeric(df_skellam[c], errors="coerce")
-    
-    # 🔹 Calcula qual das 3 tem maior probabilidade por linha
-    df_skellam["Max_Outcome"] = df_skellam[["Skellam_pH", "Skellam_pD", "Skellam_pA"]].idxmax(axis=1)
-    
-    def highlight_probs(val, col, max_col):
-        if pd.isna(val):
-            return ""
-        if col == max_col:
-            return "font-weight: bold; border: 1px solid #333; background-color: rgba(0,200,0,0.25)"
-        return color_scale(val)
-    
-    def apply_row_style(row):
-        max_col = row["Max_Outcome"]
-        styles = {}
-        for col in ["Skellam_pH", "Skellam_pD", "Skellam_pA"]:
-            styles[col] = highlight_probs(row[col], col, max_col)
-        return pd.Series(styles)
-    
-    styled_sk = (
-        df_skellam.style
-        .format({
+
+    def hl(val):
+        color = "rgba(0,200,0,0.25)" if pd.notna(val) and val > 0 else "rgba(255,0,0,0.15)"
+        return f"background-color:{color}"
+
+    st.dataframe(
+        df_skellam.style.format({
             "Asian_Home": "{:+.2f}",
             "XG2_H": "{:.2f}", "XG2_A": "{:.2f}",
             "Skellam_pH": "{:.1%}", "Skellam_pD": "{:.1%}", "Skellam_pA": "{:.1%}",
@@ -640,22 +606,9 @@ with tab2:
             "Odd_H": "{:.2f}", "Odd_A": "{:.2f}",
             "Impl_H": "{:.1%}", "Impl_A": "{:.1%}",
             "EV_H_Skellam": "{:+.1%}", "EV_A_Skellam": "{:+.1%}",
-        })
-            .apply(
-        lambda row: apply_row_style(
-            pd.concat([row, pd.Series({"Max_Outcome": df_skellam.loc[row.name, "Max_Outcome"]})])
-        ),
-        axis=1,
-        subset=["Skellam_pH", "Skellam_pD", "Skellam_pA"]
+        }).applymap(hl, subset=["EV_H_Skellam", "EV_A_Skellam"]),
+        use_container_width=True, height=700,
     )
-    
-        )
-
-                                
-    
-    st.dataframe(styled_sk, use_container_width=True, height=700)
-
-
 
     # ------------------------------------------------------
     # 7️⃣ Value Scanner (Skellam)
@@ -702,5 +655,4 @@ with tab2:
         f"Skellam_Analysis_{pd.Timestamp.now().date()}.csv",
         "text/csv",
     )
-
 
