@@ -437,8 +437,8 @@ styled_df = (
     .applymap(lambda v: style_probs(v, "p_btts_no"), subset=["p_btts_no"])
 )
 
-st.markdown("### 📌 Predictions for Selected Matches (Forecast V2)")
-st.dataframe(styled_df, use_container_width=True, height=1000)
+# st.markdown("### 📌 Predictions for Selected Matches (Forecast V2)")
+# st.dataframe(styled_df, use_container_width=True, height=1000)
 
 
 
