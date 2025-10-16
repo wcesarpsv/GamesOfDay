@@ -6,6 +6,9 @@ import pandas as pd
 import numpy as np
 import os
 import joblib
+from scipy.stats import skellam
+import math
+import io
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
@@ -395,6 +398,126 @@ games_today["p_over25"], games_today["p_under25"] = model_ou.predict_proba(X_tod
 games_today["p_btts_yes"], games_today["p_btts_no"] = model_btts.predict_proba(X_today_btts).T
 
 
+
+# =====================================================
+# Bloco 11 – Skellam Helpers (Conversão + Probabilidades)
+# =====================================================
+def convert_asian_line(line_str):
+    """Converte string tipo '-0.25/0' ou '0/0.5' em média float."""
+    try:
+        if pd.isna(line_str) or line_str == "":
+            return np.nan
+        line_str = str(line_str).strip().replace("–", "-")
+        if "/" in line_str:
+            parts = [float(x) for x in line_str.split("/")]
+            return np.mean(parts)
+        return float(line_str)
+    except:
+        return np.nan
+
+
+def skellam_handicap(mu_h, mu_a, line):
+    """
+    Calcula probabilidade do Home ganhar/push/perder o handicap.
+    Suporta linhas -2.0 a +2.0 (passos de 0.25).
+    """
+    try:
+        mu_h = float(np.clip(mu_h, 0.05, 5.0))
+        mu_a = float(np.clip(mu_a, 0.05, 5.0))
+    except:
+        return np.nan, np.nan, np.nan
+
+    if pd.isna(line):
+        return np.nan, np.nan, np.nan
+    try:
+        line = float(line)
+    except:
+        return np.nan, np.nan, np.nan
+
+    # Linhas inteiras (com push)
+    if abs(line - round(line)) < 1e-9:
+        k = int(round(line))
+        win = 1 - skellam.cdf(k, mu_h, mu_a)
+        push = skellam.pmf(k, mu_h, mu_a)
+        lose = skellam.cdf(k - 1, mu_h, mu_a)
+        return win, push, lose
+
+    # Linhas de meia
+    if abs(line * 2 - round(line * 2)) < 1e-9 and abs(line * 4 - round(line * 4)) > 1e-9:
+        if line > 0:
+            threshold = math.floor(-line)
+            win = 1 - skellam.cdf(threshold, mu_h, mu_a)
+            lose = skellam.cdf(threshold, mu_h, mu_a)
+        else:
+            k = abs(line)
+            win = 1 - skellam.cdf(math.ceil(k), mu_h, mu_a)
+            lose = skellam.cdf(math.ceil(k), mu_h, mu_a)
+        push = 0.0
+        return win, push, lose
+
+    # Linhas quartas (-0.25, +0.75, etc.)
+    if abs(line * 4 - round(line * 4)) < 1e-9:
+        low_line = line - 0.25
+        high_line = line + 0.25
+
+        def single_line_prob(l):
+            if abs(l - round(l)) < 1e-9:
+                k = int(round(l))
+                win = 1 - skellam.cdf(k, mu_h, mu_a)
+                push = skellam.pmf(k, mu_h, mu_a)
+                lose = skellam.cdf(k - 1, mu_h, mu_a)
+            else:
+                if l > 0:
+                    threshold = math.floor(-l)
+                    win = 1 - skellam.cdf(threshold, mu_h, mu_a)
+                    lose = skellam.cdf(threshold, mu_h, mu_a)
+                else:
+                    k = abs(l)
+                    win = 1 - skellam.cdf(math.ceil(k), mu_h, mu_a)
+                    lose = skellam.cdf(math.ceil(k), mu_h, mu_a)
+                push = 0.0
+            return win, push, lose
+
+        res_low = single_line_prob(low_line)
+        res_high = single_line_prob(high_line)
+        win = 0.5 * (res_low[0] + res_high[0])
+        push = 0.5 * (res_low[1] + res_high[1])
+        lose = 0.5 * (res_low[2] + res_high[2])
+        return win, push, lose
+
+    return np.nan, np.nan, np.nan
+
+# =====================================================
+# Bloco 13 – Skellam Probabilities (1X2 + AH)
+# =====================================================
+def skellam_1x2(mu_h, mu_a):
+    mu_h = float(np.clip(mu_h, 0.05, 5.0))
+    mu_a = float(np.clip(mu_a, 0.05, 5.0))
+    p_home = 1 - skellam.cdf(0, mu_h, mu_a)
+    p_draw = skellam.pmf(0, mu_h, mu_a)
+    p_away = skellam.cdf(-1, mu_h, mu_a)
+    return p_home, p_draw, p_away
+
+games_today["Skellam_pH"], games_today["Skellam_pD"], games_today["Skellam_pA"] = zip(
+    *games_today.apply(
+        lambda r: skellam_1x2(r["XG2_H"], r["XG2_A"]) 
+        if pd.notna(r["XG2_H"]) and pd.notna(r["XG2_A"]) else (np.nan, np.nan, np.nan),
+        axis=1
+    )
+)
+
+games_today["Skellam_AH_Win"], games_today["Skellam_AH_Push"], games_today["Skellam_AH_Lose"] = zip(
+    *games_today.apply(
+        lambda r: skellam_handicap(r["XG2_H"], r["XG2_A"], r["Asian_Home"]) 
+        if pd.notna(r["XG2_H"]) and pd.notna(r["XG2_A"]) and pd.notna(r["Asian_Home"]) 
+        else (np.nan, np.nan, np.nan),
+        axis=1
+    )
+)
+
+
+
+
 # ########################################################
 # Bloco 10 – Styling e Display
 # ########################################################
@@ -439,4 +562,37 @@ styled_df = (
 
 st.markdown("### 📌 Predictions for Selected Matches (Forecast V2)")
 st.dataframe(styled_df, use_container_width=True, height=1000)
+
+
+# =====================================================
+# Bloco 14 – Layout em Abas (ML + Skellam)
+# =====================================================
+tab1, tab2 = st.tabs(["🤖 ML Forecast", "🎲 Skellam Model (1X2 + AH)"])
+
+with tab1:
+    st.markdown("### 📊 ML Predictions (Forecast V2)")
+    st.dataframe(styled_df, use_container_width=True, height=1000)
+
+with tab2:
+    st.markdown("### 🎲 Skellam Analysis")
+    df_sk = games_today[[
+        "League", "Home", "Away", "Asian_Line", "Asian_Home",
+        "XG2_H", "XG2_A",
+        "Skellam_pH", "Skellam_pD", "Skellam_pA",
+        "Skellam_AH_Win", "Skellam_AH_Push", "Skellam_AH_Lose",
+        "Odd_H", "Odd_A"
+    ]].copy()
+
+    st.dataframe(
+        df_sk.style.format({
+            "Asian_Home": "{:+.2f}",
+            "XG2_H": "{:.2f}", "XG2_A": "{:.2f}",
+            "Skellam_pH": "{:.1%}", "Skellam_pD": "{:.1%}", "Skellam_pA": "{:.1%}",
+            "Skellam_AH_Win": "{:.1%}", "Skellam_AH_Push": "{:.1%}", "Skellam_AH_Lose": "{:.1%}",
+            "Odd_H": "{:.2f}", "Odd_A": "{:.2f}"
+        }),
+        use_container_width=True,
+        height=600
+    )
+
 
