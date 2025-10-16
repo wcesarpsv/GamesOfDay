@@ -592,6 +592,16 @@ with tab2:
         norm = (val - vmin) / (vmax - vmin)
         r, g, b, a = cmap(norm)
         return f"background-color: rgba({int(r*255)}, {int(g*255)}, {int(b*255)}, 0.6)"
+
+    # Garante que colunas existem e converte valores para numéricos
+    for c in ["Skellam_pH", "Skellam_pD", "Skellam_pA"]:
+        if c not in df_skellam.columns:
+            st.warning(f"⚠️ Column {c} not found in df_skellam – skipping highlight.")
+            df_skellam[c] = np.nan
+        else:
+            df_skellam[c] = pd.to_numeric(df_skellam[c], errors="coerce")
+
+
     
     # Calcula qual das 3 tem maior probabilidade por linha
     df_skellam["Max_Outcome"] = df_skellam[["Skellam_pH", "Skellam_pD", "Skellam_pA"]].idxmax(axis=1)
