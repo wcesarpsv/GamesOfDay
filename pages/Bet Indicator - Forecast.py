@@ -832,11 +832,13 @@ with tab2:
         return p_home, p_draw, p_away
 
     def skellam_handicap(mu_h, mu_a, line):
-        """Calcula probabilidade do Home vencer/push/perder dado o handicap."""
+        """
+        Calcula as probabilidades do Home ganhar/push/perder com base na linha asiática (Skellam distribution).
+        Suporta linhas de -2.0 a +2.0 em incrementos de 0.25.
+        """
         mu_h = float(np.clip(mu_h, 0.05, 5.0))
         mu_a = float(np.clip(mu_a, 0.05, 5.0))
     
-        # ✅ tratamento de valores inválidos
         if pd.isna(line):
             return np.nan, np.nan, np.nan
         try:
@@ -844,25 +846,44 @@ with tab2:
         except:
             return np.nan, np.nan, np.nan
     
-        # linha inteira → push possível
+        # Linha inteira (push possível)
         if abs(line - round(line)) < 1e-9:
             k = int(round(line))
             win = 1 - skellam.cdf(k, mu_h, mu_a)
             push = skellam.pmf(k, mu_h, mu_a)
             lose = skellam.cdf(k - 1, mu_h, mu_a)
-        else:
-            # linhas fracionárias → sem push (ex: -0.25, +0.75)
+            return win, push, lose
+    
+        # Linha de meia (ex: -0.5, +1.5) → sem push
+        if abs(line * 2 - round(line * 2)) < 1e-9 and abs(line * 4 - round(line * 4)) > 1e-9:
+            k = int(math.floor(line))
             if line > 0:
-                # home recebe gols (ganha se diferença >= -line)
-                win = 1 - skellam.cdf(-math.ceil(line), mu_h, mu_a)
-                push = 0.0
-                lose = skellam.cdf(-math.ceil(line), mu_h, mu_a)
+                # Home recebe gols → ganha se diferença >= -k
+                win = 1 - skellam.cdf(-k - 1, mu_h, mu_a)
+                lose = skellam.cdf(-k - 1, mu_h, mu_a)
             else:
-                # home dá gols (ganha se diferença >= 1 - |line|)
-                win = 1 - skellam.cdf(int(abs(line)), mu_h, mu_a)
-                push = 0.0
-                lose = skellam.cdf(int(abs(line)) - 1, mu_h, mu_a)
-        return win, push, lose
+                # Home dá gols → precisa ganhar por pelo menos abs(line)+0.5
+                k = abs(line)
+                win = 1 - skellam.cdf(k, mu_h, mu_a)
+                lose = skellam.cdf(k, mu_h, mu_a)
+            push = 0.0
+            return win, push, lose
+    
+        # Linha de quarto (ex: -0.25, +0.75, -1.25, etc.) → aposta dividida (split bet)
+        if abs(line * 4 - round(line * 4)) < 1e-9:
+            # Divide em duas linhas vizinhas: ex -0.25 → [-0.5, 0.0]
+            low = math.floor(line * 2) / 2
+            high = math.ceil(line * 2) / 2
+            res_low = skellam_handicap(mu_h, mu_a, low)
+            res_high = skellam_handicap(mu_h, mu_a, high)
+            win = 0.5 * (res_low[0] + res_high[0])
+            push = 0.5 * (res_low[1] + res_high[1])
+            lose = 0.5 * (res_low[2] + res_high[2])
+            return win, push, lose
+    
+        # fallback
+        return np.nan, np.nan, np.nan                        
+
 
 
     # ------------------------------------------------------
