@@ -440,3 +440,222 @@ styled_df = (
 st.markdown("### 📌 Predictions for Selected Matches (Forecast V2)")
 st.dataframe(styled_df, use_container_width=True, height=1000)
 
+
+
+
+# =========================================================
+# 🔹 Dual View Tabs (Add-on after Forecast V2)
+# =========================================================
+tab1, tab2 = st.tabs(["📊 Forecast V2 (ML)", "🎲 Skellam Model (1X2 + AH)"])
+
+# =========================================================
+# TAB 1 – Forecast V2 (ML)
+# =========================================================
+with tab1:
+    st.markdown("### 📌 Predictions for Selected Matches (Forecast V2)")
+    st.dataframe(styled_df, use_container_width=True, height=1000)
+
+# =========================================================
+# TAB 2 – Skellam Model (1X2 + AH)
+# =========================================================
+with tab2:
+    st.markdown("### 🎲 Skellam Model (1X2 + AH)")
+
+    # ------------------------------------------------------
+    # 1️⃣ Converter linha asiática
+    # ------------------------------------------------------
+    def convert_asian_line(line_str):
+        """Converte string tipo '-0.25/0' → média float."""
+        try:
+            if pd.isna(line_str) or str(line_str).strip() == "":
+                return None
+            line_str = str(line_str).strip().replace(",", ".")
+            if "/" in line_str:
+                parts = [float(x) for x in line_str.split("/")]
+                return float(np.mean(parts))
+            return float(line_str)
+        except Exception:
+            return None
+
+    if "Asian_Line" in games_today.columns:
+        games_today["Asian_Home"] = games_today["Asian_Line"].apply(convert_asian_line)
+    else:
+        st.warning("⚠️ Column 'Asian_Line' not found – Skellam AH disabled.")
+        games_today["Asian_Home"] = np.nan
+
+    # ------------------------------------------------------
+    # 2️⃣ XG proxy (simplificado)
+    # ------------------------------------------------------
+    def xg_from_momentum_simple(row):
+        base = 1.3
+        denom = abs(row.get("M_H", 0.0)) + abs(row.get("M_A", 0.0)) + 1e-6
+        mu_h = base + 0.8 * (row.get("M_H", 0.0) / denom) + 0.4 * (row.get("Diff_Power", 0.0) / 100)
+        mu_a = base + 0.8 * (row.get("M_A", 0.0) / denom) - 0.4 * (row.get("Diff_Power", 0.0) / 100)
+        return max(mu_h, 0.05), max(mu_a, 0.05)
+
+    if not {"XG2_H", "XG2_A"}.issubset(games_today.columns):
+        games_today[["XG2_H", "XG2_A"]] = games_today.apply(
+            lambda r: xg_from_momentum_simple(r), axis=1, result_type="expand"
+        )
+
+    # ------------------------------------------------------
+    # 3️⃣ Funções Skellam
+    # ------------------------------------------------------
+    from scipy.stats import skellam
+    import math
+
+    def skellam_1x2(mu_h, mu_a):
+        mu_h, mu_a = float(np.clip(mu_h, 0.05, 5.0)), float(np.clip(mu_a, 0.05, 5.0))
+        p_home = 1 - skellam.cdf(0, mu_h, mu_a)
+        p_draw = skellam.pmf(0, mu_h, mu_a)
+        p_away = skellam.cdf(-1, mu_h, mu_a)
+        return p_home, p_draw, p_away
+
+    def skellam_handicap(mu_h, mu_a, line):
+        """Probabilidades do Home ganhar/push/perder dado o handicap."""
+        try:
+            mu_h, mu_a = float(np.clip(mu_h, 0.05, 5.0)), float(np.clip(mu_a, 0.05, 5.0))
+            if pd.isna(line): return np.nan, np.nan, np.nan
+            line = float(line)
+        except Exception:
+            return np.nan, np.nan, np.nan
+
+        # Inteiro
+        if abs(line - round(line)) < 1e-9:
+            k = int(round(line))
+            win = 1 - skellam.cdf(k, mu_h, mu_a)
+            push = skellam.pmf(k, mu_h, mu_a)
+            lose = skellam.cdf(k - 1, mu_h, mu_a)
+            return win, push, lose
+        # Meia
+        if abs(line * 2 - round(line * 2)) < 1e-9 and abs(line * 4 - round(line * 4)) > 1e-9:
+            if line > 0:
+                thr = math.floor(-line)
+                win = 1 - skellam.cdf(thr, mu_h, mu_a)
+                lose = skellam.cdf(thr, mu_h, mu_a)
+            else:
+                k = abs(line)
+                win = 1 - skellam.cdf(math.ceil(k), mu_h, mu_a)
+                lose = skellam.cdf(math.ceil(k), mu_h, mu_a)
+            return win, 0.0, lose
+        # Quarta (±0.25, ±0.75 …)
+        if abs(line * 4 - round(line * 4)) < 1e-9:
+            low, high = line - 0.25, line + 0.25
+            def single(l):
+                if abs(l - round(l)) < 1e-9:
+                    k = int(round(l))
+                    return 1 - skellam.cdf(k, mu_h, mu_a), skellam.pmf(k, mu_h, mu_a), skellam.cdf(k - 1, mu_h, mu_a)
+                if l > 0:
+                    thr = math.floor(-l)
+                    return 1 - skellam.cdf(thr, mu_h, mu_a), 0.0, skellam.cdf(thr, mu_h, mu_a)
+                k = abs(l)
+                return 1 - skellam.cdf(math.ceil(k), mu_h, mu_a), 0.0, skellam.cdf(math.ceil(k), mu_h, mu_a)
+            r1, r2 = single(low), single(high)
+            return 0.5 * (r1[0] + r2[0]), 0.5 * (r1[1] + r2[1]), 0.5 * (r1[2] + r2[2])
+        return np.nan, np.nan, np.nan
+
+    # ------------------------------------------------------
+    # 4️⃣ Aplicar Skellam (1X2 + AH)
+    # ------------------------------------------------------
+    games_today["Skellam_pH"], games_today["Skellam_pD"], games_today["Skellam_pA"] = zip(
+        *games_today.apply(
+            lambda r: skellam_1x2(r["XG2_H"], r["XG2_A"])
+            if pd.notna(r["XG2_H"]) and pd.notna(r["XG2_A"]) else (np.nan, np.nan, np.nan),
+            axis=1,
+        )
+    )
+    games_today["Skellam_AH_Win"], games_today["Skellam_AH_Push"], games_today["Skellam_AH_Lose"] = zip(
+        *games_today.apply(
+            lambda r: skellam_handicap(r["XG2_H"], r["XG2_A"], r["Asian_Home"])
+            if pd.notna(r["XG2_H"]) and pd.notna(r["Asian_Home"]) else (np.nan, np.nan, np.nan),
+            axis=1,
+        )
+    )
+
+    # ------------------------------------------------------
+    # 5️⃣ EV teórico (Skellam vs odds)
+    # ------------------------------------------------------
+    def implied_prob(odd): return 1 / odd if pd.notna(odd) and odd > 0 else np.nan
+    games_today["Impl_H"] = games_today["Odd_H"].apply(implied_prob)
+    games_today["Impl_A"] = games_today["Odd_A"].apply(implied_prob)
+    games_today["EV_H_Skellam"] = games_today["Skellam_pH"] - games_today["Impl_H"]
+    games_today["EV_A_Skellam"] = games_today["Skellam_pA"] - games_today["Impl_A"]
+
+    # ------------------------------------------------------
+    # 6️⃣ Exibir tabela Skellam
+    # ------------------------------------------------------
+    df_skellam = games_today[
+        [
+            "League", "Home", "Away", "Asian_Line", "Asian_Home",
+            "XG2_H", "XG2_A",
+            "Skellam_pH", "Skellam_pD", "Skellam_pA",
+            "Skellam_AH_Win", "Skellam_AH_Push", "Skellam_AH_Lose",
+            "Odd_H", "Odd_A", "Impl_H", "Impl_A",
+            "EV_H_Skellam", "EV_A_Skellam",
+        ]
+    ].copy()
+
+    def hl(val):
+        color = "rgba(0,200,0,0.25)" if pd.notna(val) and val > 0 else "rgba(255,0,0,0.15)"
+        return f"background-color:{color}"
+
+    st.dataframe(
+        df_skellam.style.format({
+            "Asian_Home": "{:+.2f}",
+            "XG2_H": "{:.2f}", "XG2_A": "{:.2f}",
+            "Skellam_pH": "{:.1%}", "Skellam_pD": "{:.1%}", "Skellam_pA": "{:.1%}",
+            "Skellam_AH_Win": "{:.1%}", "Skellam_AH_Push": "{:.1%}", "Skellam_AH_Lose": "{:.1%}",
+            "Odd_H": "{:.2f}", "Odd_A": "{:.2f}",
+            "Impl_H": "{:.1%}", "Impl_A": "{:.1%}",
+            "EV_H_Skellam": "{:+.1%}", "EV_A_Skellam": "{:+.1%}",
+        }).applymap(hl, subset=["EV_H_Skellam", "EV_A_Skellam"]),
+        use_container_width=True, height=700,
+    )
+
+    # ------------------------------------------------------
+    # 7️⃣ Value Scanner (Skellam)
+    # ------------------------------------------------------
+    st.markdown("## 🎯 Value Scanner – Skellam")
+    EV_SK_THRESHOLD = st.sidebar.slider("EV mínimo (Skellam)", 0.01, 0.10, 0.03, 0.01)
+    df_val_sk = df_skellam.copy()
+    df_val_sk["Best_Skellam"] = np.where(
+        df_val_sk["EV_H_Skellam"] >= df_val_sk["EV_A_Skellam"], "Home", "Away"
+    )
+    df_val_sk["EV_Best_Skellam"] = df_val_sk[["EV_H_Skellam", "EV_A_Skellam"]].max(axis=1)
+    picks_sk = df_val_sk[df_val_sk["EV_Best_Skellam"] > EV_SK_THRESHOLD].sort_values(
+        "EV_Best_Skellam", ascending=False
+    )
+
+    if not picks_sk.empty:
+        st.success(f"🎯 {len(picks_sk)} value bets (Skellam) EV > {EV_SK_THRESHOLD:.0%}")
+        st.dataframe(
+            picks_sk[[
+                "League", "Home", "Away", "Asian_Home",
+                "Best_Skellam", "EV_Best_Skellam",
+                "Odd_H", "Odd_A", "Skellam_pH", "Skellam_pA",
+            ]].style.format({
+                "Asian_Home": "{:+.2f}",
+                "EV_Best_Skellam": "{:+.1%}",
+                "Odd_H": "{:.2f}", "Odd_A": "{:.2f}",
+                "Skellam_pH": "{:.1%}", "Skellam_pA": "{:.1%}",
+            }),
+            use_container_width=True,
+        )
+    else:
+        st.warning("Nenhuma aposta de valor (Skellam) acima do threshold.")
+
+    # ------------------------------------------------------
+    # 8️⃣ Download CSV
+    # ------------------------------------------------------
+    import io
+    buf = io.BytesIO()
+    df_skellam.to_csv(buf, index=False, encoding="utf-8-sig")
+    buf.seek(0)
+    st.download_button(
+        "📥 Download Skellam Analysis CSV",
+        buf,
+        f"Skellam_Analysis_{pd.Timestamp.now().date()}.csv",
+        "text/csv",
+    )
+
+
