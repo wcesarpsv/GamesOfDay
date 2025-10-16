@@ -835,9 +835,15 @@ with tab2:
         """Calcula probabilidade do Home vencer/push/perder dado o handicap."""
         mu_h = float(np.clip(mu_h, 0.05, 5.0))
         mu_a = float(np.clip(mu_a, 0.05, 5.0))
+    
+        # ✅ tratamento de valores inválidos
         if pd.isna(line):
             return np.nan, np.nan, np.nan
-
+        try:
+            line = float(line)
+        except:
+            return np.nan, np.nan, np.nan
+    
         # linha inteira → push possível
         if abs(line - round(line)) < 1e-9:
             k = int(round(line))
@@ -848,15 +854,16 @@ with tab2:
             # linhas fracionárias → sem push (ex: -0.25, +0.75)
             if line > 0:
                 # home recebe gols (ganha se diferença >= -line)
-                win = 1 - skellam.cdf(-1 * math.ceil(line), mu_h, mu_a)
+                win = 1 - skellam.cdf(-math.ceil(line), mu_h, mu_a)
                 push = 0.0
-                lose = skellam.cdf(-1 * math.ceil(line), mu_h, mu_a)
+                lose = skellam.cdf(-math.ceil(line), mu_h, mu_a)
             else:
                 # home dá gols (ganha se diferença >= 1 - |line|)
                 win = 1 - skellam.cdf(int(abs(line)), mu_h, mu_a)
                 push = 0.0
                 lose = skellam.cdf(int(abs(line)) - 1, mu_h, mu_a)
         return win, push, lose
+
 
     # ------------------------------------------------------
     # 3️⃣ Aplicar Skellam (1X2 + AH)
