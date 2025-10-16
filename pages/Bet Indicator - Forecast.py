@@ -837,51 +837,83 @@ with tab2:
         Calcula as probabilidades do Home ganhar/push/perder com base na linha asiática (Skellam distribution).
         Suporta linhas de -2.0 a +2.0 em incrementos de 0.25.
         """
-        mu_h = float(np.clip(mu_h, 0.05, 5.0))
-        mu_a = float(np.clip(mu_a, 0.05, 5.0))
-
+        # Clamping
+        try:
+            mu_h = float(np.clip(mu_h, 0.05, 5.0))
+            mu_a = float(np.clip(mu_a, 0.05, 5.0))
+        except:
+            return np.nan, np.nan, np.nan
+    
+        # validação da linha
         if pd.isna(line):
             return np.nan, np.nan, np.nan
         try:
             line = float(line)
         except:
             return np.nan, np.nan, np.nan
-
-        # Linha inteira (push possível)
+    
+        # ---------- Inteira ----------
         if abs(line - round(line)) < 1e-9:
             k = int(round(line))
             win = 1 - skellam.cdf(k, mu_h, mu_a)
             push = skellam.pmf(k, mu_h, mu_a)
             lose = skellam.cdf(k - 1, mu_h, mu_a)
             return win, push, lose
-
-        # Linha de meia (ex: -0.5, +1.5) → sem push
+    
+        # ---------- Meia ----------
         if abs(line * 2 - round(line * 2)) < 1e-9 and abs(line * 4 - round(line * 4)) > 1e-9:
             if line > 0:
-                # Home recebe gols (ganha se diferença >= -line)
-                win = 1 - skellam.cdf(math.floor(-line), mu_h, mu_a)
-                lose = skellam.cdf(math.floor(-line), mu_h, mu_a)
+                # Home recebe gols (ganha se diff >= -line)
+                threshold = math.floor(-line)
+                win = 1 - skellam.cdf(threshold, mu_h, mu_a)
+                lose = skellam.cdf(threshold, mu_h, mu_a)
             else:
-                # Home dá gols (ganha se diferença >= |line|+1)
+                # Home dá gols (precisa vencer por abs(line)+0.5)
                 k = abs(line)
                 win = 1 - skellam.cdf(math.ceil(k), mu_h, mu_a)
                 lose = skellam.cdf(math.ceil(k), mu_h, mu_a)
             push = 0.0
             return win, push, lose
-
-        # Linha de quarto (ex: -0.25, +0.75, -1.25, etc.) → split bet
+    
+        # ---------- Quarta ----------
         if abs(line * 4 - round(line * 4)) < 1e-9:
-            # Divide em duas linhas vizinhas: ex -0.25 → [-0.5, 0.0]
-            low = math.floor(line * 2) / 2
-            high = math.ceil(line * 2) / 2
-            res_low = skellam_handicap(mu_h, mu_a, low)
-            res_high = skellam_handicap(mu_h, mu_a, high)
+            # ex: -0.25 → metade em 0 e -0.5
+            if line > 0:
+                low_line = line - 0.25
+                high_line = line + 0.25
+            else:
+                low_line = line - 0.25
+                high_line = line + 0.25
+    
+            # Calcula para cada metade (sem recursão)
+            def single_line_prob(l):
+                if abs(l - round(l)) < 1e-9:
+                    k = int(round(l))
+                    win = 1 - skellam.cdf(k, mu_h, mu_a)
+                    push = skellam.pmf(k, mu_h, mu_a)
+                    lose = skellam.cdf(k - 1, mu_h, mu_a)
+                else:
+                    if l > 0:
+                        threshold = math.floor(-l)
+                        win = 1 - skellam.cdf(threshold, mu_h, mu_a)
+                        lose = skellam.cdf(threshold, mu_h, mu_a)
+                    else:
+                        k = abs(l)
+                        win = 1 - skellam.cdf(math.ceil(k), mu_h, mu_a)
+                        lose = skellam.cdf(math.ceil(k), mu_h, mu_a)
+                    push = 0.0
+                return win, push, lose
+    
+            res_low = single_line_prob(low_line)
+            res_high = single_line_prob(high_line)
             win = 0.5 * (res_low[0] + res_high[0])
             push = 0.5 * (res_low[1] + res_high[1])
             lose = 0.5 * (res_low[2] + res_high[2])
             return win, push, lose
-
+    
+        # fallback
         return np.nan, np.nan, np.nan
+
 
 
     # ------------------------------------------------------
