@@ -553,7 +553,11 @@ with tab2:
             return None
 
     if "Asian_Line" in games_today.columns:
-        games_today["Asian_Home"] = games_today["Asian_Line"].apply(convert_asian_line)
+        games_today["Asian_Home"] = (
+        games_today["Asian_Line"]
+        .apply(convert_asian_line)
+        .apply(lambda v: -v if pd.notna(v) else np.nan)
+    )
     else:
         st.warning("⚠️ Column 'Asian_Line' not found – Skellam AH disabled.")
         games_today["Asian_Home"] = np.nan
