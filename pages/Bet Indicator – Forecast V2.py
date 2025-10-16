@@ -520,10 +520,17 @@ else:
 
 
 # =========================================================
-# TAB 2 – Skellam Model (1X2 + AH) – versão calibrada
+# TAB 1 – Forecast V2 (ML)
 # =========================================================
-tab1, tab2 = st.tabs(["📊 Forecast V2 (ML)", "🎲 Skellam Model (1X2 + AH)"])
-    st.markdown("### 🎲 Skellam Model (1X2 + AH) – α por Liga (calibrado)")
+with tab1:
+    st.markdown("### 📌 Predictions for Selected Matches (Forecast V2)")
+    st.dataframe(styled_df, use_container_width=True, height=1000)
+
+# =========================================================
+# TAB 2 – Skellam Model (1X2 + AH)
+# =========================================================
+with tab2:
+    st.markdown("### 🎲 Skellam Model (1X2 + AH)")
 
     # ------------------------------------------------------
     # 1️⃣ Converter linha asiática (frações → média decimal)
