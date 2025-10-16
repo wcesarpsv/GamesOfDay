@@ -789,8 +789,11 @@ with tab1:
     except Exception as e:
         st.warning(f"⚠️ Hybrid/Divergence could not be generated: {e}")
 
+
+
+
 # ==========================================================
-# TAB 2 – Skellam Model (1X2 + AH) – usando linha real de cada jogo
+# TAB 2 – Skellam Model (1X2 + AH) – versão robusta (sem slider)
 # ==========================================================
 with tab2:
     st.markdown("### 🎲 Skellam Probabilities (1X2 + Asian Handicap por jogo)")
@@ -799,14 +802,11 @@ with tab2:
     # 1️⃣ Converter linha asiática (frações → média decimal)
     # ------------------------------------------------------
     def convert_asian_line(line_str):
-        """Converte string tipo '0/0.5' para média float (0.25), lida com vazios e negativos."""
+        """Converte string tipo '-0.25/0' para média float."""
         try:
             if pd.isna(line_str) or line_str == "":
                 return None
-            line_str = str(line_str).strip()
-            # substitui vírgula por ponto, remove espaços
-            line_str = line_str.replace(",", ".").replace(" ", "")
-            # se contiver "/", tira média
+            line_str = str(line_str).strip().replace(",", ".").replace(" ", "")
             if "/" in line_str:
                 parts = [float(x) for x in line_str.split("/")]
                 avg = np.mean(parts)
@@ -817,11 +817,10 @@ with tab2:
         except:
             return None
 
-    # aplica conversão no dataframe
     games_today["Asian_Home"] = games_today["Asian_Line"].apply(convert_asian_line)
 
     # ------------------------------------------------------
-    # 2️⃣ Funções Skellam (1X2 + AH)
+    # 2️⃣ Funções Skellam
     # ------------------------------------------------------
     def skellam_1x2(mu_h, mu_a):
         mu_h = float(np.clip(mu_h, 0.05, 5.0))
@@ -831,6 +830,7 @@ with tab2:
         p_away = skellam.cdf(-1, mu_h, mu_a)
         return p_home, p_draw, p_away
 
+
     def skellam_handicap(mu_h, mu_a, line):
         """
         Calcula as probabilidades do Home ganhar/push/perder com base na linha asiática (Skellam distribution).
@@ -838,14 +838,14 @@ with tab2:
         """
         mu_h = float(np.clip(mu_h, 0.05, 5.0))
         mu_a = float(np.clip(mu_a, 0.05, 5.0))
-    
+
         if pd.isna(line):
             return np.nan, np.nan, np.nan
         try:
             line = float(line)
         except:
             return np.nan, np.nan, np.nan
-    
+
         # Linha inteira (push possível)
         if abs(line - round(line)) < 1e-9:
             k = int(round(line))
@@ -853,23 +853,22 @@ with tab2:
             push = skellam.pmf(k, mu_h, mu_a)
             lose = skellam.cdf(k - 1, mu_h, mu_a)
             return win, push, lose
-    
+
         # Linha de meia (ex: -0.5, +1.5) → sem push
         if abs(line * 2 - round(line * 2)) < 1e-9 and abs(line * 4 - round(line * 4)) > 1e-9:
-            k = int(math.floor(line))
             if line > 0:
-                # Home recebe gols → ganha se diferença >= -k
-                win = 1 - skellam.cdf(-k - 1, mu_h, mu_a)
-                lose = skellam.cdf(-k - 1, mu_h, mu_a)
+                # Home recebe gols (ganha se diferença >= -line)
+                win = 1 - skellam.cdf(math.floor(-line), mu_h, mu_a)
+                lose = skellam.cdf(math.floor(-line), mu_h, mu_a)
             else:
-                # Home dá gols → precisa ganhar por pelo menos abs(line)+0.5
+                # Home dá gols (ganha se diferença >= |line|+1)
                 k = abs(line)
-                win = 1 - skellam.cdf(k, mu_h, mu_a)
-                lose = skellam.cdf(k, mu_h, mu_a)
+                win = 1 - skellam.cdf(math.ceil(k), mu_h, mu_a)
+                lose = skellam.cdf(math.ceil(k), mu_h, mu_a)
             push = 0.0
             return win, push, lose
-    
-        # Linha de quarto (ex: -0.25, +0.75, -1.25, etc.) → aposta dividida (split bet)
+
+        # Linha de quarto (ex: -0.25, +0.75, -1.25, etc.) → split bet
         if abs(line * 4 - round(line * 4)) < 1e-9:
             # Divide em duas linhas vizinhas: ex -0.25 → [-0.5, 0.0]
             low = math.floor(line * 2) / 2
@@ -880,10 +879,8 @@ with tab2:
             push = 0.5 * (res_low[1] + res_high[1])
             lose = 0.5 * (res_low[2] + res_high[2])
             return win, push, lose
-    
-        # fallback
-        return np.nan, np.nan, np.nan                        
 
+        return np.nan, np.nan, np.nan
 
 
     # ------------------------------------------------------
