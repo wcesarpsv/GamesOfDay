@@ -518,6 +518,158 @@ else:
     st.success(f"💾 α computed & saved for {len(alpha_by_league)} leagues")
 
 
+
+  # Hybrid + Divergence
+    st.markdown("## 🔮 Hybrid Forecast – Perspective vs ML")
+    try:
+        if not games_today.empty and "Date" in games_today.columns:
+            selected_date = pd.to_datetime(games_today["Date"], errors="coerce").dt.date.iloc[0]
+        else:
+            selected_date = None
+
+        all_dfs = []
+        for f in os.listdir(GAMES_FOLDER):
+            if f.lower().endswith(".csv"):
+                try:
+                    df_tmp = pd.read_csv(os.path.join(GAMES_FOLDER, f))
+                    df_tmp = df_tmp.loc[:, ~df_tmp.columns.str.contains('^Unnamed')]
+                    df_tmp.columns = df_tmp.columns.str.strip()
+                    all_dfs.append(df_tmp)
+                except:
+                    continue
+
+        if all_dfs and selected_date is not None:
+            df_history = pd.concat(all_dfs, ignore_index=True)
+            df_history = df_history.drop_duplicates(subset=["Date","Home","Away","Goals_H_FT","Goals_A_FT"], keep="first")
+
+            if "Date" in df_history.columns:
+                df_history["Date"] = pd.to_datetime(df_history["Date"], errors="coerce").dt.date
+                df_history = df_history[df_history["Date"] != selected_date]
+
+            df_history["Diff_M"] = df_history["M_H"] - df_history["M_A"]
+            df_history["DiffPower_bin"] = pd.cut(df_history["Diff_Power"], bins=range(-50, 55, 10))
+            df_history["DiffM_bin"] = pd.cut(df_history["Diff_M"], bins=np.arange(-10, 10.5, 1.0))
+            df_history["DiffHTP_bin"] = pd.cut(df_history["Diff_HT_P"], bins=range(-30, 35, 5))
+
+            def get_result(row):
+                if row["Goals_H_FT"] > row["Goals_A_FT"]:
+                    return "Home"
+                elif row["Goals_H_FT"] < row["Goals_A_FT"]:
+                    return "Away"
+                else:
+                    return "Draw"
+            df_history["Result"] = df_history.apply(get_result, axis=1)
+
+            df_day = games_today.copy()
+            df_day = df_day.loc[:, ~df_day.columns.str.contains('^Unnamed')]
+            df_day.columns = df_day.columns.str.strip()
+            df_day["Date"] = pd.to_datetime(df_day["Date"], errors="coerce").dt.date
+            df_day = df_day[df_day["Date"] == selected_date]
+            df_day["Diff_M"] = df_day["M_H"] - df_day["M_A"]
+            df_day = df_day.dropna(subset=["Diff_Power", "Diff_M", "Diff_HT_P"])
+
+            dp_bins = pd.IntervalIndex(df_history["DiffPower_bin"].cat.categories)
+            dm_bins = pd.IntervalIndex(df_history["DiffM_bin"].cat.categories)
+            dhtp_bins = pd.IntervalIndex(df_history["DiffHTP_bin"].cat.categories)
+
+            total_matches, home_wins, away_wins, draws = 0, 0, 0, 0
+            for _, game in df_day.iterrows():
+                try:
+                    if (
+                        dp_bins.contains(game["Diff_Power"]).any() and
+                        dm_bins.contains(game["Diff_M"]).any() and
+                        dhtp_bins.contains(game["Diff_HT_P"]).any()
+                    ):
+                        dp_bin = dp_bins.get_loc(game["Diff_Power"])
+                        dm_bin = dm_bins.get_loc(game["Diff_M"])
+                        dhtp_bin = dhtp_bins.get_loc(game["Diff_HT_P"])
+                    else:
+                        continue
+
+                    subset = df_history[
+                        (df_history["DiffPower_bin"] == dp_bins[dp_bin]) &
+                        (df_history["DiffM_bin"] == dm_bins[dm_bin]) &
+                        (df_history["DiffHTP_bin"] == dhtp_bins[dhtp_bin])
+                    ]
+                    if not subset.empty:
+                        total_matches += len(subset)
+                        home_wins += (subset["Result"] == "Home").sum()
+                        away_wins += (subset["Result"] == "Away").sum()
+                        draws += (subset["Result"] == "Draw").sum()
+                except:
+                    continue
+
+            if total_matches > 0:
+                pct_home = 100 * home_wins / total_matches
+                pct_away = 100 * away_wins / total_matches
+                pct_draw = 100 * draws / total_matches
+            else:
+                pct_home, pct_away, pct_draw = 0, 0, 0
+
+        if not games_today.empty:
+            ml_probs = model_multi.predict_proba(X_today_1x2)
+            df_preds = pd.DataFrame(ml_probs, columns=["p_home", "p_draw", "p_away"])
+            ml_home = df_preds["p_home"].mean() * 100
+            ml_draw = df_preds["p_draw"].mean() * 100
+            ml_away = df_preds["p_away"].mean() * 100
+        else:
+            ml_home, ml_draw, ml_away = 0, 0, 0
+
+        cols = st.columns(2)
+        with cols[0]:
+            st.markdown("### 📊 Historical Perspective")
+            st.write(f"**Home Wins:** {pct_home:.1f}%")
+            st.write(f"**Draws:** {pct_draw:.1f}%")
+            st.write(f"**Away Wins:** {pct_away:.1f}%")
+            st.caption(f"Based on {total_matches:,} similar historical matches (excluding today)")
+        with cols[1]:
+            st.markdown("### 🤖 ML Forecast (Trained Model)")
+            st.write(f"**Home Wins:** {ml_home:.1f}%")
+            st.write(f"**Draws:** {ml_draw:.1f}%")
+            st.write(f"**Away Wins:** {ml_away:.1f}%")
+            st.caption(f"Based on {len(games_today)} matches today")
+
+        # Divergence
+        divergence = abs(ml_home - pct_home) + abs(ml_draw - pct_draw) + abs(ml_away - pct_away)
+        if divergence < 10:
+            status_icon, status_text = "🟢", "High confidence (ML aligned with historical)"
+        elif divergence < 25:
+            status_icon, status_text = "🟡", "Medium confidence (some divergence)"
+        else:
+            status_icon, status_text = "🔴", "Low confidence (ML diverges strongly from historical)"
+
+        st.markdown("### 🔍 Difference: Historical vs ML")
+        st.write(f"- Home: {ml_home - pct_home:+.1f} pp")
+        st.write(f"- Draw: {ml_draw - pct_draw:+.1f} pp")
+        st.write(f"- Away: {ml_away - pct_away:+.1f} pp")
+
+        st.markdown("### 📈 Global Divergence Index")
+        st.write(f"{status_icon} {status_text}")
+        st.caption(f"Total divergence index: {divergence:.1f} percentage points")
+
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=divergence,
+            title={'text': "Divergence Index"},
+            gauge={
+                'axis': {'range': [0, 50]},
+                'bar': {'color': "darkblue"},
+                'steps': [
+                    {'range': [0, 10], 'color': "lightgreen"},
+                    {'range': [10, 25], 'color': "khaki"},
+                    {'range': [25, 50], 'color': "lightcoral"}
+                ],
+                'threshold': {'line': {'color': "black", 'width': 4}, 'thickness': 0.75, 'value': divergence}
+            }
+        ))
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.warning(f"⚠️ Hybrid/Divergence could not be generated: {e}")
+
+
+
+
+
 # =========================================================
 # 🔹 Dual View Tabs (Add-on after Forecast V2)
 # =========================================================
