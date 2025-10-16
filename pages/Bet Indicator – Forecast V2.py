@@ -724,8 +724,24 @@ with tab2:
         color = "rgba(0,200,0,0.25)" if pd.notna(val) and val > 0 else "rgba(255,0,0,0.15)"
         return f"background-color:{color}"
 
-    st.dataframe(
-        df_skellam.style.format({
+    # st.dataframe(
+    #     df_skellam.style.format({
+    #         "Asian_Home": "{:+.2f}",
+    #         "XG2_H": "{:.2f}", "XG2_A": "{:.2f}",
+    #         "Alpha_League": "{:.2f}",
+    #         "Skellam_pH": "{:.1%}", "Skellam_pD": "{:.1%}", "Skellam_pA": "{:.1%}",
+    #         "Skellam_AH_Win": "{:.1%}", "Skellam_AH_Push": "{:.1%}", "Skellam_AH_Lose": "{:.1%}",
+    #         "Odd_H": "{:.2f}", "Odd_A": "{:.2f}",
+    #         "Impl_H": "{:.1%}", "Impl_A": "{:.1%}",
+    #         "EV_H_Skellam": "{:+.1%}", "EV_A_Skellam": "{:+.1%}",
+    #     }).applymap(hl, subset=["EV_H_Skellam", "EV_A_Skellam"]),
+    #     use_container_width=True, height=700,
+    # )
+    # --- Substitua o st.dataframe atual por este bloco ---
+
+    styled_sk = (
+        df_skellam.style
+        .format({
             "Asian_Home": "{:+.2f}",
             "XG2_H": "{:.2f}", "XG2_A": "{:.2f}",
             "Alpha_League": "{:.2f}",
@@ -734,9 +750,17 @@ with tab2:
             "Odd_H": "{:.2f}", "Odd_A": "{:.2f}",
             "Impl_H": "{:.1%}", "Impl_A": "{:.1%}",
             "EV_H_Skellam": "{:+.1%}", "EV_A_Skellam": "{:+.1%}",
-        }).applymap(hl, subset=["EV_H_Skellam", "EV_A_Skellam"]),
-        use_container_width=True, height=700,
+        }, na_rep="—")
+        # degradê padronizado igual ao Forecast V2:
+        .applymap(lambda v: style_probs(v, "p_home"), subset=["Skellam_pH"])
+        .applymap(lambda v: style_probs(v, "p_draw"), subset=["Skellam_pD"])
+        .applymap(lambda v: style_probs(v, "p_away"), subset=["Skellam_pA"])
+        # mantém o highlight de EV:
+        .applymap(hl, subset=["EV_H_Skellam", "EV_A_Skellam"])
     )
+    
+    st.dataframe(styled_sk, use_container_width=True, height=700)
+
 
     # ------------------------------------------------------
     # 9️⃣ Value Scanner – Skellam
