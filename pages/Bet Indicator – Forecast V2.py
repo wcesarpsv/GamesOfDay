@@ -597,9 +597,10 @@ try:
         for _, game in df_day.iterrows():
             try:
                 if (
-                    dp_bins.contains(game["Diff_Power"]).any() and
-                    dm_bins.contains(game["Diff_M"]).any() and
-                    dhtp_bins.contains(game["Diff_HT_P"]).any()
+                    
+                    dp_bins.contains(game["Diff_Power"])
+                    and dm_bins.contains(game["Diff_M"])
+                    and dhtp_bins.contains(game["Diff_HT_P"])
                 ):
                     dp_bin = dp_bins.get_loc(game["Diff_Power"])
                     dm_bin = dm_bins.get_loc(game["Diff_M"])
