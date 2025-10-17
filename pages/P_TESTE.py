@@ -959,7 +959,7 @@ def analyze_market_error_performance(df, side):
 # st.write("**Performance por Faixa de Market Error - HOME:**")
 home_analysis = analyze_market_error_performance(finished_games, 'Home')
 if not home_analysis.empty:
-    # st.dataframe(home_analysis)
+    st.dataframe(home_analysis)
 else:
     # st.warning("Sem dados para análise HOME")
 
@@ -968,7 +968,7 @@ away_analysis = analyze_market_error_performance(finished_games, 'Away')
 if not away_analysis.empty:
     st.dataframe(away_analysis)
 else:
-    # st.warning("Sem dados para análise AWAY")
+    st.warning("Sem dados para análise AWAY")
 
 
 
