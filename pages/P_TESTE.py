@@ -187,12 +187,8 @@ def event_side_for_winprob(auto_rec):
 
 
 ########################################
-####### Bloco 5C – Features Engineering Completo ####
+####### Bloco 5C – Bands & Dominant ####
 ########################################
-
-st.markdown("### 🛠️ Feature Engineering - Histórico & Hoje")
-
-# 1. CLASSIFICAÇÃO DE LIGAS (para histórico e hoje)
 def classify_leagues_variation(history_df):
     agg = (
         history_df.groupby('League')
@@ -250,48 +246,10 @@ def dominant_side(row, threshold=DOMINANT_THRESHOLD):
         return "Away weak"
     return "Mixed / Neutral"
 
-# 2. APLICAR FEATURE ENGINEERING NO HISTÓRICO
-st.info("📊 Aplicando feature engineering no histórico...")
-
-# Calcular M_Diff no histórico
-history['M_Diff'] = history['M_H'] - history['M_A']
-
-# Merge com classificações de liga
+# Merge com classificações
 league_class = classify_leagues_variation(history)
 league_bands = compute_league_bands(history)
 
-history = history.merge(league_class, on='League', how='left')
-history = history.merge(league_bands, on='League', how='left')
-
-# Calcular bands e dominant no histórico
-history['Home_Band'] = np.where(
-    history['M_H'] <= history['Home_P20'], 'Bottom 20%',
-    np.where(history['M_H'] >= history['Home_P80'], 'Top 20%', 'Balanced')
-)
-history['Away_Band'] = np.where(
-    history['M_A'] <= history['Away_P20'], 'Bottom 20%',
-    np.where(history['M_A'] >= history['Away_P80'], 'Top 20%', 'Balanced')
-)
-history['Dominant'] = history.apply(dominant_side, axis=1)
-
-# Games Analyzed (simples count por time)
-def calculate_games_analyzed(df):
-    home_games = df.groupby('Home').size().reset_index(name='Home_Games')
-    away_games = df.groupby('Away').size().reset_index(name='Away_Games')
-    
-    df = df.merge(home_games, on='Home', how='left')
-    df = df.merge(away_games, on='Away', how='left')
-    df['Games_Analyzed'] = (df['Home_Games'] + df['Away_Games']) / 2
-    return df.drop(['Home_Games', 'Away_Games'], axis=1)
-
-history = calculate_games_analyzed(history)
-
-# 3. APLICAR FEATURE ENGINEERING NOS DADOS DE HOJE (já existente)
-st.info("📊 Aplicando feature engineering nos dados de hoje...")
-
-games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
-
-# Merge com classificações
 games_today = games_today.merge(league_class, on='League', how='left')
 games_today = games_today.merge(league_bands, on='League', how='left')
 
@@ -305,11 +263,6 @@ games_today['Away_Band'] = np.where(
 )
 
 games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
-games_today = calculate_games_analyzed(games_today)
-
-st.success("✅ Feature engineering aplicado com sucesso!")
-st.write(f"📊 Histórico: {history.shape[0]} jogos, {history.shape[1]} colunas")
-st.write(f"📊 Hoje: {games_today.shape[0]} jogos, {games_today.shape[1]} colunas")
 
 
 ########################################
@@ -380,107 +333,10 @@ games_today['Auto_Recommendation'] = games_today.apply(lambda r: auto_recommenda
 
 
 ########################################
-####### Bloco 6B – Market Error History COM SHIFT #######
+####### Bloco 7 – Train ML Model #######
 ########################################
+history = history.dropna(subset=['Goals_H_FT','Goals_A_FT'])
 
-st.markdown("### 📊 Market Error Calculation with Shift")
-
-def calculate_market_error_history_shift(history_df):
-    """Calcula Market Error com shift para evitar data leakage"""
-    if all(col in history_df.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
-        # Calcular probabilidades implícitas
-        probs = pd.DataFrame()
-        probs['p_H'] = 1 / history_df['Odd_H']
-        probs['p_D'] = 1 / history_df['Odd_D'] 
-        probs['p_A'] = 1 / history_df['Odd_A']
-        probs = probs.div(probs.sum(axis=1), axis=0)
-        
-        history_df['Imp_Prob_H'] = probs['p_H']
-        history_df['Imp_Prob_D'] = probs['p_D'] 
-        history_df['Imp_Prob_A'] = probs['p_A']
-        
-        # Calcular probabilidades verdadeiras
-        def get_true_probability(row, outcome):
-            if outcome == "Home":
-                return 1.0 if row['Goals_H_FT'] > row['Goals_A_FT'] else 0.0
-            elif outcome == "Away": 
-                return 1.0 if row['Goals_H_FT'] < row['Goals_A_FT'] else 0.0
-            else:  # Draw
-                return 1.0 if row['Goals_H_FT'] == row['Goals_A_FT'] else 0.0
-        
-        history_df['True_Prob_Home'] = history_df.apply(lambda x: get_true_probability(x, "Home"), axis=1)
-        history_df['True_Prob_Away'] = history_df.apply(lambda x: get_true_probability(x, "Away"), axis=1)
-        history_df['True_Prob_Draw'] = history_df.apply(lambda x: get_true_probability(x, "Draw"), axis=1)
-        
-        # Calcular Market Error (AGORA COM SHIFT!)
-        history_df['Market_Error_Home_Hist'] = history_df['True_Prob_Home'] - history_df['Imp_Prob_H']
-        history_df['Market_Error_Away_Hist'] = history_df['True_Prob_Away'] - history_df['Imp_Prob_A']
-        history_df['Market_Error_Draw_Hist'] = history_df['True_Prob_Draw'] - history_df['Imp_Prob_D']
-        
-        # 🔥 APLICAR SHIFT(1) - Usar erro do jogo ANTERIOR
-        history_df['Market_Error_Home_Hist'] = history_df['Market_Error_Home_Hist'].shift(1)
-        history_df['Market_Error_Away_Hist'] = history_df['Market_Error_Away_Hist'].shift(1) 
-        history_df['Market_Error_Draw_Hist'] = history_df['Market_Error_Draw_Hist'].shift(1)
-        
-        st.success(f"✅ Market Error calculado com SHIFT(1) - {history_df['Market_Error_Home_Hist'].notna().sum()} jogos válidos")
-        
-        # Estatísticas dos dados VÁLIDOS (após shift)
-        valid_data = history_df.dropna(subset=['Market_Error_Home_Hist'])
-        st.write("**Estatísticas Market Error (com shift):**")
-        st.write(f"- Média Market_Error_Home: {valid_data['Market_Error_Home_Hist'].mean():.3f}")
-        st.write(f"- Média Market_Error_Away: {valid_data['Market_Error_Away_Hist'].mean():.3f}")
-        st.write(f"- Média Market_Error_Draw: {valid_data['Market_Error_Draw_Hist'].mean():.3f}")
-        
-        return history_df
-    else:
-        st.warning("⚠️ Odds não disponíveis no histórico")
-        return history_df
-
-# Aplicar ao histórico (AGORA COM TODAS AS FEATURES JÁ CALCULADAS)
-history = calculate_market_error_history_shift(history)
-
-# Mostrar disponibilidade de features após shift
-st.markdown("### 🔍 Disponibilidade de Features após Shift")
-feature_availability = []
-for feature in ['Home_Band', 'Away_Band', 'Dominant', 'League_Classification', 'Games_Analyzed', 
-                'Market_Error_Home_Hist', 'Market_Error_Away_Hist', 'Market_Error_Draw_Hist']:
-    if feature in history.columns:
-        available = history[feature].notna().sum()
-        total = len(history)
-        feature_availability.append({
-            'Feature': feature,
-            'Disponível': f"{available}/{total}",
-            'Percentual': f"{(available/total)*100:.1f}%"
-        })
-
-if feature_availability:
-    st.dataframe(pd.DataFrame(feature_availability))
-
-
-########################################
-####### Bloco 7A – ML Data Preparation #######
-########################################
-
-st.markdown("### 🧹 Preparação dos Dados para ML")
-
-# 1. DEFINIR FEATURES COMPLETAS
-features_raw = [
-    'HandScore_Home_HT', 'HandScore_Away_HT',
-    'Aggression_Home', 'Aggression_Away',
-    'Diff_HT_P',
-    'M_H', 'M_A', 'Diff_Power', 'M_Diff',
-    'Home_Band', 'Away_Band', 'Dominant',
-    'League_Classification',
-    'Games_Analyzed',
-    'Market_Error_Home_Hist', 'Market_Error_Away_Hist', 'Market_Error_Draw_Hist'
-]
-
-st.info(f"📋 Features planejadas: {len(features_raw)}")
-
-# 2. FILTRAR HISTÓRICO VÁLIDO (após shift)
-history_valid = history.dropna(subset=['Market_Error_Home_Hist'])
-
-# 3. MAPEAR RESULTADO
 def map_result(row):
     if row['Goals_H_FT'] > row['Goals_A_FT']:
         return "Home"
@@ -489,130 +345,57 @@ def map_result(row):
     else:
         return "Draw"
 
-history_valid['Result'] = history_valid.apply(map_result, axis=1)
+history['Result'] = history.apply(map_result, axis=1)
 
-# 4. VERIFICAR DISPONIBILIDADE DAS FEATURES
-st.markdown("### 🔍 Verificação de Disponibilidade das Features")
-
-features_available = []
-features_with_nan = []
-features_missing = []
-
-for feature in features_raw:
-    if feature in history_valid.columns:
-        nan_count = history_valid[feature].isna().sum()
-        nan_percent = (nan_count / len(history_valid)) * 100
-        
-        if nan_count == 0:
-            features_available.append(feature)
-            st.success(f"✅ {feature}: 0% NaN")
-        else:
-            features_with_nan.append((feature, nan_count, nan_percent))
-            st.warning(f"⚠️ {feature}: {nan_count} NaN ({nan_percent:.1f}%)")
+# 🆕 NOVO: Codificar as recomendações do Auto Recommendation
+def encode_auto_recommendation(auto_rec):
+    if '🟢 Back Home' in auto_rec:
+        return 4  # Forte Home
+    elif '🟠 Back Away' in auto_rec:
+        return 3  # Forte Away  
+    elif '🟦 1X' in auto_rec:
+        return 2  # Home/Draw
+    elif '🟪 X2' in auto_rec:
+        return 1  # Away/Draw
+    elif '⚪ Back Draw' in auto_rec:
+        return 0  # Draw
     else:
-        features_missing.append(feature)
-        st.error(f"❌ {feature}: Não encontrada")
+        return -1 # Avoid/Neutro
 
-# 5. RESUMO DA SITUAÇÃO
-st.markdown("### 📈 Resumo da Qualidade dos Dados")
-st.write(f"✅ **Features disponíveis sem NaN:** {len(features_available)}")
-st.write(f"⚠️ **Features com NaN:** {len(features_with_nan)}") 
-st.write(f"❌ **Features faltantes:** {len(features_missing)}")
-st.write(f"📊 **Total de jogos válidos:** {len(history_valid)}")
+# 🆕 APLICAR AUTO RECOMMENDATION AO HISTÓRICO (simular o que teria sido recomendado)
+print("🔄 Calculando Auto Recommendation para dados históricos...")
+history['Auto_Rec_Simulated'] = history.apply(lambda r: auto_recommendation(r), axis=1)
+history['Auto_Rec_Encoded'] = history['Auto_Rec_Simulated'].apply(encode_auto_recommendation)
 
-# 6. DECISÃO SOBRE FEATURES A USAR
-if len(features_available) >= 8:  # Mínimo razoável
-    features_to_use = features_available
-    st.success(f"🎯 Usando {len(features_to_use)} features sem NaN")
-else:
-    st.warning("⚠️ Poucas features sem NaN. Incluindo features com NaN controlado...")
-    # Incluir features com até 30% NaN
-    features_to_use = features_available + [
-        f[0] for f in features_with_nan if f[2] <= 30.0
-    ]
-    st.info(f"🎯 Usando {len(features_to_use)} features (algumas com NaN controlado)")
+# 🆕 FEATURES ATUALIZADAS - INCLUINDO AUTO RULES
+features_raw = [
+    'HandScore_Home_HT','HandScore_Away_HT',
+    'Aggression_Home','Aggression_Away',
+    'Diff_HT_P',
+    'M_H','M_A','Diff_Power','M_Diff',
+    'Home_Band','Away_Band','Dominant',
+    'League_Classification',
+    'Games_Analyzed',
+    'Auto_Rec_Encoded'  # 🆕 FEATURE NOVA - CONHECIMENTO DAS REGRAS!
+]
 
-if len(features_to_use) < 5:
-    st.error("❌ Features insuficientes para treino!")
-    st.stop()
+# Manter apenas features que existem no histórico
+features_raw = [f for f in features_raw if f in history.columns]
 
-# 7. PREPARAR DADOS FINAIS
-X = history_valid[features_to_use].copy()
-y = history_valid['Result']
+print(f"✅ Features para ML: {features_raw}")
 
-st.success(f"🚀 Dados preparados: {X.shape[0]} amostras, {X.shape[1]} features")
+X = history[features_raw].copy()
+y = history['Result']
 
-# Salvar informações para uso posterior
-st.session_state['features_used'] = features_to_use
-st.session_state['X_columns_final'] = None  # Será definido após encoding
-st.session_state['data_prepared'] = True
+# Mapeamento de bands para numérico
+BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
+if 'Home_Band' in X: 
+    X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
+if 'Away_Band' in X: 
+    X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
 
-
-########################################
-####### Bloco 7B – ML Model Training #######
-########################################
-
-st.markdown("### 🤖 Treinamento do Modelo de Machine Learning")
-
-# 1. VERIFICAR PREPARAÇÃO PRÉVIA
-if not st.session_state.get('data_prepared', False):
-    st.error("❌ Dados não preparados. Execute o Bloco 7A primeiro!")
-    st.stop()
-
-X = history_valid[features_to_use].copy()
-y = history_valid['Result']
-
-# 2. TRATAMENTO DE NaN RESTANTES
-st.markdown("### 🧹 Limpeza Final de Dados")
-
-def safe_fill_na(df):
-    """Preenche NaN de forma segura"""
-    df_filled = df.copy()
-    
-    for col in df_filled.columns:
-        if df_filled[col].isna().any():
-            if df_filled[col].dtype in ['object', 'category']:
-                # Categóricas: usar moda
-                mode_val = df_filled[col].mode()
-                fill_val = mode_val[0] if len(mode_val) > 0 else 'Unknown'
-                df_filled[col] = df_filled[col].fillna(fill_val)
-            else:
-                # Numéricas: usar mediana
-                median_val = df_filled[col].median()
-                df_filled[col] = df_filled[col].fillna(median_val)
-    
-    return df_filled
-
-X = safe_fill_na(X)
-
-# Verificar se ainda há NaN
-if X.isna().any().any():
-    st.warning("⚠️ Ainda existem NaN após limpeza. Removendo linhas problemáticas...")
-    nan_mask = X.isna().any(axis=1)
-    X = X[~nan_mask]
-    y = y[~nan_mask]
-    st.info(f"📝 Removidas {nan_mask.sum()} linhas com NaN persistente")
-
-st.write(f"📊 Dimensões finais: X {X.shape}, y {y.shape}")
-
-# 3. FEATURE ENGINEERING PARA ML
-st.markdown("### 🔧 Transformação de Features")
-
-BAND_MAP = {"Bottom 20%": 1, "Balanced": 2, "Top 20%": 3}
-
-# Aplicar transformações numéricas
-if 'Home_Band' in X.columns: 
-    X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP).fillna(2)
-    X = X.drop('Home_Band', axis=1)
-
-if 'Away_Band' in X.columns: 
-    X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP).fillna(2)
-    X = X.drop('Away_Band', axis=1)
-
-# Identificar colunas categóricas
-cat_cols = [c for c in ['Dominant', 'League_Classification'] if c in X.columns]
-
-# Encoding categóricas
+# Codificar variáveis categóricas
+cat_cols = [c for c in ['Dominant','League_Classification'] if c in X]
 encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
 if cat_cols:
     encoded = encoder.fit_transform(X[cat_cols])
@@ -620,17 +403,7 @@ if cat_cols:
     X = pd.concat([X.drop(columns=cat_cols).reset_index(drop=True),
                    encoded_df.reset_index(drop=True)], axis=1)
 
-# Salvar colunas finais
-st.session_state['X_columns_final'] = X.columns.tolist()
-st.session_state['encoder'] = encoder
-st.session_state['cat_cols'] = cat_cols
-st.session_state['band_map'] = BAND_MAP
-
-st.success(f"✅ Features transformadas: {X.shape[1]} colunas finais")
-
-# 4. TREINAR MODELO
-st.markdown("### 🚀 Treinando Modelo Random Forest")
-
+# 🎯 TREINAR MODELO COM NOVAS FEATURES
 model = RandomForestClassifier(
     n_estimators=500,
     max_depth=12,
@@ -642,323 +415,58 @@ model = RandomForestClassifier(
     n_jobs=-1
 )
 
+print("🤖 Treinando Random Forest com Auto Rules features...")
 model.fit(X, y)
-st.session_state['model'] = model
-
-st.success("✅ Modelo treinado com sucesso!")
-
-# 5. ANALISAR IMPORTÂNCIA DAS FEATURES
-st.markdown("### 📊 Análise de Importância das Features")
-
-feature_importance = pd.DataFrame({
-    'feature': X.columns,
-    'importance': model.feature_importances_
-}).sort_values('importance', ascending=False)
-
-# Mostrar top 15 features
-st.write("**Top 15 Features por Importância:**")
-st.dataframe(feature_importance.head(15))
-
-# Gráfico de importância
-fig, ax = plt.subplots(figsize=(10, 6))
-top_features = feature_importance.head(15)
-sns.barplot(data=top_features, x='importance', y='feature', ax=ax)
-ax.set_title('Top 15 Features - Importância no Modelo')
-ax.set_xlabel('Importância')
-st.pyplot(fig)
-
-# 6. RESUMO FINAL
-st.markdown("### ✅ Resumo do Treinamento")
-st.write(f"**📊 Dados de Treino:**")
-st.write(f"- Amostras: {X.shape[0]}")
-st.write(f"- Features: {X.shape[1]}")
-st.write(f"- Classes: {len(model.classes_)} → {list(model.classes_)}")
-
-st.write(f"**🔧 Features Utilizadas:**")
-for i, feature in enumerate(features_to_use, 1):
-    st.write(f"{i}. {feature}")
-
-st.success("🎯 Bloco 7 concluído! Modelo pronto para previsões.")
+print("✅ Modelo treinado com sucesso!")
 
 
 
 ########################################
-####### Bloco 8 – Apply ML to Today (MODIFICADO) ####
+####### Bloco 8 – Apply ML to Today ####
 ########################################
-
-st.markdown("### 🤖 Aplicando ML nos Jogos de Hoje")
-
-# 1. VERIFICAR SE O MODELO FOI TREINADO
-if 'model' not in st.session_state:
-    st.error("❌ Modelo não treinado. Execute o Bloco 7B primeiro!")
-    st.stop()
-
-model = st.session_state['model']
-features_to_use = st.session_state.get('features_used', [])
-X_columns_final = st.session_state.get('X_columns_final', [])
-encoder = st.session_state.get('encoder')
-cat_cols = st.session_state.get('cat_cols', [])
-BAND_MAP = st.session_state.get('band_map', {"Bottom 20%": 1, "Balanced": 2, "Top 20%": 3})
-
-# 2. CONFIGURAÇÃO DO THRESHOLD
 threshold = st.sidebar.slider(
     "ML Threshold for Direct Win (%)", 
     min_value=50, max_value=80, value=65, step=1
 ) / 100.0
 
-# 3. FUNÇÃO DE RECOMENDAÇÃO ML
-def ml_recommendation_from_proba(p_home, p_draw, p_away, threshold=0.65):
-    if p_home >= threshold:
-        return "🟢 Back Home"
-    elif p_away >= threshold:
-        return "🟠 Back Away"
-    else:
-        sum_home_draw = p_home + p_draw
-        sum_away_draw = p_away + p_draw
-        if abs(p_home - p_away) < 0.05 and p_draw > 0.50:
-            return "⚪ Back Draw"
-        elif sum_home_draw > sum_away_draw:
-            return "🟦 1X (Home/Draw)"
-        elif sum_away_draw > sum_home_draw:
-            return "🟪 X2 (Away/Draw)"
-        else:
-            return "❌ Avoid"
+# 🆕 CALCULAR AUTO RECOMMENDATION PRIMEIRO (para ter a feature)
+print("🔄 Calculando Auto Recommendation para jogos de hoje...")
+games_today['Auto_Recommendation'] = games_today.apply(lambda r: auto_recommendation(r), axis=1)
+games_today['Auto_Rec_Encoded'] = games_today['Auto_Recommendation'].apply(encode_auto_recommendation)
 
-# 4. PREPARAR DADOS DE HOJE
-st.markdown("### 🧹 Preparando Dados de Hoje para ML")
+# 🆕 PREPARAR FEATURES PARA HOJE (INCLUINDO AUTO_REC_ENCODED)
+X_today = games_today[features_raw].copy()
 
-# Verificar features disponíveis nos dados de hoje
-available_features_today = [f for f in features_to_use if f in games_today.columns]
-missing_features_today = [f for f in features_to_use if f not in games_today.columns]
+if 'Home_Band' in X_today: 
+    X_today['Home_Band_Num'] = X_today['Home_Band'].map(BAND_MAP)
+if 'Away_Band' in X_today: 
+    X_today['Away_Band_Num'] = X_today['Away_Band'].map(BAND_MAP)
 
-st.write(f"✅ **Features disponíveis em hoje:** {len(available_features_today)}/{len(features_to_use)}")
-if missing_features_today:
-    st.warning(f"⚠️ **Features faltantes em hoje:** {missing_features_today}")
+# Aplicar mesmo encoder das categorias
+if cat_cols:
+    encoded_today = encoder.transform(X_today[cat_cols])
+    encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(cat_cols))
+    X_today = pd.concat([X_today.drop(columns=cat_cols).reset_index(drop=True),
+                         encoded_today_df.reset_index(drop=True)], axis=1)
 
-# Criar X_today apenas com features disponíveis
-X_today = games_today[available_features_today].copy()
+# 🎯 FAZER PREDIÇÕES COM MODELO APRIMORADO
+print("🤖 Aplicando ML com Auto Rules features...")
+ml_preds = model.predict(X_today)
+ml_proba = model.predict_proba(X_today)
 
-# 5. PREENCHER FEATURES FALTANTES COM VALORES PADRÃO
-st.markdown("### 🔧 Completando Features Faltantes")
-
-def complete_missing_features(df, features_needed, history_reference=None):
-    """Completa features faltantes com valores padrão"""
-    df_completed = df.copy()
-    
-    for feature in features_needed:
-        if feature not in df_completed.columns:
-            # Valores padrão baseados no tipo de feature
-            if 'Market_Error' in feature:
-                df_completed[feature] = 0.0  # Neutro para Market Error
-            elif 'Band' in feature:
-                df_completed[feature] = 'Balanced'
-            elif feature == 'Dominant':
-                df_completed[feature] = 'Mixed / Neutral'
-            elif feature == 'League_Classification':
-                df_completed[feature] = 'Medium Variation'
-            elif feature == 'Games_Analyzed':
-                df_completed[feature] = 10
-            elif feature in ['HandScore', 'Aggression', 'Diff_HT_P']:
-                df_completed[feature] = 0.0  # Valores neutros
-            elif feature in ['M_H', 'M_A', 'M_Diff', 'Diff_Power']:
-                if history_reference is not None and feature in history_reference.columns:
-                    df_completed[feature] = history_reference[feature].median()
-                else:
-                    df_completed[feature] = 0.0
-            else:
-                df_completed[feature] = 0.0
-            
-            st.info(f"📝 Criada {feature} = {df_completed[feature].iloc[0]}")
-    
-    return df_completed
-
-# Completar features faltantes
-X_today = complete_missing_features(X_today, features_to_use, history)
-
-# 6. TRATAMENTO DE NaN NOS DADOS DE HOJE
-st.markdown("### 🧼 Limpeza de NaN nos Dados de Hoje")
-
-nan_before = X_today.isna().sum().sum()
-if nan_before > 0:
-    st.warning(f"⚠️ Encontrados {nan_before} valores NaN nos dados de hoje")
-    
-    # Preencher NaN
-    for col in X_today.columns:
-        if X_today[col].isna().any():
-            if X_today[col].dtype in ['object', 'category']:
-                # Para categóricas, usar moda ou valor padrão
-                mode_val = X_today[col].mode()
-                fill_val = mode_val[0] if len(mode_val) > 0 else 'Unknown'
-                X_today[col] = X_today[col].fillna(fill_val)
-            else:
-                # Para numéricas, usar mediana
-                median_val = X_today[col].median()
-                X_today[col] = X_today[col].fillna(median_val)
-    
-    st.success("✅ NaN preenchidos com sucesso")
-
-# 7. APLICAR TRANSFORMAÇÕES DE FEATURES
-st.markdown("### 🔄 Aplicando Transformações de Features")
-
-# Transformar bands numéricas
-if 'Home_Band' in X_today.columns: 
-    X_today['Home_Band_Num'] = X_today['Home_Band'].map(BAND_MAP).fillna(2)
-    X_today = X_today.drop('Home_Band', axis=1)
-
-if 'Away_Band' in X_today.columns: 
-    X_today['Away_Band_Num'] = X_today['Away_Band'].map(BAND_MAP).fillna(2)
-    X_today = X_today.drop('Away_Band', axis=1)
-
-# Encoding de variáveis categóricas
-try:
-    if cat_cols and encoder is not None:
-        # Verificar se todas as categorias existem
-        for i, col in enumerate(cat_cols):
-            if col in X_today.columns:
-                known_categories = set(encoder.categories_[i])
-                current_values = set(X_today[col].unique())
-                unknown_categories = current_values - known_categories
-                
-                if unknown_categories:
-                    st.warning(f"⚠️ Categorias desconhecidas em {col}: {unknown_categories}")
-                    # Substituir por categoria padrão
-                    default_category = encoder.categories_[i][0]
-                    X_today[col] = X_today[col].apply(
-                        lambda x: x if x in known_categories else default_category
-                    )
-        
-        # Aplicar encoding
-        encoded_today = encoder.transform(X_today[cat_cols])
-        encoded_today_df = pd.DataFrame(
-            encoded_today, 
-            columns=encoder.get_feature_names_out(cat_cols),
-            index=X_today.index
-        )
-        X_today = pd.concat([X_today.drop(columns=cat_cols), encoded_today_df], axis=1)
-        
-except Exception as e:
-    st.error(f"❌ Erro no encoding: {e}")
-    # Fallback: criar colunas de encoding manualmente
-    for col in cat_cols:
-        if col in encoder.get_feature_names_out():
-            for enc_col in encoder.get_feature_names_out([col]):
-                X_today[enc_col] = 0.0
-    X_today = X_today.drop(columns=cat_cols, errors='ignore')
-
-# 8. GARANTIR COMPATIBILIDADE COM O MODELO TREINADO
-st.markdown("### 🔍 Verificando Compatibilidade com Modelo Treinado")
-
-# Adicionar colunas faltantes
-missing_cols = set(X_columns_final) - set(X_today.columns)
-if missing_cols:
-    st.warning(f"⚠️ Adicionando {len(missing_cols)} colunas faltantes")
-    for col in missing_cols:
-        X_today[col] = 0.0
-        st.info(f"➕ {col} = 0.0")
-
-# Remover colunas extras
-extra_cols = set(X_today.columns) - set(X_columns_final)
-if extra_cols:
-    st.warning(f"⚠️ Removendo {len(extra_cols)} colunas extras")
-    for col in extra_cols:
-        X_today = X_today.drop(col, axis=1)
-        st.info(f"➖ {col}")
-
-# Ordenar colunas exatamente como no treino
-X_today = X_today[X_columns_final]
-
-# Verificação final de NaN
-final_nan_check = X_today.isna().sum().sum()
-if final_nan_check > 0:
-    st.error(f"❌ ERRO CRÍTICO: {final_nan_check} NaN encontrados antes da predição!")
-    # Preencher qualquer NaN restante com 0
-    X_today = X_today.fillna(0)
-    st.warning("⚠️ NaN preenchidos com 0 como fallback")
-
-st.success(f"✅ Dados preparados: {X_today.shape}")
-
-# 9. FAZER PREVISÕES
-st.markdown("### 🎯 Fazendo Previsões ML")
-
-try:
-    ml_preds = model.predict(X_today)
-    ml_proba = model.predict_proba(X_today)
-    
-    # Extrair probabilidades para cada classe
-    games_today["ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
-    games_today["ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]  
-    games_today["ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
-    
-    st.success("✅ Previsões ML concluídas com sucesso!")
-    
-    # Estatísticas das previsões
-    st.write("**📊 Estatísticas das Previsões:**")
-    st.write(f"- Probabilidade Média Home: {games_today['ML_Proba_Home'].mean():.3f}")
-    st.write(f"- Probabilidade Média Draw: {games_today['ML_Proba_Draw'].mean():.3f}")
-    st.write(f"- Probabilidade Média Away: {games_today['ML_Proba_Away'].mean():.3f}")
-    
-except Exception as e:
-    st.error(f"❌ Erro durante a predição: {e}")
-    # Fallback: usar probabilidades neutras
-    games_today["ML_Proba_Home"] = 0.33
-    games_today["ML_Proba_Draw"] = 0.34
-    games_today["ML_Proba_Away"] = 0.33
-    st.warning("⚠️ Usando probabilidades neutras como fallback")
-
-# 10. APLICAR RECOMENDAÇÕES ML
-st.markdown("### 💡 Gerando Recomendações ML")
+games_today["ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
+games_today["ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
+games_today["ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
 
 games_today["ML_Recommendation"] = [
-    ml_recommendation_from_proba(
-        row["ML_Proba_Home"], 
-        row["ML_Proba_Draw"], 
-        row["ML_Proba_Away"],
-        threshold=threshold
-    )
+    ml_recommendation_from_proba(row["ML_Proba_Home"], 
+                                 row["ML_Proba_Draw"], 
+                                 row["ML_Proba_Away"],
+                                 threshold=threshold)
     for _, row in games_today.iterrows()
 ]
 
-# Estatísticas das recomendações
-rec_counts = games_today["ML_Recommendation"].value_counts()
-st.write("**📈 Distribuição das Recomendações ML:**")
-for rec, count in rec_counts.items():
-    st.write(f"- {rec}: {count} jogos")
-
-st.success("🎯 Aplicação do ML concluída com sucesso!")
-
-# 11. COMPARAÇÃO RÁPIDA ENTRE AUTO E ML
-st.markdown("### 🔄 Comparação Rápida: Auto vs ML")
-
-comparison_data = []
-for _, row in games_today.iterrows():
-    comparison_data.append({
-        'Home': row['Home'],
-        'Away': row['Away'], 
-        'League': row['League'],
-        'Auto_Rec': row['Auto_Recommendation'],
-        'ML_Rec': row['ML_Recommendation'],
-        'ML_Home_Prob': f"{row['ML_Proba_Home']:.1%}",
-        'ML_Draw_Prob': f"{row['ML_Proba_Draw']:.1%}", 
-        'ML_Away_Prob': f"{row['ML_Proba_Away']:.1%}"
-    })
-
-comparison_df = pd.DataFrame(comparison_data)
-st.dataframe(
-    comparison_df.style.format({
-        'ML_Home_Prob': '{}',
-        'ML_Draw_Prob': '{}',
-        'ML_Away_Prob': '{}'
-    }),
-    use_container_width=True,
-    height=400
-)
-
-# Contar concordâncias
-same_recommendation = (games_today['Auto_Recommendation'] == games_today['ML_Recommendation']).sum()
-total_games = len(games_today)
-agreement_rate = (same_recommendation / total_games) * 100
-
-st.info(f"**📊 Taxa de Concordância Auto vs ML: {agreement_rate:.1f}%** ({same_recommendation}/{total_games} jogos)")
+print("✅ ML Recommendations atualizadas com Auto Rules!")
 
 
 ########################################
