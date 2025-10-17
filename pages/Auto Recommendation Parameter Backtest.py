@@ -304,28 +304,48 @@ st.dataframe(rec_performance.style.format({
 }), use_container_width=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 📊 CUMULATIVE PROFIT CHARTS
+# 📊 CUMULATIVE PROFIT CHARTS (BY BET NUMBER)
 # ──────────────────────────────────────────────────────────────────────────────
-st.subheader("📈 Cumulative Profit Over Time")
+st.subheader("📈 Cumulative Profit by Bet Number")
 
-# Calculate cumulative profit by date for each recommendation type
+# Calculate cumulative profit by bet sequence for each recommendation type
 df_backtest_sorted = df_backtest.sort_values('Date')
 profit_data = []
 
 for rec_type in rec_performance.index:
     df_rec = df_backtest_sorted[df_backtest_sorted['Auto_Recommendation'] == rec_type].copy()
     if len(df_rec) > 0:
+        df_rec = df_rec.reset_index(drop=True)
+        df_rec['Bet_Number'] = range(1, len(df_rec) + 1)
         df_rec['Cumulative_Profit'] = df_rec['Profit'].cumsum()
         df_rec['Recommendation_Type'] = rec_type
-        profit_data.append(df_rec[['Date', 'Cumulative_Profit', 'Recommendation_Type']])
+        profit_data.append(df_rec[['Bet_Number', 'Cumulative_Profit', 'Recommendation_Type', 'Date']])
 
 if profit_data:
     profit_df = pd.concat(profit_data)
     
-    fig = px.line(profit_df, x='Date', y='Cumulative_Profit', color='Recommendation_Type',
-                  title='Cumulative Profit by Recommendation Type Over Time',
-                  labels={'Cumulative_Profit': 'Cumulative Profit (Units)', 'Date': 'Date'})
+    fig = px.line(profit_df, x='Bet_Number', y='Cumulative_Profit', color='Recommendation_Type',
+                  title='Cumulative Profit by Bet Number (Smooth Progression)',
+                  labels={'Cumulative_Profit': 'Cumulative Profit (Units)', 'Bet_Number': 'Bet Sequence Number'},
+                  hover_data=['Date'])
+    
+    # Add a zero line for reference
+    fig.add_hline(y=0, line_dash="dash", line_color="red", opacity=0.5)
+    
     st.plotly_chart(fig, use_container_width=True)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 📊 ADDITIONAL: PROFIT DISTRIBUTION BY BET
+# ──────────────────────────────────────────────────────────────────────────────
+st.subheader("📊 Profit Distribution by Bet Type")
+
+# Create a box plot showing profit distribution for each recommendation type
+fig_box = px.box(df_backtest[df_backtest['Auto_Recommendation'] != '❌ Avoid'], 
+                 x='Auto_Recommendation', y='Profit',
+                 title='Profit Distribution per Bet Type',
+                 labels={'Profit': 'Profit per Bet (Units)', 'Auto_Recommendation': 'Recommendation Type'})
+fig_box.add_hline(y=0, line_dash="dash", line_color="red", opacity=0.5)
+st.plotly_chart(fig_box, use_container_width=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 🔍 BEST COMBINATIONS ANALYSIS
