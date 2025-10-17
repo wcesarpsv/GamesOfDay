@@ -500,7 +500,6 @@ feature_importance = pd.DataFrame({
 st.write("**📊 Feature Importance (Top 15):**")
 st.dataframe(feature_importance.head(15))
 
-
 ########################################
 ####### Bloco 8 – Apply ML to Today #######
 ########################################
@@ -528,37 +527,104 @@ def calculate_market_error_today(games_today_df):
 # Aplicar aos jogos de hoje
 games_today = calculate_market_error_today(games_today)
 
-# PREPARAR DADOS DE HOJE - CRIAR COLUNAS MARKET ERROR TEMPORÁRIAS
+# SOLUÇÃO ROBUSTA: CRIAR FEATURES FALTANTES COM VALORES PADRÃO
+def prepare_today_features(games_today_df, features_raw):
+    """Prepara features para hoje, criando as faltantes com valores padrão"""
+    
+    # VALORES PADRÃO PARA FEATURES FALTANTES
+    default_values = {
+        'Home_Band': 'Balanced',
+        'Away_Band': 'Balanced', 
+        'Dominant': 'Mixed / Neutral',
+        'League_Classification': 'Medium Variation',
+        'Market_Error_Home_Hist': 0.0,
+        'Market_Error_Away_Hist': 0.0,
+        'Market_Error_Draw_Hist': 0.0,
+        'Games_Analyzed': 10  # Valor razoável padrão
+    }
+    
+    # CRIAR FEATURES FALTANTES
+    missing_features = [f for f in features_raw if f not in games_today_df.columns]
+    
+    for feature in missing_features:
+        if feature in default_values:
+            games_today_df[feature] = default_values[feature]
+            st.info(f"📝 Criada {feature} = {default_values[feature]}")
+        else:
+            # Para features numéricas sem padrão definido, usar 0
+            games_today_df[feature] = 0.0
+            st.warning(f"⚠️ Criada {feature} = 0.0 (padrão numérico)")
+    
+    return games_today_df
+
+# APLICAR PREPARAÇÃO ROBUSTA
+games_today = prepare_today_features(games_today, features_raw)
+
+# VERIFICAR FEATURES DISPONÍVEIS
+available_features = [f for f in features_raw if f in games_today.columns]
+st.success(f"🎯 Features disponíveis após preparação: {len(available_features)}/{len(features_raw)}")
+
+# PREPARAR DADOS DE HOJE
 X_today = games_today[features_raw].copy()
 
-# Para as features de Market Error, vamos usar VALORES NEUTROS (0) inicialmente
-# Elas serão atualizadas após a previsão do ML
+# Para as features de Market Error, usar VALORES NEUTROS (0) 
+# (já foram criadas acima se faltantes)
 market_error_cols = ['Market_Error_Home_Hist', 'Market_Error_Away_Hist', 'Market_Error_Draw_Hist']
 for col in market_error_cols:
     if col in X_today.columns:
-        X_today[col] = 0.0  # Valor neutro temporário
+        X_today[col] = 0.0  # Valor neutro para previsão
 
-# Aplicar transformações (igual ao treino)
+# APLICAR TRANSFORMAÇÕES COM TRY/EXCEPT
 BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
-if 'Home_Band' in X_today: 
-    X_today['Home_Band_Num'] = X_today['Home_Band'].map(BAND_MAP)
-if 'Away_Band' in X_today: 
-    X_today['Away_Band_Num'] = X_today['Away_Band'].map(BAND_MAP)
 
+try:
+    if 'Home_Band' in X_today: 
+        X_today['Home_Band_Num'] = X_today['Home_Band'].map(BAND_MAP)
+    if 'Away_Band' in X_today: 
+        X_today['Away_Band_Num'] = X_today['Away_Band'].map(BAND_MAP)
+except Exception as e:
+    st.warning(f"⚠️ Erro no mapeamento de bands: {e}")
+    # Valores padrão para bands numéricas
+    if 'Home_Band_Num' not in X_today.columns:
+        X_today['Home_Band_Num'] = 2  # Balanced
+    if 'Away_Band_Num' not in X_today.columns:  
+        X_today['Away_Band_Num'] = 2  # Balanced
+
+# ENCODING CATEGÓRICAS COM SEGURANÇA
 cat_cols = [c for c in ['Dominant','League_Classification'] if c in X_today]
-if cat_cols:
-    encoded_today = encoder.transform(X_today[cat_cols])
-    encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(cat_cols))
-    X_today = pd.concat([X_today.drop(columns=cat_cols).reset_index(drop=True),
-                         encoded_today_df.reset_index(drop=True)], axis=1)
+try:
+    if cat_cols:
+        encoded_today = encoder.transform(X_today[cat_cols])
+        encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(cat_cols))
+        X_today = pd.concat([X_today.drop(columns=cat_cols).reset_index(drop=True),
+                             encoded_today_df.reset_index(drop=True)], axis=1)
+except Exception as e:
+    st.error(f"❌ Erro no encoding: {e}")
+    # Criar colunas de encoding manualmente com zeros
+    for col in cat_cols:
+        encoded_cols = [f"{col}_{val}" for val in encoder.categories_[cat_cols.index(col)]]
+        for enc_col in encoded_cols:
+            X_today[enc_col] = 0.0
+    X_today = X_today.drop(columns=cat_cols, errors='ignore')
 
-# FAZER PREVISÕES DO ML (APENAS UMA VEZ!)
+# GARANTIR MESMA ORDEM E COLUNAS QUE O TREINO
+missing_cols = set(X.columns) - set(X_today.columns)
+for col in missing_cols:
+    X_today[col] = 0.0
+
+X_today = X_today[X.columns]  # Mesma ordem do treino
+
+st.success(f"✅ Dados preparados: {X_today.shape[1]} features (igual ao treino)")
+
+# FAZER PREVISÕES (o resto do código permanece igual)
 ml_preds = model.predict(X_today)
 ml_proba = model.predict_proba(X_today)
 
 games_today["ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
-games_today["ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
+games_today["ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]  
 games_today["ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
+
+# ... resto do código igual
 
 # AGORA CALCULAR MARKET ERROR REAL PARA HOJE (com as probabilidades do ML)
 if all(col in games_today.columns for col in ['Imp_Prob_H', 'Imp_Prob_A', 'Imp_Prob_D']):
