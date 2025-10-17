@@ -67,9 +67,9 @@ if _EXC_PATTERN and "League" in df_all.columns:
 df_all = df_all.sort_values(by="Date").reset_index(drop=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 🎛️ PARAMETER CONTROL PANEL
+# 🎛️ PARAMETER CONTROL PANEL BY BET TYPE
 # ──────────────────────────────────────────────────────────────────────────────
-st.sidebar.header("🎛️ Auto Recommendation Parameters")
+st.sidebar.header("🎛️ Parameters by Bet Type")
 
 # Reset button
 if st.sidebar.button("🔄 Reset All Parameters"):
@@ -78,26 +78,50 @@ if st.sidebar.button("🔄 Reset All Parameters"):
             del st.session_state[key]
     st.rerun()
 
-# Main parameters
-st.sidebar.subheader("📊 Core Parameters")
-M_DIFF_MARGIN = st.sidebar.slider("M_DIFF_MARGIN", 0.10, 0.50, 0.30, 0.05, key="param_m_diff_margin")
-POWER_MARGIN = st.sidebar.slider("POWER_MARGIN", 5, 20, 10, 1, key="param_power_margin")
+# Core thresholds (usados em múltiplas estratégias)
+st.sidebar.subheader("📊 Core Thresholds")
 DOMINANT_THRESHOLD = st.sidebar.slider("DOMINANT_THRESHOLD", 0.80, 0.95, 0.90, 0.01, key="param_dominant_threshold")
 
-# Condition-specific parameters
-st.sidebar.subheader("🎯 Condition Parameters")
-DIFF_MID_LO = st.sidebar.slider("DIFF_MID_LO", 0.10, 0.40, 0.20, 0.05, key="param_diff_mid_lo")
-DIFF_MID_HI = st.sidebar.slider("DIFF_MID_HI", 0.50, 1.00, 0.80, 0.05, key="param_diff_mid_hi")
-DIFF_MID_HI_HIGHVAR = st.sidebar.slider("DIFF_MID_HI_HIGHVAR", 0.50, 1.00, 0.75, 0.05, key="param_diff_mid_hi_highvar")
-POWER_GATE = st.sidebar.slider("POWER_GATE", 1, 10, 1, 1, key="param_power_gate")
-POWER_GATE_HIGHVAR = st.sidebar.slider("POWER_GATE_HIGHVAR", 1, 15, 5, 1, key="param_power_gate_highvar")
+# ⚪ BACK DRAW PARAMETERS
+st.sidebar.subheader("⚪ Back Draw")
+DRAW_ODD_MIN = st.sidebar.slider("Odd_D Min", 2.0, 4.0, 2.5, 0.1, key="param_draw_odd_min")
+DRAW_ODD_MAX = st.sidebar.slider("Odd_D Max", 4.0, 7.0, 6.0, 0.1, key="param_draw_odd_max")
+DRAW_DIFF_POWER_MIN = st.sidebar.slider("Diff_Power Min", -15, 5, -10, 1, key="param_draw_diff_power_min")
+DRAW_DIFF_POWER_MAX = st.sidebar.slider("Diff_Power Max", -5, 15, 10, 1, key="param_draw_diff_power_max")
 
-# Draw-specific parameters
-st.sidebar.subheader("⚪ Draw Parameters")
-ODD_D_MIN = st.sidebar.slider("ODD_D_MIN", 2.0, 4.0, 2.5, 0.1, key="param_odd_d_min")
-ODD_D_MAX = st.sidebar.slider("ODD_D_MAX", 4.0, 7.0, 6.0, 0.1, key="param_odd_d_max")
-DIFF_POWER_DRAW_MIN = st.sidebar.slider("DIFF_POWER_DRAW_MIN", -15, 0, -10, 1, key="param_diff_power_draw_min")
-DIFF_POWER_DRAW_MAX = st.sidebar.slider("DIFF_POWER_DRAW_MAX", 0, 15, 10, 1, key="param_diff_power_draw_max")
+# 🟢 BACK HOME PARAMETERS
+st.sidebar.subheader("🟢 Back Home")
+HOME_M_DIFF_MIN = st.sidebar.slider("M_Diff Min", 0.5, 1.5, 0.9, 0.1, key="param_home_m_diff_min")
+HOME_POWER_MARGIN = st.sidebar.slider("Power Margin", 5, 25, 10, 1, key="param_home_power_margin")
+HOME_STRONG_DOMINANT = st.sidebar.checkbox("Home Strong Dominant", True, key="param_home_strong_dominant")
+HOME_TOP_VS_AWAY_BOTTOM = st.sidebar.checkbox("Home Top vs Away Bottom", True, key="param_home_top_vs_away_bottom")
+
+# 🟠 BACK AWAY PARAMETERS
+st.sidebar.subheader("🟠 Back Away")
+AWAY_M_DIFF_MAX = st.sidebar.slider("M_Diff Max", -1.5, -0.5, -0.9, 0.1, key="param_away_m_diff_max")
+AWAY_POWER_MARGIN = st.sidebar.slider("Power Margin", -25, -5, -10, 1, key="param_away_power_margin")
+AWAY_STRONG_DOMINANT = st.sidebar.checkbox("Away Strong Dominant", True, key="param_away_strong_dominant")
+AWAY_TOP_VS_HOME_BOTTOM = st.sidebar.checkbox("Away Top vs Home Bottom", True, key="param_away_top_vs_home_bottom")
+
+# 🟦 1X (HOME/DRAW) PARAMETERS
+st.sidebar.subheader("🟦 1X (Home/Draw)")
+DOUBLE_HOME_M_DIFF_MIN = st.sidebar.slider("M_Diff Min", 0.1, 0.5, 0.2, 0.05, key="param_1x_m_diff_min")
+DOUBLE_HOME_M_DIFF_MAX = st.sidebar.slider("M_Diff Max", 0.5, 1.0, 0.8, 0.05, key="param_1x_m_diff_max")
+DOUBLE_HOME_POWER_MARGIN = st.sidebar.slider("Power Margin", 1, 15, 5, 1, key="param_1x_power_margin")
+DOUBLE_HOME_BALANCED_ONLY = st.sidebar.checkbox("Balanced Teams Only", True, key="param_1x_balanced_only")
+
+# 🟪 X2 (AWAY/DRAW) PARAMETERS
+st.sidebar.subheader("🟪 X2 (Away/Draw)")
+DOUBLE_AWAY_M_DIFF_MIN = st.sidebar.slider("M_Diff Min", -1.0, -0.5, -0.8, 0.05, key="param_x2_m_diff_min")
+DOUBLE_AWAY_M_DIFF_MAX = st.sidebar.slider("M_Diff Max", -0.5, -0.1, -0.2, 0.05, key="param_x2_m_diff_max")
+DOUBLE_AWAY_POWER_MARGIN = st.sidebar.slider("Power Margin", -15, -1, -5, 1, key="param_x2_power_margin")
+DOUBLE_AWAY_BALANCED_ONLY = st.sidebar.checkbox("Balanced Teams Only", True, key="param_x2_balanced_only")
+
+# League variation parameters
+st.sidebar.subheader("🏆 League Variation")
+HIGH_VAR_M_DIFF_MIN = st.sidebar.slider("High Var M_Diff Min", 0.3, 0.8, 0.45, 0.05, key="param_high_var_m_diff_min")
+HIGH_VAR_POWER_MARGIN = st.sidebar.slider("High Var Power Margin", 3, 15, 8, 1, key="param_high_var_power_margin")
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 🎯 AUTO RECOMMENDATION ENGINE WITH CUSTOM PARAMETERS
@@ -172,50 +196,65 @@ def auto_recommendation_custom(row):
     m_h = row.get('M_H', 0)
     odd_d = row.get('Odd_D', 0)
 
-    # 1) Strong edges -> Direct Back
-    if band_home == 'Top 20%' and band_away == 'Bottom 20%':
+    # 1) 🟢 BACK HOME - Strong edges
+    if HOME_TOP_VS_AWAY_BOTTOM and band_home == 'Top 20%' and band_away == 'Bottom 20%':
         return '🟢 Back Home'
-    if band_home == 'Bottom 20%' and band_away == 'Top 20%':
-        return '🟠 Back Away'
-
-    if dominant in ['Both extremes (Home↑ & Away↓)', 'Home strong'] and band_away != 'Top 20%':
-        if diff_m is not None and diff_m >= 0.90:
+    
+    if HOME_STRONG_DOMINANT and dominant in ['Both extremes (Home↑ & Away↓)', 'Home strong'] and band_away != 'Top 20%':
+        if diff_m is not None and diff_m >= HOME_M_DIFF_MIN and diff_pow >= HOME_POWER_MARGIN:
             return '🟢 Back Home'
-    if dominant in ['Both extremes (Away↑ & Home↓)', 'Away strong'] and band_home == 'Balanced':
-        if diff_m is not None and diff_m <= -0.90:
+
+    # 2) 🟠 BACK AWAY - Strong edges  
+    if AWAY_TOP_VS_HOME_BOTTOM and band_home == 'Bottom 20%' and band_away == 'Top 20%':
+        return '🟠 Back Away'
+    
+    if AWAY_STRONG_DOMINANT and dominant in ['Both extremes (Away↑ & Home↓)', 'Away strong'] and band_home == 'Balanced':
+        if diff_m is not None and diff_m <= AWAY_M_DIFF_MAX and diff_pow <= AWAY_POWER_MARGIN:
             return '🟪 X2 (Away/Draw)'
 
-    # 2) Both Balanced (with thresholds)
-    if (band_home == 'Balanced') and (band_away == 'Balanced') and (diff_m is not None) and (diff_pow is not None):
+    # 3) 🟦 1X (HOME/DRAW) - Balanced conditions
+    if (DOUBLE_HOME_BALANCED_ONLY and band_home == 'Balanced' and band_away == 'Balanced' and 
+        diff_m is not None and diff_pow is not None):
         if league_cls == 'High Variation':
-            if (diff_m >= 0.45 and diff_m < DIFF_MID_HI_HIGHVAR and diff_pow >= POWER_GATE_HIGHVAR):
+            if (diff_m >= HIGH_VAR_M_DIFF_MIN and diff_m < DOUBLE_HOME_M_DIFF_MAX and 
+                diff_pow >= HIGH_VAR_POWER_MARGIN):
                 return '🟦 1X (Home/Draw)'
-            if (diff_m <= -0.45 and diff_m > -DIFF_MID_HI_HIGHVAR and diff_pow <= -POWER_GATE_HIGHVAR):
+        else:
+            if (diff_m >= DOUBLE_HOME_M_DIFF_MIN and diff_m < DOUBLE_HOME_M_DIFF_MAX and 
+                diff_pow >= DOUBLE_HOME_POWER_MARGIN):
+                return '🟦 1X (Home/Draw)'
+
+    # 4) 🟪 X2 (AWAY/DRAW) - Balanced conditions
+    if (DOUBLE_AWAY_BALANCED_ONLY and band_away == 'Balanced' and band_home == 'Balanced' and 
+        diff_m is not None and diff_pow is not None):
+        if league_cls == 'High Variation':
+            if (diff_m <= -HIGH_VAR_M_DIFF_MIN and diff_m > -DOUBLE_AWAY_M_DIFF_MAX and 
+                diff_pow <= -HIGH_VAR_POWER_MARGIN):
                 return '🟪 X2 (Away/Draw)'
         else:
-            if (diff_m >= DIFF_MID_LO and diff_m < DIFF_MID_HI and diff_pow >= POWER_GATE):
-                return '🟦 1X (Home/Draw)'
-            if (diff_m <= -DIFF_MID_LO and diff_m > -DIFF_MID_HI and diff_pow <= -POWER_GATE):
+            if (diff_m <= DOUBLE_AWAY_M_DIFF_MIN and diff_m > DOUBLE_AWAY_M_DIFF_MAX and 
+                diff_pow <= DOUBLE_AWAY_POWER_MARGIN):
                 return '🟪 X2 (Away/Draw)'
 
-    # 3) Balanced vs Bottom20%
+    # 5) Balanced vs Bottom20%
     if (band_home == 'Balanced') and (band_away == 'Bottom 20%'):
         return '🟦 1X (Home/Draw)'
     if (band_away == 'Balanced') and (band_home == 'Bottom 20%'):
         return '🟪 X2 (Away/Draw)'
 
-    # 4) Top20% vs Balanced
+    # 6) Top20% vs Balanced
     if (band_home == 'Top 20%') and (band_away == 'Balanced'):
         return '🟦 1X (Home/Draw)'
     if (band_away == 'Top 20%') and (band_home == 'Balanced'):
         return '🟪 X2 (Away/Draw)'
 
-    # 5) Filtro Draw (com parâmetros customizados)
-    if (odd_d is not None and ODD_D_MIN <= odd_d <= ODD_D_MAX) and (diff_pow is not None and DIFF_POWER_DRAW_MIN <= diff_pow <= DIFF_POWER_DRAW_MAX):
+    # 7) ⚪ BACK DRAW - Custom parameters
+    if (odd_d is not None and DRAW_ODD_MIN <= odd_d <= DRAW_ODD_MAX) and \
+       (diff_pow is not None and DRAW_DIFF_POWER_MIN <= diff_pow <= DRAW_DIFF_POWER_MAX):
         if (m_h is not None and 0 <= m_h <= 1) or (m_a is not None and 0 <= m_a <= 0.5):
             return '⚪ Back Draw'
 
-    # 6) Fallback
+    # 8) Fallback
     return '❌ Avoid'
 
 # ──────────────────────────────────────────────────────────────────────────────
