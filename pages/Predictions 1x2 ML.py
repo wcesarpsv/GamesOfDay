@@ -395,30 +395,26 @@ history = calculate_market_error_history_shift(history)
 ####### Bloco 7 – Train ML Model #######
 ########################################
 
-# FILTRAR APENAS LINHAS VÁLIDAS (após shift)
+# DEFINIR features_raw AQUI MESMO
+features_raw = [
+    'HandScore_Home_HT','HandScore_Away_HT',
+    'Aggression_Home','Aggression_Away',
+    'Diff_HT_P',
+    'M_H','M_A','Diff_Power','M_Diff',
+    'Home_Band','Away_Band','Dominant',
+    'League_Classification',
+    'Games_Analyzed',
+    'Market_Error_Home_Hist', 'Market_Error_Away_Hist', 'Market_Error_Draw_Hist'
+]
+
 history_valid = history.dropna(subset=['Market_Error_Home_Hist'])
 
-# DEBUG: VERIFICAR FEATURES DISPONÍVEIS
-st.write("🔍 **Debug - Features disponíveis no history_valid:**")
-available_features = [f for f in features_raw if f in history_valid.columns]
-missing_features = [f for f in features_raw if f not in history_valid.columns]
-
-st.write(f"✅ Disponíveis: {len(available_features)}/{len(features_raw)}")
-st.write(f"❌ Faltando: {missing_features}")
-
-# USAR APENAS FEATURES DISPONÍVEIS
+# FILTRAR FEATURES DISPONÍVEIS
 features_available = [f for f in features_raw if f in history_valid.columns]
-
-if not features_available:
-    st.error("❌ Nenhuma feature disponível para treino!")
-    st.stop()
-
 st.success(f"🎯 Treinando com {len(features_available)} features")
 
 X = history_valid[features_available].copy()
 y = history_valid['Result']
-
-# ... resto do código igual
 
 BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
 if 'Home_Band' in X: X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
