@@ -66,10 +66,8 @@ if _EXC_PATTERN and "League" in df_all.columns:
 
 df_all = df_all.sort_values(by="Date").reset_index(drop=True)
 
-
-
 # ──────────────────────────────────────────────────────────────────────────────
-# 🤖 AUTO OPTIMIZATION FUNCTIONS
+# 🤖 AUTO OPTIMIZATION FUNCTIONS (DEFINIR PRIMEIRO!)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def find_winning_draw_patterns(df):
@@ -89,7 +87,7 @@ def find_winning_draw_patterns(df):
     if len(profitable_draws) == 0:
         return None
     
-    # Analisar ranges dos empates lucrativos
+    # Analisar ranges dos empates lucrativos (usando quartis 25-75 para pegar o "núcleo" lucrativo)
     odd_d_range = (profitable_draws['Odd_D'].quantile(0.25), profitable_draws['Odd_D'].quantile(0.75))
     diff_power_range = (profitable_draws['Diff_Power'].quantile(0.25), profitable_draws['Diff_Power'].quantile(0.75))
     m_h_range = (profitable_draws['M_H'].quantile(0.25), profitable_draws['M_H'].quantile(0.75))
@@ -130,8 +128,7 @@ def apply_draw_parameters(suggestions):
         st.session_state['param_draw_odd_max'] = float(suggestions['odd_d_range'][1])
         st.session_state['param_draw_diff_power_min'] = float(suggestions['diff_power_range'][0])
         st.session_state['param_draw_diff_power_max'] = float(suggestions['diff_power_range'][1])
-
-
+        st.success("✅ Draw parameters applied automatically!")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 🎛️ PARAMETER CONTROL PANEL BY BET TYPE
@@ -189,8 +186,6 @@ st.sidebar.subheader("🏆 League Variation")
 HIGH_VAR_M_DIFF_MIN = st.sidebar.slider("High Var M_Diff Min", 0.3, 0.8, 0.45, 0.05, key="param_high_var_m_diff_min")
 HIGH_VAR_POWER_MARGIN = st.sidebar.slider("High Var Power Margin", 3, 15, 8, 1, key="param_high_var_power_margin")
 
-
-
 # ──────────────────────────────────────────────────────────────────────────────
 # 🤖 AUTO OPTIMIZE BUTTONS
 # ──────────────────────────────────────────────────────────────────────────────
@@ -201,54 +196,50 @@ if st.sidebar.button("⚪ Auto Back Draw", use_container_width=True):
     with st.spinner("🔍 Analyzing winning draw patterns..."):
         draw_suggestions = find_winning_draw_patterns(df_all)
         
-        # Mostrar sugestões
-        st.sidebar.success("✅ Draw optimization complete!")
-        
-        # Criar expander com detalhes
-        with st.sidebar.expander("📊 Draw Optimization Results", expanded=True):
-            st.write("**Suggested Ranges for Maximum Profit:**")
-            st.write(f"📊 **Odd_D**: {draw_suggestions['odd_d_range'][0]:.2f} - {draw_suggestions['odd_d_range'][1]:.2f}")
-            st.write(f"📈 **Diff_Power**: {draw_suggestions['diff_power_range'][0]:.0f} - {draw_suggestions['diff_power_range'][1]:.0f}")
-            st.write(f"🎯 **M_H**: {draw_suggestions['m_h_range'][0]:.2f} - {draw_suggestions['m_h_range'][1]:.2f}")
-            st.write(f"🎯 **M_A**: {draw_suggestions['m_a_range'][0]:.2f} - {draw_suggestions['m_a_range'][1]:.2f}")
+        if draw_suggestions:
+            st.sidebar.success("✅ Draw optimization complete!")
             
-            st.write("**Expected Impact:**")
-            st.write(f"• Winrate: {draw_suggestions['current_winrate']:.1f}% → **{draw_suggestions['expected_winrate']:.1f}%**")
-            st.write(f"• ROI: {draw_suggestions['current_roi']:.1f}% → **{draw_suggestions['expected_roi']:.1f}%**")
-            st.write(f"• Volume: {draw_suggestions['current_volume']} → **{draw_suggestions['expected_volume']} bets**")
-            
-            # Botão para aplicar automaticamente
-            if st.button("🎯 Apply These Parameters", key="apply_draw"):
-                apply_draw_parameters(draw_suggestions)
-                st.rerun()
+            # Criar expander com detalhes
+            with st.sidebar.expander("📊 Draw Optimization Results", expanded=True):
+                st.write("**🎯 Suggested Ranges for Maximum Profit:**")
+                st.write(f"📊 **Odd_D**: {draw_suggestions['odd_d_range'][0]:.2f} - {draw_suggestions['odd_d_range'][1]:.2f}")
+                st.write(f"📈 **Diff_Power**: {draw_suggestions['diff_power_range'][0]:.0f} - {draw_suggestions['diff_power_range'][1]:.0f}")
+                st.write(f"🎯 **M_H**: {draw_suggestions['m_h_range'][0]:.2f} - {draw_suggestions['m_h_range'][1]:.2f}")
+                st.write(f"🎯 **M_A**: {draw_suggestions['m_a_range'][0]:.2f} - {draw_suggestions['m_a_range'][1]:.2f}")
+                
+                st.write("**📊 Expected Impact:**")
+                st.write(f"• Winrate: {draw_suggestions['current_winrate']:.1f}% → **{draw_suggestions['expected_winrate']:.1f}%**")
+                st.write(f"• ROI: {draw_suggestions['current_roi']:.1f}% → **{draw_suggestions['expected_roi']:.1f}%**")
+                st.write(f"• Volume: {draw_suggestions['current_volume']} → **{draw_suggestions['expected_volume']} bets**")
+                st.write(f"• Coverage: **{draw_suggestions['coverage_pct']:.1f}%** of profitable draws")
+                
+                # Botão para aplicar automaticamente
+                if st.button("🎯 Apply These Parameters", key="apply_draw"):
+                    apply_draw_parameters(draw_suggestions)
+                    st.rerun()
+        else:
+            st.sidebar.error("❌ No draw patterns found for optimization")
 
 # 🟠 BACK AWAY AUTO OPTIMIZE  
 if st.sidebar.button("🟠 Auto Back Away", use_container_width=True):
-    with st.spinner("🔍 Analyzing winning away patterns..."):
-        away_suggestions = find_winning_away_patterns(df_all)
-        st.sidebar.success("✅ Away optimization complete!")
-        # (Similar structure to draw)
+    st.sidebar.info("🚧 Away optimization coming soon...")
 
 # 🟢 BACK HOME AUTO OPTIMIZE
 if st.sidebar.button("🟢 Auto Back Home", use_container_width=True):
-    with st.spinner("🔍 Analyzing winning home patterns..."):
-        home_suggestions = find_winning_home_patterns(df_all)
-        st.sidebar.success("✅ Home optimization complete!")
-        # (Similar structure to draw)
+    st.sidebar.info("🚧 Home optimization coming soon...")
 
 # 🟦 1X AUTO OPTIMIZE
 if st.sidebar.button("🟦 Auto 1X (Home/Draw)", use_container_width=True):
-    with st.spinner("🔍 Analyzing winning 1X patterns..."):
-        onex_suggestions = find_winning_1x_patterns(df_all)
-        st.sidebar.success("✅ 1X optimization complete!")
-        # (Similar structure to draw)
+    st.sidebar.info("🚧 1X optimization coming soon...")
 
 # 🟪 X2 AUTO OPTIMIZE
 if st.sidebar.button("🟪 Auto X2 (Away/Draw)", use_container_width=True):
-    with st.spinner("🔍 Analyzing winning X2 patterns..."):
-        x2_suggestions = find_winning_x2_patterns(df_all)
-        st.sidebar.success("✅ X2 optimization complete!")
-        # (Similar structure to draw)
+    st.sidebar.info("🚧 X2 optimization coming soon...")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🎯 AUTO RECOMMENDATION ENGINE WITH CUSTOM PARAMETERS
+# ──────────────────────────────────────────────────────────────────────────────
+# (O resto do seu código continua aqui... as funções de bands, dominant, etc.)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
