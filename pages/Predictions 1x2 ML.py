@@ -333,8 +333,58 @@ games_today['Auto_Recommendation'] = games_today.apply(lambda r: auto_recommenda
 
 
 ########################################
+####### Bloco 6B – Market Error History ###
+########################################
+
+st.markdown("### 📊 Calculando Market Error para Dataset Histórico")
+
+def calculate_market_error_history(history_df):
+    """Calcula Market Error para dados históricos"""
+    if all(col in history_df.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
+        # Calcular probabilidades implícitas das odds históricas
+        probs = pd.DataFrame()
+        probs['p_H'] = 1 / history_df['Odd_H']
+        probs['p_D'] = 1 / history_df['Odd_D'] 
+        probs['p_A'] = 1 / history_df['Odd_A']
+        probs = probs.div(probs.sum(axis=1), axis=0)
+        
+        history_df['Imp_Prob_H'] = probs['p_H']
+        history_df['Imp_Prob_D'] = probs['p_D'] 
+        history_df['Imp_Prob_A'] = probs['p_A']
+        
+        # Calcular Market Error (precisamos das probabilidades TRUE do passado)
+        # Para histórico, usamos o resultado REAL como "nossa previsão"
+        def get_true_probability(row, outcome):
+            if outcome == "Home":
+                return 1.0 if row['Goals_H_FT'] > row['Goals_A_FT'] else 0.0
+            elif outcome == "Away": 
+                return 1.0 if row['Goals_H_FT'] < row['Goals_A_FT'] else 0.0
+            else:  # Draw
+                return 1.0 if row['Goals_H_FT'] == row['Goals_A_FT'] else 0.0
+        
+        history_df['True_Prob_Home'] = history_df.apply(lambda x: get_true_probability(x, "Home"), axis=1)
+        history_df['True_Prob_Away'] = history_df.apply(lambda x: get_true_probability(x, "Away"), axis=1)
+        history_df['True_Prob_Draw'] = history_df.apply(lambda x: get_true_probability(x, "Draw"), axis=1)
+        
+        # Market Error histórico: Diferença entre resultado REAL e probabilidade implícita
+        history_df['Market_Error_Home_Hist'] = history_df['True_Prob_Home'] - history_df['Imp_Prob_H']
+        history_df['Market_Error_Away_Hist'] = history_df['True_Prob_Away'] - history_df['Imp_Prob_A']
+        history_df['Market_Error_Draw_Hist'] = history_df['True_Prob_Draw'] - history_df['Imp_Prob_D']
+        
+        st.success(f"✅ Market Error calculado para {len(history_df)} jogos históricos")
+        return history_df
+    else:
+        st.warning("⚠️ Odds não disponíveis no histórico - pulando Market Error")
+        return history_df
+
+# Aplicar ao histórico
+history = calculate_market_error_history(history)
+
+
+########################################
 ####### Bloco 7 – Train ML Model #######
 ########################################
+
 history = history.dropna(subset=['Goals_H_FT','Goals_A_FT'])
 
 def map_result(row):
@@ -347,18 +397,30 @@ def map_result(row):
 
 history['Result'] = history.apply(map_result, axis=1)
 
+# ATUALIZAR features_raw para incluir Market Error
 features_raw = [
-'HandScore_Home_HT','HandScore_Away_HT',
-'Aggression_Home','Aggression_Away',
-'Diff_HT_P',
+    'HandScore_Home_HT','HandScore_Away_HT',
+    'Aggression_Home','Aggression_Away',
+    'Diff_HT_P',
     'M_H','M_A','Diff_Power','M_Diff',
     'Home_Band','Away_Band','Dominant',
-'League_Classification',
-
-'Games_Analyzed'
+    'League_Classification',
+    'Games_Analyzed'
 ]
-#'Odd_1X','Odd_X2',
+
+# ADICIONAR MARKET ERROR SE DISPONÍVEL
+market_error_features = ['Market_Error_Home_Hist', 'Market_Error_Away_Hist', 'Market_Error_Draw_Hist']
+available_market_error = [f for f in market_error_features if f in history.columns]
+
+if available_market_error:
+    features_raw.extend(available_market_error)
+    st.info(f"✅ Adicionadas {len(available_market_error)} features de Market Error ao ML")
+else:
+    st.warning("⚠️ Market Error não disponível para treino")
+
 features_raw = [f for f in features_raw if f in history.columns]
+
+st.write(f"**Features utilizadas no ML ({len(features_raw)}):**", features_raw)
 
 X = history[features_raw].copy()
 y = history['Result']
@@ -387,34 +449,55 @@ model = RandomForestClassifier(
 )
 model.fit(X, y)
 
+# ANALISAR FEATURE IMPORTANCE
+feature_importance = pd.DataFrame({
+    'feature': X.columns,
+    'importance': model.feature_importances_
+}).sort_values('importance', ascending=False)
+
+st.write("**📊 Feature Importance (Top 15):**")
+st.dataframe(feature_importance.head(15))
+
+
 
 ########################################
-####### Bloco 8 – Apply ML to Today ####
+####### Bloco 8 – Apply ML to Today #######
 ########################################
-threshold = st.sidebar.slider(
-    "ML Threshold for Direct Win (%)", 
-    min_value=50, max_value=80, value=65, step=1
-) / 100.0
 
-def ml_recommendation_from_proba(p_home, p_draw, p_away, threshold=0.65):
-    if p_home >= threshold:
-        return "🟢 Back Home"
-    elif p_away >= threshold:
-        return "🟠 Back Away"
+# CALCULAR MARKET ERROR PARA HOJE ANTES DE APLICAR ML
+def calculate_market_error_today(games_today_df):
+    """Calcula Market Error para jogos de hoje"""
+    if all(col in games_today_df.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
+        probs = pd.DataFrame()
+        probs['p_H'] = 1 / games_today_df['Odd_H']
+        probs['p_D'] = 1 / games_today_df['Odd_D'] 
+        probs['p_A'] = 1 / games_today_df['Odd_A']
+        probs = probs.div(probs.sum(axis=1), axis=0)
+        
+        games_today_df['Imp_Prob_H'] = probs['p_H']
+        games_today_df['Imp_Prob_D'] = probs['p_D'] 
+        games_today_df['Imp_Prob_A'] = probs['p_A']
+        
+        return games_today_df
     else:
-        sum_home_draw = p_home + p_draw
-        sum_away_draw = p_away + p_draw
-        if abs(p_home - p_away) < 0.05 and p_draw > 0.50:
-            return "⚪ Back Draw"
-        elif sum_home_draw > sum_away_draw:
-            return "🟦 1X (Home/Draw)"
-        elif sum_away_draw > sum_home_draw:
-            return "🟪 X2 (Away/Draw)"
-        else:
-            return "❌ Avoid"
+        return games_today_df
 
+# Aplicar aos jogos de hoje
+games_today = calculate_market_error_today(games_today)
+
+# PREPARAR DADOS DE HOJE
 X_today = games_today[features_raw].copy()
 
+# Substituir colunas históricas por valores atuais
+if 'Market_Error_Home_Hist' in X_today.columns:
+    # Inicializar com zeros (serão atualizados após previsão do ML)
+    X_today['Market_Error_Home_Hist'] = 0
+if 'Market_Error_Away_Hist' in X_today.columns:
+    X_today['Market_Error_Away_Hist'] = 0  
+if 'Market_Error_Draw_Hist' in X_today.columns:
+    X_today['Market_Error_Draw_Hist'] = 0
+
+# Aplicar transformações (igual ao treino)
 if 'Home_Band' in X_today: 
     X_today['Home_Band_Num'] = X_today['Home_Band'].map(BAND_MAP)
 if 'Away_Band' in X_today: 
@@ -426,12 +509,25 @@ if cat_cols:
     X_today = pd.concat([X_today.drop(columns=cat_cols).reset_index(drop=True),
                          encoded_today_df.reset_index(drop=True)], axis=1)
 
+# FAZER PREVISÕES
 ml_preds = model.predict(X_today)
 ml_proba = model.predict_proba(X_today)
 
 games_today["ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
 games_today["ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
 games_today["ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
+
+# AGORA CALCULAR MARKET ERROR COM AS PROBABILIDADES DO ML
+if all(col in games_today.columns for col in ['Imp_Prob_H', 'Imp_Prob_A', 'Imp_Prob_D']):
+    games_today['Market_Error_Home'] = games_today['ML_Proba_Home'] - games_today['Imp_Prob_H']
+    games_today['Market_Error_Away'] = games_today['ML_Proba_Away'] - games_today['Imp_Prob_A']
+    games_today['Market_Error_Draw'] = games_today['ML_Proba_Draw'] - games_today['Imp_Prob_D']
+
+# CONTINUAR COM RECOMENDAÇÕES (resto do código igual)
+threshold = st.sidebar.slider(
+    "ML Threshold for Direct Win (%)", 
+    min_value=50, max_value=80, value=65, step=1
+) / 100.0
 
 games_today["ML_Recommendation"] = [
     ml_recommendation_from_proba(row["ML_Proba_Home"], 
@@ -440,6 +536,7 @@ games_today["ML_Recommendation"] = [
                                  threshold=threshold)
     for _, row in games_today.iterrows()
 ]
+
 
 
 ########################################
