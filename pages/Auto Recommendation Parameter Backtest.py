@@ -123,6 +123,67 @@ HIGH_VAR_M_DIFF_MIN = st.sidebar.slider("High Var M_Diff Min", 0.3, 0.8, 0.45, 0
 HIGH_VAR_POWER_MARGIN = st.sidebar.slider("High Var Power Margin", 3, 15, 8, 1, key="param_high_var_power_margin")
 
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 🤖 AUTO OPTIMIZE BUTTONS
+# ──────────────────────────────────────────────────────────────────────────────
+st.sidebar.header("🤖 Auto Optimize")
+
+# ⚪ BACK DRAW AUTO OPTIMIZE
+if st.sidebar.button("⚪ Auto Back Draw", use_container_width=True):
+    with st.spinner("🔍 Analyzing winning draw patterns..."):
+        draw_suggestions = find_winning_draw_patterns(df_all)
+        
+        # Mostrar sugestões
+        st.sidebar.success("✅ Draw optimization complete!")
+        
+        # Criar expander com detalhes
+        with st.sidebar.expander("📊 Draw Optimization Results", expanded=True):
+            st.write("**Suggested Ranges for Maximum Profit:**")
+            st.write(f"📊 **Odd_D**: {draw_suggestions['odd_d_range'][0]:.2f} - {draw_suggestions['odd_d_range'][1]:.2f}")
+            st.write(f"📈 **Diff_Power**: {draw_suggestions['diff_power_range'][0]:.0f} - {draw_suggestions['diff_power_range'][1]:.0f}")
+            st.write(f"🎯 **M_H**: {draw_suggestions['m_h_range'][0]:.2f} - {draw_suggestions['m_h_range'][1]:.2f}")
+            st.write(f"🎯 **M_A**: {draw_suggestions['m_a_range'][0]:.2f} - {draw_suggestions['m_a_range'][1]:.2f}")
+            
+            st.write("**Expected Impact:**")
+            st.write(f"• Winrate: {draw_suggestions['current_winrate']:.1f}% → **{draw_suggestions['expected_winrate']:.1f}%**")
+            st.write(f"• ROI: {draw_suggestions['current_roi']:.1f}% → **{draw_suggestions['expected_roi']:.1f}%**")
+            st.write(f"• Volume: {draw_suggestions['current_volume']} → **{draw_suggestions['expected_volume']} bets**")
+            
+            # Botão para aplicar automaticamente
+            if st.button("🎯 Apply These Parameters", key="apply_draw"):
+                apply_draw_parameters(draw_suggestions)
+                st.rerun()
+
+# 🟠 BACK AWAY AUTO OPTIMIZE  
+if st.sidebar.button("🟠 Auto Back Away", use_container_width=True):
+    with st.spinner("🔍 Analyzing winning away patterns..."):
+        away_suggestions = find_winning_away_patterns(df_all)
+        st.sidebar.success("✅ Away optimization complete!")
+        # (Similar structure to draw)
+
+# 🟢 BACK HOME AUTO OPTIMIZE
+if st.sidebar.button("🟢 Auto Back Home", use_container_width=True):
+    with st.spinner("🔍 Analyzing winning home patterns..."):
+        home_suggestions = find_winning_home_patterns(df_all)
+        st.sidebar.success("✅ Home optimization complete!")
+        # (Similar structure to draw)
+
+# 🟦 1X AUTO OPTIMIZE
+if st.sidebar.button("🟦 Auto 1X (Home/Draw)", use_container_width=True):
+    with st.spinner("🔍 Analyzing winning 1X patterns..."):
+        onex_suggestions = find_winning_1x_patterns(df_all)
+        st.sidebar.success("✅ 1X optimization complete!")
+        # (Similar structure to draw)
+
+# 🟪 X2 AUTO OPTIMIZE
+if st.sidebar.button("🟪 Auto X2 (Away/Draw)", use_container_width=True):
+    with st.spinner("🔍 Analyzing winning X2 patterns..."):
+        x2_suggestions = find_winning_x2_patterns(df_all)
+        st.sidebar.success("✅ X2 optimization complete!")
+        # (Similar structure to draw)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 🎯 AUTO RECOMMENDATION ENGINE WITH CUSTOM PARAMETERS
 # ──────────────────────────────────────────────────────────────────────────────
