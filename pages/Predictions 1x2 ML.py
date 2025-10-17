@@ -842,13 +842,45 @@ st.dataframe(ml_performance)
 # CONTINUA O CÓDIGO ORIGINAL (Summary e resto)...
 
 
-# ADICIONAR ISSO APÓS A ANÁLISE 2
+# ADICIONAR ISSO APÓS A ANÁLISE 2, ANTES DA ANÁLISE DO MARKET ERROR
 
 st.markdown("### 📈 Performance por Nível de Market Error")
 
+# VERIFICAR SE AS COLUNAS MARKET_ERROR EXISTEM
+if 'Market_Error_Home' not in finished_games.columns:
+    st.warning("⚠️ Colunas Market_Error não encontradas. Criando agora...")
+    
+    # Calcular probabilidades implícitas e Market Error (igual no Bloco 10)
+    if all(col in finished_games.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
+        probs = pd.DataFrame()
+        probs['p_H'] = 1 / finished_games['Odd_H']
+        probs['p_D'] = 1 / finished_games['Odd_D'] 
+        probs['p_A'] = 1 / finished_games['Odd_A']
+        probs = probs.div(probs.sum(axis=1), axis=0)
+
+        finished_games['Imp_Prob_H'] = probs['p_H']
+        finished_games['Imp_Prob_D'] = probs['p_D'] 
+        finished_games['Imp_Prob_A'] = probs['p_A']
+
+        # Calcular Market Error
+        finished_games['Market_Error_Home'] = finished_games['ML_Proba_Home'] - finished_games['Imp_Prob_H']
+        finished_games['Market_Error_Away'] = finished_games['ML_Proba_Away'] - finished_games['Imp_Prob_A']
+        finished_games['Market_Error_Draw'] = finished_games['ML_Proba_Draw'] - finished_games['Imp_Prob_D']
+        
+        st.success("✅ Colunas Market_Error criadas com sucesso!")
+    else:
+        st.error("❌ Odds não disponíveis - impossível calcular Market Error")
+        st.stop()
+
+# AGORA SIM PODEMOS EXECUTAR A ANÁLISE
 def analyze_market_error_performance(df, side):
     error_col = f'Market_Error_{side}'
     profit_col = f'Profit_ML_Fixed'
+    
+    # Verificar se a coluna existe e tem dados
+    if error_col not in df.columns or df[error_col].isna().all():
+        st.warning(f"Coluna {error_col} não disponível")
+        return pd.DataFrame()
     
     # Criar faixas de Market Error
     conditions = [
@@ -869,11 +901,17 @@ def analyze_market_error_performance(df, side):
 
 st.write("**Performance por Faixa de Market Error - HOME:**")
 home_analysis = analyze_market_error_performance(finished_games, 'Home')
-st.dataframe(home_analysis)
+if not home_analysis.empty:
+    st.dataframe(home_analysis)
+else:
+    st.warning("Sem dados para análise HOME")
 
 st.write("**Performance por Faixa de Market Error - AWAY:**")  
 away_analysis = analyze_market_error_performance(finished_games, 'Away')
-st.dataframe(away_analysis)
+if not away_analysis.empty:
+    st.dataframe(away_analysis)
+else:
+    st.warning("Sem dados para análise AWAY")
 
 
 
