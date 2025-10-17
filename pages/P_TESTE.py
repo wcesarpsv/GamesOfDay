@@ -901,7 +901,7 @@ st.dataframe(ml_performance)
 
 # ADICIONAR ISSO APÓS A ANÁLISE 2, ANTES DA ANÁLISE DO MARKET ERROR
 
-st.markdown("### 📈 Performance por Nível de Market Error")
+# st.markdown("### 📈 Performance por Nível de Market Error")
 
 # VERIFICAR SE AS COLUNAS MARKET_ERROR EXISTEM
 if 'Market_Error_Home' not in finished_games.columns:
