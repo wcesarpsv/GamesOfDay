@@ -800,6 +800,46 @@ st.info(f"""
 **Kelly Parameters:** Bankroll = ${bankroll:,} | Kelly Fraction = {kelly_fraction} | Min Stake = ${min_stake} | Max Stake = ${max_stake}
 """)
 
+
+
+# COLAR ISSO APÓS O BLOCO 8D, ANTES DO SUMMARY
+
+st.markdown("### 🕵️ Investigação: Edge Real vs Viés")
+
+# Análise 2 - Performance por tipo de recomendação
+def analyze_ml_recommendation_performance(df):
+    results = []
+    for rec_type in ['🟢 Back Home', '🟠 Back Away', '🟦 1X', '🟪 X2', '⚪ Back Draw']:
+        rec_bets = df[df['ML_Recommendation'] == rec_type]
+        if len(rec_bets) > 0:
+            total_bets = len(rec_bets)
+            correct_bets = rec_bets['ML_Correct'].sum()
+            win_rate = correct_bets / total_bets
+            total_profit = rec_bets['Profit_ML_Fixed'].sum()
+            avg_profit = rec_bets['Profit_ML_Fixed'].mean()
+            
+            results.append({
+                'Recommendation': rec_type,
+                'Bets': total_bets,
+                'Wins': correct_bets,
+                'WinRate%': round(win_rate * 100, 1),
+                'TotalProfit': round(total_profit, 2),
+                'AvgProfit': round(avg_profit, 3),
+                'ROI%': round((total_profit / total_bets) * 100, 1)
+            })
+    
+    return pd.DataFrame(results)
+
+# Aplicar apenas em jogos finalizados com apostas ML
+ml_bets = finished_games[finished_games['ML_Recommendation'] != '❌ Avoid']
+ml_performance = analyze_ml_recommendation_performance(ml_bets)
+
+st.write("**Performance Detalhada por Tipo de Recomendação ML:**")
+st.dataframe(ml_performance)
+
+# CONTINUA O CÓDIGO ORIGINAL (Summary e resto)...
+
+
 ########################################
 ##### Bloco 9 – Exibição Final Expandida ###
 ########################################
