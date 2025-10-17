@@ -803,39 +803,94 @@ with tab2:
             line = float(line)
         except Exception:
             return np.nan, np.nan, np.nan
-
-        # Inteiro
+    
+        # Inteiro (ex: -1.0, +1.0)
         if abs(line - round(line)) < 1e-9:
             k = int(round(line))
-            win = 1 - skellam.cdf(k, mu_h, mu_a)
-            push = skellam.pmf(k, mu_h, mu_a)
-            lose = skellam.cdf(k - 1, mu_h, mu_a)
+            if k <= 0:  # Handicap negativo ou zero (home favorito)
+                win = 1 - skellam.cdf(k, mu_h, mu_a)
+                push = skellam.pmf(k, mu_h, mu_a)
+                lose = skellam.cdf(k - 1, mu_h, mu_a)
+            else:  # Handicap positivo (home underdog)
+                # Home cobre +k se NÃO PERDER (vitória ou empate)
+                win = 1 - skellam.cdf(-1, mu_h, mu_a)  # Diferença >= 0
+                # Push se perder por exatamente k gols
+                push = skellam.pmf(-k, mu_h, mu_a)     # Diferença = -k
+                # Lose se perder por k+ gols
+                lose = skellam.cdf(-k - 1, mu_h, mu_a) # Diferença <= -(k+1)
             return win, push, lose
-        # Meia
+        
+        # Meia (ex: -0.5, +0.5)
         if abs(line * 2 - round(line * 2)) < 1e-9 and abs(line * 4 - round(line * 4)) > 1e-9:
-            if line > 0:
-                thr = math.floor(-line)
-                win = 1 - skellam.cdf(thr, mu_h, mu_a)
-                lose = skellam.cdf(thr, mu_h, mu_a)
-            else:
+            if line <= 0:  # Handicap negativo (home favorito)
                 k = abs(line)
                 win = 1 - skellam.cdf(math.ceil(k), mu_h, mu_a)
                 lose = skellam.cdf(math.ceil(k), mu_h, mu_a)
+            else:  # Handicap positivo (home underdog)
+                # +0.5: win se não perder, lose se perder
+                win = 1 - skellam.cdf(-1, mu_h, mu_a)  # Diferença >= 0
+                lose = skellam.cdf(-1, mu_h, mu_a)     # Diferença <= -1
             return win, 0.0, lose
-        # Quarta (±0.25, ±0.75 …)
+        
+        # Quarta (ex: -0.25, -0.75, +0.25, +0.75)
         if abs(line * 4 - round(line * 4)) < 1e-9:
-            low, high = line - 0.25, line + 0.25
-            def single(l):
-                if abs(l - round(l)) < 1e-9:
-                    k = int(round(l))
-                    return 1 - skellam.cdf(k, mu_h, mu_a), skellam.pmf(k, mu_h, mu_a), skellam.cdf(k - 1, mu_h, mu_a)
-                if l > 0:
-                    thr = math.floor(-l)
-                    return 1 - skellam.cdf(thr, mu_h, mu_a), 0.0, skellam.cdf(thr, mu_h, mu_a)
-                k = abs(l)
-                return 1 - skellam.cdf(math.ceil(k), mu_h, mu_a), 0.0, skellam.cdf(math.ceil(k), mu_h, mu_a)
-            r1, r2 = single(low), single(high)
-            return 0.5 * (r1[0] + r2[0]), 0.5 * (r1[1] + r2[1]), 0.5 * (r1[2] + r2[2])
+            if line == -0.25:
+                # -0.25: metade em -0.5, metade em 0.0
+                win_half = 1 - skellam.cdf(0, mu_h, mu_a)  # -0.5: win se vencer
+                lose_half = skellam.cdf(0, mu_h, mu_a)
+                
+                win_level = 1 - skellam.cdf(0, mu_h, mu_a)  # 0.0: win se vencer
+                push_level = skellam.pmf(0, mu_h, mu_a)     # 0.0: push se empate
+                lose_level = skellam.cdf(-1, mu_h, mu_a)    # 0.0: lose se perder
+                
+                win = 0.5 * win_half + 0.5 * win_level
+                push = 0.5 * 0.0 + 0.5 * push_level
+                lose = 0.5 * lose_half + 0.5 * lose_level
+                
+            elif line == 0.25:
+                # +0.25: metade em +0.5, metade em 0.0
+                win_half = 1 - skellam.cdf(-1, mu_h, mu_a)  # +0.5: win se não perder
+                lose_half = skellam.cdf(-1, mu_h, mu_a)
+                
+                win_level = 1 - skellam.cdf(0, mu_h, mu_a)  # 0.0: win se vencer
+                push_level = skellam.pmf(0, mu_h, mu_a)     # 0.0: push se empate
+                lose_level = skellam.cdf(-1, mu_h, mu_a)    # 0.0: lose se perder
+                
+                win = 0.5 * win_half + 0.5 * win_level
+                push = 0.5 * 0.0 + 0.5 * push_level
+                lose = 0.5 * lose_half + 0.5 * lose_level
+                
+            elif line == -0.75:
+                # -0.75: metade em -0.5, metade em -1.0
+                win_half = 1 - skellam.cdf(0, mu_h, mu_a)   # -0.5: win se vencer
+                lose_half = skellam.cdf(0, mu_h, mu_a)
+                
+                win_full = 1 - skellam.cdf(1, mu_h, mu_a)   # -1.0: win se vencer por 2+
+                push_full = skellam.pmf(1, mu_h, mu_a)      # -1.0: push se vencer por 1
+                lose_full = skellam.cdf(0, mu_h, mu_a)      # -1.0: lose se não vencer
+                
+                win = 0.5 * win_half + 0.5 * win_full
+                push = 0.5 * 0.0 + 0.5 * push_full
+                lose = 0.5 * lose_half + 0.5 * lose_full
+                
+            elif line == 0.75:
+                # +0.75: metade em +0.5, metade em +1.0
+                win_half = 1 - skellam.cdf(-1, mu_h, mu_a)  # +0.5: win se não perder
+                lose_half = skellam.cdf(-1, mu_h, mu_a)
+                
+                win_full = 1 - skellam.cdf(-2, mu_h, mu_a)  # +1.0: win se não perder por 2+
+                push_full = skellam.pmf(-1, mu_h, mu_a)     # +1.0: push se perder por 1
+                lose_full = skellam.cdf(-2, mu_h, mu_a)     # +1.0: lose se perder por 2+
+                
+                win = 0.5 * win_half + 0.5 * win_full
+                push = 0.5 * 0.0 + 0.5 * push_full
+                lose = 0.5 * lose_half + 0.5 * lose_full
+                
+            else:
+                return np.nan, np.nan, np.nan
+                
+            return win, push, lose
+        
         return np.nan, np.nan, np.nan
 
     # ------------------------------------------------------
