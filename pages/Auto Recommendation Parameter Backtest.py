@@ -93,10 +93,10 @@ def find_winning_draw_patterns(df):
     m_h_range = (profitable_draws['M_H'].quantile(0.25), profitable_draws['M_H'].quantile(0.75))
     m_a_range = (profitable_draws['M_A'].quantile(0.25), profitable_draws['M_A'].quantile(0.75))
     
-    # Calcular métricas atuais vs esperadas
-    current_draw_bets = len(df[df['Auto_Recommendation'] == '⚪ Back Draw'])
-    current_profitable = len(df[(df['Auto_Recommendation'] == '⚪ Back Draw') & (df['Profit'] > 0)])
-    current_winrate = (current_profitable / current_draw_bets * 100) if current_draw_bets > 0 else 0
+    # Calcular métricas baseadas apenas nos empates lucrativos (SEM depender de Auto_Recommendation)
+    total_draws = len(draw_games)
+    profitable_count = len(profitable_draws)
+    current_winrate = (profitable_count / total_draws * 100) if total_draws > 0 else 0
     
     # Estimar impacto
     coverage_pct = len(profitable_draws[
@@ -107,6 +107,9 @@ def find_winning_draw_patterns(df):
     expected_winrate = min(current_winrate * 1.15, 45)  # Máximo 45% realisticamente
     expected_roi = 18.0  # ROI estimado baseado nos ranges otimizados
     
+    # Estimar volume baseado na seletividade dos ranges
+    estimated_volume = int(total_draws * 0.4)  # Assume 40% dos empates serão capturados
+    
     return {
         'odd_d_range': odd_d_range,
         'diff_power_range': diff_power_range,
@@ -116,9 +119,11 @@ def find_winning_draw_patterns(df):
         'expected_winrate': expected_winrate,
         'current_roi': 13.8,  # Do seu CSV
         'expected_roi': expected_roi,
-        'current_volume': current_draw_bets,
-        'expected_volume': int(current_draw_bets * 0.9),  # Leve redução por ser mais seletivo
-        'coverage_pct': coverage_pct
+        'current_volume': total_draws,  # Todos os empates históricos
+        'expected_volume': estimated_volume,
+        'coverage_pct': coverage_pct,
+        'profitable_draws_count': profitable_count,
+        'total_draws_count': total_draws
     }
 
 def apply_draw_parameters(suggestions):
