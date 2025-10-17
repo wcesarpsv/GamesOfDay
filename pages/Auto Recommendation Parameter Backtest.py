@@ -129,11 +129,19 @@ def find_winning_draw_patterns(df):
 def apply_draw_parameters(suggestions):
     """Aplica os parâmetros sugeridos automaticamente"""
     if suggestions:
+        # Atualizar todos os sliders do Draw
         st.session_state['param_draw_odd_min'] = float(suggestions['odd_d_range'][0])
         st.session_state['param_draw_odd_max'] = float(suggestions['odd_d_range'][1])
         st.session_state['param_draw_diff_power_min'] = float(suggestions['diff_power_range'][0])
         st.session_state['param_draw_diff_power_max'] = float(suggestions['diff_power_range'][1])
+        st.session_state['param_draw_m_h_min'] = float(suggestions['m_h_range'][0])
+        st.session_state['param_draw_m_h_max'] = float(suggestions['m_h_range'][1])
+        st.session_state['param_draw_m_a_min'] = float(suggestions['m_a_range'][0])
+        st.session_state['param_draw_m_a_max'] = float(suggestions['m_a_range'][1])
+        
         st.success("✅ Draw parameters applied automatically!")
+        # Forçar refresh para mostrar os novos valores
+        st.rerun()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 🎛️ PARAMETER CONTROL PANEL BY BET TYPE
@@ -157,6 +165,12 @@ DRAW_ODD_MIN = st.sidebar.slider("Odd_D Min", 2.0, 4.0, 2.5, 0.1, key="param_dra
 DRAW_ODD_MAX = st.sidebar.slider("Odd_D Max", 4.0, 7.0, 6.0, 0.1, key="param_draw_odd_max")
 DRAW_DIFF_POWER_MIN = st.sidebar.slider("Diff_Power Min", -15, 5, -10, 1, key="param_draw_diff_power_min")
 DRAW_DIFF_POWER_MAX = st.sidebar.slider("Diff_Power Max", -5, 15, 10, 1, key="param_draw_diff_power_max")
+
+# 🆕 NOVOS SLIDERS PARA M_H E M_A NO DRAW
+DRAW_M_H_MIN = st.sidebar.slider("M_H Min", -1.0, 1.0, 0.0, 0.1, key="param_draw_m_h_min")
+DRAW_M_H_MAX = st.sidebar.slider("M_H Max", -1.0, 1.0, 1.0, 0.1, key="param_draw_m_h_max")
+DRAW_M_A_MIN = st.sidebar.slider("M_A Min", -1.0, 1.0, 0.0, 0.1, key="param_draw_m_a_min")
+DRAW_M_A_MAX = st.sidebar.slider("M_A Max", -1.0, 1.0, 1.0, 0.1, key="param_draw_m_a_max")
 
 # 🟢 BACK HOME PARAMETERS
 st.sidebar.subheader("🟢 Back Home")
@@ -374,9 +388,10 @@ def auto_recommendation_custom(row):
 
     # 7) ⚪ BACK DRAW - Custom parameters
     if (odd_d is not None and DRAW_ODD_MIN <= odd_d <= DRAW_ODD_MAX) and \
-       (diff_pow is not None and DRAW_DIFF_POWER_MIN <= diff_pow <= DRAW_DIFF_POWER_MAX):
-        if (m_h is not None and 0 <= m_h <= 1) or (m_a is not None and 0 <= m_a <= 0.5):
-            return '⚪ Back Draw'
+       (diff_pow is not None and DRAW_DIFF_POWER_MIN <= diff_pow <= DRAW_DIFF_POWER_MAX) and \
+       (m_h is not None and DRAW_M_H_MIN <= m_h <= DRAW_M_H_MAX) and \
+       (m_a is not None and DRAW_M_A_MIN <= m_a <= DRAW_M_A_MAX):
+        return '⚪ Back Draw'
 
     # 8) Fallback
     return '❌ Avoid'
