@@ -395,7 +395,7 @@ history = calculate_market_error_history_shift(history)
 ####### Bloco 7 – Train ML Model #######
 ########################################
 
-# DEFINIR features_raw AQUI MESMO
+# DEFINIR features_raw
 features_raw = [
     'HandScore_Home_HT','HandScore_Away_HT',
     'Aggression_Home','Aggression_Away',
@@ -407,26 +407,116 @@ features_raw = [
     'Market_Error_Home_Hist', 'Market_Error_Away_Hist', 'Market_Error_Draw_Hist'
 ]
 
+st.info(f"📋 Features definidas: {len(features_raw)} features")
+
+# FILTRAR APENAS LINHAS VÁLIDAS (após shift)
 history_valid = history.dropna(subset=['Market_Error_Home_Hist'])
 
-# FILTRAR FEATURES DISPONÍVEIS
-features_available = [f for f in features_raw if f in history_valid.columns]
-st.success(f"🎯 Treinando com {len(features_available)} features")
+# DEBUG: VERIFICAR NAN NAS FEATURES
+st.markdown("### 🔍 Debug - Qualidade dos Dados")
+st.write(f"📊 Jogos disponíveis após shift: {len(history_valid)}")
 
+# VERIFICAR FEATURES DISPONÍVEIS E SEUS NAN
+features_available = []
+features_with_nan = []
+
+for feature in features_raw:
+    if feature in history_valid.columns:
+        nan_count = history_valid[feature].isna().sum()
+        nan_percent = (nan_count / len(history_valid)) * 100
+        
+        if nan_count == 0:
+            features_available.append(feature)
+            st.success(f"✅ {feature}: 0% NaN")
+        else:
+            features_with_nan.append((feature, nan_count, nan_percent))
+            st.warning(f"⚠️ {feature}: {nan_count} NaN ({nan_percent:.1f}%)")
+    else:
+        st.error(f"❌ {feature}: Não encontrada no DataFrame")
+
+# MOSTRAR RESUMO
+st.markdown("### 📈 Resumo das Features")
+st.write(f"✅ **Features disponíveis sem NaN:** {len(features_available)}")
+st.write(f"⚠️ **Features com NaN:** {len(features_with_nan)}")
+st.write(f"📊 **Total de jogos válidos:** {len(history_valid)}")
+
+# DECISÃO: USAR APENAS FEATURES SEM NaN OU PREENCHER NaN
+if len(features_available) < 5:  # Mínimo de features para treino
+    st.warning("⚠️ Poucas features sem NaN. Tentando preencher NaN...")
+    
+    # PREENCHER NaN COM VALORES PADRÃO
+    for feature, nan_count, nan_percent in features_with_nan:
+        if feature in history_valid.columns:
+            if history_valid[feature].dtype in ['object', 'category']:
+                # Features categóricas: preencher com moda
+                mode_val = history_valid[feature].mode()
+                fill_val = mode_val[0] if len(mode_val) > 0 else 'Unknown'
+                history_valid[feature] = history_valid[feature].fillna(fill_val)
+                st.info(f"📝 {feature}: NaN preenchido com '{fill_val}'")
+            else:
+                # Features numéricas: preencher com mediana
+                median_val = history_valid[feature].median()
+                history_valid[feature] = history_valid[feature].fillna(median_val)
+                st.info(f"📝 {feature}: NaN preenchido com {median_val:.3f}")
+            
+            features_available.append(feature)
+else:
+    st.info("🎯 Usando apenas features sem NaN para maior qualidade")
+
+st.success(f"🚀 Features finais para treino: {len(features_available)}")
+
+# VERIFICAR SE TEMOS DADOS SUFICIENTES
+if len(features_available) == 0:
+    st.error("❌ Nenhuma feature disponível para treino!")
+    st.stop()
+
+if len(history_valid) < 100:
+    st.warning(f"⚠️ Poucos dados para treino: {len(history_valid)} jogos")
+
+# PREPARAR DADOS FINAIS
 X = history_valid[features_available].copy()
 y = history_valid['Result']
 
-BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
-if 'Home_Band' in X: X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
-if 'Away_Band' in X: X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
+# VERIFICAÇÃO FINAL - GARANTIR QUE NÃO HAJA NaN
+final_nan_check = X.isna().sum().sum()
+if final_nan_check > 0:
+    st.error(f"❌ Ainda existem {final_nan_check} valores NaN após limpeza!")
+    # REMOVER QUALQUER LINHA COM NaN RESTANTE
+    nan_mask = X.isna().any(axis=1)
+    X = X[~nan_mask]
+    y = y[~nan_mask]
+    st.info(f"📝 Removidas {nan_mask.sum()} linhas com NaN")
 
-cat_cols = [c for c in ['Dominant','League_Classification'] if c in X]
+st.write(f"📊 Dimensões finais do dataset:")
+st.write(f"- X: {X.shape}")
+st.write(f"- y: {y.shape}")
+
+if len(X) == 0:
+    st.error("❌ Nenhum dado válido após limpeza!")
+    st.stop()
+
+# MAPEAMENTO DE BANDS E ENCODING
+BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
+
+# APLICAR TRANSFORMAÇÕES APENAS NAS FEATURES DISPONÍVEIS
+if 'Home_Band' in X.columns: 
+    X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
+if 'Away_Band' in X.columns: 
+    X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
+
+# IDENTIFICAR COLUNAS CATEGÓRICAS DISPONÍVEIS
+cat_cols = [c for c in ['Dominant','League_Classification'] if c in X.columns]
+
+# ENCODING CATEGÓRICAS
 encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
 if cat_cols:
     encoded = encoder.fit_transform(X[cat_cols])
     encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(cat_cols))
     X = pd.concat([X.drop(columns=cat_cols).reset_index(drop=True),
                    encoded_df.reset_index(drop=True)], axis=1)
+
+# TREINAR MODELO
+st.markdown("### 🤖 Treinando Modelo Random Forest")
 
 model = RandomForestClassifier(
     n_estimators=500,
@@ -438,7 +528,9 @@ model = RandomForestClassifier(
     random_state=42,
     n_jobs=-1
 )
+
 model.fit(X, y)
+st.success("✅ Modelo treinado com sucesso!")
 
 # ANALISAR FEATURE IMPORTANCE
 feature_importance = pd.DataFrame({
@@ -446,8 +538,16 @@ feature_importance = pd.DataFrame({
     'importance': model.feature_importances_
 }).sort_values('importance', ascending=False)
 
-st.write("**📊 Feature Importance (Top 15):**")
+st.markdown("### 📊 Feature Importance (Top 15)")
 st.dataframe(feature_importance.head(15))
+
+# SALVAR INFORMAÇÕES PARA USO NO BLOCO 8
+st.session_state['features_used'] = features_available
+st.session_state['model_trained'] = True
+st.session_state['encoder'] = encoder
+st.session_state['cat_cols'] = cat_cols
+
+st.success("🎯 Bloco 7 concluído! Modelo pronto para previsões.")
 
 ########################################
 ####### Bloco 8 – Apply ML to Today #######
