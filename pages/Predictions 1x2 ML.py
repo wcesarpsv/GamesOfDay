@@ -840,6 +840,43 @@ st.dataframe(ml_performance)
 # CONTINUA O CÓDIGO ORIGINAL (Summary e resto)...
 
 
+# ADICIONAR ISSO APÓS A ANÁLISE 2
+
+st.markdown("### 📈 Performance por Nível de Market Error")
+
+def analyze_market_error_performance(df, side):
+    error_col = f'Market_Error_{side}'
+    profit_col = f'Profit_ML_Fixed'
+    
+    # Criar faixas de Market Error
+    conditions = [
+        df[error_col] <= -0.05,
+        (df[error_col] > -0.05) & (df[error_col] < 0.05),
+        df[error_col] >= 0.05
+    ]
+    choices = ['Cético', 'Neutro', 'Otimista']
+    
+    df[f'{side}_Error_Band'] = np.select(conditions, choices, default='Neutro')
+    
+    results = df.groupby(f'{side}_Error_Band').agg({
+        profit_col: ['count', 'sum', 'mean'],
+        'ML_Correct': 'mean'
+    }).round(3)
+    
+    return results
+
+st.write("**Performance por Faixa de Market Error - HOME:**")
+home_analysis = analyze_market_error_performance(finished_games, 'Home')
+st.dataframe(home_analysis)
+
+st.write("**Performance por Faixa de Market Error - AWAY:**")  
+away_analysis = analyze_market_error_performance(finished_games, 'Away')
+st.dataframe(away_analysis)
+
+
+
+
+
 ########################################
 ##### Bloco 9 – Exibição Final Expandida ###
 ########################################
