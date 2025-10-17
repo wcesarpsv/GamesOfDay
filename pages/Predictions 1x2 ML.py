@@ -333,52 +333,93 @@ games_today['Auto_Recommendation'] = games_today.apply(lambda r: auto_recommenda
 
 
 ########################################
-####### Bloco 6B – Market Error History ###
+####### Bloco 6B – Debug e Market Error History ###
 ########################################
 
-st.markdown("### 📊 Calculando Market Error para Dataset Histórico")
+st.markdown("### 🔍 Debug - Verificando Dados do Histórico")
 
-def calculate_market_error_history(history_df):
-    """Calcula Market Error para dados históricos"""
-    if all(col in history_df.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
-        # Calcular probabilidades implícitas das odds históricas
-        probs = pd.DataFrame()
-        probs['p_H'] = 1 / history_df['Odd_H']
-        probs['p_D'] = 1 / history_df['Odd_D'] 
-        probs['p_A'] = 1 / history_df['Odd_A']
-        probs = probs.div(probs.sum(axis=1), axis=0)
-        
-        history_df['Imp_Prob_H'] = probs['p_H']
-        history_df['Imp_Prob_D'] = probs['p_D'] 
-        history_df['Imp_Prob_A'] = probs['p_A']
-        
-        # Calcular Market Error (precisamos das probabilidades TRUE do passado)
-        # Para histórico, usamos o resultado REAL como "nossa previsão"
-        def get_true_probability(row, outcome):
-            if outcome == "Home":
-                return 1.0 if row['Goals_H_FT'] > row['Goals_A_FT'] else 0.0
-            elif outcome == "Away": 
-                return 1.0 if row['Goals_H_FT'] < row['Goals_A_FT'] else 0.0
-            else:  # Draw
-                return 1.0 if row['Goals_H_FT'] == row['Goals_A_FT'] else 0.0
-        
-        history_df['True_Prob_Home'] = history_df.apply(lambda x: get_true_probability(x, "Home"), axis=1)
-        history_df['True_Prob_Away'] = history_df.apply(lambda x: get_true_probability(x, "Away"), axis=1)
-        history_df['True_Prob_Draw'] = history_df.apply(lambda x: get_true_probability(x, "Draw"), axis=1)
-        
-        # Market Error histórico: Diferença entre resultado REAL e probabilidade implícita
-        history_df['Market_Error_Home_Hist'] = history_df['True_Prob_Home'] - history_df['Imp_Prob_H']
-        history_df['Market_Error_Away_Hist'] = history_df['True_Prob_Away'] - history_df['Imp_Prob_A']
-        history_df['Market_Error_Draw_Hist'] = history_df['True_Prob_Draw'] - history_df['Imp_Prob_D']
-        
-        st.success(f"✅ Market Error calculado para {len(history_df)} jogos históricos")
+# Verificar quais colunas existem no histórico
+st.write("**Colunas disponíveis no histórico:**", list(history.columns))
+
+# Verificar se as odds existem
+odds_cols = ['Odd_H', 'Odd_D', 'Odd_A']
+available_odds = [col for col in odds_cols if col in history.columns]
+st.write(f"**Odds disponíveis:** {available_odds}")
+
+# Verificar se temos dados suficientes
+st.write(f"**Total de jogos no histórico:** {len(history)}")
+st.write(f"**Jogos com odds disponíveis:** {len(history.dropna(subset=available_odds))}")
+
+def calculate_market_error_history_safe(history_df):
+    """Calcula Market Error de forma segura"""
+    # Verificar se temos as odds necessárias
+    required_odds = ['Odd_H', 'Odd_D', 'Odd_A']
+    if not all(col in history_df.columns for col in required_odds):
+        missing = [col for col in required_odds if col not in history_df.columns]
+        st.warning(f"⚠️ Odds faltando: {missing} - Pulando Market Error")
         return history_df
-    else:
-        st.warning("⚠️ Odds não disponíveis no histórico - pulando Market Error")
+    
+    # Verificar se temos dados suficientes
+    odds_not_na = history_df[required_odds].notna().all(axis=1)
+    if odds_not_na.sum() == 0:
+        st.warning("⚠️ Nenhuma odd disponível no histórico - Pulando Market Error")
         return history_df
+    
+    st.info(f"📊 Calculando Market Error para {odds_not_na.sum()} jogos com odds...")
+    
+    # Filtrar apenas jogos com odds
+    history_with_odds = history_df[odds_not_na].copy()
+    
+    # Calcular probabilidades implícitas
+    probs = pd.DataFrame()
+    probs['p_H'] = 1 / history_with_odds['Odd_H']
+    probs['p_D'] = 1 / history_with_odds['Odd_D'] 
+    probs['p_A'] = 1 / history_with_odds['Odd_A']
+    probs = probs.div(probs.sum(axis=1), axis=0)
+    
+    history_with_odds['Imp_Prob_H'] = probs['p_H']
+    history_with_odds['Imp_Prob_D'] = probs['p_D'] 
+    history_with_odds['Imp_Prob_A'] = probs['p_A']
+    
+    # Calcular probabilidades verdadeiras baseadas no resultado
+    def get_true_probability(row, outcome):
+        if outcome == "Home":
+            return 1.0 if row['Goals_H_FT'] > row['Goals_A_FT'] else 0.0
+        elif outcome == "Away": 
+            return 1.0 if row['Goals_H_FT'] < row['Goals_A_FT'] else 0.0
+        else:  # Draw
+            return 1.0 if row['Goals_H_FT'] == row['Goals_A_FT'] else 0.0
+    
+    history_with_odds['True_Prob_Home'] = history_with_odds.apply(lambda x: get_true_probability(x, "Home"), axis=1)
+    history_with_odds['True_Prob_Away'] = history_with_odds.apply(lambda x: get_true_probability(x, "Away"), axis=1)
+    history_with_odds['True_Prob_Draw'] = history_with_odds.apply(lambda x: get_true_probability(x, "Draw"), axis=1)
+    
+    # Calcular Market Error
+    history_with_odds['Market_Error_Home_Hist'] = history_with_odds['True_Prob_Home'] - history_with_odds['Imp_Prob_H']
+    history_with_odds['Market_Error_Away_Hist'] = history_with_odds['True_Prob_Away'] - history_with_odds['Imp_Prob_A']
+    history_with_odds['Market_Error_Draw_Hist'] = history_with_odds['True_Prob_Draw'] - history_with_odds['Imp_Prob_D']
+    
+    # Juntar de volta ao histórico completo
+    history_df = history_df.merge(
+        history_with_odds[['Market_Error_Home_Hist', 'Market_Error_Away_Hist', 'Market_Error_Draw_Hist']],
+        left_index=True, 
+        right_index=True, 
+        how='left',
+        suffixes=('', '_new')
+    )
+    
+    st.success(f"✅ Market Error calculado para {len(history_with_odds)} jogos históricos")
+    
+    # Mostrar estatísticas
+    st.write("**Estatísticas do Market Error Histórico:**")
+    st.write(f"- Média Market_Error_Home: {history_with_odds['Market_Error_Home_Hist'].mean():.3f}")
+    st.write(f"- Média Market_Error_Away: {history_with_odds['Market_Error_Away_Hist'].mean():.3f}")
+    st.write(f"- Média Market_Error_Draw: {history_with_odds['Market_Error_Draw_Hist'].mean():.3f}")
+    
+    return history_df
 
 # Aplicar ao histórico
-history = calculate_market_error_history(history)
+history = calculate_market_error_history_safe(history)
 
 
 ########################################
@@ -397,7 +438,7 @@ def map_result(row):
 
 history['Result'] = history.apply(map_result, axis=1)
 
-# ATUALIZAR features_raw para incluir Market Error
+# FEATURES BASE (sempre disponíveis)
 features_raw = [
     'HandScore_Home_HT','HandScore_Away_HT',
     'Aggression_Home','Aggression_Away',
@@ -408,19 +449,20 @@ features_raw = [
     'Games_Analyzed'
 ]
 
-# ADICIONAR MARKET ERROR SE DISPONÍVEL
+# TENTAR ADICIONAR MARKET ERROR SE DISPONÍVEL
 market_error_features = ['Market_Error_Home_Hist', 'Market_Error_Away_Hist', 'Market_Error_Draw_Hist']
 available_market_error = [f for f in market_error_features if f in history.columns]
 
 if available_market_error:
     features_raw.extend(available_market_error)
-    st.info(f"✅ Adicionadas {len(available_market_error)} features de Market Error ao ML")
+    st.success(f"✅ Adicionadas {len(available_market_error)} features de Market Error")
 else:
-    st.warning("⚠️ Market Error não disponível para treino")
+    st.warning("⚠️ Treinando SEM Market Error - features não disponíveis")
 
+# Filtrar apenas features que existem
 features_raw = [f for f in features_raw if f in history.columns]
 
-st.write(f"**Features utilizadas no ML ({len(features_raw)}):**", features_raw)
+st.write(f"**Features finais para ML ({len(features_raw)}):**", features_raw)
 
 X = history[features_raw].copy()
 y = history['Result']
