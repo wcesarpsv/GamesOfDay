@@ -809,7 +809,7 @@ st.markdown("### 🕵️ Investigação: Edge Real vs Viés")
 # Análise 2 - Performance por tipo de recomendação
 def analyze_ml_recommendation_performance(df):
     results = []
-    for rec_type in ['🟢 Back Home', '🟠 Back Away', '🟦 1X', '🟪 X2', '⚪ Back Draw']:
+    for rec_type in ['🟢 Back Home', '🟠 Back Away', '🟦 1X (Home/Draw)', '🟪 X2 (Away/Draw)', '⚪ Back Draw']:
         rec_bets = df[df['ML_Recommendation'] == rec_type]
         if len(rec_bets) > 0:
             total_bets = len(rec_bets)
