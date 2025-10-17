@@ -905,7 +905,7 @@ st.markdown("### 📈 Performance por Nível de Market Error")
 
 # VERIFICAR SE AS COLUNAS MARKET_ERROR EXISTEM
 if 'Market_Error_Home' not in finished_games.columns:
-    st.warning("⚠️ Colunas Market_Error não encontradas. Criando agora...")
+    # st.warning("⚠️ Colunas Market_Error não encontradas. Criando agora...")
     
     # Calcular probabilidades implícitas e Market Error (igual no Bloco 10)
     if all(col in finished_games.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
