@@ -1,4 +1,4 @@
-9########################################
+########################################
 ########## Bloco 1 – Imports ############
 ########################################
 import streamlit as st
@@ -420,6 +420,32 @@ model.fit(X, y)
 print("✅ Modelo treinado com sucesso!")
 
 
+########################################
+####### Bloco 7B – ML Recommendation Function #######
+########################################
+
+def ml_recommendation_from_proba(p_home, p_draw, p_away, threshold=0.65):
+    """
+    Converte probabilidades do ML em recomendações de apostas
+    """
+    if p_home >= threshold:
+        return "🟢 Back Home"
+    elif p_away >= threshold:
+        return "🟠 Back Away"
+    else:
+        sum_home_draw = p_home + p_draw
+        sum_away_draw = p_away + p_draw
+        if abs(p_home - p_away) < 0.05 and p_draw > 0.50:
+            return "⚪ Back Draw"
+        elif sum_home_draw > sum_away_draw:
+            return "🟦 1X (Home/Draw)"
+        elif sum_away_draw > sum_home_draw:
+            return "🟪 X2 (Away/Draw)"
+        else:
+            return "❌ Avoid"
+            
+
+
 
 ########################################
 ####### Bloco 8 – Apply ML to Today ####
@@ -467,6 +493,10 @@ games_today["ML_Recommendation"] = [
 ]
 
 print("✅ ML Recommendations atualizadas com Auto Rules!")
+
+
+
+
 
 
 ########################################
@@ -982,7 +1012,7 @@ st.dataframe(
         'Odd_D': '{:.2f}', 
         'Odd_A': '{:.2f}'
     }),
-    use_container_width=True,
+    use_container_width='stretch',
     height=1200,
 )
 
