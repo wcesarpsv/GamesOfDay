@@ -501,12 +501,11 @@ st.write("**📊 Feature Importance (Top 15):**")
 st.dataframe(feature_importance.head(15))
 
 
-
 ########################################
 ####### Bloco 8 – Apply ML to Today #######
 ########################################
 
-# CALCULAR MARKET ERROR PARA HOJE ANTES DE APLICAR ML
+# PRIMEIRO: Calcular probabilidades implícitas para HOJE
 def calculate_market_error_today(games_today_df):
     """Calcula Market Error para jogos de hoje"""
     if all(col in games_today_df.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
@@ -520,38 +519,40 @@ def calculate_market_error_today(games_today_df):
         games_today_df['Imp_Prob_D'] = probs['p_D'] 
         games_today_df['Imp_Prob_A'] = probs['p_A']
         
+        st.success("✅ Probabilidades implícitas calculadas para jogos de hoje")
         return games_today_df
     else:
+        st.warning("⚠️ Odds não disponíveis para hoje")
         return games_today_df
 
 # Aplicar aos jogos de hoje
 games_today = calculate_market_error_today(games_today)
 
-# PREPARAR DADOS DE HOJE
+# PREPARAR DADOS DE HOJE - CRIAR COLUNAS MARKET ERROR TEMPORÁRIAS
 X_today = games_today[features_raw].copy()
 
-# Substituir colunas históricas por valores atuais
-if 'Market_Error_Home_Hist' in X_today.columns:
-    # Inicializar com zeros (serão atualizados após previsão do ML)
-    X_today['Market_Error_Home_Hist'] = 0
-if 'Market_Error_Away_Hist' in X_today.columns:
-    X_today['Market_Error_Away_Hist'] = 0  
-if 'Market_Error_Draw_Hist' in X_today.columns:
-    X_today['Market_Error_Draw_Hist'] = 0
+# Para as features de Market Error, vamos usar VALORES NEUTROS (0) inicialmente
+# Elas serão atualizadas após a previsão do ML
+market_error_cols = ['Market_Error_Home_Hist', 'Market_Error_Away_Hist', 'Market_Error_Draw_Hist']
+for col in market_error_cols:
+    if col in X_today.columns:
+        X_today[col] = 0.0  # Valor neutro temporário
 
 # Aplicar transformações (igual ao treino)
+BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
 if 'Home_Band' in X_today: 
     X_today['Home_Band_Num'] = X_today['Home_Band'].map(BAND_MAP)
 if 'Away_Band' in X_today: 
     X_today['Away_Band_Num'] = X_today['Away_Band'].map(BAND_MAP)
 
+cat_cols = [c for c in ['Dominant','League_Classification'] if c in X_today]
 if cat_cols:
     encoded_today = encoder.transform(X_today[cat_cols])
     encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(cat_cols))
     X_today = pd.concat([X_today.drop(columns=cat_cols).reset_index(drop=True),
                          encoded_today_df.reset_index(drop=True)], axis=1)
 
-# FAZER PREVISÕES
+# FAZER PREVISÕES DO ML (APENAS UMA VEZ!)
 ml_preds = model.predict(X_today)
 ml_proba = model.predict_proba(X_today)
 
@@ -559,18 +560,45 @@ games_today["ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
 games_today["ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
 games_today["ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
 
-# AGORA CALCULAR MARKET ERROR COM AS PROBABILIDADES DO ML
+# AGORA CALCULAR MARKET ERROR REAL PARA HOJE (com as probabilidades do ML)
 if all(col in games_today.columns for col in ['Imp_Prob_H', 'Imp_Prob_A', 'Imp_Prob_D']):
-    games_today['Market_Error_Home'] = games_today['ML_Proba_Home'] - games_today['Imp_Prob_H']
-    games_today['Market_Error_Away'] = games_today['ML_Proba_Away'] - games_today['Imp_Prob_A']
-    games_today['Market_Error_Draw'] = games_today['ML_Proba_Draw'] - games_today['Imp_Prob_D']
+    games_today['Market_Error_Home_Today'] = games_today['ML_Proba_Home'] - games_today['Imp_Prob_H']
+    games_today['Market_Error_Away_Today'] = games_today['ML_Proba_Away'] - games_today['Imp_Prob_A']
+    games_today['Market_Error_Draw_Today'] = games_today['ML_Proba_Draw'] - games_today['Imp_Prob_D']
+    
+    st.success("✅ Market Error calculado para jogos de hoje")
+    
+    # Mostrar estatísticas
+    st.write("**Market Error para jogos de hoje:**")
+    st.write(f"- Média Market_Error_Home: {games_today['Market_Error_Home_Today'].mean():.3f}")
+    st.write(f"- Média Market_Error_Away: {games_today['Market_Error_Away_Today'].mean():.3f}")
+    st.write(f"- Média Market_Error_Draw: {games_today['Market_Error_Draw_Today'].mean():.3f}")
 
-# CONTINUAR COM RECOMENDAÇÕES (resto do código igual)
+# CONFIGURAÇÃO DO THRESHOLD
 threshold = st.sidebar.slider(
     "ML Threshold for Direct Win (%)", 
     min_value=50, max_value=80, value=65, step=1
 ) / 100.0
 
+# FUNÇÃO DE RECOMENDAÇÃO (manter igual)
+def ml_recommendation_from_proba(p_home, p_draw, p_away, threshold=0.65):
+    if p_home >= threshold:
+        return "🟢 Back Home"
+    elif p_away >= threshold:
+        return "🟠 Back Away"
+    else:
+        sum_home_draw = p_home + p_draw
+        sum_away_draw = p_away + p_draw
+        if abs(p_home - p_away) < 0.05 and p_draw > 0.50:
+            return "⚪ Back Draw"
+        elif sum_home_draw > sum_away_draw:
+            return "🟦 1X (Home/Draw)"
+        elif sum_away_draw > sum_home_draw:
+            return "🟪 X2 (Away/Draw)"
+        else:
+            return "❌ Avoid"
+
+# APLICAR RECOMENDAÇÕES (APENAS UMA VEZ!)
 games_today["ML_Recommendation"] = [
     ml_recommendation_from_proba(row["ML_Proba_Home"], 
                                  row["ML_Proba_Draw"], 
@@ -578,6 +606,8 @@ games_today["ML_Recommendation"] = [
                                  threshold=threshold)
     for _, row in games_today.iterrows()
 ]
+
+st.success("🎯 Previsões ML concluídas com Market Error!")
 
 
 
