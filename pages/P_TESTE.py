@@ -924,10 +924,10 @@ if 'Market_Error_Home' not in finished_games.columns:
         finished_games['Market_Error_Away'] = finished_games['ML_Proba_Away'] - finished_games['Imp_Prob_A']
         finished_games['Market_Error_Draw'] = finished_games['ML_Proba_Draw'] - finished_games['Imp_Prob_D']
         
-        st.success("✅ Colunas Market_Error criadas com sucesso!")
+        # st.success("✅ Colunas Market_Error criadas com sucesso!")
     else:
-        st.error("❌ Odds não disponíveis - impossível calcular Market Error")
-        st.stop()
+        # st.error("❌ Odds não disponíveis - impossível calcular Market Error")
+        # st.stop()
 
 # AGORA SIM PODEMOS EXECUTAR A ANÁLISE
 def analyze_market_error_performance(df, side):
