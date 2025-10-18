@@ -797,119 +797,93 @@ with tab2:
         return p_home, p_draw, p_away
 
     def skellam_handicap(mu_h, mu_a, line):
-        """Probabilidades do Home ganhar/push/perder dado o handicap."""
+        """
+        Probabilidades do Home ganhar / push / perder dado o handicap (AH).
+        Suporta linhas inteiras, meias e quartos (ex: -2.25, -0.75, +1.5, +0.5, +0.25, etc.).
+        Retorna (win, push, lose).
+        """
         try:
             mu_h, mu_a = float(np.clip(mu_h, 0.05, 5.0)), float(np.clip(mu_a, 0.05, 5.0))
-            if pd.isna(line): return np.nan, np.nan, np.nan
+            if pd.isna(line):
+                return np.nan, np.nan, np.nan
             line = float(line)
         except Exception:
             return np.nan, np.nan, np.nan
     
-        # Inteiro (ex: -1.0, +1.0)
-        if abs(line - round(line)) < 1e-9:
-            k = int(round(line))
-            
-            if k < 0:  # Handicap NEGATIVO: Home DÁ handicap
-                # Ex: -1 → Home precisa vencer por 2+ gols
-                win = 1 - skellam.cdf(-k - 1, mu_h, mu_a)  # Diferença > -k-1
-                push = skellam.pmf(-k, mu_h, mu_a)         # Diferença = -k  
-                lose = skellam.cdf(-k, mu_h, mu_a)         # Diferença <= -k
-                
-            elif k > 0:  # Handicap POSITIVO: Home RECEBE handicap  
-                # Ex: +1 → Home cobre se não perder por 2+ gols
-                win = skellam.cdf(-k, mu_h, mu_a)          # Diferença >= -k
-                push = skellam.pmf(-k, mu_h, mu_a)         # Diferença = -k
-                lose = 1 - skellam.cdf(-k - 1, mu_h, mu_a) # Diferença < -k
-                
-            else:  # Handicap ZERO
-                win = 1 - skellam.cdf(0, mu_h, mu_a)  # Home vence
-                push = skellam.pmf(0, mu_h, mu_a)      # Empate
-                lose = skellam.cdf(-1, mu_h, mu_a)     # Home perde
-                
-            return win, push, lose
-        
-        # Meia (ex: -0.5, +0.5)
-        if abs(line * 2 - round(line * 2)) < 1e-9 and abs(line * 4 - round(line * 4)) > 1e-9:
-            if line < 0:  # Handicap NEGATIVO: Home DÁ handicap
-                k = abs(line)
-                win = 1 - skellam.cdf(math.ceil(k), mu_h, mu_a)  # Home vence por > k
-                lose = skellam.cdf(math.ceil(k), mu_h, mu_a)     # Home não vence por > k
-                
-            else:  # Handicap POSITIVO: Home RECEBE handicap
+        # -------------------------------------------------------------
+        # Função auxiliar para calcular um único handicap simples (sem split)
+        # -------------------------------------------------------------
+        def calc_single(hcap):
+            """Retorna win, push, lose para um único handicap."""
+            # Diferença de gols D = G_H - G_A
+            if abs(hcap - round(hcap)) < 1e-9:  # inteiro
+                k = int(round(hcap))
+                if k < 0:
+                    # Ex: -1 → precisa vencer por 2+
+                    win = 1 - skellam.cdf(-k - 1, mu_h, mu_a)
+                    push = skellam.pmf(-k, mu_h, mu_a)
+                    lose = skellam.cdf(-k, mu_h, mu_a)
+                elif k > 0:
+                    # Ex: +1 → cobre se não perder por 2+
+                    win = skellam.cdf(-k, mu_h, mu_a)
+                    push = skellam.pmf(-k, mu_h, mu_a)
+                    lose = 1 - skellam.cdf(-k - 1, mu_h, mu_a)
+                else:  # 0
+                    win = 1 - skellam.cdf(0, mu_h, mu_a)
+                    push = skellam.pmf(0, mu_h, mu_a)
+                    lose = skellam.cdf(-1, mu_h, mu_a)
+                return win, push, lose
+    
+            # Meia linha (±0.5, ±1.5, ±2.5, ...)
+            if abs(line * 2 - round(line * 2)) < 1e-9 and abs(line * 4 - round(line * 4)) > 1e-9:
                 k = line
-                win = 1 - skellam.cdf(math.floor(-k), mu_h, mu_a)  # Home não perde por > k
-                lose = skellam.cdf(math.floor(-k), mu_h, mu_a)     # Home perde por > k
-                
-            return win, 0.0, lose
-        
-        # Quarta (ex: -0.25, -0.75, +0.25, +0.75)
-        if abs(line * 4 - round(line * 4)) < 1e-9:
-            if line == -0.25:
-                # -0.25: metade em -0.5, metade em 0.0
-                # -0.5: win se home vencer, lose se não vencer
-                win_half = 1 - skellam.cdf(0, mu_h, mu_a)
-                lose_half = skellam.cdf(0, mu_h, mu_a)
-                
-                # 0.0: win se home vencer, push se empate, lose se home perder
-                win_level = 1 - skellam.cdf(0, mu_h, mu_a)
-                push_level = skellam.pmf(0, mu_h, mu_a)
-                lose_level = skellam.cdf(-1, mu_h, mu_a)
-                
-                win = 0.5 * win_half + 0.5 * win_level
-                push = 0.5 * 0.0 + 0.5 * push_level
-                lose = 0.5 * lose_half + 0.5 * lose_level
-                
-            elif line == 0.25:
-                # +0.25: metade em +0.5, metade em 0.0
-                # +0.5: win se home não perder, lose se home perder
-                win_half = 1 - skellam.cdf(-1, mu_h, mu_a)
-                lose_half = skellam.cdf(-1, mu_h, mu_a)
-                
-                # 0.0: win se home vencer, push se empate, lose se home perder
-                win_level = 1 - skellam.cdf(0, mu_h, mu_a)
-                push_level = skellam.pmf(0, mu_h, mu_a)
-                lose_level = skellam.cdf(-1, mu_h, mu_a)
-                
-                win = 0.5 * win_half + 0.5 * win_level
-                push = 0.5 * 0.0 + 0.5 * push_level
-                lose = 0.5 * lose_half + 0.5 * lose_level
-                
-            elif line == -0.75:
-                # -0.75: metade em -0.5, metade em -1.0
-                # -0.5: win se home vencer, lose se não vencer
-                win_half = 1 - skellam.cdf(0, mu_h, mu_a)
-                lose_half = skellam.cdf(0, mu_h, mu_a)
-                
-                # -1.0: win se home vencer por 2+, push se vencer por 1, lose se não vencer
-                win_full = 1 - skellam.cdf(1, mu_h, mu_a)
-                push_full = skellam.pmf(1, mu_h, mu_a)
-                lose_full = skellam.cdf(0, mu_h, mu_a)
-                
-                win = 0.5 * win_half + 0.5 * win_full
-                push = 0.5 * 0.0 + 0.5 * push_full
-                lose = 0.5 * lose_half + 0.5 * lose_full
-                
-            elif line == 0.75:
-                # +0.75: metade em +0.5, metade em +1.0
-                # +0.5: win se home não perder, lose se home perder
-                win_half = 1 - skellam.cdf(-1, mu_h, mu_a)
-                lose_half = skellam.cdf(-1, mu_h, mu_a)
-                
-                # +1.0: win se home não perder por 2+, push se perder por 1, lose se perder por 2+
-                win_full = 1 - skellam.cdf(-2, mu_h, mu_a)
-                push_full = skellam.pmf(-1, mu_h, mu_a)
-                lose_full = skellam.cdf(-2, mu_h, mu_a)
-                
-                win = 0.5 * win_half + 0.5 * win_full
-                push = 0.5 * 0.0 + 0.5 * push_full
-                lose = 0.5 * lose_half + 0.5 * lose_full
-                
-            else:
-                return np.nan, np.nan, np.nan
-                
-            return win, push, lose
-        
-        return np.nan, np.nan, np.nan
+                if k < 0:
+                    # Ex: -0.5 → precisa vencer (D > 0)
+                    win = 1 - skellam.cdf(-k, mu_h, mu_a)
+                    push = 0.0
+                    lose = skellam.cdf(-k, mu_h, mu_a)
+                else:
+                    # Ex: +0.5 → cobre se não perder (D >= 0)
+                    win = 1 - skellam.cdf(-1 - k, mu_h, mu_a)
+                    push = 0.0
+                    lose = skellam.cdf(-1 - k, mu_h, mu_a)
+                return win, push, lose
+    
+            # Caso genérico (ex: -1.5, -2.5, etc.)
+            if abs(line * 2 - round(line * 2)) < 1e-9:
+                # ±N.5: mesma regra geral de meia linha
+                k = line
+                if k < 0:
+                    win = 1 - skellam.cdf(-k, mu_h, mu_a)
+                    lose = skellam.cdf(-k, mu_h, mu_a)
+                else:
+                    win = 1 - skellam.cdf(-1 - k, mu_h, mu_a)
+                    lose = skellam.cdf(-1 - k, mu_h, mu_a)
+                return win, 0.0, lose
+    
+            # Se nada casou, retorna NaN
+            return np.nan, np.nan, np.nan
+
+    # -------------------------------------------------------------
+    # Detectar se é quarto (ex: ±0.25, ±0.75, ±1.25, ±1.75, etc.)
+    # -------------------------------------------------------------
+    frac = abs(line * 4 - round(line * 4)) < 1e-9  # múltiplo de 0.25
+    if frac and abs(line * 2 - round(line * 2)) > 1e-9:
+        # quarto de gol: média de duas metades (linha arredondada para cima e para baixo)
+        lower = math.floor(line * 2) / 2.0
+        upper = math.ceil(line * 2) / 2.0
+        win1, push1, lose1 = calc_single(lower)
+        win2, push2, lose2 = calc_single(upper)
+        win = 0.5 * (win1 + win2)
+        push = 0.5 * (push1 + push2)
+        lose = 0.5 * (lose1 + lose2)
+        return win, push, lose
+
+    # -------------------------------------------------------------
+    # Caso padrão (inteiro ou meio)
+    # -------------------------------------------------------------
+    return calc_single(line)
+
 
     # ------------------------------------------------------
     # 6️⃣ Aplicar Skellam (1X2 + AH)
