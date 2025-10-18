@@ -375,7 +375,8 @@ features_raw = [
 'Diff_HT_P',
 'M_Diff', 'Diff_Power',
 'League_Classification', 'Games_Analyzed',
-'Auto_Rec_Encoded'
+'Auto_Rec_Encoded',
+'Odd_1X','Odd_X2'
 ]
 
 # Manter apenas features que existem no histórico
