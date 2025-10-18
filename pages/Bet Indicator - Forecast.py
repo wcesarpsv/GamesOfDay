@@ -796,71 +796,49 @@ with tab2:
         p_away = skellam.cdf(-1, mu_h, mu_a)
         return p_home, p_draw, p_away
 
+
+
     def skellam_handicap(mu_h, mu_a, line):
         """
-        Probabilidades do Home ganhar / push / perder dado o handicap (AH).
-        Suporta linhas inteiras, meias e quartos (ex: -2.25, -0.75, +1.5, +0.5, +0.25, etc.).
+        Calcula P(win/push/lose) para o Home dado o handicap (AH).
+        Suporta linhas inteiras, meias e quartos (+0.25, -0.75, etc.).
         Retorna (win, push, lose).
         """
         try:
-            mu_h, mu_a = float(np.clip(mu_h, 0.05, 5.0)), float(np.clip(mu_a, 0.05, 5.0))
             if pd.isna(line):
                 return np.nan, np.nan, np.nan
+            mu_h, mu_a = float(np.clip(mu_h, 0.01, 6.0)), float(np.clip(mu_a, 0.01, 6.0))
             line = float(line)
-        except Exception:
+        except:
             return np.nan, np.nan, np.nan
     
         # -------------------------------------------------------------
-        # Função auxiliar para calcular um único handicap simples
+        # Função auxiliar: calcula probabilidades para uma linha simples
         # -------------------------------------------------------------
         def calc_single(hcap):
-            """Retorna win, push, lose para um único handicap simples (sem split)."""
-            # Inteiro
-            if abs(hcap - round(hcap)) < 1e-9:
+            """Retorna win/push/lose considerando D = G_H - G_A."""
+            # D segue Skellam(mu_h, mu_a)
+            if abs(hcap - round(hcap)) < 1e-9:  # inteiro (ex: -1, +2)
                 k = int(round(hcap))
-                if k < 0:
-                    win = 1 - skellam.cdf(-k - 1, mu_h, mu_a)
-                    push = skellam.pmf(-k, mu_h, mu_a)
-                    lose = skellam.cdf(-k, mu_h, mu_a)
-                elif k > 0:
-                    win = skellam.cdf(-k, mu_h, mu_a)
-                    push = skellam.pmf(-k, mu_h, mu_a)
-                    lose = 1 - skellam.cdf(-k - 1, mu_h, mu_a)
-                else:
-                    win = 1 - skellam.cdf(0, mu_h, mu_a)
-                    push = skellam.pmf(0, mu_h, mu_a)
-                    lose = skellam.cdf(-1, mu_h, mu_a)
+                # Home vence se D > k
+                win = 1 - skellam.cdf(k, mu_h, mu_a)
+                # Push se D == k
+                push = skellam.pmf(k, mu_h, mu_a)
+                # Perde se D < k
+                lose = skellam.cdf(k - 1, mu_h, mu_a)
+                return win, push, lose
+            else:
+                # Meia linha (ex: -0.5, +1.5)
+                k = hcap
+                win = 1 - skellam.cdf(k, mu_h, mu_a)
+                push = 0.0
+                lose = skellam.cdf(k, mu_h, mu_a)
                 return win, push, lose
     
-            # Meia linha (±0.5, ±1.5, ±2.5, ...)
-            if abs(hcap * 2 - round(hcap * 2)) < 1e-9 and abs(hcap * 4 - round(hcap * 4)) > 1e-9:
-                if hcap < 0:
-                    # Ex: -0.5 → precisa vencer (D > 0)
-                    win = 1 - skellam.cdf(0, mu_h, mu_a)
-                    push = 0.0
-                    lose = skellam.cdf(0, mu_h, mu_a)
-                else:
-                    # Ex: +0.5 → cobre se não perder (D >= 0)
-                    win = 1 - skellam.cdf(-1, mu_h, mu_a)
-                    push = 0.0
-                    lose = skellam.cdf(-1, mu_h, mu_a)
-                return win, push, lose
-    
-            # Caso genérico (ex: -1.5, -2.5, ...)
-            if abs(hcap * 2 - round(hcap * 2)) < 1e-9:
-                if hcap < 0:
-                    win = 1 - skellam.cdf(0, mu_h, mu_a)
-                    lose = skellam.cdf(0, mu_h, mu_a)
-                else:
-                    win = 1 - skellam.cdf(-1, mu_h, mu_a)
-                    lose = skellam.cdf(-1, mu_h, mu_a)
-                return win, 0.0, lose
-    
-            return np.nan, np.nan, np.nan
-    
         # -------------------------------------------------------------
-        # Quartos (±0.25, ±0.75, ±1.25, ±1.75, etc.)
+        # Quartos de gol (±0.25, ±0.75, ±1.25, ±1.75, etc.)
         # -------------------------------------------------------------
+        # Ex: -0.75 → média de (-0.5 e -1.0)
         if abs(line * 4 - round(line * 4)) < 1e-9 and abs(line * 2 - round(line * 2)) > 1e-9:
             lower = math.floor(line * 2) / 2.0
             upper = math.ceil(line * 2) / 2.0
@@ -872,9 +850,10 @@ with tab2:
             return win, push, lose
     
         # -------------------------------------------------------------
-        # Caso padrão (inteiro ou meio)
+        # Caso padrão (inteiro ou meia linha)
         # -------------------------------------------------------------
         return calc_single(line)
+
 
 
     
