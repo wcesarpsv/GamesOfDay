@@ -566,7 +566,7 @@ threshold = st.sidebar.slider(
 # 🆕 NOVO: Threshold para balanceamento 1X vs X2 (DEFINIR A VARIÁVEL)
 balance_threshold = st.sidebar.slider(
     "1X vs X2 Balance Threshold (%)", 
-    min_value=5, max_value=30, value=10, step=1
+    min_value=10, max_value=60, value=25, step=2
 ) / 100.0
 
 st.sidebar.info(f"""
