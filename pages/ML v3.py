@@ -1299,7 +1299,6 @@ cols_to_show_corrected = [
     'Date', 'Time', 'League', 'Home', 'Away',
     'Goals_H_Today', 'Goals_A_Today',
     'Value_ML_Pick',  # 🆕 SINAL DO META-MODELO
-    'ML_Recommendation_Corrected',  # 🆕 RECOMENDAÇÃO CORRIGIDA
     'Auto_Recommendation',  # Mantém original para comparação
     'Value_Prob_Home', 'Value_Prob_Away',  # Probabilidades do meta-modelo
     'Odd_H', 'Odd_D', 'Odd_A'
