@@ -535,6 +535,12 @@ threshold = st.sidebar.slider(
     min_value=50, max_value=80, value=65, step=1
 ) / 100.0
 
+# 🆕 NOVO: Threshold para balanceamento 1X vs X2 (DEFINIR A VARIÁVEL)
+balance_threshold = st.sidebar.slider(
+    "1X vs X2 Balance Threshold (%)", 
+    min_value=1, max_value=15, value=8, step=1
+) / 100.0
+
 st.sidebar.info(f"""
 **Balanceamento:**
 - > +{balance_threshold*100:.0f}%: 🟦 1X
@@ -585,17 +591,18 @@ if not valid_rows.empty:
     games_today.loc[valid_mask, "ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
 
     games_today["ML_Recommendation"] = [
-        ml_recommendation_from_proba(
-            row["ML_Proba_Home"], row["ML_Proba_Draw"], row["ML_Proba_Away"],
-            m_h=row.get("M_H"), m_a=row.get("M_A"), diff_m=row.get("M_Diff"),
-            diff_power=row.get("Diff_Power"),
-            band_home=row.get("Home_Band"), band_away=row.get("Away_Band"),
-            league_cls=row.get("League_Classification"),
-            odd_home=row.get("Odd_H"), odd_draw=row.get("Odd_D"), odd_away=row.get("Odd_A"),
-            threshold=threshold
-        )
-        for _, row in games_today.iterrows()
-    ]
+    ml_recommendation_from_proba(
+        row["ML_Proba_Home"], row["ML_Proba_Draw"], row["ML_Proba_Away"],
+        m_h=row.get("M_H"), m_a=row.get("M_A"), diff_m=row.get("M_Diff"),
+        diff_power=row.get("Diff_Power"),
+        band_home=row.get("Home_Band"), band_away=row.get("Away_Band"),
+        league_cls=row.get("League_Classification"),
+        odd_home=row.get("Odd_H"), odd_draw=row.get("Odd_D"), odd_away=row.get("Odd_A"),
+        threshold=threshold,
+        balance_threshold=balance_threshold  # 🆕 AGORA SIM PASSANDO O PARÂMETRO!
+    )
+    for _, row in games_today.iterrows()
+]
 
 
 # ⚠️ Jogos com features ausentes
