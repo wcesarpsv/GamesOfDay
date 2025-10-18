@@ -1059,6 +1059,46 @@ st.info(f"""
 
 
 
+########################################
+##### Bloco 9 – Exibição Final CORRIGIDA #####
+########################################
+cols_to_show_corrected = [
+    'Date', 'Time', 'League', 'Home', 'Away',
+    'Goals_H_Today', 'Goals_A_Today',
+    'Value_ML_Pick',  # 🆕 SINAL DO META-MODELO
+    'ML_Recommendation_Corrected',  # 🆕 RECOMENDAÇÃO CORRIGIDA
+    'Auto_Recommendation',  # Mantém original para comparação
+    'Value_Prob_Home', 'Value_Prob_Away',  # Probabilidades do meta-modelo
+    'Odd_H', 'Odd_D', 'Odd_A'
+]
+
+available_cols = [c for c in cols_to_show_corrected if c in games_today.columns]
+
+st.subheader("📊 Games – Meta-Modelo vs Original (CORRIGIDO)")
+st.info("""
+**🎯 LEGENDA:**
+- `Value_ML_Pick`: Sinal do Meta-Modelo (CONFIÁVEL)
+- `ML_Recommendation_Corrected`: Recomendação Final Corrigida  
+- `Auto_Recommendation`: Sistema Original (COM VIÉS)
+""")
+
+st.dataframe(
+    games_today[available_cols]
+    .style.format({
+        'Goals_H_Today': '{:.0f}',
+        'Goals_A_Today': '{:.0f}',
+        'Value_Prob_Home': '{:.3f}',
+        'Value_Prob_Away': '{:.3f}',
+        'Odd_H': '{:.2f}',
+        'Odd_D': '{:.2f}', 
+        'Odd_A': '{:.2f}'
+    }),
+    use_container_width=True,
+    height=800,
+)
+
+
+
 
 
 ########################################
@@ -1292,41 +1332,4 @@ else:
 
 
 
-########################################
-##### Bloco 9 – Exibição Final CORRIGIDA #####
-########################################
-cols_to_show_corrected = [
-    'Date', 'Time', 'League', 'Home', 'Away',
-    'Goals_H_Today', 'Goals_A_Today',
-    'Value_ML_Pick',  # 🆕 SINAL DO META-MODELO
-    'ML_Recommendation_Corrected',  # 🆕 RECOMENDAÇÃO CORRIGIDA
-    'Auto_Recommendation',  # Mantém original para comparação
-    'Value_Prob_Home', 'Value_Prob_Away',  # Probabilidades do meta-modelo
-    'Odd_H', 'Odd_D', 'Odd_A'
-]
-
-available_cols = [c for c in cols_to_show_corrected if c in games_today.columns]
-
-st.subheader("📊 Games – Meta-Modelo vs Original (CORRIGIDO)")
-st.info("""
-**🎯 LEGENDA:**
-- `Value_ML_Pick`: Sinal do Meta-Modelo (CONFIÁVEL)
-- `ML_Recommendation_Corrected`: Recomendação Final Corrigida  
-- `Auto_Recommendation`: Sistema Original (COM VIÉS)
-""")
-
-st.dataframe(
-    games_today[available_cols]
-    .style.format({
-        'Goals_H_Today': '{:.0f}',
-        'Goals_A_Today': '{:.0f}',
-        'Value_Prob_Home': '{:.3f}',
-        'Value_Prob_Away': '{:.3f}',
-        'Odd_H': '{:.2f}',
-        'Odd_D': '{:.2f}', 
-        'Odd_A': '{:.2f}'
-    }),
-    use_container_width=True,
-    height=800,
-)
 
