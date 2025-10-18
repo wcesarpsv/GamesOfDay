@@ -448,7 +448,7 @@ def ml_recommendation_from_proba(
     # ===============================
     # 2️⃣ Base metrics
     # ===============================
-    sum_home_draw = p_home + p_draw + 0.3
+    sum_home_draw = p_home + p_draw
     sum_away_draw = p_away + p_draw
     diff_gap = (sum_away_draw - sum_home_draw)
     league_cls = league_cls or "Medium Variation"
