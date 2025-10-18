@@ -1306,11 +1306,13 @@ if all(col in games_today.columns for col in ['Market_Error_Home', 'Market_Error
     # Exibir tabela
     st.dataframe(
         games_today[['League', 'Home', 'Away',
+                     'Goals_H_Today','Goals_A_Today',
                      'Odd_H', 'Odd_D', 'Odd_A',
                      'Market_Error_Home', 'Market_Error_Away',
                      'Value_Prob_Home', 'Value_Prob_Away', 'Value_ML_Pick']]
         .sort_values(['Value_Prob_Home','Value_Prob_Away'], ascending=False)
         .style.format({
+            'Goals_H_Today': '{:.0f}', 'Goals_A_Today': '{:.0f}',
             'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
             'Market_Error_Home': '{:+.3f}', 'Market_Error_Away': '{:+.3f}',
             'Value_Prob_Home': '{:.2f}', 'Value_Prob_Away': '{:.2f}'
