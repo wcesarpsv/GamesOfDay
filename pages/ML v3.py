@@ -1031,8 +1031,8 @@ if 'Value_ML_Pick' in finished_games.columns:
         st.markdown("### 📊 Performance por Tipo de Sinal")
         st.dataframe(pd.DataFrame(meta_results))
 
-# summary_auto_comprehensive = summary_stats_comprehensive(finished_games, "Auto")
-# summary_ml_comprehensive = summary_stats_comprehensive(finished_games, "ML")
+summary_auto_comprehensive = summary_stats_comprehensive(finished_games, "Auto")
+summary_ml_comprehensive = summary_stats_comprehensive(finished_games, "ML")
 
 
 ########################################
