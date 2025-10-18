@@ -160,14 +160,27 @@ games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
 history['M_Diff'] = history['M_H'] - history['M_A']
 
 def compute_double_chance_odds(df):
-    probs = pd.DataFrame()
-    probs['p_H'] = 1 / df['Odd_H']
-    probs['p_D'] = 1 / df['Odd_D']
-    probs['p_A'] = 1 / df['Odd_A']
-    probs = probs.div(probs.sum(axis=1), axis=0)
-    df['Odd_1X'] = 1 / (probs['p_H'] + probs['p_D'])
-    df['Odd_X2'] = 1 / (probs['p_A'] + probs['p_D'])
+    # Calcular probabilidades implícitas brutas
+    df['p_H_raw'] = 1 / df['Odd_H']
+    df['p_D_raw'] = 1 / df['Odd_D']
+    df['p_A_raw'] = 1 / df['Odd_A']
+    
+    # Remover o juice (normalizar para somar 1)
+    df['sum_raw'] = df['p_H_raw'] + df['p_D_raw'] + df['p_A_raw']
+    df['p_H_fair'] = df['p_H_raw'] / df['sum_raw']
+    df['p_D_fair'] = df['p_D_raw'] / df['sum_raw']
+    df['p_A_fair'] = df['p_A_raw'] / df['sum_raw']
+    
+    # Calcular odds justas para 1X e X2
+    df['Odd_1X'] = 1 / (df['p_H_fair'] + df['p_D_fair'])
+    df['Odd_X2'] = 1 / (df['p_A_fair'] + df['p_D_fair'])
+    
+    # Limpar colunas intermediárias, se quiser
+    df.drop(columns=['p_H_raw','p_D_raw','p_A_raw','sum_raw'], inplace=True)
+    
     return df
+
+
 
 games_today = compute_double_chance_odds(games_today)
 
