@@ -934,106 +934,48 @@ games_today['Kelly_Stake_ML'] = games_today.apply(
 )
 
 ########################################
-##### Bloco 8D – Resumo Agregado CORRIGIDO #####
+##### Bloco 8D – Resumo Agregado Expandido CORRIGIDO ###
 ########################################
 finished_games = games_today.dropna(subset=['Result_Today'])
 
-def summary_stats_corrected(df, prefix):
-    """
-    Estatísticas usando APENAS o meta-modelo corrigido
-    """
-    if f'{prefix}_Recommendation_Corrected' not in df.columns:
-        return {"Erro": "Coluna não encontrada"}
-        
-    bets = df[df[f'{prefix}_Recommendation_Corrected'] != '❌ Avoid']
+def summary_stats_comprehensive(df, prefix):
+    bets = df[df[f'{prefix}_Correct'].notna()]
     total_bets = len(bets)
-    
-    if total_bets == 0:
-        return {"Total Apostas": 0, "Aviso": "Nenhuma aposta do meta-modelo"}
-    
-    correct_bets = 0
-    total_profit_fixed = 0
-    
-    for _, bet in bets.iterrows():
-        rec = bet[f'{prefix}_Recommendation_Corrected']
-        result = bet['Result_Today']
-        
-        # Verificar se a recomendação estava correta
-        if 'Back Home' in rec and result == "Home":
-            correct_bets += 1
-            total_profit_fixed += (bet.get('Odd_H', 1) - 1)
-        elif 'Back Away' in rec and result == "Away":
-            correct_bets += 1
-            total_profit_fixed += (bet.get('Odd_A', 1) - 1)
-        elif 'Back Draw' in rec and result == "Draw":
-            correct_bets += 1
-            total_profit_fixed += (bet.get('Odd_D', 1) - 1)
-        elif '1X' in rec and result in ["Home", "Draw"]:
-            correct_bets += 1
-            total_profit_fixed += (bet.get('Odd_1X', 1) - 1)
-        elif 'X2' in rec and result in ["Away", "Draw"]:
-            correct_bets += 1
-            total_profit_fixed += (bet.get('Odd_X2', 1) - 1)
-        else:
-            total_profit_fixed -= 1  # Perda da aposta
-
+    correct_bets = bets[f'{prefix}_Correct'].sum()
     winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
-    roi = (total_profit_fixed / total_bets) * 100 if total_bets > 0 else 0
+
+    # Fixed stake profits
+    total_profit_fixed = bets[f'Profit_{prefix}_Fixed'].sum()
+    roi_fixed = (total_profit_fixed / total_bets) * 100 if total_bets > 0 else 0
 
     return {
         "Total Jogos": len(df),
-        "Apostas Meta-Modelo": total_bets,
+        "Apostas Feitas": total_bets,
         "Acertos": int(correct_bets),
         "Winrate (%)": round(winrate, 2),
         "Profit Fixed": round(total_profit_fixed, 2),
-        "ROI (%)": round(roi, 2),
-        "Odd Média": round(bets[['Odd_H', 'Odd_A', 'Odd_D']].mean().mean(), 2)
+        "ROI (%)": round(roi_fixed, 2)
     }
 
-st.subheader("📈 Performance do Meta-Modelo Corrigido")
-summary_ml_corrected = summary_stats_corrected(finished_games, "ML")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown("### 🔄 Modelo Original (Com Viés)")
-    if 'ML_Recommendation' in finished_games.columns:
-        original_bets = finished_games[finished_games['ML_Recommendation'] != '❌ Avoid']
-        st.write(f"Apostas: {len(original_bets)} | Winrate: ~40% (invertido)")
-    else:
-        st.write("Dados originais não disponíveis")
-
-with col2:
-    st.markdown("### 🎯 Meta-Modelo Corrigido")
-    st.json(summary_ml_corrected)
-
-# Mostrar performance detalhada dos sinais do meta-modelo
-if 'Value_ML_Pick' in finished_games.columns:
-    meta_results = []
-    for rec_type in ['Back Home', 'Back Away']:
-        rec_games = finished_games[finished_games['Value_ML_Pick'].str.contains(rec_type)]
-        if len(rec_games) > 0:
-            correct = 0
-            for _, game in rec_games.iterrows():
-                if rec_type == 'Back Home' and game['Result_Today'] == 'Home':
-                    correct += 1
-                elif rec_type == 'Back Away' and game['Result_Today'] == 'Away':
-                    correct += 1
-            
-            meta_results.append({
-                'Sinal': rec_type,
-                'Total': len(rec_games),
-                'Acertos': correct,
-                'Winrate': f"{(correct/len(rec_games))*100:.1f}%"
-            })
-    
-    if meta_results:
-        st.markdown("### 📊 Performance por Tipo de Sinal")
-        st.dataframe(pd.DataFrame(meta_results))
-
+# 🆕 CALCULAR AS ESTATÍSTICAS QUE ESTAVAM FALTANDO
 summary_auto_comprehensive = summary_stats_comprehensive(finished_games, "Auto")
 summary_ml_comprehensive = summary_stats_comprehensive(finished_games, "ML")
 
+st.subheader("📈 Day's Summary - Fixed vs Kelly Staking")
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown("### Performance Auto Recommendation")
+    st.json(summary_auto_comprehensive)
+
+with col2:
+    st.markdown("### Performance Machine Learning")
+    st.json(summary_ml_comprehensive)
+
+# Display Kelly parameters being used
+st.info(f"""
+**Kelly Parameters:** Bankroll = ${bankroll:,} | Kelly Fraction = {kelly_fraction} | Min Stake = ${min_stake} | Max Stake = ${max_stake}
+""")
 
 ########################################
 ##### Bloco Extra – ML Detailed Performance by Recommendation Type #####
@@ -1116,47 +1058,6 @@ st.info(f"""
 """)
 
 
-
-
-
-
-########################################
-##### Bloco 9 – Exibição Final CORRIGIDA #####
-########################################
-cols_to_show_corrected = [
-    'Date', 'Time', 'League', 'Home', 'Away',
-    'Goals_H_Today', 'Goals_A_Today',
-    'Value_ML_Pick',  # 🆕 SINAL DO META-MODELO
-    'ML_Recommendation_Corrected',  # 🆕 RECOMENDAÇÃO CORRIGIDA
-    'Auto_Recommendation',  # Mantém original para comparação
-    'Value_Prob_Home', 'Value_Prob_Away',  # Probabilidades do meta-modelo
-    'Odd_H', 'Odd_D', 'Odd_A'
-]
-
-available_cols = [c for c in cols_to_show_corrected if c in games_today.columns]
-
-st.subheader("📊 Games – Meta-Modelo vs Original (CORRIGIDO)")
-st.info("""
-**🎯 LEGENDA:**
-- `Value_ML_Pick`: Sinal do Meta-Modelo (CONFIÁVEL)
-- `ML_Recommendation_Corrected`: Recomendação Final Corrigida  
-- `Auto_Recommendation`: Sistema Original (COM VIÉS)
-""")
-
-st.dataframe(
-    games_today[available_cols]
-    .style.format({
-        'Goals_H_Today': '{:.0f}',
-        'Goals_A_Today': '{:.0f}',
-        'Value_Prob_Home': '{:.3f}',
-        'Value_Prob_Away': '{:.3f}',
-        'Odd_H': '{:.2f}',
-        'Odd_D': '{:.2f}', 
-        'Odd_A': '{:.2f}'
-    }),
-    use_container_width=True,
-    height=800,
-)
 
 
 
@@ -1388,3 +1289,44 @@ if all(col in games_today.columns for col in ['Market_Error_Home', 'Market_Error
 
 else:
     st.warning("Market Error ainda não calculado — execute o Bloco 10 primeiro.")
+
+
+
+########################################
+##### Bloco 9 – Exibição Final CORRIGIDA #####
+########################################
+cols_to_show_corrected = [
+    'Date', 'Time', 'League', 'Home', 'Away',
+    'Goals_H_Today', 'Goals_A_Today',
+    'Value_ML_Pick',  # 🆕 SINAL DO META-MODELO
+    'ML_Recommendation_Corrected',  # 🆕 RECOMENDAÇÃO CORRIGIDA
+    'Auto_Recommendation',  # Mantém original para comparação
+    'Value_Prob_Home', 'Value_Prob_Away',  # Probabilidades do meta-modelo
+    'Odd_H', 'Odd_D', 'Odd_A'
+]
+
+available_cols = [c for c in cols_to_show_corrected if c in games_today.columns]
+
+st.subheader("📊 Games – Meta-Modelo vs Original (CORRIGIDO)")
+st.info("""
+**🎯 LEGENDA:**
+- `Value_ML_Pick`: Sinal do Meta-Modelo (CONFIÁVEL)
+- `ML_Recommendation_Corrected`: Recomendação Final Corrigida  
+- `Auto_Recommendation`: Sistema Original (COM VIÉS)
+""")
+
+st.dataframe(
+    games_today[available_cols]
+    .style.format({
+        'Goals_H_Today': '{:.0f}',
+        'Goals_A_Today': '{:.0f}',
+        'Value_Prob_Home': '{:.3f}',
+        'Value_Prob_Away': '{:.3f}',
+        'Odd_H': '{:.2f}',
+        'Odd_D': '{:.2f}', 
+        'Odd_A': '{:.2f}'
+    }),
+    use_container_width=True,
+    height=800,
+)
+
