@@ -471,7 +471,7 @@ def ml_recommendation_from_proba(
     # ===============================
     # 5️⃣ X2 (Away/Draw) – multi-layer filter
     # ===============================
-    if diff_gap > 0.1:
+    if diff_gap > 0.4:
         # ---- Context layer ----
         ok_context = (
             (m_a is not None and m_a > 0.5) and
