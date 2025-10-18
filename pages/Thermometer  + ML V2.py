@@ -474,24 +474,41 @@ if cat_cols:
     X_today = pd.concat([X_today.drop(columns=cat_cols).reset_index(drop=True),
                          encoded_today_df.reset_index(drop=True)], axis=1)
 
-# 🎯 FAZER PREDIÇÕES COM MODELO APRIMORADO
-print("🤖 Aplicando ML com Auto Rules features...")
-ml_preds = model.predict(X_today)
-ml_proba = model.predict_proba(X_today)
+# 🧩 Verificar linhas com dados completos
+valid_mask = X_today.notna().all(axis=1)
+valid_rows = X_today[valid_mask]
+invalid_rows = X_today[~valid_mask]
 
-games_today["ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
-games_today["ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
-games_today["ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
+# Inicializar colunas padrão
+games_today["ML_Proba_Home"] = np.nan
+games_today["ML_Proba_Draw"] = np.nan
+games_today["ML_Proba_Away"] = np.nan
+games_today["ML_Recommendation"] = "❌ Avoid"
 
-games_today["ML_Recommendation"] = [
-    ml_recommendation_from_proba(row["ML_Proba_Home"], 
-                                 row["ML_Proba_Draw"], 
-                                 row["ML_Proba_Away"],
-                                 threshold=threshold)
-    for _, row in games_today.iterrows()
-]
+# 🎯 Aplicar modelo SOMENTE nas linhas completas
+if not valid_rows.empty:
+    print(f"🤖 Aplicando ML em {len(valid_rows)} jogos com dados completos...")
+    ml_preds = model.predict(valid_rows)
+    ml_proba = model.predict_proba(valid_rows)
 
-print("✅ ML Recommendations atualizadas com Auto Rules!")
+    # Mapear probabilidades de volta ao índice original
+    games_today.loc[valid_mask, "ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
+    games_today.loc[valid_mask, "ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
+    games_today.loc[valid_mask, "ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
+
+    games_today.loc[valid_mask, "ML_Recommendation"] = [
+        ml_recommendation_from_proba(row["ML_Proba_Home"], 
+                                     row["ML_Proba_Draw"], 
+                                     row["ML_Proba_Away"],
+                                     threshold=threshold)
+        for _, row in games_today.loc[valid_mask].iterrows()
+    ]
+
+# ⚠️ Jogos com features ausentes
+if not invalid_rows.empty:
+    st.warning(f"{len(invalid_rows)} jogos marcados como ❌ Avoid por falta de dados completos para ML.")
+
+print("✅ ML Recommendations atualizadas com verificação de dados completos!")
 
 
 
