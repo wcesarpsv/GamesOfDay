@@ -1171,6 +1171,7 @@ if all(col in games_today.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
     # Exibir ranking dos maiores gaps
     value_cols = [
         'League', 'Home', 'Away', 
+        'Goals_H_Today','Goals_A_Today',
         'Odd_H', 'Odd_D', 'Odd_A',
         'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away',
         'Imp_Prob_H', 'Imp_Prob_D', 'Imp_Prob_A',
@@ -1181,6 +1182,7 @@ if all(col in games_today.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
         games_today[value_cols]
         .sort_values(['Market_Error_Home','Market_Error_Away'], ascending=False)
         .style.format({
+             'Goals_H_Today':'{:.0f}', 'Goals_A_Today':'{:.0f}',
             'Odd_H':'{:.2f}', 'Odd_D':'{:.2f}', 'Odd_A':'{:.2f}',
             'ML_Proba_Home':'{:.3f}', 'ML_Proba_Draw':'{:.3f}', 'ML_Proba_Away':'{:.3f}',
             'Imp_Prob_H':'{:.3f}', 'Imp_Prob_D':'{:.3f}', 'Imp_Prob_A':'{:.3f}',
