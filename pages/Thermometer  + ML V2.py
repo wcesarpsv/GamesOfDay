@@ -422,7 +422,7 @@ print("✅ Modelo treinado com sucesso!")
 ########################################
 ##### Função ML Recommendation (Ajuste X2 Inteligente)
 ########################################
-def _from_proba(
+def ml_recommendation_from_proba(
     p_home, p_draw, p_away,
     m_h=None, m_a=None, diff_m=None, diff_power=None,
     band_home=None, band_away=None, league_cls="Medium Variation",
