@@ -431,10 +431,7 @@ def ml_recommendation_from_proba(
 ):
     """
     Converte probabilidades da ML em recomendações de apostas.
-    Agora o X2 só é emitido se respeitar 3 condições:
-    1️⃣ Contexto favorável (forma e poder)
-    2️⃣ Gap mínimo entre forças probabilísticas
-    3️⃣ Valor esperado positivo (EV)
+    Versão balanceada entre 1X e X2 com critérios mais rigorosos.
     """
 
     # ===============================
@@ -450,7 +447,9 @@ def ml_recommendation_from_proba(
     # ===============================
     sum_home_draw = p_home + p_draw
     sum_away_draw = p_away + p_draw
-    diff_gap = (sum_away_draw - sum_home_draw)
+    
+    # Calcular a diferença entre as duas duplas
+    diff_1x_vs_x2 = sum_home_draw - sum_away_draw
     league_cls = league_cls or "Medium Variation"
 
     # ===============================
@@ -460,44 +459,64 @@ def ml_recommendation_from_proba(
         return "⚪ Back Draw"
 
     # ===============================
-    # 4️⃣ 1X (Home/Draw) condition
+    # 4️⃣ Critério BALANCEADO entre 1X e X2
     # ===============================
-    if (sum_home_draw - sum_away_draw) > 0.05:
-        if diff_power is None or diff_power > -5:
+    
+    # Se 1X for significativamente melhor
+    if diff_1x_vs_x2 > 0.08:  # Aumentei o threshold para ser mais seletivo
+        # Verificar contexto favorável para Home
+        ok_context_home = (
+            (m_h is not None and m_h > 0.3) and
+            (m_a is not None and m_a < 0.4) and
+            (diff_m is not None and diff_m > -0.5) and
+            (diff_power is not None and diff_power > -15)
+        )
+        
+        if ok_context_home:
             return "🟦 1X (Home/Draw)"
-        else:
-            return "❌ Avoid"
-
-    # ===============================
-    # 5️⃣ X2 (Away/Draw) – multi-layer filter
-    # ===============================
-    if diff_gap > 0.4:
-        # ---- Context layer ----
-        ok_context = (
-            (m_a is not None and m_a > 0.5) and
-            (m_h is not None and m_h < 0.2) and
+    
+    # Se X2 for significativamente melhor  
+    elif diff_1x_vs_x2 < -0.08:  # Aumentei o threshold para ser mais seletivo
+        # Verificar contexto favorável para Away (mais rigoroso)
+        ok_context_away = (
+            (m_a is not None and m_a > 0.4) and  # Aumentei o mínimo
+            (m_h is not None and m_h < 0.2) and   # Mais rigoroso
             (diff_m is not None and diff_m < -0.8) and
-            (diff_power is not None and diff_power < -25)
+            (diff_power is not None and diff_power < -20)  # Mais rigoroso
         )
 
         # Liga mais exigente
         if league_cls == "High Variation":
-            ok_context = ok_context and diff_m < -1.0 and diff_power > -10
+            ok_context_away = ok_context_away and diff_m < -1.0 and diff_power > -10
 
         # ---- Odds/EV layer ----
         if odd_away and odd_draw:
-            odd_x2 = 1 / ((1 / odd_away) + (1 / odd_draw))  # DC sintético
+            odd_x2 = 1 / ((1 / odd_away) + (1 / odd_draw))
             prob_x2 = p_away + p_draw
             ev = prob_x2 * odd_x2 - 1
         else:
             ev = 0
 
-        ok_value = ev >= (0.02 if league_cls != "High Variation" else 0.04)
+        ok_value = ev >= (0.03 if league_cls != "High Variation" else 0.05)  # Aumentei EV mínimo
 
-        if ok_context and ok_value:
+        if ok_context_away and ok_value:
             return "🟪 X2 (Away/Draw)"
+
+    # ===============================
+    # 5️⃣ Zona CINZA - quando a diferença é pequena
+    # ===============================
+    elif -0.08 <= diff_1x_vs_x2 <= 0.08:
+        # Quando estão muito próximos, preferir 1X por padrão
+        # mas só se tiver contexto minimamente favorável
+        ok_minimal_home = (
+            (m_h is not None and m_h > 0.2) and
+            (diff_power is not None and diff_power > -10)
+        )
+        
+        if ok_minimal_home:
+            return "🟦 1X (Home/Draw)"
         else:
-            return "❌ Avoid"
+            return "❌ Avoid"  # Evitar quando não há clareza
 
     # ===============================
     # 6️⃣ Fallback
