@@ -427,11 +427,12 @@ def ml_recommendation_from_proba(
     m_h=None, m_a=None, diff_m=None, diff_power=None,
     band_home=None, band_away=None, league_cls="Medium Variation",
     odd_home=None, odd_draw=None, odd_away=None,
-    threshold=0.65
+    threshold=0.65,
+    balance_threshold=0.08  # 🆕 NOVO PARÂMETRO
 ):
     """
     Converte probabilidades da ML em recomendações de apostas.
-    Versão balanceada entre 1X e X2 com critérios mais rigorosos.
+    Versão balanceada entre 1X e X2 com critérios ajustáveis.
     """
 
     # ===============================
@@ -459,11 +460,11 @@ def ml_recommendation_from_proba(
         return "⚪ Back Draw"
 
     # ===============================
-    # 4️⃣ Critério BALANCEADO entre 1X e X2
+    # 4️⃣ Critério BALANCEADO entre 1X e X2 (AGORA AJUSTÁVEL)
     # ===============================
     
     # Se 1X for significativamente melhor
-    if diff_1x_vs_x2 > 0.08:  # Aumentei o threshold para ser mais seletivo
+    if diff_1x_vs_x2 > balance_threshold:
         # Verificar contexto favorável para Home
         ok_context_home = (
             (m_h is not None and m_h > 0.3) and
@@ -476,13 +477,13 @@ def ml_recommendation_from_proba(
             return "🟦 1X (Home/Draw)"
     
     # Se X2 for significativamente melhor  
-    elif diff_1x_vs_x2 < -0.08:  # Aumentei o threshold para ser mais seletivo
+    elif diff_1x_vs_x2 < -balance_threshold:
         # Verificar contexto favorável para Away (mais rigoroso)
         ok_context_away = (
-            (m_a is not None and m_a > 0.4) and  # Aumentei o mínimo
-            (m_h is not None and m_h < 0.2) and   # Mais rigoroso
+            (m_a is not None and m_a > 0.4) and
+            (m_h is not None and m_h < 0.2) and
             (diff_m is not None and diff_m < -0.8) and
-            (diff_power is not None and diff_power < -20)  # Mais rigoroso
+            (diff_power is not None and diff_power < -20)
         )
 
         # Liga mais exigente
@@ -497,7 +498,7 @@ def ml_recommendation_from_proba(
         else:
             ev = 0
 
-        ok_value = ev >= (0.03 if league_cls != "High Variation" else 0.05)  # Aumentei EV mínimo
+        ok_value = ev >= (0.03 if league_cls != "High Variation" else 0.05)
 
         if ok_context_away and ok_value:
             return "🟪 X2 (Away/Draw)"
@@ -505,9 +506,8 @@ def ml_recommendation_from_proba(
     # ===============================
     # 5️⃣ Zona CINZA - quando a diferença é pequena
     # ===============================
-    elif -0.08 <= diff_1x_vs_x2 <= 0.08:
+    elif -balance_threshold <= diff_1x_vs_x2 <= balance_threshold:
         # Quando estão muito próximos, preferir 1X por padrão
-        # mas só se tiver contexto minimamente favorável
         ok_minimal_home = (
             (m_h is not None and m_h > 0.2) and
             (diff_power is not None and diff_power > -10)
@@ -516,7 +516,7 @@ def ml_recommendation_from_proba(
         if ok_minimal_home:
             return "🟦 1X (Home/Draw)"
         else:
-            return "❌ Avoid"  # Evitar quando não há clareza
+            return "❌ Avoid"
 
     # ===============================
     # 6️⃣ Fallback
@@ -534,6 +534,13 @@ threshold = st.sidebar.slider(
     "ML Threshold for Direct Win (%)", 
     min_value=50, max_value=80, value=65, step=1
 ) / 100.0
+
+st.sidebar.info(f"""
+**Balanceamento:**
+- > +{balance_threshold*100:.0f}%: 🟦 1X
+- < -{balance_threshold*100:.0f}%: 🟪 X2  
+- Entre: Prefere 🟦 1X
+""")
 
 # 🆕 CALCULAR AUTO RECOMMENDATION PRIMEIRO (para ter a feature)
 print("🔄 Calculando Auto Recommendation para jogos de hoje...")
