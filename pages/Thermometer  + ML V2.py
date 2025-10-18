@@ -460,7 +460,7 @@ def ml_recommendation_from_proba(
     # ===============================
     # 2️⃣ Base metrics
     # ===============================
-    sum_home_draw = p_home + p_draw + 0.15
+    sum_home_draw = p_home + p_draw + 0.07
     sum_away_draw = p_away + p_draw
     
     # Calcular a diferença entre as duas duplas
