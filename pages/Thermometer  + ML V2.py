@@ -369,14 +369,13 @@ history['Auto_Rec_Encoded'] = history['Auto_Rec_Simulated'].apply(encode_auto_re
 
 # 🆕 FEATURES ATUALIZADAS - INCLUINDO AUTO RULES
 features_raw = [
-    'HandScore_Home_HT','HandScore_Away_HT',
-    'Aggression_Home','Aggression_Away',
-    'Diff_HT_P',
-    'M_H','M_A','Diff_Power','M_Diff',
-    'Home_Band','Away_Band','Dominant',
-    'League_Classification',
-    'Games_Analyzed',
-    'Auto_Rec_Encoded'  # 🆕 FEATURE NOVA - CONHECIMENTO DAS REGRAS!
+    
+'HandScore_Home_HT', 'HandScore_Away_HT',
+'Aggression_Home', 'Aggression_Away',
+'Diff_HT_P',
+'M_Diff', 'Diff_Power',
+'League_Classification', 'Games_Analyzed',
+'Auto_Rec_Encoded'
 ]
 
 # Manter apenas features que existem no histórico
