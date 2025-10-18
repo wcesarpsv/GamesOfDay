@@ -811,11 +811,12 @@ with tab2:
             return np.nan, np.nan, np.nan
     
         # -------------------------------------------------------------
-        # Função auxiliar para um handicap simples
+        # Função auxiliar para calcular um único handicap simples
         # -------------------------------------------------------------
         def calc_single(hcap):
-            """Retorna win, push, lose para um único handicap."""
-            if abs(hcap - round(hcap)) < 1e-9:  # inteiro
+            """Retorna win, push, lose para um único handicap simples (sem split)."""
+            # Inteiro
+            if abs(hcap - round(hcap)) < 1e-9:
                 k = int(round(hcap))
                 if k < 0:
                     win = 1 - skellam.cdf(-k - 1, mu_h, mu_a)
@@ -831,22 +832,34 @@ with tab2:
                     lose = skellam.cdf(-1, mu_h, mu_a)
                 return win, push, lose
     
-            # meias: ±0.5, ±1.5, ±2.5, ...
+            # Meia linha (±0.5, ±1.5, ±2.5, ...)
             if abs(hcap * 2 - round(hcap * 2)) < 1e-9 and abs(hcap * 4 - round(hcap * 4)) > 1e-9:
                 if hcap < 0:
+                    # Ex: -0.5 → precisa vencer (D > 0)
                     win = 1 - skellam.cdf(0, mu_h, mu_a)
                     push = 0.0
                     lose = skellam.cdf(0, mu_h, mu_a)
                 else:
+                    # Ex: +0.5 → cobre se não perder (D >= 0)
                     win = 1 - skellam.cdf(-1, mu_h, mu_a)
                     push = 0.0
                     lose = skellam.cdf(-1, mu_h, mu_a)
                 return win, push, lose
     
+            # Caso genérico (ex: -1.5, -2.5, ...)
+            if abs(hcap * 2 - round(hcap * 2)) < 1e-9:
+                if hcap < 0:
+                    win = 1 - skellam.cdf(0, mu_h, mu_a)
+                    lose = skellam.cdf(0, mu_h, mu_a)
+                else:
+                    win = 1 - skellam.cdf(-1, mu_h, mu_a)
+                    lose = skellam.cdf(-1, mu_h, mu_a)
+                return win, 0.0, lose
+    
             return np.nan, np.nan, np.nan
     
         # -------------------------------------------------------------
-        # Quartos (±0.25, ±0.75, ±1.25, ±1.75, ...)
+        # Quartos (±0.25, ±0.75, ±1.25, ±1.75, etc.)
         # -------------------------------------------------------------
         if abs(line * 4 - round(line * 4)) < 1e-9 and abs(line * 2 - round(line * 2)) > 1e-9:
             lower = math.floor(line * 2) / 2.0
@@ -858,106 +871,13 @@ with tab2:
             lose = 0.5 * (lose1 + lose2)
             return win, push, lose
     
-        # Caso padrão
+        # -------------------------------------------------------------
+        # Caso padrão (inteiro ou meio)
+        # -------------------------------------------------------------
         return calc_single(line)
 
 
-
-    # -------------------------------------------------------------
-    # Função auxiliar para calcular um único handicap simples (sem split)
-    # -------------------------------------------------------------
-    def calc_single(hcap):
-        """Retorna win, push, lose para um único handicap."""
-        # Diferença de gols D = G_H - G_A
-        if abs(hcap - round(hcap)) < 1e-9:  # inteiro
-            k = int(round(hcap))
-            if k < 0:
-                # Ex: -1 → precisa vencer por 2+
-                win = 1 - skellam.cdf(-k - 1, mu_h, mu_a)
-                push = skellam.pmf(-k, mu_h, mu_a)
-                lose = skellam.cdf(-k, mu_h, mu_a)
-            elif k > 0:
-                # Ex: +1 → cobre se não perder por 2+
-                win = skellam.cdf(-k, mu_h, mu_a)
-                push = skellam.pmf(-k, mu_h, mu_a)
-                lose = 1 - skellam.cdf(-k - 1, mu_h, mu_a)
-            else:  # 0
-                win = 1 - skellam.cdf(0, mu_h, mu_a)
-                push = skellam.pmf(0, mu_h, mu_a)
-                lose = skellam.cdf(-1, mu_h, mu_a)
-            return win, push, lose
-
-        # Meia linha (±0.5, ±1.5, ±2.5, ...)
-        if abs(line * 2 - round(line * 2)) < 1e-9 and abs(line * 4 - round(line * 4)) > 1e-9:
-            k = line
-            if k < 0:
-                # Ex: -0.5 → precisa vencer (D > 0)
-                win = 1 - skellam.cdf(-k, mu_h, mu_a)
-                push = 0.0
-                lose = skellam.cdf(-k, mu_h, mu_a)
-            else:
-                # Ex: +0.5 → cobre se não perder (D >= 0)
-                win = 1 - skellam.cdf(-1 - k, mu_h, mu_a)
-                push = 0.0
-                lose = skellam.cdf(-1 - k, mu_h, mu_a)
-            return win, push, lose
-
-        # Caso genérico (ex: -1.5, -2.5, etc.)
-        if abs(line * 2 - round(line * 2)) < 1e-9:
-            # ±N.5: mesma regra geral de meia linha
-            k = line
-            if k < 0:
-                win = 1 - skellam.cdf(-k, mu_h, mu_a)
-                lose = skellam.cdf(-k, mu_h, mu_a)
-            else:
-                win = 1 - skellam.cdf(-1 - k, mu_h, mu_a)
-                lose = skellam.cdf(-1 - k, mu_h, mu_a)
-            return win, 0.0, lose
-
-        # Se nada casou, retorna NaN
-        return np.nan, np.nan, np.nan
-
-    # -------------------------------------------------------------
-    # Detectar se é quarto (ex: ±0.25, ±0.75, ±1.25, ±1.75, etc.)
-    # -------------------------------------------------------------
-    frac = abs(line * 4 - round(line * 4)) < 1e-9  # múltiplo de 0.25
-    if frac and abs(line * 2 - round(line * 2)) > 1e-9:
-        # quarto de gol: média de duas metades (linha arredondada para cima e para baixo)
-        lower = math.floor(line * 2) / 2.0
-        upper = math.ceil(line * 2) / 2.0
-        win1, push1, lose1 = calc_single(lower)
-        win2, push2, lose2 = calc_single(upper)
-        win = 0.5 * (win1 + win2)
-        push = 0.5 * (push1 + push2)
-        lose = 0.5 * (lose1 + lose2)
-        return win, push, lose
-
-    # -------------------------------------------------------------
-    # Caso padrão (inteiro ou meio)
-    # -------------------------------------------------------------
-    return calc_single(line)
-
-
-    # -------------------------------------------------------------
-    # Detectar se é quarto (ex: ±0.25, ±0.75, ±1.25, ±1.75, etc.)
-    # -------------------------------------------------------------
-    frac = abs(line * 4 - round(line * 4)) < 1e-9  # múltiplo de 0.25
-    if frac and abs(line * 2 - round(line * 2)) > 1e-9:
-        # quarto de gol: média de duas metades (linha arredondada para cima e para baixo)
-        lower = math.floor(line * 2) / 2.0
-        upper = math.ceil(line * 2) / 2.0
-        win1, push1, lose1 = calc_single(lower)
-        win2, push2, lose2 = calc_single(upper)
-        win = 0.5 * (win1 + win2)
-        push = 0.5 * (push1 + push2)
-        lose = 0.5 * (lose1 + lose2)
-        return win, push, lose
-
-    # -------------------------------------------------------------
-    # Caso padrão (inteiro ou meio)
-    # -------------------------------------------------------------
-    return calc_single(line)
-
+    
 
     # ------------------------------------------------------
     # 6️⃣ Aplicar Skellam (1X2 + AH)
