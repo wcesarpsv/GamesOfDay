@@ -358,7 +358,7 @@ def encode_auto_recommendation(auto_rec):
     elif '🟪 X2' in auto_rec:
         return 1  # Away/Draw
     elif '⚪ Back Draw' in auto_rec:
-        return 0  # Draw
+        return 5  # Draw
     else:
         return -1 # Avoid/Neutro
 
@@ -404,7 +404,7 @@ if cat_cols:
 
 # 🎯 TREINAR MODELO COM NOVAS FEATURES
 model = RandomForestClassifier(
-    n_estimators=500,
+    n_estimators=800,
     max_depth=12,
     min_samples_split=10,
     min_samples_leaf=4,
