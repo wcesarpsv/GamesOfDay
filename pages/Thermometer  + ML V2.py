@@ -404,7 +404,7 @@ if cat_cols:
 
 # 🎯 TREINAR MODELO COM NOVAS FEATURES
 model = RandomForestClassifier(
-    n_estimators=800,
+    n_estimators=500,
     max_depth=12,
     min_samples_split=10,
     min_samples_leaf=4,
