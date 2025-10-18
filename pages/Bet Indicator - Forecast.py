@@ -696,14 +696,17 @@ except Exception as e:
 with tab2:
     st.markdown("### 🎲 Skellam Model (1X2 + AH)")
 
+
     # ------------------------------------------------------
     # 1️⃣ Converter linha asiática (frações → média decimal)
     # ------------------------------------------------------
     def convert_asian_line(line_str):
+        """Converte string tipo '-0.25/0' ou '+0.5' para float (média)."""
         try:
-            if pd.isna(line_str): return np.nan
+            if pd.isna(line_str):
+                return np.nan
             s = str(line_str).strip().replace(",", ".").lower()
-            if "pk" in s or s == "0":  # suporte a "pk" (pick)
+            if "pk" in s or s == "0":
                 return 0.0
             if "/" in s:
                 parts = [float(x) for x in s.split("/") if x != ""]
@@ -711,17 +714,18 @@ with tab2:
             return float(s)
         except:
             return np.nan
-
-
+    
+    # 🔹 'Asian_Line' = Away → precisa inverter o sinal para o ponto de vista do Home
     if "Asian_Line" in games_today.columns:
         games_today["Asian_Home"] = (
-        games_today["Asian_Line"]
-        .apply(convert_asian_line)
-        .apply(lambda v: -v if pd.notna(v) else np.nan)
-    )
+            games_today["Asian_Line"]
+            .apply(convert_asian_line)
+            .apply(lambda v: -v if pd.notna(v) else np.nan)
+        )
     else:
         st.warning("⚠️ Column 'Asian_Line' not found – Skellam AH disabled.")
         games_today["Asian_Home"] = np.nan
+
 
     # ------------------------------------------------------
     # 2️⃣ Funções base (Odds → xG + Momentum)
