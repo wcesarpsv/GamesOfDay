@@ -420,28 +420,90 @@ print("✅ Modelo treinado com sucesso!")
 
 
 ########################################
-####### Bloco 7B – ML Recommendation Function #######
+##### Função ML Recommendation (Ajuste X2 Inteligente)
 ########################################
+def _from_proba(
+    p_home, p_draw, p_away,
+    m_h=None, m_a=None, diff_m=None, diff_power=None,
+    band_home=None, band_away=None, league_cls="Medium Variation",
+    odd_home=None, odd_draw=None, odd_away=None,
+    threshold=0.65
+):
+    """
+    Converte probabilidades da ML em recomendações de apostas.
+    Agora o X2 só é emitido se respeitar 3 condições:
+    1️⃣ Contexto favorável (forma e poder)
+    2️⃣ Gap mínimo entre forças probabilísticas
+    3️⃣ Valor esperado positivo (EV)
+    """
 
-def ml_recommendation_from_proba(p_home, p_draw, p_away, threshold=0.65):
-    """
-    Converte probabilidades do ML em recomendações de apostas
-    """
+    # ===============================
+    # 1️⃣ Direct Win (High confidence)
+    # ===============================
     if p_home >= threshold:
         return "🟢 Back Home"
     elif p_away >= threshold:
         return "🟠 Back Away"
-    else:
-        sum_home_draw = p_home + p_draw + 0.2 
-        sum_away_draw = p_away + p_draw
-        if abs(p_home - p_away) < 0.05 and p_draw > 0.50:
-            return "⚪ Back Draw"
-        elif sum_home_draw > sum_away_draw:
+
+    # ===============================
+    # 2️⃣ Base metrics
+    # ===============================
+    sum_home_draw = p_home + p_draw
+    sum_away_draw = p_away + p_draw
+    diff_gap = (sum_away_draw - sum_home_draw)
+    league_cls = league_cls or "Medium Variation"
+
+    # ===============================
+    # 3️⃣ Neutral / Draw condition
+    # ===============================
+    if abs(p_home - p_away) < 0.05 and p_draw > 0.50:
+        return "⚪ Back Draw"
+
+    # ===============================
+    # 4️⃣ 1X (Home/Draw) condition
+    # ===============================
+    if (sum_home_draw - sum_away_draw) > 0.05:
+        if diff_power is None or diff_power > -5:
             return "🟦 1X (Home/Draw)"
-        elif sum_away_draw > sum_home_draw :
+        else:
+            return "❌ Avoid"
+
+    # ===============================
+    # 5️⃣ X2 (Away/Draw) – multi-layer filter
+    # ===============================
+    if diff_gap > 0.05:
+        # ---- Context layer ----
+        ok_context = (
+            (m_a is not None and m_a > 0.5) and
+            (m_h is not None and m_h < 0.2) and
+            (diff_m is not None and diff_m < -0.8) and
+            (diff_power is not None and diff_power > -15)
+        )
+
+        # Liga mais exigente
+        if league_cls == "High Variation":
+            ok_context = ok_context and diff_m < -1.0 and diff_power > -10
+
+        # ---- Odds/EV layer ----
+        if odd_away and odd_draw:
+            odd_x2 = 1 / ((1 / odd_away) + (1 / odd_draw))  # DC sintético
+            prob_x2 = p_away + p_draw
+            ev = prob_x2 * odd_x2 - 1
+        else:
+            ev = 0
+
+        ok_value = ev >= (0.02 if league_cls != "High Variation" else 0.04)
+
+        if ok_context and ok_value:
             return "🟪 X2 (Away/Draw)"
         else:
             return "❌ Avoid"
+
+    # ===============================
+    # 6️⃣ Fallback
+    # ===============================
+    return "❌ Avoid"
+
             
 
 
@@ -483,7 +545,7 @@ invalid_rows = X_today[~valid_mask]
 games_today["ML_Proba_Home"] = np.nan
 games_today["ML_Proba_Draw"] = np.nan
 games_today["ML_Proba_Away"] = np.nan
-games_today["ML_Recommendation"] = "❌ Avoid"
+games_today[""] = "❌ Avoid"
 
 # 🎯 Aplicar modelo SOMENTE nas linhas completas
 if not valid_rows.empty:
@@ -496,13 +558,19 @@ if not valid_rows.empty:
     games_today.loc[valid_mask, "ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
     games_today.loc[valid_mask, "ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
 
-    games_today.loc[valid_mask, "ML_Recommendation"] = [
-        ml_recommendation_from_proba(row["ML_Proba_Home"], 
-                                     row["ML_Proba_Draw"], 
-                                     row["ML_Proba_Away"],
-                                     threshold=threshold)
-        for _, row in games_today.loc[valid_mask].iterrows()
+    games_today["ML_Recommendation"] = [
+        ml_recommendation_from_proba(
+            row["ML_Proba_Home"], row["ML_Proba_Draw"], row["ML_Proba_Away"],
+            m_h=row.get("M_H"), m_a=row.get("M_A"), diff_m=row.get("M_Diff"),
+            diff_power=row.get("Diff_Power"),
+            band_home=row.get("Home_Band"), band_away=row.get("Away_Band"),
+            league_cls=row.get("League_Classification"),
+            odd_home=row.get("Odd_H"), odd_draw=row.get("Odd_D"), odd_away=row.get("Odd_A"),
+            threshold=threshold
+        )
+        for _, row in games_today.iterrows()
     ]
+
 
 # ⚠️ Jogos com features ausentes
 if not invalid_rows.empty:
