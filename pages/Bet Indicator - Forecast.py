@@ -810,15 +810,15 @@ with tab2:
             
             if k < 0:  # Handicap NEGATIVO: Home DÁ handicap
                 # Ex: -1 → Home precisa vencer por 2+ gols
-                win = 1 - skellam.cdf(-k, mu_h, mu_a)      # Diferença > -k
+                win = 1 - skellam.cdf(-k - 1, mu_h, mu_a)  # Diferença > -k-1
                 push = skellam.pmf(-k, mu_h, mu_a)         # Diferença = -k  
-                lose = skellam.cdf(-k - 1, mu_h, mu_a)     # Diferença < -k
+                lose = skellam.cdf(-k, mu_h, mu_a)         # Diferença <= -k
                 
             elif k > 0:  # Handicap POSITIVO: Home RECEBE handicap  
                 # Ex: +1 → Home cobre se não perder por 2+ gols
-                win = 1 - skellam.cdf(-k - 1, mu_h, mu_a)  # Diferença > -k-1 (não perde por k+)
-                push = skellam.pmf(-k, mu_h, mu_a)         # Diferença = -k (perde por exatamente k)
-                lose = skellam.cdf(-k - 1, mu_h, mu_a)     # Diferença < -k-1 (perde por k+)
+                win = skellam.cdf(-k, mu_h, mu_a)          # Diferença >= -k
+                push = skellam.pmf(-k, mu_h, mu_a)         # Diferença = -k
+                lose = 1 - skellam.cdf(-k - 1, mu_h, mu_a) # Diferença < -k
                 
             else:  # Handicap ZERO
                 win = 1 - skellam.cdf(0, mu_h, mu_a)  # Home vence
@@ -875,9 +875,11 @@ with tab2:
                 
             elif line == -0.75:
                 # -0.75: metade em -0.5, metade em -1.0
+                # -0.5: win se home vencer, lose se não vencer
                 win_half = 1 - skellam.cdf(0, mu_h, mu_a)
                 lose_half = skellam.cdf(0, mu_h, mu_a)
                 
+                # -1.0: win se home vencer por 2+, push se vencer por 1, lose se não vencer
                 win_full = 1 - skellam.cdf(1, mu_h, mu_a)
                 push_full = skellam.pmf(1, mu_h, mu_a)
                 lose_full = skellam.cdf(0, mu_h, mu_a)
@@ -888,9 +890,11 @@ with tab2:
                 
             elif line == 0.75:
                 # +0.75: metade em +0.5, metade em +1.0
+                # +0.5: win se home não perder, lose se home perder
                 win_half = 1 - skellam.cdf(-1, mu_h, mu_a)
                 lose_half = skellam.cdf(-1, mu_h, mu_a)
                 
+                # +1.0: win se home não perder por 2+, push se perder por 1, lose se perder por 2+
                 win_full = 1 - skellam.cdf(-2, mu_h, mu_a)
                 push_full = skellam.pmf(-1, mu_h, mu_a)
                 lose_full = skellam.cdf(-2, mu_h, mu_a)
