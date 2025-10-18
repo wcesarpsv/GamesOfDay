@@ -432,11 +432,11 @@ def ml_recommendation_from_proba(
 ):
     """
     Converte probabilidades da ML em recomendações de apostas.
-    Versão balanceada entre 1X e X2 com critérios ajustáveis.
+    Versão MAIS FLEXÍVEL com menos Avoid e mais controle pelo threshold.
     """
 
     # ===============================
-    # 1️⃣ Direct Win (High confidence)
+    # 1️⃣ Direct Win (High confidence) - MANTIDO
     # ===============================
     if p_home >= threshold:
         return "🟢 Back Home"
@@ -454,43 +454,47 @@ def ml_recommendation_from_proba(
     league_cls = league_cls or "Medium Variation"
 
     # ===============================
-    # 3️⃣ Neutral / Draw condition
+    # 3️⃣ Neutral / Draw condition - MANTIDO
     # ===============================
     if abs(p_home - p_away) < 0.05 and p_draw > 0.50:
         return "⚪ Back Draw"
 
     # ===============================
-    # 4️⃣ Critério BALANCEADO entre 1X e X2 (AGORA AJUSTÁVEL)
+    # 4️⃣ Critério MAIS FLEXÍVEL entre 1X e X2
     # ===============================
     
-    # Se 1X for significativamente melhor
+    # Se 1X for melhor (critérios mais relaxados)
     if diff_1x_vs_x2 > balance_threshold:
-        # Verificar contexto favorável para Home
+        # Contexto mais flexível para Home
         ok_context_home = (
-            (m_h is not None and m_h > 0.3) and
-            (m_a is not None and m_a < 0.4) and
-            (diff_m is not None and diff_m > -0.5) and
-            (diff_power is not None and diff_power > -15)
+            (m_h is not None and m_h > 0.2) and  # Reduzido de 0.3 para 0.2
+            (m_a is not None and m_a < 0.5) and  # Aumentado de 0.4 para 0.5
+            (diff_m is not None and diff_m > -0.8) and  # Reduzido de -0.5 para -0.8
+            (diff_power is not None and diff_power > -20)  # Reduzido de -15 para -20
         )
         
         if ok_context_home:
             return "🟦 1X (Home/Draw)"
+        else:
+            # Mesmo sem contexto perfeito, se a diferença for grande, vai de 1X
+            if diff_1x_vs_x2 > (balance_threshold + 0.05):  # Se for bem maior
+                return "🟦 1X (Home/Draw)"
     
-    # Se X2 for significativamente melhor  
+    # Se X2 for melhor (critérios mais relaxados)  
     elif diff_1x_vs_x2 < -balance_threshold:
-        # Verificar contexto favorável para Away (mais rigoroso)
+        # Contexto mais flexível para Away
         ok_context_away = (
-            (m_a is not None and m_a > 0.4) and
-            (m_h is not None and m_h < 0.2) and
-            (diff_m is not None and diff_m < -0.8) and
-            (diff_power is not None and diff_power < -15)
+            (m_a is not None and m_a > 0.3) and  # Reduzido de 0.4 para 0.3
+            (m_h is not None and m_h < 0.3) and   # Aumentado de 0.2 para 0.3
+            (diff_m is not None and diff_m < -0.6) and  # Reduzido de -0.8 para -0.6
+            (diff_power is not None and diff_power < -15)  # Reduzido de -20 para -15
         )
 
-        # Liga mais exigente
+        # Liga mais exigente (mais flexível)
         if league_cls == "High Variation":
-            ok_context_away = ok_context_away and diff_m < -1.0 and diff_power > -10
+            ok_context_away = ok_context_away and diff_m < -0.8 and diff_power > -15  # Reduzido
 
-        # ---- Odds/EV layer ----
+        # ---- Odds/EV layer (mais flexível) ----
         if odd_away and odd_draw:
             odd_x2 = 1 / ((1 / odd_away) + (1 / odd_draw))
             prob_x2 = p_away + p_draw
@@ -498,28 +502,52 @@ def ml_recommendation_from_proba(
         else:
             ev = 0
 
-        ok_value = ev >= (0.03 if league_cls != "High Variation" else 0.05)
+        ok_value = ev >= (0.02 if league_cls != "High Variation" else 0.03)  # Reduzido EV mínimo
 
         if ok_context_away and ok_value:
             return "🟪 X2 (Away/Draw)"
+        else:
+            # Mesmo sem contexto perfeito, se a diferença for grande, vai de X2
+            if diff_1x_vs_x2 < -(balance_threshold + 0.05):  # Se for bem menor
+                return "🟪 X2 (Away/Draw)"
 
     # ===============================
-    # 5️⃣ Zona CINZA - quando a diferença é pequena
+    # 5️⃣ Zona CINZA - MAIS FLEXÍVEL (menos Avoid)
     # ===============================
     elif -balance_threshold <= diff_1x_vs_x2 <= balance_threshold:
-        # Quando estão muito próximos, preferir 1X por padrão
+        # Quando estão próximos, escolher baseado no contexto geral
+        # Preferir 1X por padrão, mas com critérios bem relaxados
+        
+        # Contexto mínimo para Home (bem relaxado)
         ok_minimal_home = (
-            (m_h is not None and m_h > 0.2) and
-            (diff_power is not None and diff_power > -10)
+            (m_h is not None and m_h > 0.1) and  # Reduzido de 0.2 para 0.1
+            (diff_power is not None and diff_power > -15)  # Reduzido de -10 para -15
         )
         
-        if ok_minimal_home:
+        # Contexto mínimo para Away (bem relaxado)  
+        ok_minimal_away = (
+            (m_a is not None and m_a > 0.1) and
+            (diff_power is not None and diff_power < -5)
+        )
+        
+        if ok_minimal_home and diff_1x_vs_x2 >= 0:  # Se 1X for ligeiramente melhor
             return "🟦 1X (Home/Draw)"
-        else:
-            return "❌ Avoid"
+        elif ok_minimal_away and diff_1x_vs_x2 <= 0:  # Se X2 for ligeiramente melhor
+            return "🟪 X2 (Away/Draw)"
+        elif ok_minimal_home:  # Fallback para 1X se tiver contexto mínimo
+            return "🟦 1X (Home/Draw)"
 
     # ===============================
-    # 6️⃣ Fallback
+    # 6️⃣ Última chance - EVITAR Avoid quando possível
+    # ===============================
+    # Se chegou aqui e ainda não decidiu, verificar se algum lado tem probabilidade decente
+    if sum_home_draw > 0.60:  # Se 1X tem mais de 60%
+        return "🟦 1X (Home/Draw)"
+    elif sum_away_draw > 0.60:  # Se X2 tem mais de 60%
+        return "🟪 X2 (Away/Draw)"
+
+    # ===============================
+    # 7️⃣ Fallback (SÓ SE REALMENTE NÃO HOUVER NADA)
     # ===============================
     return "❌ Avoid"
 
