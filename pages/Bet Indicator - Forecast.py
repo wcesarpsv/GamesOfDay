@@ -700,17 +700,18 @@ with tab2:
     # 1️⃣ Converter linha asiática (frações → média decimal)
     # ------------------------------------------------------
     def convert_asian_line(line_str):
-        """Converte string tipo '-0.25/0' para média float."""
         try:
-            if pd.isna(line_str) or str(line_str).strip() == "":
-                return None
-            line_str = str(line_str).strip().replace(",", ".").replace(" ", "")
-            if "/" in line_str:
-                parts = [float(x) for x in line_str.split("/")]
-                return float(np.mean(parts))
-            return float(line_str)
-        except Exception:
-            return None
+            if pd.isna(line_str): return np.nan
+            s = str(line_str).strip().replace(",", ".").lower()
+            if "pk" in s or s == "0":  # suporte a "pk" (pick)
+                return 0.0
+            if "/" in s:
+                parts = [float(x) for x in s.split("/") if x != ""]
+                return np.mean(parts)
+            return float(s)
+        except:
+            return np.nan
+
 
     if "Asian_Line" in games_today.columns:
         games_today["Asian_Home"] = (
