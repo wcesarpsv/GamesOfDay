@@ -471,10 +471,10 @@ def _from_proba(
     # ===============================
     # 5️⃣ X2 (Away/Draw) – multi-layer filter
     # ===============================
-    if diff_gap > 0.05:
+    if diff_gap > 0.1:
         # ---- Context layer ----
         ok_context = (
-            (m_a is not None and m_a > 0.8) and
+            (m_a is not None and m_a > 0.5) and
             (m_h is not None and m_h < 0.2) and
             (diff_m is not None and diff_m < -0.8) and
             (diff_power is not None and diff_power > -20)
