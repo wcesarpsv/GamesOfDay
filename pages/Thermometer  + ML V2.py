@@ -989,7 +989,16 @@ def summarize_by_recommendation(df):
             "ROI (%)": round(roi, 2),
             "Avg Odd": round(avg_odd, 2)
         })
-    return pd.DataFrame(summary).sort_values("ROI (%)", ascending=False)
+    
+    # Criar o DataFrame e verificar se a coluna "ROI (%)" existe antes de ordenar
+    if summary:  # Se houver dados
+        result_df = pd.DataFrame(summary)
+        if "ROI (%)" in result_df.columns:
+            return result_df.sort_values("ROI (%)", ascending=False)
+        else:
+            return result_df
+    else:
+        return pd.DataFrame()  # Retorna DataFrame vazio se não houver dados
 
 ml_summary_table = summarize_by_recommendation(ml_eval)
 
@@ -1006,9 +1015,10 @@ if not ml_summary_table.empty:
         height=500
     )
 
-    # Estatísticas gerais
-    best_type = ml_summary_table.iloc[0]
-    st.success(f"🏁 Melhor desempenho: **{best_type['Recommendation']}** – ROI {best_type['ROI (%)']:+.2f}% com Winrate de {best_type['Winrate (%)']:.2f}% ({best_type['Bets']} apostas).")
+    # Estatísticas gerais (apenas se houver dados)
+    if len(ml_summary_table) > 0:
+        best_type = ml_summary_table.iloc[0]
+        st.success(f"🏁 Melhor desempenho: **{best_type['Recommendation']}** – ROI {best_type['ROI (%)']:+.2f}% com Winrate de {best_type['Winrate (%)']:.2f}% ({best_type['Bets']} apostas).")
 else:
     st.warning("Nenhum jogo com recomendações válidas da ML foi encontrado para análise.")
 
