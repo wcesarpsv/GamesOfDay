@@ -681,17 +681,17 @@ if "AIL_Value_Score_Dynamic" in games_today.columns:
     styled = insights_df[cols_to_show].copy()
     
     # Cria uma coluna temporária apenas para aplicar o gradiente
-    styled["_Signal_Strength_"] = insights_df["AIL_Value_Score_Dynamic"]
+    styled["Signal_Strength"] = insights_df["AIL_Value_Score_Dynamic"]
     
     # Aplica o gradiente usando a coluna temporária
     styled_display = (
         styled.style
-        .background_gradient(subset=["_Signal_Strength_"], cmap="RdYlGn")
+        .background_gradient(subset=["Signal_Strength"], cmap="RdYlGn")
         .set_properties(**{"white-space": "pre-wrap"})
     )
 
     # Remove a coluna temporária antes de mostrar
-    styled_display = styled_display.hide(axis="columns", subset=["_Signal_Strength_"])
+    styled_display = styled_display.hide(axis="columns", subset=["Signal_Strength"])
     
     # Exibe no Streamlit
     st.dataframe(styled_display, use_container_width=True, height=600)
