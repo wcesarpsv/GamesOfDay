@@ -715,13 +715,12 @@ if "AIL_Value_Score_Dynamic" in games_today.columns:
     cols_to_show = ["League", "Home", "Away", "Insight", "Lado sugerido", "Intensidade"]
 
     st.dataframe(
-        insights_df[cols_to_show].style
-        .set_properties(**{"white-space": "pre-wrap"})
-        .highlight_between(subset=["AIL_Value_Score_Dynamic"], left=-0.5, right=0.5, color="#f8f9fa")
-        .background_gradient(subset=["AIL_Value_Score_Dynamic"], cmap="RdYlGn"),
-        use_container_width=True,
-        height=600
-    )
+    insights_df[cols_to_show].style
+    .set_properties(**{"white-space": "pre-wrap"})
+    .background_gradient(axis=None, cmap="RdYlGn"),
+    use_container_width=True,
+    height=600
+)
 
     st.caption("💬 Esta tabela resume o contexto de valor AIL por confronto, considerando eficiência da liga, consistência do mercado e viés histórico.")
 else:
