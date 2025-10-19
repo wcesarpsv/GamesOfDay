@@ -679,9 +679,11 @@ if "AIL_Value_Score_Dynamic" in games_today.columns:
     # Exibe apenas as colunas principais
     st.dataframe(
         insights_df[cols_to_show]
+        .style.format({       
+            "Goals_H_Today": "{:.0f}",
+            "Goals_A_Today": "{:.0f}"
+        })
         .style.set_properties(**{"white-space": "pre-wrap"}),
-        "Goals_H_Today": "{:.0f}",
-        "Goals_A_Today": "{:.0f}",
         use_container_width=True,
         height=600
     )
