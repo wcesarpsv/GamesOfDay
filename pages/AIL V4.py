@@ -426,6 +426,157 @@ games_today = build_aggression_intelligence(history, games_today)
 
 
 
+
+########################################
+#### BLOCO 4.X – AIL Dynamic Learning ####
+########################################
+# Este bloco adiciona duas inteligências complementares ao AIL:
+#  1️⃣ Pesos dinâmicos por liga (aprendidos com base na correlação entre variáveis AIL e HandScore real)
+#  2️⃣ Métrica de consistência de mercado por time (volatilidade de Aggression/HandScore)
+#  3️⃣ Integração no cálculo de um novo AIL_Value_Score_Dynamic (mais contextual)
+
+st.markdown("### 🧠 AIL Dynamic Learning – League Weights + Market Consistency")
+
+# ----------------------------------------------
+# 1️⃣ Aprendizado de pesos dinâmicos por liga
+# ----------------------------------------------
+@st.cache_data
+def learn_league_weights(history_df: pd.DataFrame):
+    """Aprende pesos por liga com base na correlação entre variáveis AIL e desempenho real (HandScore_Diff)."""
+    components = [
+        "Market_Model_Divergence",
+        "Aggression_Momentum_Score_Home",
+        "Aggression_Momentum_Score_Away",
+        "Underdog_Value_Diff",
+        "Favorite_Crash_Diff"
+    ]
+
+    weights_by_league = {}
+    for lg, g in history_df.groupby("League"):
+        corrs = {}
+        for c in components:
+            if c in g.columns and "HandScore_Diff" in g.columns:
+                corrs[c] = g[c].corr(g["HandScore_Diff"])
+        # Normalização para evitar explosões numéricas
+        total = sum(abs(v) for v in corrs.values() if not pd.isna(v))
+        if total > 0:
+            corrs = {k: v / total for k, v in corrs.items()}
+        weights_by_league[lg] = corrs
+    return weights_by_league
+
+# Aprende os pesos de cada liga com base no histórico disponível
+league_weights = learn_league_weights(history)
+st.success(f"✅ Pesos dinâmicos aprendidos para {len(league_weights)} ligas.")
+
+# ----------------------------------------------
+# 2️⃣ Consistência de mercado por time
+# ----------------------------------------------
+@st.cache_data
+def compute_market_consistency(history_df: pd.DataFrame):
+    """
+    Calcula a consistência do mercado (volatilidade) por time,
+    com base no desvio padrão de Aggression e HandScore ao longo do tempo.
+    Quanto maior o valor, mais imprevisível é o time.
+    """
+    # Cálculo separado para mandante e visitante
+    agg_home = history_df.groupby("Home")["Aggression_Home"].std().rename("Agg_Std_Home")
+    agg_away = history_df.groupby("Away")["Aggression_Away"].std().rename("Agg_Std_Away")
+    hs_home = history_df.groupby("Home")["HandScore_Home"].std().rename("HS_Std_Home")
+    hs_away = history_df.groupby("Away")["HandScore_Away"].std().rename("HS_Std_Away")
+
+    # Média entre agressão e handscore (proxy de consistência)
+    df_home = pd.concat([agg_home, hs_home], axis=1).mean(axis=1).rename("Market_Consistency_Home")
+    df_away = pd.concat([agg_away, hs_away], axis=1).mean(axis=1).rename("Market_Consistency_Away")
+
+    # Normalização (z-score)
+    df_home = (df_home - df_home.mean()) / df_home.std(ddof=0)
+    df_away = (df_away - df_away.mean()) / df_away.std(ddof=0)
+
+    return df_home, df_away
+
+market_consistency_home, market_consistency_away = compute_market_consistency(history)
+st.success("✅ Consistência de mercado calculada por time (volatilidade de Aggression/HandScore).")
+
+# Merge no games_today
+games_today = games_today.merge(
+    market_consistency_home, left_on="Home", right_index=True, how="left"
+)
+games_today = games_today.merge(
+    market_consistency_away, left_on="Away", right_index=True, how="left"
+)
+
+# ----------------------------------------------
+# 3️⃣ AIL Value Score Dinâmico (com pesos e consistência)
+# ----------------------------------------------
+def compute_dynamic_value_score(row):
+    """Cálculo contextualizado de valor por confronto (com pesos da liga e ajuste de consistência)."""
+    league = row.get("League", None)
+    comps = {
+        "Market_Model_Divergence": row.get("Market_Model_Divergence", 0),
+        "Aggression_Momentum_Score_Home": row.get("Aggression_Momentum_Score_Home", 0),
+        "Aggression_Momentum_Score_Away": row.get("Aggression_Momentum_Score_Away", 0),
+        "Underdog_Value_Diff": row.get("Underdog_Value_Diff", 0),
+        "Favorite_Crash_Diff": row.get("Favorite_Crash_Diff", 0)
+    }
+
+    # Pega os pesos específicos da liga (ou padrão neutro)
+    weights = league_weights.get(league, {})
+    score = 0.0
+    for k, v in comps.items():
+        w = weights.get(k, 0.2)  # peso padrão 0.2 se não houver histórico
+        score += w * v
+
+    # Penaliza times com mercado muito previsível (consistência baixa)
+    mc_home = row.get("Market_Consistency_Home", 0)
+    mc_away = row.get("Market_Consistency_Away", 0)
+    avg_mc = np.nanmean([mc_home, mc_away])
+    if not np.isnan(avg_mc):
+        score -= 0.1 * avg_mc
+
+    # Reforça ligas ineficientes (MEI negativo)
+    mei = row.get("League_MEI", np.nan)
+    if not np.isnan(mei):
+        score += 0.25 * (0 - max(0.0, mei))
+
+    return float(score)
+
+games_today["AIL_Value_Score_Dynamic"] = games_today.apply(compute_dynamic_value_score, axis=1)
+
+# ----------------------------------------------
+# 4️⃣ Exibição dos resultados
+# ----------------------------------------------
+st.markdown("#### 📊 AIL – Liga & Time Contextual Intelligence")
+show_cols = [
+    "League",
+    "Home", "Away",
+    "AIL_Value_Score", "AIL_Value_Score_Dynamic",
+    "League_MEI", "League_HomeBias",
+    "Market_Consistency_Home", "Market_Consistency_Away"
+]
+show_cols = [c for c in show_cols if c in games_today.columns]
+
+st.dataframe(
+    games_today[show_cols]
+    .style.format({
+        "AIL_Value_Score": "{:.3f}",
+        "AIL_Value_Score_Dynamic": "{:.3f}",
+        "League_MEI": "{:.2f}",
+        "Market_Consistency_Home": "{:.2f}",
+        "Market_Consistency_Away": "{:.2f}"
+    })
+    .background_gradient(subset=["AIL_Value_Score_Dynamic"], cmap="RdYlGn"),
+    use_container_width=True, height=520
+)
+
+st.caption(
+    "O AIL_Value_Score_Dynamic combina pesos aprendidos por liga com ajustes de consistência do mercado por time. "
+    "Isso permite adaptar o modelo à eficiência e volatilidade específicas de cada contexto competitivo."
+)
+
+
+
+
+
 ########################################
 #### BLOCO 4.5 – AIL-ML INTERACTIONS ####
 ########################################
