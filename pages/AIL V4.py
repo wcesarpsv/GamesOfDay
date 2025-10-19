@@ -719,6 +719,131 @@ else:
     st.warning("⚠️ A coluna 'AIL_Value_Score_Dynamic' não foi encontrada em games_today. Gere o BLOCO 4.X antes deste.")
 
 
+########################################
+#### BLOCO 5.0 – AIL Contextual ML Injector ####
+########################################
+# Este bloco insere no dataset as variáveis contextuais aprendidas
+# no AIL Dynamic Learning, tornando a ML sensível à eficiência da liga,
+# estabilidade dos times e direção contextual do valor.
+
+import numpy as np
+import pandas as pd
+import streamlit as st
+
+st.markdown("### 🧩 AIL Contextual ML Injector – Context-Aware Learning")
+
+# ----------------------------------------------------------
+# 1️⃣ Função de enriquecimento contextual
+# ----------------------------------------------------------
+def inject_ail_context_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adiciona variáveis contextuais do AIL Dynamic no DataFrame.
+    Requer colunas do bloco 4.X ('AIL_Value_Score_Dynamic', 'League_MEI', etc.).
+    """
+    df = df.copy()
+    required_cols = [
+        "AIL_Value_Score_Dynamic",
+        "League_MEI",
+        "League_HomeBias",
+        "Market_Consistency_Home",
+        "Market_Consistency_Away"
+    ]
+
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        st.warning(f"⚠️ Colunas ausentes para o Contextual Injector: {missing}")
+        return df
+
+    # Diferença de consistência entre mandante e visitante
+    df["Consistency_Diff"] = df["Market_Consistency_Home"] - df["Market_Consistency_Away"]
+
+    # Força contextual ajustada (meta-feature composta)
+    df["AIL_Meta"] = (
+        df["AIL_Value_Score_Dynamic"] *
+        (1 - df["League_MEI"].clip(0, 1)) *
+        (np.abs(df["Consistency_Diff"]) + 1)
+    )
+
+    # Direção do valor (1 = Home, -1 = Away)
+    df["AIL_Context_Signal"] = np.sign(df["AIL_Value_Score_Dynamic"]).astype(int)
+
+    # Estabilidade contextual (quanto menor a soma de inconsistências, mais estável)
+    df["AIL_Context_Stability"] = 1 - np.clip(
+        np.abs(df["Market_Consistency_Home"]) + np.abs(df["Market_Consistency_Away"]),
+        0, 2
+    ) / 2
+
+    # Perfil de eficiência da liga (0 = ineficiente, 1 = eficiente)
+    df["League_Profile"] = np.where(df["League_MEI"] >= 0.5, 1, 0)
+
+    # Tag de viés da liga (1 = pró-home, -1 = pró-away, 0 = neutra)
+    df["League_Bias_Tag"] = np.select(
+        [
+            df["League_HomeBias"] > 0.3,
+            df["League_HomeBias"] < -0.3
+        ],
+        [1, -1],
+        default=0
+    )
+
+    return df
+
+
+# ----------------------------------------------------------
+# 2️⃣ Aplicação ao histórico e aos jogos do dia
+# ----------------------------------------------------------
+try:
+    if "AIL_Value_Score_Dynamic" in games_today.columns:
+        history = inject_ail_context_features(history)
+        games_today = inject_ail_context_features(games_today)
+        st.success("✅ Features contextuais do AIL adicionadas ao dataset (history + games_today).")
+    else:
+        st.warning("⚠️ 'AIL_Value_Score_Dynamic' não encontrado. Execute o BLOCO 4.X antes.")
+except Exception as e:
+    st.error(f"Erro ao injetar features contextuais: {e}")
+
+# ----------------------------------------------------------
+# 3️⃣ Visualização resumida
+# ----------------------------------------------------------
+try:
+    st.markdown("#### 🔍 Preview das features contextuais adicionadas (Top 10 jogos)")
+    preview_cols = [
+        "League", "Home", "Away",
+        "AIL_Value_Score_Dynamic", "AIL_Meta",
+        "Consistency_Diff", "AIL_Context_Signal",
+        "AIL_Context_Stability", "League_Profile", "League_Bias_Tag"
+    ]
+    preview_cols = [c for c in preview_cols if c in games_today.columns]
+
+    st.dataframe(
+        games_today[preview_cols].head(10)
+        .style.format({
+            "AIL_Value_Score_Dynamic": "{:.3f}",
+            "AIL_Meta": "{:.3f}",
+            "Consistency_Diff": "{:.2f}",
+            "AIL_Context_Stability": "{:.2f}"
+        })
+        .background_gradient(subset=["AIL_Meta"], cmap="RdYlGn"),
+        use_container_width=True,
+        height=400
+    )
+
+    with st.expander("❓ Explicação das novas features contextuais"):
+        st.markdown("""
+        - **AIL_Meta** → Força contextual ajustada (valor real considerando eficiência da liga e consistência de mercado)  
+        - **Consistency_Diff** → Diferença de volatilidade entre mandante e visitante  
+        - **AIL_Context_Signal** → Direção contextual (1 = valor pró-home, -1 = pró-away)  
+        - **AIL_Context_Stability** → Nível de estabilidade do confronto (0 = instável, 1 = estável)  
+        - **League_Profile** → 1 se a liga é eficiente, 0 se ineficiente  
+        - **League_Bias_Tag** → 1 = pró-home, -1 = pró-away, 0 = neutra
+        """)
+except Exception:
+    pass
+
+
+
+
+
 
 
 ########################################
