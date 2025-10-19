@@ -673,7 +673,7 @@ if "AIL_Value_Score_Dynamic" in games_today.columns:
     # Insight ❓ = interpretação contextual  Intensidade ❓ = força do sinal de valor
     # """)
 
-    cols_to_show = [c for c in ["League","Home","Away","Insight","Lado sugerido","Intensidade"]
+    cols_to_show = [c for c in ["League","Home","Away","Goals_H_Today","Goals_A_Today","Insight","Lado sugerido","Intensidade"]
                     if c in insights_df.columns]
 
     # Exibe apenas as colunas principais
