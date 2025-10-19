@@ -578,8 +578,8 @@ st.caption(
 ########################################
 #### BLOCO 4.Y – AIL Insights Generator ####
 ########################################
-# Este bloco gera uma tabela interpretável de insights com tooltips explicativos
-# para 'Insight' e 'Intensidade', permitindo leitura intuitiva do AIL Dynamic.
+# Mostra ícones de ajuda ❓ dentro do cabeçalho da tabela.
+# Clicando neles, o usuário vê explicações contextuais sobre Insight e Intensidade.
 
 import streamlit as st
 import numpy as np
@@ -588,17 +588,15 @@ import pandas as pd
 st.markdown("### 💡 AIL Insights Generator – Contextual Summary")
 
 # ----------------------------------------------
-# 1️⃣ Função geradora de insights
+# 1️⃣ Geração de insights interpretáveis
 # ----------------------------------------------
 def generate_insight(row):
-    """Cria um texto interpretativo contextual para cada confronto."""
     league_mei = row.get("League_MEI", np.nan)
     homebias = row.get("League_HomeBias", np.nan)
     mc_home = row.get("Market_Consistency_Home", np.nan)
     mc_away = row.get("Market_Consistency_Away", np.nan)
     val = row.get("AIL_Value_Score_Dynamic", 0)
 
-    # Contexto da liga
     if league_mei > 0.6:
         league_txt = "Liga eficiente"
     elif league_mei < 0.3:
@@ -614,7 +612,6 @@ def generate_insight(row):
         else "com viés pró-visitante"
     )
 
-    # Consistência dos times
     if mc_home < 0 and mc_away > 0:
         cons_txt = "mandante previsível e visitante imprevisível"
     elif mc_home > 0 and mc_away < 0:
@@ -624,13 +621,12 @@ def generate_insight(row):
     else:
         cons_txt = "ambos consistentes"
 
-    # Direção e intensidade
     if val > 0.5:
-        lado = f"Home ({row['Home']})"
+        lado = f"Home ({row.get('Home','?')})"
         intensidade = f"🔥 Forte (+{val:.2f})"
         insight = f"💎 {league_txt} {bias_txt}; {cons_txt} → valor contextual pró-mandante."
     elif val < -0.5:
-        lado = f"Away ({row['Away']})"
+        lado = f"Away ({row.get('Away','?')})"
         intensidade = f"🔻 Forte ({val:.2f})"
         insight = f"⚠️ {league_txt} {bias_txt}; {cons_txt} → valor contextual pró-visitante."
     else:
@@ -642,90 +638,85 @@ def generate_insight(row):
 
 
 # ----------------------------------------------
-# 2️⃣ Aplicação ao games_today
+# 2️⃣ Aplicação e renomeações
 # ----------------------------------------------
 if "AIL_Value_Score_Dynamic" in games_today.columns:
     insights_df = games_today.copy()
-    insights_df[["Insight", "Lado sugerido", "Intensidade"]] = insights_df.apply(generate_insight, axis=1)
+    insights_df[["Insight","Lado sugerido","Intensidade"]] = insights_df.apply(generate_insight, axis=1)
+
+    rename_map = {}
+    if "Leagues" in insights_df.columns and "League" not in insights_df.columns:
+        rename_map["Leagues"] = "League"
+    if "HomeTeam" in insights_df.columns and "Home" not in insights_df.columns:
+        rename_map["HomeTeam"] = "Home"
+    if "AwayTeam" in insights_df.columns and "Away" not in insights_df.columns:
+        rename_map["AwayTeam"] = "Away"
+    if rename_map:
+        insights_df = insights_df.rename(columns=rename_map)
 
     # ----------------------------------------------
-    # 3️⃣ Tooltips explicativos (ícones de interrogação)
+    # 3️⃣ Cabeçalho com ícones ❓ integrados
     # ----------------------------------------------
     st.markdown("""
     <style>
-    .tooltip {
-      position: relative;
-      display: inline-block;
-      cursor: help;
-      color: #0d6efd;
-      font-weight: bold;
-    }
-    .tooltip .tooltiptext {
-      visibility: hidden;
-      width: 280px;
-      background-color: #1e1e1e;
-      color: #fff;
-      text-align: left;
-      border-radius: 8px;
-      padding: 8px;
-      position: absolute;
-      z-index: 1;
-      bottom: 120%;
-      left: 50%;
-      margin-left: -140px;
-      opacity: 0;
-      transition: opacity 0.4s;
-      font-size: 0.85rem;
-    }
-    .tooltip:hover .tooltiptext {
-      visibility: visible;
-      opacity: 1;
+    .help-icon {
+        font-size: 16px;
+        color: #aaa;
+        margin-left: 6px;
+        cursor: pointer;
     }
     </style>
     """, unsafe_allow_html=True)
 
-    # ----------------------------------------------
-    # 4️⃣ Cabeçalhos com tooltips
-    # ----------------------------------------------
     st.markdown("""
-    <div style="font-size:1.1rem; font-weight:bold; margin-bottom:6px;">
-      📊 Resumo de Insights AIL  
-      <br><br>
-      <span class="tooltip">Insight ❓
-        <span class="tooltiptext">
-          Combina eficiência da liga, viés pró-mandante e consistência de mercado 
-          para gerar uma leitura contextual do valor esperado entre os times.
-        </span>
-      </span>  
-      &nbsp;&nbsp;&nbsp;
-      <span class="tooltip">Intensidade ❓
-        <span class="tooltiptext">
-          Mede a força do sinal de valor do AIL_Value_Score_Dynamic.<br>
-          • Positivo → favorece o mandante<br>
-          • Negativo → favorece o visitante<br>
-          • Quanto mais distante de 0, mais forte o sinal.
-        </span>
-      </span>
-    </div>
-    """, unsafe_allow_html=True)
+    #### 📊 Resumo de Insights AIL  
+    **Legenda:**  
+    Insight ❓ = interpretação contextual do modelo  Intensidade ❓ = força do sinal de valor
+    """)
+    
+    cols_to_show = [c for c in ["League","Home","Away","Insight","Lado sugerido","Intensidade"]
+                    if c in insights_df.columns]
 
-    # ----------------------------------------------
-    # 5️⃣ Exibição dos resultados
-    # ----------------------------------------------
-    cols_to_show = ["League", "Home", "Away", "Insight", "Lado sugerido", "Intensidade"]
+    styled = insights_df[cols_to_show].copy()
+    styled["Signal_Strength"] = insights_df["AIL_Value_Score_Dynamic"]
 
     st.dataframe(
-    insights_df[cols_to_show].style
-    .set_properties(**{"white-space": "pre-wrap"})
-    .background_gradient(axis=None, cmap="RdYlGn"),
-    use_container_width=True,
-    height=600
-)
+        styled.style
+        .background_gradient(subset=["Signal_Strength"], cmap="RdYlGn")
+        .hide(axis="columns", subset=["Signal_Strength"])
+        .set_properties(**{"white-space": "pre-wrap"}),
+        use_container_width=True,
+        height=600
+    )
 
-    st.caption("💬 Esta tabela resume o contexto de valor AIL por confronto, considerando eficiência da liga, consistência do mercado e viés histórico.")
+    # ----------------------------------------------
+    # 4️⃣ Explicações clicáveis (abaixo da tabela)
+    # ----------------------------------------------
+    c1, c2 = st.columns(2)
+    with c1:
+        with st.expander("❓ Explicação – Insight"):
+            st.markdown("""
+            O campo **Insight** combina:
+            - Eficiência e viés da liga (`League_MEI`, `League_HomeBias`);
+            - Consistência de mercado dos times (`Market_Consistency_*`);
+            - Direção do valor esperado.
+            
+            Resultado: uma leitura textual do contexto de valor detectado pelo AIL.
+            """)
+    with c2:
+        with st.expander("❓ Explicação – Intensidade"):
+            st.markdown("""
+            A **Intensidade** expressa a força do sinal de valor:
+            - Baseada em `AIL_Value_Score_Dynamic`;
+            - Valores positivos → favorecem o **mandante**;
+            - Valores negativos → favorecem o **visitante**;
+            - Quanto mais distante de 0, mais forte o sinal.
+            """)
+
+    st.caption("💬 Clique nos ícones ❓ acima para entender o significado de cada métrica.")
+
 else:
     st.warning("⚠️ A coluna 'AIL_Value_Score_Dynamic' não foi encontrada em games_today. Gere o BLOCO 4.X antes deste.")
-
 
 
 
