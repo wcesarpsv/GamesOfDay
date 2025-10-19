@@ -674,23 +674,28 @@ if "AIL_Value_Score_Dynamic" in games_today.columns:
     # Insight ❓ = interpretação contextual do modelo  Intensidade ❓ = força do sinal de valor
     # """)
     
-    cols_to_show = [c for c in ["League","Home","Away","Insight","Lado sugerido","Intensidade"]
+    cols_to_show = [c for c in ["League", "Home", "Away", "Insight", "Lado sugerido", "Intensidade"]
                     if c in insights_df.columns]
-
+    
+    # Cria uma cópia apenas das colunas visíveis
     styled = insights_df[cols_to_show].copy()
-    styled["Signal_Strength"] = insights_df["AIL_Value_Score_Dynamic"]
-
+    
+    # Cria uma coluna temporária apenas para aplicar o gradiente
+    styled["_Signal_Strength_"] = insights_df["AIL_Value_Score_Dynamic"]
+    
+    # Aplica o gradiente usando a coluna temporária
     styled_display = (
         styled.style
-        .background_gradient(subset=["Signal_Strength"], cmap="RdYlGn")
+        .background_gradient(subset=["_Signal_Strength_"], cmap="RdYlGn")
         .set_properties(**{"white-space": "pre-wrap"})
     )
 
-    st.dataframe(
-        styled_display.hide(axis="columns", subset=["Signal_Strength"]),
-        use_container_width=True,
-        height=600
-    )
+    # Remove a coluna temporária antes de mostrar
+    styled_display = styled_display.hide(axis="columns", subset=["_Signal_Strength_"])
+    
+    # Exibe no Streamlit
+    st.dataframe(styled_display, use_container_width=True, height=600)
+
 
     # ----------------------------------------------
     # 4️⃣ Explicações clicáveis (abaixo da tabela)
