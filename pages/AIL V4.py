@@ -678,13 +678,16 @@ if "AIL_Value_Score_Dynamic" in games_today.columns:
                     if c in insights_df.columns]
 
     styled = insights_df[cols_to_show].copy()
-    # styled["Signal_Strength"] = insights_df["AIL_Value_Score_Dynamic"]
+    styled["Signal_Strength"] = insights_df["AIL_Value_Score_Dynamic"]
+
+    styled_display = (
+        styled.style
+        .background_gradient(subset=["Signal_Strength"], cmap="RdYlGn")
+        .set_properties(**{"white-space": "pre-wrap"})
+    )
 
     st.dataframe(
-        # styled.style
-        # .background_gradient(subset=["Signal_Strength"], cmap="RdYlGn")
-        # .hide(axis="columns", subset=["Signal_Strength"])
-        .set_properties(**{"white-space": "pre-wrap"}),
+        styled_display.hide(axis="columns", subset=["Signal_Strength"]),
         use_container_width=True,
         height=600
     )
