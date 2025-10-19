@@ -574,6 +574,111 @@ st.caption(
 )
 
 
+########################################
+#### BLOCO 4.Y – AIL Insights Generator ####
+########################################
+# Este bloco gera uma tabela interpretável de insights com tooltips explicativos
+# para os campos 'Insight' e 'Intensidade', ajudando o usuário a entender o contexto
+# do AIL_Value_Score_Dynamic e as sugestões do modelo.
+
+import streamlit as st
+import numpy as np
+import pandas as pd
+
+st.markdown("### 💡 AIL Insights Generator – Contextual Summary")
+
+# ----------------------------------------------
+# 1️⃣ Função geradora de insights
+# ----------------------------------------------
+def generate_insight(row):
+    """Cria um texto interpretativo para cada confronto com base nas métricas AIL."""
+    league_mei = row.get("League_MEI", np.nan)
+    homebias = row.get("League_HomeBias", np.nan)
+    mc_home = row.get("Market_Consistency_Home", np.nan)
+    mc_away = row.get("Market_Consistency_Away", np.nan)
+    val = row.get("AIL_Value_Score_Dynamic", 0)
+
+    # Contexto da liga
+    if league_mei > 0.6:
+        league_txt = "Liga eficiente"
+    elif league_mei < 0.3:
+        league_txt = "Liga ineficiente"
+    else:
+        league_txt = "Liga moderadamente eficiente"
+
+    bias_txt = (
+        "com viés pró-mandante"
+        if homebias > 0.3
+        else "com leve tendência neutra"
+        if abs(homebias) <= 0.3
+        else "com viés pró-visitante"
+    )
+
+    # Consistência dos times
+    if mc_home < 0 and mc_away > 0:
+        cons_txt = "mandante previsível e visitante imprevisível"
+    elif mc_home > 0 and mc_away < 0:
+        cons_txt = "mandante imprevisível e visitante estável"
+    elif mc_home > 0 and mc_away > 0:
+        cons_txt = "ambos imprevisíveis"
+    else:
+        cons_txt = "ambos consistentes"
+
+    # Direção e intensidade
+    if val > 0.5:
+        lado = f"Home ({row['Home']})"
+        intensidade = f"🔥 Forte (+{val:.2f})"
+        insight = f"💎 {league_txt} {bias_txt}; {cons_txt} → valor contextual pró-mandante."
+    elif val < -0.5:
+        lado = f"Away ({row['Away']})"
+        intensidade = f"🔻 Forte ({val:.2f})"
+        insight = f"⚠️ {league_txt} {bias_txt}; {cons_txt} → valor contextual pró-visitante."
+    else:
+        lado = "Neutro"
+        intensidade = f"⚪ Fraco ({val:.2f})"
+        insight = f"⚖️ {league_txt} {bias_txt}; {cons_txt} → sem valor claro detectado."
+
+    return pd.Series({"Insight": insight, "Lado sugerido": lado, "Intensidade": intensidade})
+
+# ----------------------------------------------
+# 2️⃣ Aplicação ao games_today
+# ----------------------------------------------
+insights_df = games_today.copy()
+insights_df[["Insight", "Lado sugerido", "Intensidade"]] = insights_df.apply(generate_insight, axis=1)
+
+# ----------------------------------------------
+# 3️⃣ Tooltips explicativos (ícones de interrogação)
+# ----------------------------------------------
+with st.expander("ℹ️ O que significam as colunas?"):
+    st.markdown("""
+    **🧭 Insight** – resumo interpretativo que combina:
+    - Eficiência e viés da liga (`League_MEI` e `HomeBias`);
+    - Consistência de mercado dos times (`Market_Consistency_*`);
+    - Direção do valor contextual detectado pelo AIL.
+    
+    **🔥 Intensidade** – mede a força do sinal de valor:
+    - Baseada no `AIL_Value_Score_Dynamic`;
+    - Quanto mais distante de 0, maior a confiança do modelo;
+    - Sinais positivos favorecem o mandante; negativos, o visitante.
+    """)
+
+# ----------------------------------------------
+# 4️⃣ Exibição dos resultados
+# ----------------------------------------------
+st.markdown("#### 📊 Resumo de Insights AIL")
+cols_to_show = ["League", "Home", "Away", "Insight", "Lado sugerido", "Intensidade"]
+
+st.dataframe(
+    insights_df[cols_to_show].style
+    .background_gradient(subset=["AIL_Value_Score_Dynamic"], cmap="RdYlGn")
+    .set_properties(**{"white-space": "pre-wrap"}),
+    use_container_width=True,
+    height=600
+)
+
+st.caption("A tabela acima resume, para cada confronto, o contexto de valor do AIL adaptado por liga e consistência de mercado.")
+
+
 
 
 
