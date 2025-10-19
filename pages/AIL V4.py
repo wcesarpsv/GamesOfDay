@@ -678,7 +678,7 @@ if "AIL_Value_Score_Dynamic" in games_today.columns:
                     if c in insights_df.columns]
 
     styled = insights_df[cols_to_show].copy()
-    # styled["Signal_Strength"] = insights_df["AIL_Value_Score_Dynamic"]
+    styled["Signal_Strength"] = insights_df["AIL_Value_Score_Dynamic"]
 
     st.dataframe(
         styled.style
