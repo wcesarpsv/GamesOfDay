@@ -657,22 +657,22 @@ if "AIL_Value_Score_Dynamic" in games_today.columns:
     # ----------------------------------------------
     # 3️⃣ Cabeçalho com ícones ❓ integrados
     # ----------------------------------------------
-    st.markdown("""
-    <style>
-    .help-icon {
-        font-size: 16px;
-        color: #aaa;
-        margin-left: 6px;
-        cursor: pointer;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # st.markdown("""
+    # <style>
+    # .help-icon {
+    #     font-size: 16px;
+    #     color: #aaa;
+    #     margin-left: 6px;
+    #     cursor: pointer;
+    # }
+    # </style>
+    # """, unsafe_allow_html=True)
 
-    st.markdown("""
-    #### 📊 Resumo de Insights AIL  
-    **Legenda:**  
-    Insight ❓ = interpretação contextual do modelo  Intensidade ❓ = força do sinal de valor
-    """)
+    # st.markdown("""
+    # #### 📊 Resumo de Insights AIL  
+    # **Legenda:**  
+    # Insight ❓ = interpretação contextual do modelo  Intensidade ❓ = força do sinal de valor
+    # """)
     
     cols_to_show = [c for c in ["League","Home","Away","Insight","Lado sugerido","Intensidade"]
                     if c in insights_df.columns]
