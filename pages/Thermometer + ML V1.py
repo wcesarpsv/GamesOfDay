@@ -947,7 +947,9 @@ if all(col in games_today.columns for col in ['Market_Error_Home', 'Market_Error
 
     value_history['Result'] = value_history.apply(map_result, axis=1)
 
-    # Targets binários: se o lado "ganhou contra o mercado"
+    # =============================================
+    # TARGET ORIGINAL (mantido como está no seu código)
+    # =============================================
     value_history['Target_Value_Home'] = (
         (value_history['Result'] == "Home") &
         (1 / value_history['Odd_H'] > value_history['Imp_Odd_H'])
@@ -958,7 +960,38 @@ if all(col in games_today.columns for col in ['Market_Error_Home', 'Market_Error
         (1 / value_history['Odd_A'] > value_history['Imp_Odd_A'])
     ).astype(int)
 
-    # Features básicas
+    # =============================================
+    # 🔍 NOVO TARGET COMPLEMENTAR – EV TEÓRICO
+    # =============================================
+    if all(col in value_history.columns for col in ['ML_Proba_Home','ML_Proba_Away','Odd_H','Odd_A']):
+        # Calcular o valor esperado teórico (Expected Value)
+        value_history['EV_Home'] = (value_history['ML_Proba_Home'] * value_history['Odd_H']) - 1
+        value_history['EV_Away'] = (value_history['ML_Proba_Away'] * value_history['Odd_A']) - 1
+
+        # Criar novos targets baseados em EV positivo
+        value_history['Target_EV_Home'] = (value_history['EV_Home'] > 0).astype(int)
+        value_history['Target_EV_Away'] = (value_history['EV_Away'] > 0).astype(int)
+
+        # Classificar a nova indicação (para comparar facilmente)
+        def pick_ev_signal(row, min_ev=0.02):
+            ev_h = row.get('EV_Home', 0)
+            ev_a = row.get('EV_Away', 0)
+            if ev_h > min_ev and ev_h > ev_a:
+                return f"🟢 EV+ Back Home ({ev_h:.2f})"
+            elif ev_a > min_ev and ev_a > ev_h:
+                return f"🟠 EV+ Back Away ({ev_a:.2f})"
+            else:
+                return "❌ No EV+ Signal"
+        
+        value_history['EV_Pick'] = value_history.apply(pick_ev_signal, axis=1)
+
+        st.info("✅ Colunas EV_Home, EV_Away, Target_EV_Home/Away e EV_Pick adicionadas para comparação com o target original.")
+    else:
+        st.warning("⚠️ Não foi possível calcular EV teórico — colunas ML_Proba ou Odds ausentes.")
+
+    # =============================================
+    # TREINAR OS MODELOS DE VALOR (como no original)
+    # =============================================
     features_value = [
         'M_H', 'M_A', 'Diff_Power', 'M_Diff',
         'Odd_H', 'Odd_D', 'Odd_A'
@@ -1010,7 +1043,9 @@ if all(col in games_today.columns for col in ['Market_Error_Home', 'Market_Error
 
     games_today['Value_ML_Pick'] = games_today.apply(pick_value_side, axis=1)
 
-    # Exibir tabela
+    # =============================================
+    # EXIBIÇÃO DAS DUAS ABORDAGENS LADO A LADO
+    # =============================================
     st.dataframe(
         games_today[['League', 'Home', 'Away',
                      'Odd_H', 'Odd_D', 'Odd_A',
@@ -1026,8 +1061,19 @@ if all(col in games_today.columns for col in ['Market_Error_Home', 'Market_Error
         height=900
     )
 
+    # Mostrar comparação dos targets
+    st.markdown("### 🔍 Comparação de Targets (Original vs EV Teórico)")
+    if all(col in value_history.columns for col in ['Target_Value_Home','Target_EV_Home']):
+        st.dataframe(
+            value_history[['League','Home','Away',
+                           'Target_Value_Home','Target_EV_Home',
+                           'Target_Value_Away','Target_EV_Away',
+                           'EV_Home','EV_Away','EV_Pick']]
+            .sort_values('EV_Home', ascending=False)
+            .style.format({'EV_Home':'{:+.2f}', 'EV_Away':'{:+.2f}'})
+        )
+
     st.success("✅ Meta-Modelo de Valor treinado e aplicado com sucesso!")
 
 else:
     st.warning("Market Error ainda não calculado — execute o Bloco 10 primeiro.")
-
