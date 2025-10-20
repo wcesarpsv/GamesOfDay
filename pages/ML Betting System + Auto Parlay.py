@@ -230,7 +230,7 @@ def map_result(row):
 history['Result'] = history.apply(map_result, axis=1)
 
 features_raw = [
-    'HandScore_Home_HT','HandScore_Away_HT',
+   
     'Aggression_Home','Aggression_Away',
     'M_H','M_A','Diff_Power','M_Diff',
     'Home_Band','Away_Band','League_Classification',
