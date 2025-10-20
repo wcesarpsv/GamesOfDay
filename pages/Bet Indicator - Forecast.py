@@ -471,7 +471,7 @@ def xg_from_momentum(row):
     mu_a = base + 0.8*(row.get("M_A",0.0)/denom) - 0.4*(row.get("Diff_Power",0.0)/100)
     return max(mu_h,0.05), max(mu_a,0.05)
 
-@st.cache_data(show_spinner=True)
+# @st.cache_data(show_spinner=True)
 def compute_alpha_by_league_all(history_df, alpha_global_prior, shrinkage_m, min_samples_per_league):
     alpha_grid = np.round(np.arange(0.0, 1.0 + 1e-9, 0.1), 2)
     alpha_by_league = {}
@@ -504,18 +504,62 @@ def compute_alpha_by_league_all(history_df, alpha_global_prior, shrinkage_m, min
             alpha_by_league[lg] = round(shrink_alpha,3)
     return alpha_by_league
 
-# carregar ou gerar
+# # carregar ou gerar
+# if os.path.exists(path_alpha):
+#     with open(path_alpha, "r", encoding="utf-8") as f:
+#         data = json.load(f)
+#     alpha_by_league = data.get("alpha_by_league", {})
+#     st.caption(f"✅ α loaded from cache ({len(alpha_by_league)} leagues)")
+# else:
+#     st.info("⏳ Computing α by league…")
+#     alpha_by_league = compute_alpha_by_league_all(history, alpha_global_prior, shrinkage_m, min_samples_per_league)
+#     with open(path_alpha, "w", encoding="utf-8") as f:
+#         json.dump({"alpha_by_league": alpha_by_league}, f, ensure_ascii=False, indent=2)
+#     st.success(f"💾 α computed & saved for {len(alpha_by_league)} leagues")
+
+
+# 🔄 VERIFICAR SE PRECISA RECALCULAR
+recompute_alpha = False
+
+# Se arquivo existe, verificar se parâmetros mudaram
 if os.path.exists(path_alpha):
     with open(path_alpha, "r", encoding="utf-8") as f:
         data = json.load(f)
+    
+    saved_params = data.get("computation_params", {})
+    current_params = {
+        "alpha_global_prior": alpha_global_prior,
+        "shrinkage_m": shrinkage_m, 
+        "min_samples_per_league": min_samples_per_league
+    }
+    
+    # Se parâmetros mudaram, recalcular
+    if saved_params != current_params:
+        recompute_alpha = True
+        st.info("🔄 Parameters changed - recomputing α...")
+else:
+    recompute_alpha = True
+
+# RECALCULAR se necessário ou se retrain está marcado
+if recompute_alpha or retrain:
+    st.info("⏳ Computing α by league with new parameters...")
+    alpha_by_league = compute_alpha_by_league_all(
+        history, alpha_global_prior, shrinkage_m, min_samples_per_league
+    )
+    # Salvar COM parâmetros usados
+    with open(path_alpha, "w", encoding="utf-8") as f:
+        json.dump({
+            "alpha_by_league": alpha_by_league,
+            "computation_params": {
+                "alpha_global_prior": alpha_global_prior,
+                "shrinkage_m": shrinkage_m,
+                "min_samples_per_league": min_samples_per_league
+            }
+        }, f, ensure_ascii=False, indent=2)
+    st.success(f"💾 α recomputed & saved for {len(alpha_by_league)} leagues")
+else:
     alpha_by_league = data.get("alpha_by_league", {})
     st.caption(f"✅ α loaded from cache ({len(alpha_by_league)} leagues)")
-else:
-    st.info("⏳ Computing α by league…")
-    alpha_by_league = compute_alpha_by_league_all(history, alpha_global_prior, shrinkage_m, min_samples_per_league)
-    with open(path_alpha, "w", encoding="utf-8") as f:
-        json.dump({"alpha_by_league": alpha_by_league}, f, ensure_ascii=False, indent=2)
-    st.success(f"💾 α computed & saved for {len(alpha_by_league)} leagues")
 
 
 
