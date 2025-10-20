@@ -266,28 +266,28 @@ features_raw = [f for f in features_raw if f in history.columns]
 X = history[features_raw].copy()
 y = history['Result']
 
-# Encoding
+# ⚠️⚠️⚠️ ATUALIZAR ESTA PARTE ⚠️⚠️⚠️
+# SUBSTITUIR:
+# cat_cols = [c for c in ['Dominant','League_Classification'] if c in X]
+
+# POR:
+cat_cols = [c for c in ['League', 'Dominant', 'League_Classification'] if c in X]  # ✅ ADICIONAR 'League'
+
+# [O RESTO DO CÓDIGO PERMANECE IGUAL...]
 BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
 if 'Home_Band' in X: X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
 if 'Away_Band' in X: X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
 
-cat_cols = [c for c in ['League','Dominant','League_Classification'] if c in X]
+# One-hot encoding (AGORA INCLUI 'League')
 encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
 if cat_cols:
     encoded = encoder.fit_transform(X[cat_cols])
     encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(cat_cols))
     X = pd.concat([X.drop(columns=cat_cols).reset_index(drop=True), encoded_df.reset_index(drop=True)], axis=1)
 
-# ADICIONAR LOG DE CATEGORIAS (opcional):
-st.sidebar.info(f"🏆 Codificando {len(cat_cols)} variáveis categóricas")
-for cat in cat_cols:
-    if cat in X:
-        unique_vals = X[cat].nunique()
-        st.sidebar.write(f"   - {cat}: {unique_vals} categorias")
-
-# Modelo RF
+# Modelo RF (mantém igual)
 model = RandomForestClassifier(
-    n_estimators=200,  # Reduzido para performance
+    n_estimators=200,
     max_depth=10,
     min_samples_split=10,
     min_samples_leaf=4,
@@ -466,7 +466,7 @@ if len(rnn_sequences) > 0:
     st.info("""
     **🎯 RNN Value Detector - Pronto para Treinar**
     - Analisando padrões temporais de mercado
-    - Detectando onde odds não refletem momentum real
+    - Detectando onde odds não refletem momentum real  
     - Buscando edges baseados no seu HandScore
     """)
     
