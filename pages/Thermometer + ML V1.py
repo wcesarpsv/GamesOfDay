@@ -1118,6 +1118,60 @@ if all(col in games_today.columns for col in ['Market_Error_Home', 'Market_Error
             .style.format({'EV_Home':'{:+.2f}', 'EV_Away':'{:+.2f}'})
         )
 
+# =============================================
+    # 📊 ANÁLISE COMPARATIVA – TARGET ORIGINAL vs EV TEÓRICO
+    # =============================================
+    st.markdown("### 📈 Análise Comparativa de Targets – ROI, Correlação e Concordância")
+
+    try:
+        # Garantir que ambos os targets existam
+        if all(col in value_history.columns for col in ['Target_Value_Home','Target_EV_Home','Odd_H','Odd_A']):
+            from scipy.stats import pearsonr
+
+            # Correlação entre os targets
+            corr_home, _ = pearsonr(value_history['Target_Value_Home'], value_history['Target_EV_Home'])
+            corr_away, _ = pearsonr(value_history['Target_Value_Away'], value_history['Target_EV_Away'])
+
+            # Concordância (quando ambos são iguais)
+            concord_home = (value_history['Target_Value_Home'] == value_history['Target_EV_Home']).mean() * 100
+            concord_away = (value_history['Target_Value_Away'] == value_history['Target_EV_Away']).mean() * 100
+
+            # ROI médio histórico com stake unitário
+            def calc_roi(df, side):
+                mask = (df[f'Target_EV_{side}'] == 1)
+                if mask.sum() == 0:
+                    return 0, 0
+                odds = df.loc[mask, f'Odd_{side[0]}']
+                results = (df['Result'] == side)
+                profit = np.where(mask & results, odds - 1, np.where(mask, -1, 0))
+                total_profit = profit.sum()
+                total_bets = mask.sum()
+                roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
+                winrate = results[mask].mean() * 100 if total_bets > 0 else 0
+                return roi, winrate
+
+            roi_ev_home, win_ev_home = calc_roi(value_history, "Home")
+            roi_ev_away, win_ev_away = calc_roi(value_history, "Away")
+
+            summary_comparison = {
+                "Correlação Targets – Home": round(corr_home, 3),
+                "Correlação Targets – Away": round(corr_away, 3),
+                "Concordância (%) – Home": round(concord_home, 2),
+                "Concordância (%) – Away": round(concord_away, 2),
+                "ROI Médio (EV Home %)": round(roi_ev_home, 2),
+                "ROI Médio (EV Away %)": round(roi_ev_away, 2),
+                "Winrate (EV Home %)": round(win_ev_home, 2),
+                "Winrate (EV Away %)": round(win_ev_away, 2)
+            }
+
+            st.json(summary_comparison)
+
+            st.caption("💡 *Correlação indica quanto os dois targets medem o mesmo conceito; concordância mostra o percentual de decisões iguais; ROI e Winrate avaliam a eficácia real do target EV.*")
+        else:
+            st.warning("⚠️ Colunas de targets ausentes — análise comparativa não pôde ser realizada.")
+    except Exception as e:
+        st.error(f"Erro na análise comparativa: {e}")
+
     st.success("✅ Meta-Modelo de Valor treinado e aplicado com sucesso!")
 
 else:
