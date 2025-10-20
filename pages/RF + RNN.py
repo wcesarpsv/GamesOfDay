@@ -296,6 +296,92 @@ model = RandomForestClassifier(
 )
 model.fit(X, y)
 
+
+
+########################################
+####### Bloco 5B – RNN Thresholds ######
+########################################
+st.sidebar.markdown("---")
+st.sidebar.subheader("🧠 RNN Value Detector Settings")
+
+# Inicializar session state se não existir
+if 'rnn_back_home' not in st.session_state:
+    st.session_state.rnn_back_home = 0.70
+if 'rnn_back_away' not in st.session_state:
+    st.session_state.rnn_back_away = 0.70
+if 'rnn_1x' not in st.session_state:
+    st.session_state.rnn_1x = 0.60  
+if 'rnn_x2' not in st.session_state:
+    st.session_state.rnn_x2 = 0.60
+
+# Thresholds ajustáveis (usando session state)
+rnn_back_home_threshold = st.sidebar.slider(
+    "Back Home Threshold", 
+    min_value=0.50, max_value=0.85, value=st.session_state.rnn_back_home, step=0.01,
+    help="Confiança mínima para recomendar 🟢 Back Home"
+)
+
+rnn_back_away_threshold = st.sidebar.slider(
+    "Back Away Threshold",
+    min_value=0.50, max_value=0.85, value=st.session_state.rnn_back_away, step=0.01, 
+    help="Confiança mínima para recomendar 🟠 Back Away"
+)
+
+rnn_1x_threshold = st.sidebar.slider(
+    "1X (Home/Draw) Threshold",
+    min_value=0.50, max_value=0.80, value=st.session_state.rnn_1x, step=0.01,
+    help="Confiança mínima para recomendar 🟦 1X"
+)
+
+rnn_x2_threshold = st.sidebar.slider(
+    "X2 (Away/Draw) Threshold", 
+    min_value=0.50, max_value=0.80, value=st.session_state.rnn_x2, step=0.01,
+    help="Confiança mínima para recomendar 🟪 X2"
+)
+
+# Presets rápidos
+st.sidebar.markdown("**🎚️ Quick Presets:**")
+col1, col2, col3 = st.sidebar.columns(3)
+
+with col1:
+    if st.button("Conservative"):
+        st.session_state.rnn_back_home = 0.72
+        st.session_state.rnn_back_away = 0.72
+        st.session_state.rnn_1x = 0.65
+        st.session_state.rnn_x2 = 0.65
+        st.rerun()
+
+with col2:
+    if st.button("Moderate"):
+        st.session_state.rnn_back_home = 0.68
+        st.session_state.rnn_back_away = 0.68  
+        st.session_state.rnn_1x = 0.60
+        st.session_state.rnn_x2 = 0.60
+        st.rerun()
+
+with col3:
+    if st.button("Aggressive"):
+        st.session_state.rnn_back_home = 0.62
+        st.session_state.rnn_back_away = 0.62
+        st.session_state.rnn_1x = 0.55
+        st.session_state.rnn_x2 = 0.55
+        st.rerun()
+
+# Explicação dos níveis
+aggressiveness = "Conservative"
+if (rnn_back_home_threshold <= 0.65 and rnn_back_away_threshold <= 0.65):
+    aggressiveness = "🟢 Aggressive"
+elif (rnn_back_home_threshold <= 0.68 and rnn_back_away_threshold <= 0.68):
+    aggressiveness = "🟡 Moderate"
+
+st.sidebar.info(f"""
+**Current Mode: {aggressiveness}**
+- Back Home/Away: ≥{rnn_back_home_threshold:.0%}
+- 1X/X2: ≥{rnn_1x_threshold:.0%}
+""")
+
+
+
 ########################################
 ####### Bloco 6 – Apply RF to Today ####
 ########################################
@@ -422,25 +508,27 @@ def prepare_rnn_data_simple(history_df, games_today_df):
     return np.array(sequences), np.array(static_features)
 
 # ✅ SUBSTITUIR esta função no Bloco 8:
-def rnn_value_recommendation(probs, row):
-    """Gera recomendação padronizada com mesma linguagem do RF"""
+def rnn_value_recommendation(probs, row, 
+                           back_home_thresh=0.70, back_away_thresh=0.70,
+                           onex_thresh=0.60, x2_thresh=0.60):
+    """Gera recomendação com thresholds dinâmicos"""
     value_home, value_away, no_value = probs
     
-    # Usar os MESMOS ícones e formatos do Random Forest
-    if value_home >= 0.7:
-        return "🟢 Back Home"  # Igual ao RF
-    elif value_away >= 0.7:
-        return "🟠 Back Away"  # Igual ao RF
-    elif value_home >= 0.6:
-        return "🟦 1X (Home/Draw)"  # Igual ao RF
-    elif value_away >= 0.6:
-        return "🟪 X2 (Away/Draw)"  # Igual ao RF
-    elif value_home > value_away and value_home >= 0.55:
-        return "🟦 1X (Home/Draw)"  # Igual ao RF
-    elif value_away > value_home and value_away >= 0.55:
-        return "🟪 X2 (Away/Draw)"  # Igual ao RF
+    # Usar thresholds do sidebar
+    if value_home >= back_home_thresh:
+        return "🟢 Back Home"
+    elif value_away >= back_away_thresh:
+        return "🟠 Back Away"
+    elif value_home >= onex_thresh:
+        return "🟦 1X (Home/Draw)"
+    elif value_away >= x2_thresh:
+        return "🟪 X2 (Away/Draw)"
+    elif value_home > value_away and value_home >= (onex_thresh - 0.05):
+        return "🟦 1X (Home/Draw)"
+    elif value_away > value_home and value_away >= (x2_thresh - 0.05):
+        return "🟪 X2 (Away/Draw)"
     else:
-        return "❌ Avoid"  # Igual ao RF
+        return "❌ Avoid"
 
 
 ########################################
@@ -469,11 +557,18 @@ try:
         games_today["RNN_Value_Away"] = simulated_probs[:, 1] 
         games_today["RNN_Value_None"] = simulated_probs[:, 2]
         
+        # ✅ SUBSTITUIR esta parte no Bloco 9:
         games_today["RNN_Recommendation"] = [
-            rnn_value_recommendation(probs, row) 
+            rnn_value_recommendation(
+                probs, row,
+                back_home_thresh=rnn_back_home_threshold,
+                back_away_thresh=rnn_back_away_threshold, 
+                onex_thresh=rnn_1x_threshold,
+                x2_thresh=rnn_x2_threshold
+            ) 
             for probs, (_, row) in zip(simulated_probs, games_today.iterrows())
         ]
-        
+                
         # Mostrar resultados RNN
         st.subheader("📊 RNN Value Recommendations")
         
