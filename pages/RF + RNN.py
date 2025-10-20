@@ -421,21 +421,26 @@ def prepare_rnn_data_simple(history_df, games_today_df):
     
     return np.array(sequences), np.array(static_features)
 
-# ✅✅✅ ADICIONAR ESTA FUNÇÃO AQUI ✅✅✅
+# ✅ SUBSTITUIR esta função no Bloco 8:
 def rnn_value_recommendation(probs, row):
-    """Gera recomendação baseada na detecção de value da RNN"""
+    """Gera recomendação padronizada com mesma linguagem do RF"""
     value_home, value_away, no_value = probs
     
-    if value_home >= 0.6:
-        return f"🟢 VALUE HOME ({value_home:.1%})"
+    # Usar os MESMOS ícones e formatos do Random Forest
+    if value_home >= 0.7:
+        return "🟢 Back Home"  # Igual ao RF
+    elif value_away >= 0.7:
+        return "🟠 Back Away"  # Igual ao RF
+    elif value_home >= 0.6:
+        return "🟦 1X (Home/Draw)"  # Igual ao RF
     elif value_away >= 0.6:
-        return f"🟠 VALUE AWAY ({value_away:.1%})"
-    elif value_home > value_away:
-        return f"🟦 1X VALUE ({value_home:.1%})"
-    elif value_away > value_home:
-        return f"🟪 X2 VALUE ({value_away:.1%})"
+        return "🟪 X2 (Away/Draw)"  # Igual ao RF
+    elif value_home > value_away and value_home >= 0.55:
+        return "🟦 1X (Home/Draw)"  # Igual ao RF
+    elif value_away > value_home and value_away >= 0.55:
+        return "🟪 X2 (Away/Draw)"  # Igual ao RF
     else:
-        return "❌ NO VALUE"
+        return "❌ Avoid"  # Igual ao RF
 
 
 ########################################
@@ -513,30 +518,33 @@ except Exception as e:
 st.markdown("---")
 st.subheader("🥊 ML vs RNN - Model Battle")
 
+# ✅ SUBSTITUIR esta função no Bloco 10:
 def analyze_agreement(ml_rec, rnn_rec):
-    """Analisa concordância entre os modelos"""
+    """Analisa concordância entre modelos com linguagem padronizada"""
     if pd.isna(ml_rec) or pd.isna(rnn_rec):
         return "🤷 Missing Data"
     
     ml_str = str(ml_rec)
     rnn_str = str(rnn_rec)
     
-    # Verificar se ambos recomendam NÃO apostar
-    both_avoid = "Avoid" in ml_str and "NO VALUE" in rnn_str
-    both_bet = "Avoid" not in ml_str and "NO VALUE" not in rnn_str
+    # Agora ambos usam a mesma linguagem!
+    both_avoid = "❌ Avoid" in ml_str and "❌ Avoid" in rnn_str
+    both_bet = "❌ Avoid" not in ml_str and "❌ Avoid" not in rnn_str
     
     if both_avoid:
         return "🤝 Both Avoid"
     
     if both_bet:
-        # Verificar se recomendam o mesmo lado
-        ml_side = ml_str.split()[1] if len(ml_str.split()) > 1 else ""
-        rnn_side = rnn_str.split()[1] if len(rnn_str.split()) > 1 else ""
+        # Extrair o tipo de aposta (exato mesmo formato)
+        ml_type = ml_str.split()[1] if len(ml_str.split()) > 1 else ""
+        rnn_type = rnn_str.split()[1] if len(rnn_str.split()) > 1 else ""
         
-        if ml_side == rnn_side:
+        if ml_str == rnn_str:  # Agora podemos comparar exatamente!
             return "🎯 Perfect Agreement"
-        elif ("Home" in ml_side and "Home" in rnn_side) or ("Away" in ml_side and "Away" in rnn_side):
+        elif ("Home" in ml_str and "Home" in rnn_str) or ("Away" in ml_str and "Away" in rnn_str):
             return "✅ Same Side"
+        elif ("1X" in ml_str and "1X" in rnn_str) or ("X2" in ml_str and "X2" in rnn_str):
+            return "✅ Same Side" 
         else:
             return "⚔️ Different Sides"
     
