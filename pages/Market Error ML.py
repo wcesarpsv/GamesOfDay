@@ -63,13 +63,14 @@ def prepare_history(df):
 
 def compute_double_chance_odds(df):
     """Calcula odds de dupla chance"""
-    probs = pd.DataFrame()
-    probs['p_H'] = 1 / df['Odd_H']
-    probs['p_D'] = 1 / df['Odd_D']
-    probs['p_A'] = 1 / df['Odd_A']
-    probs = probs.div(probs.sum(axis=1), axis=0)
-    df['Odd_1X'] = 1 / (probs['p_H'] + probs['p_D'])
-    df['Odd_X2'] = 1 / (probs['p_A'] + probs['p_D'])
+    if all(col in df.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
+        probs = pd.DataFrame()
+        probs['p_H'] = 1 / df['Odd_H']
+        probs['p_D'] = 1 / df['Odd_D']
+        probs['p_A'] = 1 / df['Odd_A']
+        probs = probs.div(probs.sum(axis=1), axis=0)
+        df['Odd_1X'] = 1 / (probs['p_H'] + probs['p_D'])
+        df['Odd_X2'] = 1 / (probs['p_A'] + probs['p_D'])
     return df
 
 def classify_leagues_variation(history_df):
@@ -200,14 +201,17 @@ def load_data():
     games_today = games_today.merge(league_bands, on='League', how='left')
     
     # Calcular bandas
-    games_today['Home_Band'] = np.where(
-        games_today['M_H'] <= games_today['Home_P20'], 'Bottom 20%',
-        np.where(games_today['M_H'] >= games_today['Home_P80'], 'Top 20%', 'Balanced')
-    )
-    games_today['Away_Band'] = np.where(
-        games_today['M_A'] <= games_today['Away_P20'], 'Bottom 20%',
-        np.where(games_today['M_A'] >= games_today['Away_P80'], 'Top 20%', 'Balanced')
-    )
+    if all(col in games_today.columns for col in ['M_H', 'Home_P20', 'Home_P80']):
+        games_today['Home_Band'] = np.where(
+            games_today['M_H'] <= games_today['Home_P20'], 'Bottom 20%',
+            np.where(games_today['M_H'] >= games_today['Home_P80'], 'Top 20%', 'Balanced')
+        )
+    
+    if all(col in games_today.columns for col in ['M_A', 'Away_P20', 'Away_P80']):
+        games_today['Away_Band'] = np.where(
+            games_today['M_A'] <= games_today['Away_P20'], 'Bottom 20%',
+            np.where(games_today['M_A'] >= games_today['Away_P80'], 'Top 20%', 'Balanced')
+        )
     
     games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
     
@@ -243,9 +247,9 @@ def train_main_model(_history):
     features_raw = [
         'M_H','M_A','Diff_Power','M_Diff',
         'Home_Band','Away_Band','Dominant','League_Classification',
-        'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2',
-        'EV','Games_Analyzed'
+        'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2'
     ]
+    # Manter apenas colunas que existem
     features_raw = [f for f in features_raw if f in _history.columns]
 
     X = _history[features_raw].copy()
@@ -269,8 +273,8 @@ def train_main_model(_history):
 
     # Treinar modelo
     model = RandomForestClassifier(
-        n_estimators=800,
-        max_depth=12,
+        n_estimators=200,  # Reduzido para performance
+        max_depth=10,
         min_samples_split=10,
         min_samples_leaf=4,
         max_features='sqrt',
@@ -283,15 +287,26 @@ def train_main_model(_history):
     return model, encoder, features_raw
 
 # Treinar modelo principal
-main_model, encoder, features_raw = train_main_model(history)
+try:
+    main_model, encoder, features_raw = train_main_model(history)
+    st.success("✅ Main ML model trained successfully!")
+except Exception as e:
+    st.error(f"Error training main model: {e}")
+    st.stop()
 
 ########################################
 ### Bloco 7 – Market Error Analysis ####
 ########################################
 st.header("📊 Market Error Analysis")
 
+# Verificar se temos as colunas necessárias de odds
+required_odds_cols = ['Odd_H', 'Odd_D', 'Odd_A']
+if not all(col in games_today.columns for col in required_odds_cols):
+    st.error(f"Missing required odds columns: {required_odds_cols}")
+    st.stop()
+
 # Calcular probabilidades implícitas do mercado
-if all(col in games_today.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
+try:
     probs = pd.DataFrame()
     probs['p_H'] = 1 / games_today['Odd_H']
     probs['p_D'] = 1 / games_today['Odd_D']
@@ -303,8 +318,10 @@ if all(col in games_today.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
     games_today['Imp_Prob_A'] = probs['p_A']
 
     # Aplicar modelo principal para obter probabilidades ML
-    X_today = games_today[features_raw].copy()
+    X_today = games_today[[f for f in features_raw if f in games_today.columns]].copy()
     
+    # Mapear bandas numéricas
+    BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
     if 'Home_Band' in X_today: 
         X_today['Home_Band_Num'] = X_today['Home_Band'].map(BAND_MAP)
     if 'Away_Band' in X_today: 
@@ -312,12 +329,15 @@ if all(col in games_today.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
 
     cat_cols = [c for c in ['Dominant','League_Classification'] if c in X_today]
     
-    if cat_cols:
+    if cat_cols and encoder is not None:
         encoded_today = encoder.transform(X_today[cat_cols])
         encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(cat_cols))
         X_today = pd.concat([X_today.drop(columns=cat_cols).reset_index(drop=True),
                              encoded_today_df.reset_index(drop=True)], axis=1)
 
+    # Preencher NaN com 0 para evitar erros
+    X_today = X_today.fillna(0)
+    
     ml_proba = main_model.predict_proba(X_today)
     games_today["ML_Proba_Home"] = ml_proba[:, list(main_model.classes_).index("Home")]
     games_today["ML_Proba_Draw"] = ml_proba[:, list(main_model.classes_).index("Draw")]
@@ -342,53 +362,65 @@ if all(col in games_today.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
     with col1:
         st.subheader("🎯 Value Bet Scatter Plot")
         
-        # Criar scatter plot interativo
-        fig = px.scatter(
-            games_today,
-            x='Imp_Prob_H',
-            y='ML_Proba_Home',
-            color='EV_Home',
-            size='abs(Market_Error_Home)',
-            hover_data=['Home', 'Away', 'League', 'Odd_H'],
-            title='ML Probability vs Market Probability (Home)',
-            color_continuous_scale='RdYlGn',
-            range_color=[-0.5, 0.5]
-        )
+        # Criar DataFrame limpo para o plot
+        plot_data = games_today[['Imp_Prob_H', 'ML_Proba_Home', 'EV_Home', 'Market_Error_Home', 
+                                'Home', 'Away', 'League', 'Odd_H']].copy()
+        plot_data = plot_data.dropna()
         
-        # Adicionar linha de igualdade
-        fig.add_trace(
-            go.Scatter(
-                x=[0, 1], y=[0, 1],
-                mode='lines',
-                line=dict(dash='dash', color='gray'),
-                name='Market = ML'
+        if not plot_data.empty:
+            # Criar scatter plot interativo
+            fig = px.scatter(
+                plot_data,
+                x='Imp_Prob_H',
+                y='ML_Proba_Home',
+                color='EV_Home',
+                size=abs(plot_data['Market_Error_Home']),
+                hover_data=['Home', 'Away', 'League', 'Odd_H'],
+                title='ML Probability vs Market Probability (Home)',
+                color_continuous_scale='RdYlGn',
+                range_color=[-0.5, 0.5]
             )
-        )
-        
-        # Adicionar áreas de value bet
-        fig.add_shape(type="rect", x0=0, y0=0, x1=1, y1=1,
-                     line=dict(color="LightGreen", width=2),
-                     fillcolor="Green", opacity=0.1)
-        
-        st.plotly_chart(fig, use_container_width=True)
+            
+            # Adicionar linha de igualdade
+            fig.add_trace(
+                go.Scatter(
+                    x=[0, 1], y=[0, 1],
+                    mode='lines',
+                    line=dict(dash='dash', color='gray'),
+                    name='Market = ML'
+                )
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("No data available for scatter plot")
 
     with col2:
         st.subheader("📈 Market Error Distribution")
         
-        # Histograma dos errors
-        fig2 = px.histogram(
-            games_today,
-            x=['Market_Error_Home', 'Market_Error_Away'],
-            nbins=30,
-            title='Distribution of Market Errors',
-            barmode='overlay',
-            opacity=0.7
-        )
+        # Preparar dados para histograma
+        error_data = games_today[['Market_Error_Home', 'Market_Error_Away']].copy().dropna()
         
-        fig2.add_vline(x=min_value_gap, line_dash="dash", line_color="red", annotation_text="Value Threshold")
-        fig2.add_vline(x=-min_value_gap, line_dash="dash", line_color="red")
-        
-        st.plotly_chart(fig2, use_container_width=True)
+        if not error_data.empty:
+            # Criar histograma
+            fig2 = go.Figure()
+            fig2.add_trace(go.Histogram(x=error_data['Market_Error_Home'], name='Home Error', opacity=0.7))
+            fig2.add_trace(go.Histogram(x=error_data['Market_Error_Away'], name='Away Error', opacity=0.7))
+            
+            fig2.update_layout(
+                title='Distribution of Market Errors',
+                barmode='overlay',
+                xaxis_title='Market Error',
+                yaxis_title='Count'
+            )
+            
+            fig2.add_vline(x=min_value_gap, line_dash="dash", line_color="red", 
+                          annotation_text="Value Threshold")
+            fig2.add_vline(x=-min_value_gap, line_dash="dash", line_color="red")
+            
+            st.plotly_chart(fig2, use_container_width=True)
+        else:
+            st.warning("No data available for error distribution")
 
     ########################################
     ### Bloco 9 – Train Meta-Models #######
@@ -398,35 +430,49 @@ if all(col in games_today.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
     # Preparar dados históricos para meta-modelo
     value_history = history.copy()
 
-    # Aplicar modelo principal ao histórico
-    X_hist = value_history[[c for c in features_raw if c in value_history.columns]].copy()
-    
-    # Mapear bandas numéricas
-    BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
-    if 'Home_Band' in X_hist: 
-        X_hist['Home_Band_Num'] = X_hist['Home_Band'].map(BAND_MAP)
-    if 'Away_Band' in X_hist: 
-        X_hist['Away_Band_Num'] = X_hist['Away_Band'].map(BAND_MAP)
+    # Aplicar modelo principal ao histórico para obter ML_Proba
+    try:
+        X_hist = value_history[[c for c in features_raw if c in value_history.columns]].copy()
+        
+        # Mapear bandas numéricas
+        BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
+        if 'Home_Band' in X_hist: 
+            X_hist['Home_Band_Num'] = X_hist['Home_Band'].map(BAND_MAP)
+        if 'Away_Band' in X_hist: 
+            X_hist['Away_Band_Num'] = X_hist['Away_Band'].map(BAND_MAP)
 
-    # One-hot encoding
-    cat_cols = [c for c in ['Dominant','League_Classification'] if c in X_hist]
-    if cat_cols:
-        encoded_hist = encoder.transform(X_hist[cat_cols])
-        encoded_hist_df = pd.DataFrame(encoded_hist, columns=encoder.get_feature_names_out(cat_cols))
-        X_hist = pd.concat([X_hist.drop(columns=cat_cols).reset_index(drop=True),
-                            encoded_hist_df.reset_index(drop=True)], axis=1)
+        # One-hot encoding
+        cat_cols = [c for c in ['Dominant','League_Classification'] if c in X_hist]
+        if cat_cols and encoder is not None:
+            encoded_hist = encoder.transform(X_hist[cat_cols])
+            encoded_hist_df = pd.DataFrame(encoded_hist, columns=encoder.get_feature_names_out(cat_cols))
+            X_hist = pd.concat([X_hist.drop(columns=cat_cols).reset_index(drop=True),
+                                encoded_hist_df.reset_index(drop=True)], axis=1)
 
-    # Prever probabilidades com modelo principal
-    ml_proba_hist = main_model.predict_proba(X_hist)
-    value_history["ML_Proba_Home"] = ml_proba_hist[:, list(main_model.classes_).index("Home")]
-    value_history["ML_Proba_Away"] = ml_proba_hist[:, list(main_model.classes_).index("Away")]
+        # Preencher NaN
+        X_hist = X_hist.fillna(0)
+        
+        # Prever probabilidades com modelo principal
+        ml_proba_hist = main_model.predict_proba(X_hist)
+        value_history["ML_Proba_Home"] = ml_proba_hist[:, list(main_model.classes_).index("Home")]
+        value_history["ML_Proba_Away"] = ml_proba_hist[:, list(main_model.classes_).index("Away")]
+        
+    except Exception as e:
+        st.warning(f"Could not generate ML probabilities for history: {e}")
+        # Usar valores dummy para continuar
+        value_history["ML_Proba_Home"] = 0.5
+        value_history["ML_Proba_Away"] = 0.5
 
     # Calcular probabilidades implícitas históricas
-    for col in ['Odd_H', 'Odd_D', 'Odd_A']:
-        value_history[f'Imp_{col}'] = 1 / value_history[col]
-    imp_sum = value_history[['Imp_Odd_H', 'Imp_Odd_D', 'Imp_Odd_A']].sum(axis=1)
-    for col in ['Imp_Odd_H', 'Imp_Odd_D', 'Imp_Odd_A']:
-        value_history[col] = value_history[col] / imp_sum
+    if all(col in value_history.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
+        probs_hist = pd.DataFrame()
+        probs_hist['p_H'] = 1 / value_history['Odd_H']
+        probs_hist['p_D'] = 1 / value_history['Odd_D'] 
+        probs_hist['p_A'] = 1 / value_history['Odd_A']
+        probs_hist = probs_hist.div(probs_hist.sum(axis=1), axis=0)
+        
+        value_history['Imp_Prob_H'] = probs_hist['p_H']
+        value_history['Imp_Prob_A'] = probs_hist['p_A']
 
     # Mapear resultado
     def map_result_hist(row):
@@ -438,222 +484,192 @@ if all(col in games_today.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
 
     value_history['Result'] = value_history.apply(map_result_hist, axis=1)
 
-    # Target Original
+    # Target Original - simplificado
     value_history['Target_Value_Home'] = (
-        (value_history['Result'] == "Home") &
-        (1 / value_history['Odd_H'] > value_history['Imp_Odd_H'])
+        (value_history['Result'] == "Home")
     ).astype(int)
 
     value_history['Target_Value_Away'] = (
-        (value_history['Result'] == "Away") &
-        (1 / value_history['Odd_A'] > value_history['Imp_Odd_A'])
+        (value_history['Result'] == "Away") 
     ).astype(int)
 
     # Target EV Teórico
-    value_history['EV_Home'] = (value_history['ML_Proba_Home'] * value_history['Odd_H']) - 1
-    value_history['EV_Away'] = (value_history['ML_Proba_Away'] * value_history['Odd_A']) - 1
-    value_history['Target_EV_Home'] = (value_history['EV_Home'] > 0).astype(int)
-    value_history['Target_EV_Away'] = (value_history['EV_Away'] > 0).astype(int)
+    if all(col in value_history.columns for col in ['ML_Proba_Home', 'Odd_H']):
+        value_history['EV_Home'] = (value_history['ML_Proba_Home'] * value_history['Odd_H']) - 1
+        value_history['EV_Away'] = (value_history['ML_Proba_Away'] * value_history['Odd_A']) - 1
+        value_history['Target_EV_Home'] = (value_history['EV_Home'] > 0).astype(int)
+        value_history['Target_EV_Away'] = (value_history['EV_Away'] > 0).astype(int)
 
-    # Treinar meta-modelos
-    features_value = ['M_H', 'M_A', 'Diff_Power', 'M_Diff', 'Odd_H', 'Odd_D', 'Odd_A']
-    X_val = value_history[features_value].fillna(0)
-
-    # Modelo para Home
-    value_model_home = RandomForestClassifier(
-        n_estimators=400,
-        max_depth=10,
-        min_samples_split=8,
-        min_samples_leaf=3,
-        class_weight='balanced',
-        random_state=42,
-        n_jobs=-1
-    )
-    value_model_home.fit(X_val, value_history['Target_Value_Home'])
-
-    # Modelo para Away
-    value_model_away = RandomForestClassifier(
-        n_estimators=400,
-        max_depth=10,
-        min_samples_split=8,
-        min_samples_leaf=3,
-        class_weight='balanced',
-        random_state=24,
-        n_jobs=-1
-    )
-    value_model_away.fit(X_val, value_history['Target_Value_Away'])
-
-    # Aplicar meta-modelos aos dados atuais
-    X_today_val = games_today[features_value].fillna(0)
-    val_pred_home = value_model_home.predict_proba(X_today_val)[:, 1]
-    val_pred_away = value_model_away.predict_proba(X_today_val)[:, 1]
-
-    games_today['Value_Prob_Home'] = val_pred_home
-    games_today['Value_Prob_Away'] = val_pred_away
-
-    # Classificar value bets
-    def pick_value_side(row):
-        v_home, v_away = row['Value_Prob_Home'], row['Value_Prob_Away']
-        odd_h, odd_a = row['Odd_H'], row['Odd_A']
+    # Treinar meta-modelos simplificados
+    features_value = ['M_H', 'M_A', 'Diff_Power', 'M_Diff', 'Odd_H', 'Odd_A']
+    features_value = [f for f in features_value if f in value_history.columns]
+    
+    if features_value:
+        X_val = value_history[features_value].fillna(0)
         
-        # Aplicar filtros
-        if (v_home >= value_confidence_threshold and 
-            v_home > v_away and 
-            odd_h >= min_odds and
-            row['Market_Error_Home'] >= min_value_gap):
-            return f"🟢 Value Home ({v_home:.2f})"
-        elif (v_away >= value_confidence_threshold and 
-              v_away > v_home and 
-              odd_a >= min_odds and
-              row['Market_Error_Away'] >= min_value_gap):
-            return f"🟠 Value Away ({v_away:.2f})"
+        # Modelo para Home
+        value_model_home = RandomForestClassifier(
+            n_estimators=100,
+            max_depth=8,
+            min_samples_split=10,
+            min_samples_leaf=5,
+            class_weight='balanced',
+            random_state=42,
+            n_jobs=-1
+        )
+        value_model_home.fit(X_val, value_history['Target_Value_Home'])
+
+        # Modelo para Away
+        value_model_away = RandomForestClassifier(
+            n_estimators=100,
+            max_depth=8,
+            min_samples_split=10,
+            min_samples_leaf=5,
+            class_weight='balanced',
+            random_state=24,
+            n_jobs=-1
+        )
+        value_model_away.fit(X_val, value_history['Target_Value_Away'])
+
+        # Aplicar meta-modelos aos dados atuais
+        X_today_val = games_today[features_value].fillna(0)
+        val_pred_home = value_model_home.predict_proba(X_today_val)[:, 1]
+        val_pred_away = value_model_away.predict_proba(X_today_val)[:, 1]
+
+        games_today['Value_Prob_Home'] = val_pred_home
+        games_today['Value_Prob_Away'] = val_pred_away
+
+        # Classificar value bets
+        def pick_value_side(row):
+            if 'Value_Prob_Home' not in row or 'Value_Prob_Away' not in row:
+                return "❌ No Value"
+                
+            v_home, v_away = row['Value_Prob_Home'], row['Value_Prob_Away']
+            odd_h = row.get('Odd_H', 1)
+            odd_a = row.get('Odd_A', 1)
+            me_home = row.get('Market_Error_Home', 0)
+            me_away = row.get('Market_Error_Away', 0)
+            
+            # Aplicar filtros
+            if (v_home >= value_confidence_threshold and 
+                v_home > v_away and 
+                odd_h >= min_odds and
+                me_home >= min_value_gap):
+                return f"🟢 Value Home ({v_home:.2f})"
+            elif (v_away >= value_confidence_threshold and 
+                  v_away > v_home and 
+                  odd_a >= min_odds and
+                  me_away >= min_value_gap):
+                return f"🟠 Value Away ({v_away:.2f})"
+            else:
+                return "❌ No Value"
+
+        games_today['Value_ML_Pick'] = games_today.apply(pick_value_side, axis=1)
+
+        ########################################
+        ##### Bloco 10 – Top Value Bets #######
+        ########################################
+        st.header("🔥 Top Value Bet Opportunities")
+        
+        # Filtrar value bets
+        value_bets = games_today[games_today['Value_ML_Pick'] != "❌ No Value"].copy()
+        
+        if not value_bets.empty:
+            # Ordenar por confiança do meta-modelo
+            value_bets = value_bets.sort_values(['Value_Prob_Home', 'Value_Prob_Away'], ascending=False)
+            
+            # Exibir tabela de oportunidades
+            cols_to_show = [
+                'League', 'Home', 'Away', 'Value_ML_Pick',
+                'Value_Prob_Home', 'Value_Prob_Away', 
+                'ML_Proba_Home', 'ML_Proba_Away',
+                'Imp_Prob_H', 'Imp_Prob_A',
+                'Market_Error_Home', 'Market_Error_Away',
+                'EV_Home', 'EV_Away',
+                'Odd_H', 'Odd_A'
+            ]
+            
+            available_cols = [c for c in cols_to_show if c in value_bets.columns]
+            
+            st.dataframe(
+                value_bets[available_cols]
+                .style.format({
+                    'Value_Prob_Home': '{:.3f}',
+                    'Value_Prob_Away': '{:.3f}',
+                    'ML_Proba_Home': '{:.3f}',
+                    'ML_Proba_Away': '{:.3f}',
+                    'Imp_Prob_H': '{:.3f}',
+                    'Imp_Prob_A': '{:.3f}',
+                    'Market_Error_Home': '{:+.3f}',
+                    'Market_Error_Away': '{:+.3f}',
+                    'EV_Home': '{:+.3f}',
+                    'EV_Away': '{:+.3f}',
+                    'Odd_H': '{:.2f}',
+                    'Odd_A': '{:.2f}'
+                }),
+                use_container_width=True,
+                height=400
+            )
+            
+            st.success(f"🎉 Found {len(value_bets)} value bet opportunities!")
+            
         else:
-            return "❌ No Value"
+            st.warning("No value bet opportunities found with current filters.")
 
-    games_today['Value_ML_Pick'] = games_today.apply(pick_value_side, axis=1)
-
-    ########################################
-    ##### Bloco 10 – Top Value Bets #######
-    ########################################
-    st.header("🔥 Top Value Bet Opportunities")
-    
-    # Filtrar value bets
-    value_bets = games_today[games_today['Value_ML_Pick'] != "❌ No Value"].copy()
-    
-    if not value_bets.empty:
-        # Ordenar por confiança do meta-modelo
-        value_bets = value_bets.sort_values(['Value_Prob_Home', 'Value_Prob_Away'], ascending=False)
-        
-        # Exibir tabela de oportunidades
-        cols_to_show = [
-            'League', 'Home', 'Away', 'Value_ML_Pick',
-            'Value_Prob_Home', 'Value_Prob_Away', 
-            'ML_Proba_Home', 'ML_Proba_Away',
-            'Imp_Prob_H', 'Imp_Prob_A',
-            'Market_Error_Home', 'Market_Error_Away',
-            'EV_Home', 'EV_Away',
-            'Odd_H', 'Odd_A'
-        ]
-        
-        available_cols = [c for c in cols_to_show if c in value_bets.columns]
-        
-        st.dataframe(
-            value_bets[available_cols]
-            .style.format({
-                'Value_Prob_Home': '{:.3f}',
-                'Value_Prob_Away': '{:.3f}',
-                'ML_Proba_Home': '{:.3f}',
-                'ML_Proba_Away': '{:.3f}',
-                'Imp_Prob_H': '{:.3f}',
-                'Imp_Prob_A': '{:.3f}',
-                'Market_Error_Home': '{:+.3f}',
-                'Market_Error_Away': '{:+.3f}',
-                'EV_Home': '{:+.3f}',
-                'EV_Away': '{:+.3f}',
-                'Odd_H': '{:.2f}',
-                'Odd_A': '{:.2f}'
-            })
-            .background_gradient(subset=['Value_Prob_Home', 'Value_Prob_Away'], cmap='RdYlGn')
-            .background_gradient(subset=['EV_Home', 'EV_Away'], cmap='RdYlGn'),
-            use_container_width=True,
-            height=400
-        )
-        
-        st.success(f"🎉 Found {len(value_bets)} value bet opportunities!")
-        
     else:
-        st.warning("No value bet opportunities found with current filters.")
-    
-    ########################################
-    ### Bloco 11 – Performance Analysis ###
-    ########################################
-    st.header("📈 Value Bet Performance Analysis")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Análise de correlação entre targets
-        st.subheader("Target Correlation Analysis")
-        
-        if all(col in value_history.columns for col in ['Target_Value_Home', 'Target_EV_Home']):
-            from scipy.stats import pearsonr
-            
-            corr_home, _ = pearsonr(value_history['Target_Value_Home'], value_history['Target_EV_Home'])
-            corr_away, _ = pearsonr(value_history['Target_Value_Away'], value_history['Target_EV_Away'])
-            
-            concord_home = (value_history['Target_Value_Home'] == value_history['Target_EV_Home']).mean() * 100
-            concord_away = (value_history['Target_Value_Away'] == value_history['Target_EV_Away']).mean() * 100
-            
-            metrics_df = pd.DataFrame({
-                'Metric': ['Correlation Home', 'Correlation Away', 'Concordance Home', 'Concordance Away'],
-                'Value': [corr_home, corr_away, concord_home, concord_away]
-            })
-            
-            st.dataframe(metrics_df.style.format({'Value': '{:.3f}'}))
-    
-    with col2:
-        # Feature Importance dos Meta-Modelos
-        st.subheader("Meta-Model Feature Importance")
-        
-        feature_importance_home = pd.DataFrame({
-            'feature': features_value,
-            'importance': value_model_home.feature_importances_
-        }).sort_values('importance', ascending=True)
-        
-        fig = px.bar(
-            feature_importance_home,
-            x='importance',
-            y='feature',
-            orientation='h',
-            title='Value Model Feature Importance (Home)'
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
+        st.warning("Not enough features available for meta-model training")
 
     ########################################
-    ##### Bloco 12 – Detailed Analysis #####
+    ##### Bloco 11 – Detailed Analysis #####
     ########################################
     st.header("🔍 Detailed Market Error Analysis")
     
     # Tabela completa com todos os jogos
     detailed_cols = [
-        'League', 'Home', 'Away', 'Value_ML_Pick',
+        'League', 'Home', 'Away', 
         'ML_Proba_Home', 'Imp_Prob_H', 'Market_Error_Home', 'EV_Home',
         'ML_Proba_Away', 'Imp_Prob_A', 'Market_Error_Away', 'EV_Away',
-        'Value_Prob_Home', 'Value_Prob_Away',
         'Odd_H', 'Odd_A', 'Odd_D'
     ]
     
+    # Adicionar Value_Prob se disponível
+    if 'Value_Prob_Home' in games_today.columns:
+        detailed_cols.extend(['Value_Prob_Home', 'Value_Prob_Away', 'Value_ML_Pick'])
+    
     available_detailed = [c for c in detailed_cols if c in games_today.columns]
     
-    st.dataframe(
-        games_today[available_detailed]
-        .sort_values(['Value_Prob_Home', 'Value_Prob_Away'], ascending=False)
-        .style.format({
-            'ML_Proba_Home': '{:.3f}', 'ML_Proba_Away': '{:.3f}',
-            'Imp_Prob_H': '{:.3f}', 'Imp_Prob_A': '{:.3f}',
-            'Market_Error_Home': '{:+.3f}', 'Market_Error_Away': '{:+.3f}',
-            'EV_Home': '{:+.3f}', 'EV_Away': '{:+.3f}',
-            'Value_Prob_Home': '{:.3f}', 'Value_Prob_Away': '{:.3f}',
-            'Odd_H': '{:.2f}', 'Odd_A': '{:.2f}', 'Odd_D': '{:.2f}'
-        })
-        .background_gradient(subset=['Market_Error_Home', 'Market_Error_Away'], cmap='RdYlGn')
-        .background_gradient(subset=['EV_Home', 'EV_Away'], cmap='RdYlGn'),
-        use_container_width=True,
-        height=600
-    )
+    # Filtrar dados para a tabela
+    display_data = games_today[available_detailed].copy().dropna()
+    
+    if not display_data.empty:
+        st.dataframe(
+            display_data
+            .style.format({
+                'ML_Proba_Home': '{:.3f}', 'ML_Proba_Away': '{:.3f}',
+                'Imp_Prob_H': '{:.3f}', 'Imp_Prob_A': '{:.3f}',
+                'Market_Error_Home': '{:+.3f}', 'Market_Error_Away': '{:+.3f}',
+                'EV_Home': '{:+.3f}', 'EV_Away': '{:+.3f}',
+                'Odd_H': '{:.2f}', 'Odd_A': '{:.2f}', 'Odd_D': '{:.2f}'
+            }),
+            use_container_width=True,
+            height=600
+        )
+    else:
+        st.warning("No data available for detailed analysis")
 
-else:
-    st.error("Required odds columns (Odd_H, Odd_D, Odd_A) not found in the data.")
+except Exception as e:
+    st.error(f"Error in market error analysis: {e}")
+    import traceback
+    st.code(traceback.format_exc())
 
 ########################################
-######## Bloco 13 – Footer #############
+######## Bloco 12 – Footer #############
 ########################################
 st.markdown("---")
 st.markdown(
     """
     **💡 Value Bet Detection Methodology:**
-    - **Market Error**: Difference between ML probability and market implied probability
+    - **Market Error**: Difference between ML probability and market implied probability  
     - **Expected Value (EV)**: (ML Probability × Odds) - 1
     - **Meta-Model**: Machine learning model trained to detect historical value patterns
     - **Value Confidence**: Probability that a bet represents genuine value
