@@ -678,6 +678,17 @@ else:
 st.markdown("---")
 st.subheader("👁️ Side-by-Side Model Comparison")
 
+def clean_rnn_recommendation(rec):
+    """Remove porcentagens para agrupar recomendações similares"""
+    if pd.isna(rec):
+        return "NO VALUE"
+    
+    rec_str = str(rec)
+    # Manter apenas a parte antes do parêntese
+    if '(' in rec_str:
+        return rec_str.split('(')[0].strip()
+    return rec_str
+
 col1, col2 = st.columns(2)
 
 with col1:
@@ -688,22 +699,103 @@ with col1:
             st.write(f"{rec}: **{count}** jogos")
         
         # Top picks do RF
-        st.markdown("**🎯 RF Top Picks:**")
-        rf_picks = games_today[games_today['ML_Recommendation'].str.contains('🟢|🟠', na=False)]
-        for _, game in rf_picks.head(5).iterrows():
-            st.write(f"- {game['Home']} vs {game['Away']}")
-            st.write(f"  {game['ML_Recommendation']}")
+        st.markdown("**🎯 RF Top Picks (Diretos):**")
+        rf_picks = games_today[games_today['ML_Recommendation'].str.contains('🟢 Back Home|🟠 Back Away', na=False)]
+        if len(rf_picks) > 0:
+            for _, game in rf_picks.head(5).iterrows():
+                st.write(f"- **{game['Home']}** vs {game['Away']}")
+                st.write(f"  {game['ML_Recommendation']} | Odd: {game.get('Odd_H', 'N/A') if 'Back Home' in game['ML_Recommendation'] else game.get('Odd_A', 'N/A')}")
+        else:
+            st.write("Nenhum pick direto hoje")
 
 with col2:
     st.markdown("### 🧠 RNN Value Detector")
     if 'RNN_Recommendation' in games_today.columns:
-        rnn_summary = games_today['RNN_Recommendation'].value_counts()
+        # Limpar recomendações para agrupar
+        games_today['RNN_Clean'] = games_today['RNN_Recommendation'].apply(clean_rnn_recommendation)
+        
+        rnn_summary = games_today['RNN_Clean'].value_counts()
         for rec, count in rnn_summary.items():
             st.write(f"{rec}: **{count}** jogos")
         
-        # Top picks da RNN
-        st.markdown("**🎯 RNN Value Picks:**")
-        rnn_picks = games_today[games_today['RNN_Recommendation'].str.contains('VALUE', na=False)]
-        for _, game in rnn_picks.head(5).iterrows():
-            st.write(f"- {game['Home']} vs {game['Away']}")
-            st.write(f"  {game['RNN_Recommendation']}")
+        # Top picks da RNN (maior valor)
+        st.markdown("**🎯 RNN High-Value Picks (>70%):**")
+        high_value_mask = (
+            (games_today['RNN_Value_Home'] >= 0.7) | 
+            (games_today['RNN_Value_Away'] >= 0.7)
+        )
+        rnn_high_value = games_today[high_value_mask]
+        
+        if len(rnn_high_value) > 0:
+            for _, game in rnn_high_value.head(5).iterrows():
+                value_pct = max(game['RNN_Value_Home'], game['RNN_Value_Away'])
+                st.write(f"- **{game['Home']}** vs {game['Away']}")
+                st.write(f"  {game['RNN_Recommendation']} | Confidence: {value_pct:.1%}")
+        else:
+            st.write("Nenhum high-value pick (>70%) hoje")
+
+# 🔥 BLOCO EXTRA: Concordância entre modelos
+st.markdown("---")
+st.subheader("🔥 Concordância entre Modelos")
+
+# Jogos onde ambos concordam
+agree_games = games_today[
+    (games_today['Model_Agreement'].isin(['🎯 Perfect Agreement', '✅ Same Side']))
+]
+
+if len(agree_games) > 0:
+    st.success(f"🎯 {len(agree_games)} jogos com concordância entre modelos")
+    
+    agree_cols = ['Home', 'Away', 'ML_Recommendation', 'RNN_Recommendation', 'Model_Agreement']
+    available_agree = [c for c in agree_cols if c in agree_games.columns]
+    
+    st.dataframe(
+        agree_games[available_agree],
+        use_container_width=True,
+        height=300
+    )
+    
+    # Melhores picks consolidados
+    st.markdown("**💎 Melhores Picks Consolidados (Ambos Concordam):**")
+    for _, game in agree_games.iterrows():
+        st.write(f"- **{game['Home']}** vs **{game['Away']}**")
+        st.write(f"  🤖 RF: {game['ML_Recommendation']}")
+        st.write(f"  🧠 RNN: {game['RNN_Recommendation']}")
+        
+else:
+    st.info("🤝 Nenhuma concordância perfeita entre modelos hoje")
+
+# 📊 Resumo de Performance
+st.markdown("---")
+st.subheader("📊 Resumo de Performance")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    total_games = len(games_today)
+    rf_bets = len(games_today[~games_today['ML_Recommendation'].str.contains('❌ Avoid', na=False)])
+    rnn_bets = len(games_today[~games_today['RNN_Recommendation'].str.contains('❌ NO VALUE', na=False)])
+    
+    st.metric("Total de Jogos", total_games)
+    st.metric("RF Recomenda Apostar", rf_bets)
+    st.metric("RNN Recomenda Apostar", rnn_bets)
+
+with col2:
+    perfect_agree = len(games_today[games_today['Model_Agreement'] == '🎯 Perfect Agreement'])
+    same_side = len(games_today[games_today['Model_Agreement'] == '✅ Same Side'])
+    
+    st.metric("Concordância Perfeita", perfect_agree)
+    st.metric("Mesmo Lado", same_side)
+
+with col3:
+    high_confidence_rnn = len(games_today[
+        (games_today['RNN_Value_Home'] >= 0.7) | 
+        (games_today['RNN_Value_Away'] >= 0.7)
+    ])
+    
+    direct_rf_picks = len(games_today[
+        games_today['ML_Recommendation'].str.contains('🟢 Back Home|🟠 Back Away', na=False)
+    ])
+    
+    st.metric("RNN High Confidence", high_confidence_rnn)
+    st.metric("RF Picks Diretos", direct_rf_picks)
