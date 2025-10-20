@@ -895,7 +895,7 @@ try:
     else:
         st.warning("Not enough features available for meta-model training")
 
-    # 🔥 NOVO BLOCO - Performance Analysis with Live Results
+    # 🔥 NOVO BLOCO - Performance Analysis with Live Results (COM PROFIT E ROI)
     if 'Result_Today' in games_today.columns:
         st.header("🏆 Value Bet Performance with Live Results")
         
@@ -914,33 +914,78 @@ try:
                     return result == "Away"
                 else:
                     return None  # Não é value bet, retorna None
+    
+            # 🔥 NOVA FUNÇÃO: Calcular profit para cada value bet
+            def calculate_value_bet_profit(row):
+                rec = str(row['Value_ML_Pick'])
+                result = row['Result_Today']
+                
+                if 'Value Home' in rec:
+                    odd = row.get('Odd_H', 1)
+                    return odd - 1 if result == "Home" else -1
+                elif 'Value Away' in rec:
+                    odd = row.get('Odd_A', 1) 
+                    return odd - 1 if result == "Away" else -1
+                else:
+                    return 0  # Não é value bet, profit zero
             
-            # Aplicar verificação
+            # Aplicar verificações
             finished_games['Value_Correct'] = finished_games.apply(
                 lambda r: check_recommendation(r['Value_ML_Pick'], r['Result_Today']), axis=1
             )
+            
+            # 🔥 CALCULAR PROFIT PARA CADA VALUE BET
+            finished_games['Value_Profit'] = finished_games.apply(calculate_value_bet_profit, axis=1)
             
             # 🔥 CORREÇÃO CRÍTICA: Filtrar apenas os jogos que REALMENTE tiveram value bets
             value_bets_made = finished_games[finished_games['Value_ML_Pick'].str.contains('Value (Home|Away)', na=False, regex=True)]
             correct_bets = value_bets_made['Value_Correct'].sum() if 'Value_Correct' in value_bets_made.columns else 0
             total_value_bets = len(value_bets_made)
             
+            # 🔥 CALCULAR MÉTRICAS DE PROFIT
+            total_profit = value_bets_made['Value_Profit'].sum() if 'Value_Profit' in value_bets_made.columns else 0
+            total_stake = total_value_bets  # Stake fixo de 1 por aposta
+            roi = (total_profit / total_stake) * 100 if total_stake > 0 else 0
+            
             if total_value_bets > 0:
                 win_rate = (correct_bets / total_value_bets) * 100
                 
-                col1, col2, col3 = st.columns(3)
+                # 🔥 NOVAS MÉTRICAS: Profit e ROI
+                col1, col2, col3, col4, col5 = st.columns(5)
                 with col1:
                     st.metric("Value Bets Made", total_value_bets)
                 with col2:
                     st.metric("Correct Predictions", int(correct_bets))
                 with col3:
                     st.metric("Win Rate", f"{win_rate:.1f}%")
+                with col4:
+                    st.metric("Total Profit", f"{total_profit:.2f}u", 
+                             delta=f"{total_profit:.2f}u" if total_profit != 0 else None)
+                with col5:
+                    st.metric("ROI", f"{roi:.1f}%", 
+                             delta=f"{roi:.1f}%" if roi != 0 else None)
+                
+                # 🔥 GRÁFICO DE EVOLUÇÃO DO PROFIT (ACUMULADO)
+                if not value_bets_made.empty:
+                    # Calcular profit acumulado
+                    value_bets_sorted = value_bets_made.sort_values('Value_Profit').reset_index(drop=True)
+                    value_bets_sorted['Profit_Acumulado'] = value_bets_sorted['Value_Profit'].cumsum()
+                    
+                    fig_profit = px.line(
+                        value_bets_sorted,
+                        y='Profit_Acumulado',
+                        title='📈 Profit Acumulado dos Value Bets',
+                        labels={'Profit_Acumulado': 'Profit Acumulado (u)', 'index': 'Nº da Aposta'}
+                    )
+                    fig_profit.add_hline(y=0, line_dash="dash", line_color="red", annotation_text="Break Even")
+                    st.plotly_chart(fig_profit, use_container_width=True)
                 
                 # Tabela de resultados - MOSTRAR APENAS VALUE BETS
                 results_cols = [
                     'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 
-                    'Result_Today', 'Value_ML_Pick', 'Value_Correct',
-                    'ML_Proba_Home', 'ML_Proba_Away', 'Market_Error_Home', 'Market_Error_Away'
+                    'Result_Today', 'Value_ML_Pick', 'Value_Correct', 'Value_Profit',
+                    'ML_Proba_Home', 'ML_Proba_Away', 'Market_Error_Home', 'Market_Error_Away',
+                    'Odd_H', 'Odd_A'  # Adicionando odds para transparência
                 ]
                 available_results = [c for c in results_cols if c in value_bets_made.columns]
                 
@@ -948,16 +993,36 @@ try:
                     st.dataframe(
                         value_bets_made[available_results]
                         .style.format({
-                            'Goals_H_Today': '{:.0f}', 'Goals_A_Today': '{:.0f}',
                             'ML_Proba_Home': '{:.3f}', 'ML_Proba_Away': '{:.3f}',
-                            'Market_Error_Home': '{:+.3f}', 'Market_Error_Away': '{:+.3f}'
+                            'Market_Error_Home': '{:+.3f}', 'Market_Error_Away': '{:+.3f}',
+                            'Value_Profit': '{:+.2f}',
+                            'Odd_H': '{:.2f}', 'Odd_A': '{:.2f}'
                         })
                         .apply(lambda x: ['background: lightgreen' if x['Value_Correct'] == True 
                                         else 'background: lightcoral' if x['Value_Correct'] == False 
+                                        else '' for _ in x], axis=1)
+                        .apply(lambda x: ['color: darkgreen; font-weight: bold' if x['Value_Profit'] > 0 
+                                        else 'color: darkred; font-weight: bold' if x['Value_Profit'] < 0 
                                         else '' for _ in x], axis=1),
                         use_container_width=True,
                         height=400
                     )
+                    
+                    # 🔥 ESTATÍSTICAS DETALHADAS DO PROFIT
+                    st.subheader("💰 Estatísticas Detalhadas do Profit")
+                    profit_stats = value_bets_made['Value_Profit'].describe()
+                    avg_odds = value_bets_made[['Odd_H', 'Odd_A']].mean().mean()
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Profit Médio por Aposta", f"{profit_stats['mean']:.2f}u")
+                    with col2:
+                        st.metric("Maior Profit", f"{profit_stats['max']:.2f}u")
+                    with col3:
+                        st.metric("Maior Loss", f"{profit_stats['min']:.2f}u")
+                    with col4:
+                        st.metric("Odd Média", f"{avg_odds:.2f}")
+                        
             else:
                 st.info("No value bets were made on finished games.")
                 
