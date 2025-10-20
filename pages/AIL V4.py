@@ -1032,6 +1032,10 @@ ml_version_choice = st.sidebar.selectbox("Choose Model Version", ["v1", "v2"])
 retrain = st.sidebar.checkbox("Retrain models", value=False)
 normalize_features = st.sidebar.checkbox("Normalize features", value=True)
 
+########################################
+###### FUNÇÕES CORRIGIDAS – TREINO #####
+########################################
+
 def train_and_evaluate(X, y, name):
     safe_name = name.replace(" ", "")
     safe_model = ml_model_choice.replace(" ", "")
@@ -1042,12 +1046,23 @@ def train_and_evaluate(X, y, name):
         loaded = load_model(filename)
         if loaded:
             model, cols = loaded
+
+            # ✅ Corrige erro: garante que as colunas sejam idênticas às usadas no treino original
+            X = X.reindex(columns=cols, fill_value=0)
+
+            st.info(f"🔄 Modelo carregado: {filename} | Features esperadas: {len(cols)}")
+
             preds = model.predict(X)
             probs = model.predict_proba(X)
-            res = {"Model": f"{name}_v1", "Accuracy": accuracy_score(y, preds),
-                   "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
+            res = {
+                "Model": f"{name}_v1",
+                "Accuracy": accuracy_score(y, preds),
+                "LogLoss": log_loss(y, probs),
+                "BrierScore": brier_score_loss(y, probs[:, 1])
+            }
             return res, (model, cols)
 
+    # ---- Caso precise treinar do zero ----
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
     if normalize_features and numeric_cols:
@@ -1063,19 +1078,28 @@ def train_and_evaluate(X, y, name):
     if ml_model_choice == "Random Forest":
         model = RandomForestClassifier(n_estimators=300, max_depth=8, random_state=42)
     else:
-        model = XGBClassifier(n_estimators=400, max_depth=6, learning_rate=0.05,
-                              subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
-                              use_label_encoder=False, random_state=42)
+        model = XGBClassifier(
+            n_estimators=400, max_depth=6, learning_rate=0.05,
+            subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
+            use_label_encoder=False, random_state=42
+        )
 
     model.fit(X_train, y_train)
     preds = model.predict(X_test)
     probs = model.predict_proba(X_test)
 
-    res = {"Model": f"{name}_v1", "Accuracy": accuracy_score(y_test, preds),
-           "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
+    res = {
+        "Model": f"{name}_v1",
+        "Accuracy": accuracy_score(y_test, preds),
+        "LogLoss": log_loss(y_test, probs),
+        "BrierScore": brier_score_loss(y_test, probs[:, 1])
+    }
 
     save_model(model, feature_cols, filename)
+    st.success(f"✅ Modelo '{filename}' treinado e salvo com sucesso ({len(feature_cols)} features).")
+
     return res, (model, feature_cols)
+
 
 def train_and_evaluate_v2(X, y, name, use_calibration=True):
     safe_name = name.replace(" ", "")
@@ -1087,16 +1111,26 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
         loaded = load_model(filename)
         if loaded:
             model, cols = loaded
+
+            # ✅ Corrige erro: garante colunas iguais às do treino original
+            X = X.reindex(columns=cols, fill_value=0)
+
+            st.info(f"🔄 Modelo carregado (v2): {filename} | Features esperadas: {len(cols)}")
+
             preds = model.predict(X)
             probs = model.predict_proba(X)
-            res = {"Model": f"{name}_v2", "Accuracy": accuracy_score(y, preds),
-                   "LogLoss": log_loss(y, probs), "BrierScore": brier_score_loss(y, probs[:,1])}
+            res = {
+                "Model": f"{name}_v2",
+                "Accuracy": accuracy_score(y, preds),
+                "LogLoss": log_loss(y, probs),
+                "BrierScore": brier_score_loss(y, probs[:, 1])
+            }
             return res, (model, cols)
 
+    # ---- Caso precise treinar do zero ----
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
     if normalize_features and numeric_cols:
-        # imputar mediana (só do treino) e então escalar
         train_med = X_train[numeric_cols].median()
         X_train[numeric_cols] = X_train[numeric_cols].fillna(train_med)
         X_test[numeric_cols]  = X_test[numeric_cols].fillna(train_med)
@@ -1106,13 +1140,17 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
         X_test[numeric_cols]  = scaler.transform(X_test[numeric_cols])
 
     if ml_model_choice == "Random Forest":
-        base_model = RandomForestClassifier(n_estimators=500, max_depth=None, class_weight="balanced",
-                                            random_state=42, n_jobs=-1)
+        base_model = RandomForestClassifier(
+            n_estimators=500, max_depth=None, class_weight="balanced",
+            random_state=42, n_jobs=-1
+        )
     else:
-        base_model = XGBClassifier(n_estimators=1000, max_depth=5, learning_rate=0.1,
-                                   subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
-                                   use_label_encoder=False, random_state=42,
-                                   scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1)
+        base_model = XGBClassifier(
+            n_estimators=1000, max_depth=5, learning_rate=0.1,
+            subsample=0.8, colsample_bytree=0.8, eval_metric="logloss",
+            use_label_encoder=False, random_state=42,
+            scale_pos_weight=(sum(y == 0) / sum(y == 1)) if sum(y == 1) > 0 else 1
+        )
 
     if use_calibration:
         try:
@@ -1130,11 +1168,18 @@ def train_and_evaluate_v2(X, y, name, use_calibration=True):
     preds = model.predict(X_test)
     probs = model.predict_proba(X_test)
 
-    res = {"Model": f"{name}_v2", "Accuracy": accuracy_score(y_test, preds),
-           "LogLoss": log_loss(y_test, probs), "BrierScore": brier_score_loss(y_test, probs[:,1])}
+    res = {
+        "Model": f"{name}_v2",
+        "Accuracy": accuracy_score(y_test, preds),
+        "LogLoss": log_loss(y_test, probs),
+        "BrierScore": brier_score_loss(y_test, probs[:, 1])
+    }
 
     save_model(model, feature_cols, filename)
+    st.success(f"✅ Modelo '{filename}' (v2) treinado e salvo com sucesso ({len(feature_cols)} features).")
+
     return res, (model, feature_cols)
+
 
 
 ########################################
