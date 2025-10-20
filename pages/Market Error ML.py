@@ -193,6 +193,77 @@ def prepare_games_data(games, history):
     
     return games
 
+def merge_livescore_data(games_df, target_date):
+    """Merge com dados do LiveScore para obter placares em tempo real"""
+    livescore_folder = "LiveScore"
+    livescore_file = os.path.join(livescore_folder, f"Resultados_RAW_{target_date}.csv")
+    
+    # Ensure goal columns exist
+    if 'Goals_H_Today' not in games_df.columns:
+        games_df['Goals_H_Today'] = np.nan
+    if 'Goals_A_Today' not in games_df.columns:
+        games_df['Goals_A_Today'] = np.nan
+    
+    # Merge with the correct LiveScore file
+    if os.path.exists(livescore_file):
+        st.info(f"LiveScore file found: {livescore_file}")
+        results_df = pd.read_csv(livescore_file)
+        
+        # FILTER OUT CANCELED AND POSTPONED GAMES
+        results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
+        
+        required_cols = [
+            'game_id', 'status', 'home_goal', 'away_goal',
+            'home_ht_goal', 'away_ht_goal',
+            'home_corners', 'away_corners', 
+            'home_yellow', 'away_yellow',
+            'home_red', 'away_red'
+        ]
+        missing_cols = [col for col in required_cols if col not in results_df.columns]
+        
+        if missing_cols:
+            st.warning(f"LiveScore file missing columns: {missing_cols}")
+        else:
+            games_df = games_df.merge(
+                results_df,
+                left_on='Id',
+                right_on='game_id',
+                how='left',
+                suffixes=('', '_RAW')
+            )
+            
+            # Update goals only for finished games
+            games_df['Goals_H_Today'] = games_df['home_goal']
+            games_df['Goals_A_Today'] = games_df['away_goal']
+            games_df.loc[games_df['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
+            
+            # ADD RED CARD COLUMNS
+            games_df['Home_Red'] = games_df['home_red']
+            games_df['Away_Red'] = games_df['away_red']
+            
+            st.success(f"✅ LiveScore data merged successfully! Found {len(results_df)} games.")
+    else:
+        st.warning(f"No LiveScore results file found for date: {target_date}")
+    
+    return games_df
+
+def determine_result(row):
+    """Determina o resultado final baseado nos gols"""
+    try:
+        gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
+        ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
+    except (ValueError, TypeError):
+        return None
+
+    if pd.isna(gh) or pd.isna(ga):
+        return None
+    if gh > ga:
+        return "Home"
+    elif gh < ga:
+        return "Away"
+    else:
+        return "Draw"
+
 ########################################
 ##### Bloco 4 – Sidebar Configs ########
 ########################################
@@ -257,39 +328,26 @@ def load_training_data():
 
 @st.cache_data
 def load_analysis_data(target_date, _history):
-    """Carrega dados específicos para análise"""
+    """Carrega dados específicos para análise incluindo LiveScore"""
     games_target = load_specific_date(target_date)
     if games_target is None:
         return None
     
     games_processed = prepare_games_data(games_target, _history)
+    
+    # 🔥 ADICIONAR MERGE COM LIVESCORE
+    games_processed = merge_livescore_data(games_processed, target_date)
+    
+    # Adicionar coluna de resultado se temos dados de gols
+    if all(col in games_processed.columns for col in ['Goals_H_Today', 'Goals_A_Today']):
+        games_processed['Result_Today'] = games_processed.apply(determine_result, axis=1)
+        
+        # Estatísticas dos jogos finalizados
+        finished_games = games_processed.dropna(subset=['Result_Today'])
+        if len(finished_games) > 0:
+            st.success(f"📊 {len(finished_games)} games have final results available!")
+    
     return games_processed
-
-# Carregar dados
-with st.spinner("Loading training data..."):
-    history = load_training_data()
-
-if history is None:
-    st.stop()
-
-with st.spinner(f"Loading data for {selected_date}..."):
-    games_today = load_analysis_data(selected_date, history)
-
-if games_today is None:
-    st.stop()
-
-# Aplicar filtros de liga
-league_filters = []
-if show_high_var:
-    league_filters.append("High Variation")
-if show_medium_var:
-    league_filters.append("Medium Variation") 
-if show_low_var:
-    league_filters.append("Low Variation")
-
-if league_filters and 'League_Classification' in games_today.columns:
-    games_today = games_today[games_today['League_Classification'].isin(league_filters)]
-    st.info(f"Filtered leagues: {', '.join(league_filters)}")
 
 ########################################
 ### Bloco 6 – Train Main ML Model ######
@@ -718,6 +776,70 @@ try:
     else:
         st.warning("Not enough features available for meta-model training")
 
+    # 🔥 NOVO BLOCO - Performance Analysis with Live Results
+    if 'Result_Today' in games_today.columns:
+        st.header("🏆 Value Bet Performance with Live Results")
+        
+        finished_games = games_today.dropna(subset=['Result_Today'])
+        
+        if not finished_games.empty:
+            # Função para verificar se recommendation foi correta
+            def check_recommendation(rec, result):
+                if pd.isna(rec) or result is None or rec == '❌ No Value':
+                    return None
+                rec = str(rec)
+                if 'Value Home' in rec:
+                    return result == "Home"
+                elif 'Value Away' in rec:
+                    return result == "Away"
+                return None
+            
+            # Aplicar verificação
+            finished_games['Value_Correct'] = finished_games.apply(
+                lambda r: check_recommendation(r['Value_ML_Pick'], r['Result_Today']), axis=1
+            )
+            
+            # Calcular estatísticas
+            value_bets_made = finished_games[finished_games['Value_ML_Pick'].str.contains('Value', na=False)]
+            correct_bets = value_bets_made['Value_Correct'].sum()
+            total_value_bets = len(value_bets_made)
+            
+            if total_value_bets > 0:
+                win_rate = (correct_bets / total_value_bets) * 100
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Value Bets Made", total_value_bets)
+                with col2:
+                    st.metric("Correct Predictions", int(correct_bets))
+                with col3:
+                    st.metric("Win Rate", f"{win_rate:.1f}%")
+                
+                # Tabela de resultados
+                results_cols = [
+                    'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 
+                    'Result_Today', 'Value_ML_Pick', 'Value_Correct',
+                    'ML_Proba_Home', 'ML_Proba_Away', 'Market_Error_Home', 'Market_Error_Away'
+                ]
+                available_results = [c for c in results_cols if c in finished_games.columns]
+                
+                st.dataframe(
+                    finished_games[available_results]
+                    .style.format({
+                        'ML_Proba_Home': '{:.3f}', 'ML_Proba_Away': '{:.3f}',
+                        'Market_Error_Home': '{:+.3f}', 'Market_Error_Away': '{:+.3f}'
+                    })
+                    .apply(lambda x: ['background: lightgreen' if x['Value_Correct'] == True 
+                                    else 'background: lightcoral' if x['Value_Correct'] == False 
+                                    else '' for _ in x], axis=1),
+                    use_container_width=True,
+                    height=400
+                )
+            else:
+                st.info("No value bets were made on finished games.")
+        else:
+            st.info("No games with final results available yet.")
+
     ########################################
     ##### Bloco 11 – Detailed Analysis #####
     ########################################
@@ -726,6 +848,7 @@ try:
     # Tabela completa com todos os jogos
     detailed_cols = [
         'League', 'Home', 'Away', 
+        'Goals_H_Today', 'Goals_A_Today', 'Result_Today',  # 🔥 NOVAS COLUNAS
         'ML_Proba_Home', 'Imp_Prob_H', 'Market_Error_Home', 'EV_Home',
         'ML_Proba_Away', 'Imp_Prob_A', 'Market_Error_Away', 'EV_Away',
         'Odd_H', 'Odd_A', 'Odd_D'
