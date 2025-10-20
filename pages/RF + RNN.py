@@ -205,7 +205,7 @@ if not files:
     st.warning("No CSV files found in GamesDay folder.")
     st.stop()
 
-selected_file = st.selectbox("Select Matchday File:", files[-2:], index=1)
+selected_file = st.selectbox("Select Matchday File:", files[-5:], index=1)
 games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
 games_today = filter_leagues(games_today)
 
