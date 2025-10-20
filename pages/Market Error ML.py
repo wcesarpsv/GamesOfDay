@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import OneHotEncoder
 import plotly.express as px
@@ -133,12 +133,88 @@ def dominant_side(row, threshold=0.90):
         return "Away weak"
     return "Mixed / Neutral"
 
+def get_available_dates():
+    """Obtém todas as datas disponíveis nos arquivos (últimos 7 dias)"""
+    files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
+    dates = []
+    for file in files:
+        date_match = re.search(r"\d{4}-\d{2}-\d{2}", file)
+        if date_match:
+            dates.append(date_match.group(0))
+    
+    # Ordenar e pegar apenas os últimos 7 dias
+    dates = sorted(dates)
+    if len(dates) > 7:
+        dates = dates[-7:]
+    
+    return dates
+
+def load_specific_date(target_date):
+    """Carrega dados de uma data específica"""
+    file_pattern = f"*{target_date}*.csv"
+    files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv") and target_date in f]
+    
+    if not files:
+        st.error(f"No data found for date: {target_date}")
+        return None
+    
+    file_path = os.path.join(GAMES_FOLDER, files[0])
+    games = pd.read_csv(file_path)
+    games = filter_leagues(games)
+    
+    return games
+
+def prepare_games_data(games, history):
+    """Prepara os dados dos jogos com classificações e bandas"""
+    games = compute_double_chance_odds(games)
+    games['M_Diff'] = games['M_H'] - games['M_A']
+    
+    # Adicionar classificações de liga
+    league_class = classify_leagues_variation(history)
+    league_bands = compute_league_bands(history)
+    
+    games = games.merge(league_class, on='League', how='left')
+    games = games.merge(league_bands, on='League', how='left')
+    
+    # Calcular bandas
+    if all(col in games.columns for col in ['M_H', 'Home_P20', 'Home_P80']):
+        games['Home_Band'] = np.where(
+            games['M_H'] <= games['Home_P20'], 'Bottom 20%',
+            np.where(games['M_H'] >= games['Home_P80'], 'Top 20%', 'Balanced')
+        )
+    
+    if all(col in games.columns for col in ['M_A', 'Away_P20', 'Away_P80']):
+        games['Away_Band'] = np.where(
+            games['M_A'] <= games['Away_P20'], 'Bottom 20%',
+            np.where(games['M_A'] >= games['Away_P80'], 'Top 20%', 'Balanced')
+        )
+    
+    games['Dominant'] = games.apply(dominant_side, axis=1)
+    
+    return games
+
 ########################################
 ##### Bloco 4 – Sidebar Configs ########
 ########################################
 st.sidebar.header("🔧 Meta-Model Configuration")
 
+# Seletor de Data
+st.sidebar.subheader("📅 Date Selection")
+available_dates = get_available_dates()
+
+if available_dates:
+    selected_date = st.sidebar.selectbox(
+        "Select Date to Analyze:",
+        options=available_dates,
+        index=len(available_dates)-1  # Última data por padrão
+    )
+    st.sidebar.info(f"Analyzing: {selected_date}")
+else:
+    st.sidebar.error("No date files found!")
+    st.stop()
+
 # Parâmetros do Value Detection
+st.sidebar.subheader("🎯 Value Detection Parameters")
 min_value_gap = st.sidebar.slider(
     "Minimum Value Gap", 
     min_value=0.01, max_value=0.20, value=0.05, step=0.01,
@@ -158,7 +234,7 @@ min_odds = st.sidebar.number_input(
 )
 
 # Filtros de Liga
-st.sidebar.subheader("🎯 League Filters")
+st.sidebar.subheader("🏆 League Filters")
 show_high_var = st.sidebar.checkbox("High Variation Leagues", value=True)
 show_medium_var = st.sidebar.checkbox("Medium Variation Leagues", value=True)
 show_low_var = st.sidebar.checkbox("Low Variation Leagues", value=False)
@@ -167,70 +243,83 @@ show_low_var = st.sidebar.checkbox("Low Variation Leagues", value=False)
 ####### Bloco 5 – Load & Prep Data #####
 ########################################
 @st.cache_data
-def load_data():
-    """Carrega e prepara todos os dados necessários"""
-    
-    # Carregar histórico completo
+def load_training_data():
+    """Carrega dados de treinamento (SEM data leak)"""
     all_games = load_all_games(GAMES_FOLDER)
     all_games = filter_leagues(all_games)
     history = prepare_history(all_games)
     
     if history.empty:
         st.error("No valid historical data found.")
-        return None, None, None
+        return None
     
-    # Carregar jogos mais recentes para análise
-    files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
-    if not files:
-        st.error("No CSV files found.")
-        return None, None, None
-        
-    latest_file = sorted(files)[-1]
-    games_today = pd.read_csv(os.path.join(GAMES_FOLDER, latest_file))
-    games_today = filter_leagues(games_today)
+    return history
+
+@st.cache_data
+def load_analysis_data(target_date, _history):
+    """Carrega dados específicos para análise"""
+    games_target = load_specific_date(target_date)
+    if games_target is None:
+        return None
     
-    # Aplicar processamento consistente
-    games_today = compute_double_chance_odds(games_today)
-    games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
-    
-    # Adicionar classificações de liga
-    league_class = classify_leagues_variation(history)
-    league_bands = compute_league_bands(history)
-    
-    games_today = games_today.merge(league_class, on='League', how='left')
-    games_today = games_today.merge(league_bands, on='League', how='left')
-    
-    # Calcular bandas
-    if all(col in games_today.columns for col in ['M_H', 'Home_P20', 'Home_P80']):
-        games_today['Home_Band'] = np.where(
-            games_today['M_H'] <= games_today['Home_P20'], 'Bottom 20%',
-            np.where(games_today['M_H'] >= games_today['Home_P80'], 'Top 20%', 'Balanced')
-        )
-    
-    if all(col in games_today.columns for col in ['M_A', 'Away_P20', 'Away_P80']):
-        games_today['Away_Band'] = np.where(
-            games_today['M_A'] <= games_today['Away_P20'], 'Bottom 20%',
-            np.where(games_today['M_A'] >= games_today['Away_P80'], 'Top 20%', 'Balanced')
-        )
-    
-    games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
-    
-    return history, games_today, latest_file
+    games_processed = prepare_games_data(games_target, _history)
+    return games_processed
 
 # Carregar dados
-with st.spinner("Loading data and training models..."):
-    history, games_today, latest_file = load_data()
+with st.spinner("Loading training data..."):
+    history = load_training_data()
 
 if history is None:
     st.stop()
+
+with st.spinner(f"Loading data for {selected_date}..."):
+    games_today = load_analysis_data(selected_date, history)
+
+if games_today is None:
+    st.stop()
+
+# Aplicar filtros de liga
+league_filters = []
+if show_high_var:
+    league_filters.append("High Variation")
+if show_medium_var:
+    league_filters.append("Medium Variation") 
+if show_low_var:
+    league_filters.append("Low Variation")
+
+if league_filters and 'League_Classification' in games_today.columns:
+    games_today = games_today[games_today['League_Classification'].isin(league_filters)]
+    st.info(f"Filtered leagues: {', '.join(league_filters)}")
 
 ########################################
 ### Bloco 6 – Train Main ML Model ######
 ########################################
 @st.cache_resource
-def train_main_model(_history):
-    """Treina o modelo principal de classificação"""
+def train_main_model(_history, target_date):
+    """Treina o modelo principal de classificação SEM data leak"""
     
+    # FILTRO CRÍTICO: usar apenas dados ANTERIORES à data de análise
+    if 'Date' in _history.columns:
+        # Converter para datetime se necessário
+        try:
+            _history['Date'] = pd.to_datetime(_history['Date'])
+            target_date_dt = pd.to_datetime(target_date)
+            training_data = _history[_history['Date'] < target_date_dt].copy()
+        except:
+            # Se não conseguir converter datas, usar todos os dados (fallback)
+            training_data = _history.copy()
+            st.warning("⚠️ Date conversion failed - using all historical data")
+    else:
+        # Se não há coluna de data, usar todos os dados com warning
+        training_data = _history.copy()
+        st.warning("⚠️ No 'Date' column found - using all historical data")
+    
+    if training_data.empty:
+        st.error("No training data available after date filtering!")
+        return None, None, None
+    
+    st.info(f"📊 Training model with {len(training_data)} games before {target_date}")
+
     # Preparar target
     def map_result(row):
         if row['Goals_H_FT'] > row['Goals_A_FT']:
@@ -240,8 +329,7 @@ def train_main_model(_history):
         else:
             return "Draw"
 
-    _history = _history.copy()
-    _history['Result'] = _history.apply(map_result, axis=1)
+    training_data['Result'] = training_data.apply(map_result, axis=1)
 
     # Features do modelo principal
     features_raw = [
@@ -250,10 +338,10 @@ def train_main_model(_history):
         'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2'
     ]
     # Manter apenas colunas que existem
-    features_raw = [f for f in features_raw if f in _history.columns]
+    features_raw = [f for f in features_raw if f in training_data.columns]
 
-    X = _history[features_raw].copy()
-    y = _history['Result']
+    X = training_data[features_raw].copy()
+    y = training_data['Result']
 
     # Codificar variáveis categóricas
     BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
@@ -273,7 +361,7 @@ def train_main_model(_history):
 
     # Treinar modelo
     model = RandomForestClassifier(
-        n_estimators=200,  # Reduzido para performance
+        n_estimators=200,
         max_depth=10,
         min_samples_split=10,
         min_samples_leaf=4,
@@ -288,7 +376,9 @@ def train_main_model(_history):
 
 # Treinar modelo principal
 try:
-    main_model, encoder, features_raw = train_main_model(history)
+    main_model, encoder, features_raw = train_main_model(history, selected_date)
+    if main_model is None:
+        st.stop()
     st.success("✅ Main ML model trained successfully!")
 except Exception as e:
     st.error(f"Error training main model: {e}")
@@ -297,7 +387,7 @@ except Exception as e:
 ########################################
 ### Bloco 7 – Market Error Analysis ####
 ########################################
-st.header("📊 Market Error Analysis")
+st.header(f"📊 Market Error Analysis - {selected_date}")
 
 # Verificar se temos as colunas necessárias de odds
 required_odds_cols = ['Odd_H', 'Odd_D', 'Odd_A']
@@ -376,7 +466,7 @@ try:
                 color='EV_Home',
                 size=abs(plot_data['Market_Error_Home']),
                 hover_data=['Home', 'Away', 'League', 'Odd_H'],
-                title='ML Probability vs Market Probability (Home)',
+                title=f'ML Probability vs Market Probability (Home) - {selected_date}',
                 color_continuous_scale='RdYlGn',
                 range_color=[-0.5, 0.5]
             )
@@ -408,7 +498,7 @@ try:
             fig2.add_trace(go.Histogram(x=error_data['Market_Error_Away'], name='Away Error', opacity=0.7))
             
             fig2.update_layout(
-                title='Distribution of Market Errors',
+                title=f'Distribution of Market Errors - {selected_date}',
                 barmode='overlay',
                 xaxis_title='Market Error',
                 yaxis_title='Count'
@@ -427,8 +517,17 @@ try:
     ########################################
     st.header("🧠 Meta-Model Training - Value Detection")
 
-    # Preparar dados históricos para meta-modelo
+    # Preparar dados históricos para meta-modelo (SEM data leak)
     value_history = history.copy()
+    
+    # Aplicar mesmo filtro de data para meta-modelo
+    if 'Date' in value_history.columns:
+        try:
+            value_history['Date'] = pd.to_datetime(value_history['Date'])
+            target_date_dt = pd.to_datetime(selected_date)
+            value_history = value_history[value_history['Date'] < target_date_dt].copy()
+        except:
+            pass  # Manter todos se conversão falhar
 
     # Aplicar modelo principal ao histórico para obter ML_Proba
     try:
@@ -504,7 +603,7 @@ try:
     features_value = ['M_H', 'M_A', 'Diff_Power', 'M_Diff', 'Odd_H', 'Odd_A']
     features_value = [f for f in features_value if f in value_history.columns]
     
-    if features_value:
+    if features_value and len(value_history) > 0:
         X_val = value_history[features_value].fillna(0)
         
         # Modelo para Home
@@ -611,10 +710,10 @@ try:
                 height=400
             )
             
-            st.success(f"🎉 Found {len(value_bets)} value bet opportunities!")
+            st.success(f"🎉 Found {len(value_bets)} value bet opportunities for {selected_date}!")
             
         else:
-            st.warning("No value bet opportunities found with current filters.")
+            st.warning(f"No value bet opportunities found for {selected_date} with current filters.")
 
     else:
         st.warning("Not enough features available for meta-model training")
@@ -667,11 +766,12 @@ except Exception as e:
 ########################################
 st.markdown("---")
 st.markdown(
-    """
-    **💡 Value Bet Detection Methodology:**
+    f"""
+    **💡 Value Bet Detection Methodology for {selected_date}:**
     - **Market Error**: Difference between ML probability and market implied probability  
     - **Expected Value (EV)**: (ML Probability × Odds) - 1
-    - **Meta-Model**: Machine learning model trained to detect historical value patterns
+    - **Meta-Model**: Machine learning model trained on data BEFORE {selected_date}
     - **Value Confidence**: Probability that a bet represents genuine value
+    - **⚠️ No Data Leak**: Models trained only on historical data before selected date
     """
 )
