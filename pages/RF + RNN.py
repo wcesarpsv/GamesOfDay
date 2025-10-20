@@ -504,3 +504,193 @@ try:
 except Exception as e:
     st.error(f"❌ Erro na RNN: {e}")
     st.info("💡 A RNN está em modo experimental. O Random Forest continua funcionando perfeitamente!")
+
+
+
+########################################
+##### Bloco 10 – ML vs RNN Battle ######
+########################################
+st.markdown("---")
+st.subheader("🥊 ML vs RNN - Model Battle")
+
+def analyze_agreement(ml_rec, rnn_rec):
+    """Analisa concordância entre os modelos"""
+    ml_clean = ml_rec.replace("🟢", "").replace("🟠", "").replace("🟦", "").replace("🟪", "").replace("⚪", "").replace("❌", "").strip()
+    rnn_clean = rnn_rec.replace("🟢", "").replace("🟠", "").replace("🟦", "").replace("🟪", "").replace("⚪", "").replace("❌", "").strip()
+    
+    # Verificar se ambos recomendam apostar
+    both_avoid = "Avoid" in ml_rec and "NO VALUE" in rnn_rec
+    both_bet = "Avoid" not in ml_rec and "NO VALUE" not in rnn_rec
+    
+    if both_avoid:
+        return "🤝 Both Avoid"
+    
+    if both_bet:
+        # Verificar se recomendam o mesmo lado
+        ml_side = ml_rec.split()[1] if len(ml_rec.split()) > 1 else ""
+        rnn_side = rnn_rec.split()[1] if len(rnn_rec.split()) > 1 else ""
+        
+        if ml_side == rnn_side:
+            return "🎯 Perfect Agreement"
+        elif ("Home" in ml_side and "Home" in rnn_side) or ("Away" in ml_side and "Away" in rnn_side):
+            return "✅ Same Side"
+        else:
+            return "⚔️ Different Sides"
+    
+    return "🤷 Partial Agreement"
+
+# Adicionar análise de concordância
+games_today["Model_Agreement"] = games_today.apply(
+    lambda row: analyze_agreement(row["ML_Recommendation"], row["RNN_Recommendation"]), 
+    axis=1
+)
+
+# Tabela comparativa completa
+comparison_cols = [
+    'League', 'Home', 'Away', 
+    'M_H', 'M_A', 'M_Diff',
+    'ML_Recommendation', 'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away',
+    'RNN_Recommendation', 'RNN_Value_Home', 'RNN_Value_Away',
+    'Model_Agreement',
+    'Odd_H', 'Odd_D', 'Odd_A'
+]
+
+available_comparison_cols = [c for c in comparison_cols if c in games_today.columns]
+
+# Estilo condicional para a tabela
+def style_comparison_table(df):
+    return df.style.format({
+        'M_H': '{:.2f}',
+        'M_A': '{:.2f}',
+        'M_Diff': '{:.2f}',
+        'ML_Proba_Home': '{:.3f}',
+        'ML_Proba_Draw': '{:.3f}', 
+        'ML_Proba_Away': '{:.3f}',
+        'RNN_Value_Home': '{:.3f}',
+        'RNN_Value_Away': '{:.3f}',
+        'Odd_H': '{:.2f}',
+        'Odd_D': '{:.2f}',
+        'Odd_A': '{:.2f}'
+    }).apply(lambda x: ['background: #e8f5e8' if 'Perfect Agreement' in str(x) else 
+                       'background: #fff3cd' if 'Same Side' in str(x) else
+                       'background: #f8d7da' if 'Different Sides' in str(x) else '' 
+                       for i in x], axis=1)
+
+st.dataframe(
+    games_today[available_comparison_cols].style.pipe(style_comparison_table),
+    use_container_width=True,
+    height=600
+)
+
+# Estatísticas do Battle
+st.subheader("📊 Model Battle Statistics")
+
+col1, col2, col3, col4 = st.columns(4)
+
+total_games = len(games_today)
+perfect_agreement = (games_today["Model_Agreement"] == "🎯 Perfect Agreement").sum()
+same_side = (games_today["Model_Agreement"] == "✅ Same Side").sum()
+different_sides = (games_today["Model_Agreement"] == "⚔️ Different Sides").sum()
+both_avoid = (games_today["Model_Agreement"] == "🤝 Both Avoid").sum()
+
+with col1:
+    st.metric("🎯 Perfect Agreement", f"{perfect_agreement}/{total_games}", 
+              f"{(perfect_agreement/total_games*100):.1f}%")
+
+with col2:
+    st.metric("✅ Same Side", f"{same_side}/{total_games}",
+              f"{(same_side/total_games*100):.1f}%")
+
+with col3:
+    st.metric("⚔️ Different Sides", f"{different_sides}/{total_games}",
+              f"{(different_sides/total_games*100):.1f}%")
+
+with col4:
+    st.metric("🤝 Both Avoid", f"{both_avoid}/{total_games}",
+              f"{(both_avoid/total_games*100):.1f}%")
+
+# Análise de Value quando concordam
+st.subheader("💎 High-Value Opportunities")
+
+# Filtrar jogos onde ambos os modelos concordam e recomendam apostar
+high_value_games = games_today[
+    (games_today["Model_Agreement"].isin(["🎯 Perfect Agreement", "✅ Same Side"])) &
+    (games_today["ML_Recommendation"] != "❌ Avoid") &
+    (games_today["RNN_Recommendation"] != "❌ NO VALUE")
+]
+
+if len(high_value_games) > 0:
+    st.success(f"🎯 Encontrados {len(high_value_games)} jogos de ALTO VALOR (concordância total)")
+    
+    high_value_cols = ['League', 'Home', 'Away', 'ML_Recommendation', 'RNN_Recommendation', 
+                      'ML_Proba_Home', 'ML_Proba_Away', 'RNN_Value_Home', 'RNN_Value_Away',
+                      'Odd_H', 'Odd_A']
+    
+    available_high_value = [c for c in high_value_cols if c in high_value_games.columns]
+    
+    st.dataframe(
+        high_value_games[available_high_value].style.format({
+            'ML_Proba_Home': '{:.3f}',
+            'ML_Proba_Away': '{:.3f}',
+            'RNN_Value_Home': '{:.3f}',
+            'RNN_Value_Away': '{:.3f}',
+            'Odd_H': '{:.2f}',
+            'Odd_A': '{:.2f}'
+        }),
+        use_container_width=True
+    )
+else:
+    st.info("ℹ️ Nenhum jogo com concordância perfeita encontrado hoje")
+
+# Recomendação Final
+st.subheader("🏆 Final Recommendation Strategy")
+
+if len(high_value_games) > 0:
+    st.success("""
+    **🎯 ESTRATÉGIA RECOMENDADA:**
+    - **Foque nos jogos com concordância perfeita** (acima)
+    - **Maior confiança** quando ambos os modelos apontam mesma direção
+    - **Menor risco** - validação cruzada de diferentes abordagens
+    """)
+else:
+    st.warning("""
+    **⚠️ ESTRATÉGIA CONSERVADORA:**
+    - **Prefira o Random Forest** (mais testado)
+    - **Use a RNN como confirmação secundária**
+    - **Evite jogos onde modelos discordam**
+    """)
+
+
+
+########################################
+##### Bloco 11 – Side-by-Side View #####
+########################################
+st.markdown("---")
+st.subheader("👁️ Side-by-Side Comparison")
+
+# Criar visualização lado a lado
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown("### 🤖 Random Forest")
+    rf_summary = games_today['ML_Recommendation'].value_counts()
+    for rec, count in rf_summary.items():
+        st.write(f"{rec}: **{count}** jogos")
+    
+    # Top picks do RF
+    st.markdown("**🎯 RF Top Picks:**")
+    rf_picks = games_today[games_today['ML_Recommendation'].str.contains('🟢|🟠')]
+    for _, game in rf_picks.head(5).iterrows():
+        st.write(f"{game['Home']} vs {game['Away']} - {game['ML_Recommendation']}")
+
+with col2:
+    st.markdown("### 🧠 RNN Value Detector")
+    rnn_summary = games_today['RNN_Recommendation'].value_counts()
+    for rec, count in rnn_summary.items():
+        st.write(f"{rec}: **{count}** jogos")
+    
+    # Top picks da RNN
+    st.markdown("**🎯 RNN Top Picks:**")
+    rnn_picks = games_today[games_today['RNN_Recommendation'].str.contains('VALUE')]
+    for _, game in rnn_picks.head(5).iterrows():
+        st.write(f"{game['Home']} vs {game['Away']} - {game['RNN_Recommendation']}")
