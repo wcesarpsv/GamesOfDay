@@ -863,7 +863,6 @@ with st.expander("❓ Explicação das features contextuais"):
 
 
 
-
 ########################################
 #### BLOCO 4.5 – AIL-ML INTERACTIONS ####
 ########################################
@@ -931,6 +930,7 @@ def add_quadrant_features(df):
 # Aplicar correção dos quadrantes
 history = add_quadrant_features(history)
 games_today = add_quadrant_features(games_today)
+
 
 ########################################
 #### BLOCO 5.1 – Contextual Feature Importance Analyzer (Core Only) ####
