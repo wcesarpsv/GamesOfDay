@@ -932,25 +932,23 @@ def add_quadrant_features(df):
 history = add_quadrant_features(history)
 games_today = add_quadrant_features(games_today)
 
-
 ########################################
-#### BLOCO 5.1 – Contextual Feature Importance Analyzer ####
+#### BLOCO 5.1 – Contextual Feature Importance Analyzer (Core Only) ####
 ########################################
-# Analisa a importância das novas features contextuais (AIL_Meta, Consistency_Diff etc.)
-# em relação ao target principal da ML (por exemplo: Target_Home ou Target_Away)
+# Este bloco calcula a importância das features contextuais do AIL
+# e retorna um DataFrame com o ranking para uso interno ou logging.
 
-import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import streamlit as st
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.inspection import permutation_importance
 
-st.markdown("### 🧠 BLOCO 5.1 – Contextual Feature Importance Analyzer")
+st.markdown("### 🧩 BLOCO 5.1 – Contextual Feature Importance Analyzer")
 
 # ----------------------------------------------
-# 1️⃣ Selecionar target automaticamente
+# 1️⃣ Detecta coluna-alvo
 # ----------------------------------------------
 target_cols = [c for c in history.columns if "Target" in c or "Back" in c]
 target_col = target_cols[0] if target_cols else None
@@ -959,7 +957,7 @@ if target_col is None:
     st.warning("⚠️ Nenhuma coluna alvo encontrada (ex: 'Target_Home'). Pule este bloco se o treino ainda não ocorreu.")
 else:
     # ----------------------------------------------
-    # 2️⃣ Selecionar features contextuais
+    # 2️⃣ Seleciona features contextuais existentes
     # ----------------------------------------------
     context_features = [
         "AIL_Meta",
@@ -972,22 +970,22 @@ else:
         "League_MEI",
         "League_HomeBias",
         "Market_Consistency_Home",
-        "Market_Consistency_Away"
+        "Market_Consistency_Away",
     ]
     context_features = [f for f in context_features if f in history.columns]
 
     if not context_features:
-        st.warning("⚠️ Nenhuma feature contextual encontrada no dataset.")
+        st.info("ℹ️ Nenhuma feature contextual encontrada. Rode o BLOCO 5.0 antes.")
     else:
         # ----------------------------------------------
-        # 3️⃣ Preparar dados e modelo base
+        # 3️⃣ Prepara dados
         # ----------------------------------------------
         df_valid = history.dropna(subset=context_features + [target_col])
         X = df_valid[context_features]
         y = df_valid[target_col]
 
         if y.nunique() < 2:
-            st.info("ℹ️ O target ainda não tem classes suficientes para análise.")
+            st.info("ℹ️ O target ainda não possui classes suficientes para análise.")
         else:
             scaler = StandardScaler()
             X_scaled = scaler.fit_transform(X)
@@ -1014,26 +1012,15 @@ else:
                 .reset_index(drop=True)
             )
 
-            # ----------------------------------------------
-            # 5️⃣ Visualização
-            # ----------------------------------------------
-            fig, ax = plt.subplots(figsize=(8, 4))
-            ax.barh(importance_df["Feature"], importance_df["Importance"], xerr=importance_df["Std"])
-            ax.invert_yaxis()
-            ax.set_xlabel("Importância média (permutações)")
-            ax.set_title("🔥 Impacto das Features Contextuais (AIL)")
-            st.pyplot(fig)
-
+            st.success("✅ Importância das variáveis contextuais calculada com sucesso.")
             st.dataframe(
                 importance_df.style.format({"Importance": "{:.4f}", "Std": "{:.4f}"}),
-                use_container_width=True
+                use_container_width=True,
+                height=400
             )
 
-            st.caption("💡 As features com maior importância influenciam mais diretamente o comportamento do modelo em contextos específicos de liga e consistência.")
-
-
-
-
+            # Armazena resultado global para uso posterior (opcional)
+            st.session_state["context_feature_importance"] = importance_df
 
 
 ########################################
