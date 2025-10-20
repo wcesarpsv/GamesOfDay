@@ -230,11 +230,14 @@ def map_result(row):
 history['Result'] = history.apply(map_result, axis=1)
 
 features_raw = [
+    'HandScore_Home_HT','HandScore_Away_HT',
+    'Aggression_Home','Aggression_Away',
     'M_H','M_A','Diff_Power','M_Diff',
     'Home_Band','Away_Band','League_Classification',
-    'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2',
+    
     'EV','Games_Analyzed'
 ]
+#'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2',
 features_raw = [f for f in features_raw if f in history.columns]
 
 X = history[features_raw].copy()
