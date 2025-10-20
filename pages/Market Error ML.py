@@ -987,6 +987,7 @@ try:
             display_data
             .style.format({
                 'ML_Proba_Home': '{:.3f}', 'ML_Proba_Away': '{:.3f}',
+                'Goals_H_Today': '{:.0f}', 'Goals_A_Today': '{:.0f}',
                 'Imp_Prob_H': '{:.3f}', 'Imp_Prob_A': '{:.3f}',
                 'Market_Error_Home': '{:+.3f}', 'Market_Error_Away': '{:+.3f}',
                 'EV_Home': '{:+.3f}', 'EV_Away': '{:+.3f}',
