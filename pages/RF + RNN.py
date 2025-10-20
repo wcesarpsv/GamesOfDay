@@ -477,7 +477,7 @@ try:
         # Mostrar resultados RNN
         st.subheader("📊 RNN Value Recommendations")
         
-        rnn_cols = ['Home', 'Away', 'League', 'M_H', 'M_A', 
+        rnn_cols = ['League','Time','Home', 'Away',  'M_H', 'M_A', 
                     'RNN_Value_Home', 'RNN_Value_Away', 'RNN_Recommendation']
         
         available_rnn_cols = [c for c in rnn_cols if c in games_today.columns]
@@ -558,7 +558,7 @@ games_today["Model_Agreement"] = games_today.apply(
 
 # Tabela comparativa completa
 comparison_cols = [
-    'League', 'Home', 'Away', 
+    'League', 'Time', 'Home', 'Away', 
     'M_H', 'M_A', 'M_Diff',
     'ML_Recommendation', 'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away',
     'RNN_Recommendation', 'RNN_Value_Home', 'RNN_Value_Away',
