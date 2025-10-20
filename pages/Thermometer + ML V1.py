@@ -927,6 +927,51 @@ if all(col in games_today.columns for col in ['Market_Error_Home', 'Market_Error
     # Preparar dataset de treinamento com histórico (jogos finalizados)
     value_history = history.copy()
 
+    # =====================================================
+    # 🔁 Aplicar o modelo ML principal ao histórico (para obter ML_Proba_* e calcular EV)
+    # =====================================================
+    try:
+        if 'Result' not in value_history.columns:
+            # garantir que o target existe
+            def map_result_hist(row):
+                if row['Goals_H_FT'] > row['Goals_A_FT']:
+                    return "Home"
+                elif row['Goals_H_FT'] < row['Goals_A_FT']:
+                    return "Away"
+                return "Draw"
+            value_history['Result'] = value_history.apply(map_result_hist, axis=1)
+
+        X_hist = value_history[[c for c in features_raw if c in value_history.columns]].copy()
+
+        # Mapear bandas numéricas (igual ao bloco 7)
+        BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
+        if 'Home_Band' in X_hist: 
+            X_hist['Home_Band_Num'] = X_hist['Home_Band'].map(BAND_MAP)
+        if 'Away_Band' in X_hist: 
+            X_hist['Away_Band_Num'] = X_hist['Away_Band'].map(BAND_MAP)
+
+        # One-hot encoding das colunas categóricas (usando o encoder já treinado)
+        cat_cols = [c for c in ['Dominant','League_Classification'] if c in X_hist]
+        if cat_cols:
+            encoded_hist = encoder.transform(X_hist[cat_cols])
+            encoded_hist_df = pd.DataFrame(encoded_hist, columns=encoder.get_feature_names_out(cat_cols))
+            X_hist = pd.concat([X_hist.drop(columns=cat_cols).reset_index(drop=True),
+                                encoded_hist_df.reset_index(drop=True)], axis=1)
+
+        # Prever probabilidades com o mesmo modelo ML principal
+        ml_proba_hist = model.predict_proba(X_hist)
+        value_history["ML_Proba_Home"] = ml_proba_hist[:, list(model.classes_).index("Home")]
+        value_history["ML_Proba_Draw"] = ml_proba_hist[:, list(model.classes_).index("Draw")]
+        value_history["ML_Proba_Away"] = ml_proba_hist[:, list(model.classes_).index("Away")]
+
+        st.info("✅ Probabilidades ML adicionadas ao histórico (ML_Proba_Home/Away/Draw) — EV pode ser calculado agora.")
+    except Exception as e:
+        st.warning(f"⚠️ Erro ao gerar probabilidades para histórico: {e}")
+
+    # =====================================================
+    # CONTINUAÇÃO DO BLOCO ORIGINAL
+    # =====================================================
+
     required_cols = ['Odd_H', 'Odd_A', 'Odd_D', 'M_H', 'M_A', 'Diff_Power', 'M_Diff']
     available_cols = [c for c in required_cols if c in value_history.columns]
 
