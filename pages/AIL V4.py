@@ -933,6 +933,106 @@ history = add_quadrant_features(history)
 games_today = add_quadrant_features(games_today)
 
 
+########################################
+#### BLOCO 5.1 – Contextual Feature Importance Analyzer ####
+########################################
+# Analisa a importância das novas features contextuais (AIL_Meta, Consistency_Diff etc.)
+# em relação ao target principal da ML (por exemplo: Target_Home ou Target_Away)
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.inspection import permutation_importance
+
+st.markdown("### 🧠 BLOCO 5.1 – Contextual Feature Importance Analyzer")
+
+# ----------------------------------------------
+# 1️⃣ Selecionar target automaticamente
+# ----------------------------------------------
+target_cols = [c for c in history.columns if "Target" in c or "Back" in c]
+target_col = target_cols[0] if target_cols else None
+
+if target_col is None:
+    st.warning("⚠️ Nenhuma coluna alvo encontrada (ex: 'Target_Home'). Pule este bloco se o treino ainda não ocorreu.")
+else:
+    # ----------------------------------------------
+    # 2️⃣ Selecionar features contextuais
+    # ----------------------------------------------
+    context_features = [
+        "AIL_Meta",
+        "Consistency_Diff",
+        "AIL_Context_Signal",
+        "AIL_Context_Stability",
+        "League_Profile",
+        "League_Bias_Tag",
+        "AIL_Value_Score_Dynamic",
+        "League_MEI",
+        "League_HomeBias",
+        "Market_Consistency_Home",
+        "Market_Consistency_Away"
+    ]
+    context_features = [f for f in context_features if f in history.columns]
+
+    if not context_features:
+        st.warning("⚠️ Nenhuma feature contextual encontrada no dataset.")
+    else:
+        # ----------------------------------------------
+        # 3️⃣ Preparar dados e modelo base
+        # ----------------------------------------------
+        df_valid = history.dropna(subset=context_features + [target_col])
+        X = df_valid[context_features]
+        y = df_valid[target_col]
+
+        if y.nunique() < 2:
+            st.info("ℹ️ O target ainda não tem classes suficientes para análise.")
+        else:
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X)
+
+            model = RandomForestClassifier(
+                n_estimators=200,
+                random_state=42,
+                max_depth=6,
+                class_weight="balanced_subsample"
+            )
+            model.fit(X_scaled, y)
+
+            # ----------------------------------------------
+            # 4️⃣ Importância via permutação
+            # ----------------------------------------------
+            imp = permutation_importance(model, X_scaled, y, n_repeats=5, random_state=42)
+            importance_df = (
+                pd.DataFrame({
+                    "Feature": context_features,
+                    "Importance": imp.importances_mean,
+                    "Std": imp.importances_std
+                })
+                .sort_values("Importance", ascending=False)
+                .reset_index(drop=True)
+            )
+
+            # ----------------------------------------------
+            # 5️⃣ Visualização
+            # ----------------------------------------------
+            fig, ax = plt.subplots(figsize=(8, 4))
+            ax.barh(importance_df["Feature"], importance_df["Importance"], xerr=importance_df["Std"])
+            ax.invert_yaxis()
+            ax.set_xlabel("Importância média (permutações)")
+            ax.set_title("🔥 Impacto das Features Contextuais (AIL)")
+            st.pyplot(fig)
+
+            st.dataframe(
+                importance_df.style.format({"Importance": "{:.4f}", "Std": "{:.4f}"}),
+                use_container_width=True
+            )
+
+            st.caption("💡 As features com maior importância influenciam mais diretamente o comportamento do modelo em contextos específicos de liga e consistência.")
+
+
+
 
 
 
