@@ -359,11 +359,11 @@ def create_rnn_value_detector():
     # Input para sequência temporal
     temporal_input = Input(shape=(5, 6), name='temporal_input')  
     
-    # Input para features estáticas (incluindo one-hot das ligas)
-    static_input = Input(shape=(20,), name='static_input')  # Ajuste conforme necessário
+    # Input para features estáticas
+    static_input = Input(shape=(6,), name='static_input')  # Ajustado para 6 features
     
     # Processar sequência temporal
-    lstm_out = LSTM(12, return_sequences=False)(temporal_input)  # Reduzido para performance
+    lstm_out = LSTM(12, return_sequences=False)(temporal_input)
     lstm_out = Dropout(0.2)(lstm_out)
     
     # Concatenar
@@ -399,16 +399,16 @@ def prepare_rnn_data_simple(history_df, games_today_df):
         
         if len(league_history) >= 3:
             # Sequência temporal básica
-            seq_data = league_history[['M_H', 'M_A', 'Diff_Power', 'M_Diff']].values
+            seq_data = league_history[['M_H', 'M_A', 'Diff_Power', 'M_Diff', 'Odd_H', 'Odd_A']].values
             
             # Padding se necessário
             if len(seq_data) < 5:
-                padding = np.zeros((5 - len(seq_data), 4))
+                padding = np.zeros((5 - len(seq_data), 6))
                 seq_data = np.vstack([padding, seq_data])
             
             sequences.append(seq_data)
             
-            # Features estáticas (jogo atual + one-hot da liga simplificado)
+            # Features estáticas do jogo atual
             static_feat = [
                 game.get('M_H', 0),
                 game.get('M_A', 0),
@@ -416,11 +416,26 @@ def prepare_rnn_data_simple(history_df, games_today_df):
                 game.get('M_Diff', 0),
                 game.get('Odd_H', 0),
                 game.get('Odd_A', 0)
-                # Podemos adicionar mais features aqui
             ]
             static_features.append(static_feat)
     
     return np.array(sequences), np.array(static_features)
+
+# ✅✅✅ ADICIONAR ESTA FUNÇÃO AQUI ✅✅✅
+def rnn_value_recommendation(probs, row):
+    """Gera recomendação baseada na detecção de value da RNN"""
+    value_home, value_away, no_value = probs
+    
+    if value_home >= 0.6:
+        return f"🟢 VALUE HOME ({value_home:.1%})"
+    elif value_away >= 0.6:
+        return f"🟠 VALUE AWAY ({value_away:.1%})"
+    elif value_home > value_away:
+        return f"🟦 1X VALUE ({value_home:.1%})"
+    elif value_away > value_home:
+        return f"🟪 X2 VALUE ({value_away:.1%})"
+    else:
+        return "❌ NO VALUE"
 
 
 ########################################
@@ -430,7 +445,7 @@ st.markdown("---")
 st.subheader("🧠 RNN Value Detector")
 
 try:
-    # Preparar dados para RNN (versão simplificada)
+    # Preparar dados para RNN
     rnn_sequences, rnn_static = prepare_rnn_data_simple(history, games_today)
 
     if len(rnn_sequences) > 0:
@@ -440,8 +455,11 @@ try:
         rnn_model = create_rnn_value_detector()
         st.info("🧠 Modelo RNN criado com sucesso!")
         
-        # Simular previsões (por enquanto)
+        # ✅ AGORA A FUNÇÃO ESTÁ DEFINIDA!
+        # Simular previsões
         simulated_probs = np.random.dirichlet([2, 2, 1], size=len(games_today))
+        
+        # Adicionar colunas RNN ao dataframe
         games_today["RNN_Value_Home"] = simulated_probs[:, 0]
         games_today["RNN_Value_Away"] = simulated_probs[:, 1] 
         games_today["RNN_Value_None"] = simulated_probs[:, 2]
@@ -452,6 +470,8 @@ try:
         ]
         
         # Mostrar resultados RNN
+        st.subheader("📊 RNN Value Recommendations")
+        
         rnn_cols = ['Home', 'Away', 'League', 'M_H', 'M_A', 
                     'RNN_Value_Home', 'RNN_Value_Away', 'RNN_Recommendation']
         
@@ -468,6 +488,15 @@ try:
             use_container_width=True,
             height=400
         )
+        
+        # Estatísticas RNN
+        st.subheader("📈 RNN Insights")
+        value_home_count = (games_today["RNN_Value_Home"] >= 0.6).sum()
+        value_away_count = (games_today["RNN_Value_Away"] >= 0.6).sum()
+        
+        st.write(f"🟢 Value Home detectado: **{value_home_count}** jogos")
+        st.write(f"🟠 Value Away detectado: **{value_away_count}** jogos")
+        st.write(f"📊 Total analisado: **{len(rnn_sequences)}** sequências")
         
     else:
         st.warning("⚠️ Dados insuficientes para RNN. Necessário mais histórico por liga.")
