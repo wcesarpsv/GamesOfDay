@@ -234,6 +234,7 @@ features_raw = [
     'Aggression_Home','Aggression_Away',
     'M_H','M_A','Diff_Power','M_Diff',
     'Home_Band','Away_Band','League_Classification',
+    'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2',
     
     'EV','Games_Analyzed'
 ]
