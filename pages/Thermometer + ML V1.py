@@ -1116,7 +1116,7 @@ if all(col in games_today.columns for col in ['Market_Error_Home', 'Market_Error
     #                        'EV_Home','EV_Away','EV_Pick']]
     #         .sort_values('EV_Home', ascending=False)
     #         .style.format({'EV_Home':'{:+.2f}', 'EV_Away':'{:+.2f}'})
-        )
+        # )
 
 # # =============================================
 #     # 📊 ANÁLISE COMPARATIVA – TARGET ORIGINAL vs EV TEÓRICO
