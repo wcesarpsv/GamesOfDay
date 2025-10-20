@@ -8,6 +8,7 @@ xgboost
 scikit-learn
 imblearn
 seaborn
+tensorflow-cpu==2.13.0
 
 
 
