@@ -1167,6 +1167,44 @@ else:
     model_mode_label = "With Odds"
 
 
+########################################
+#### BLOCO 6.9 – FEATURE SETUP #########
+########################################
+# Define as features para treino dos modelos AH_Home e AH_Away
+
+feature_blocks = {
+    "core": [
+        "M_H", "M_A", "Diff_Power", "Diff_HT_P",
+        "HandScore_Home", "HandScore_Away",
+        "Aggression_Home", "Aggression_Away",
+    ],
+    "ail": [
+        "AIL_Value_Score_Dynamic", "AIL_Meta", "League_MEI", "League_HomeBias",
+        "Market_Consistency_Home", "Market_Consistency_Away",
+        "Market_Error_Diff", "Underdog_Value_Diff", "Favorite_Crash_Diff"
+    ],
+    "odds": [
+        "Odd_H", "Odd_A", "Odd_H_Asi", "Odd_A_Asi"
+    ],
+}
+
+# Seleciona as colunas válidas que realmente existem
+feature_blocks = {k: [c for c in v if c in history.columns] for k, v in feature_blocks.items()}
+
+# Junta tudo
+feature_cols_home = feature_blocks["core"] + feature_blocks["ail"] + feature_blocks["odds"]
+feature_cols_away = feature_blocks["core"] + feature_blocks["ail"] + feature_blocks["odds"]
+
+# Cria datasets de treino
+X_ah_home = history[feature_cols_home].copy()
+X_ah_away = history[feature_cols_away].copy()
+
+# Cria datasets de previsão (jogos do dia)
+X_today_ah_home = games_today[feature_cols_home].copy()
+X_today_ah_away = games_today[feature_cols_away].copy()
+
+# Salva colunas numéricas para normalização posterior
+numeric_cols = [c for c in feature_cols_home if history[c].dtype != "object"]
 
 
 
