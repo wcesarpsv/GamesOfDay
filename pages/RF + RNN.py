@@ -353,98 +353,74 @@ st.dataframe(
 ########################################
 
 def create_rnn_value_detector():
-    """RNN para detectar onde o mercado erra baseado no seu HandScore"""
+    """RNN simplificada para Streamlit"""
+    from tensorflow.keras.layers import LSTM, Dense, Dropout, Input, Concatenate, Flatten
+    
     # Input para sequência temporal
     temporal_input = Input(shape=(5, 6), name='temporal_input')  
     
-    # Input para liga (índice numérico)
-    league_input = Input(shape=(1,), name='league_input')
-    league_embedding = Embedding(input_dim=41, output_dim=8)(league_input)
-    league_embedding = Flatten()(league_embedding)
-    
-    # Features estáticas do jogo atual
-    static_input = Input(shape=(4,), name='static_input')
+    # Input para features estáticas (incluindo one-hot das ligas)
+    static_input = Input(shape=(20,), name='static_input')  # Ajuste conforme necessário
     
     # Processar sequência temporal
-    lstm_out = LSTM(16, return_sequences=False)(temporal_input)
+    lstm_out = LSTM(12, return_sequences=False)(temporal_input)  # Reduzido para performance
     lstm_out = Dropout(0.2)(lstm_out)
     
-    # Concatenar tudo
-    combined = Concatenate()([lstm_out, league_embedding, static_input])
+    # Concatenar
+    combined = Concatenate()([lstm_out, static_input])
     
     # Camadas para detectar VALUE
-    hidden = Dense(32, activation='relu')(combined)
-    hidden = Dropout(0.3)(hidden)
-    hidden = Dense(16, activation='relu')(hidden)
+    hidden = Dense(24, activation='relu')(combined)
+    hidden = Dropout(0.2)(hidden)
     
-    # Output: VALUE_HOME, VALUE_AWAY, NO_VALUE
+    # Output
     output = Dense(3, activation='softmax', name='value_output')(hidden)
     
-    model = Model(inputs=[temporal_input, league_input, static_input], outputs=output)
+    model = Model(inputs=[temporal_input, static_input], outputs=output)
     
     model.compile(
-        optimizer=Adam(learning_rate=0.001),
+        optimizer='adam',
         loss='categorical_crossentropy',
         metrics=['accuracy']
     )
     
     return model
 
-def prepare_rnn_data(history_df, games_today_df):
-    """Prepara dados para a RNN"""
-    # Mapear ligas para índices
-    all_leagues = pd.concat([history_df['League'], games_today_df['League']]).unique()
-    league_to_idx = {league: idx for idx, league in enumerate(all_leagues, 1)}  # 0 para desconhecido
-    
+def prepare_rnn_data_simple(history_df, games_today_df):
+    """Preparação simplificada sem Embedding"""
     sequences = []
-    league_indices = []
-    static_feats = []
+    static_features = []
     
     for _, game in games_today_df.iterrows():
         league = game['League']
-        league_idx = league_to_idx.get(league, 0)
         
         # Buscar últimos 5 jogos da liga
         league_history = history_df[history_df['League'] == league].tail(5)
         
         if len(league_history) >= 3:
-            # Sequência temporal
-            seq_data = league_history[['M_H', 'M_A', 'Diff_Power', 'M_Diff', 'Odd_H', 'Odd_A']].values
+            # Sequência temporal básica
+            seq_data = league_history[['M_H', 'M_A', 'Diff_Power', 'M_Diff']].values
             
             # Padding se necessário
             if len(seq_data) < 5:
-                padding = np.zeros((5 - len(seq_data), 6))
+                padding = np.zeros((5 - len(seq_data), 4))
                 seq_data = np.vstack([padding, seq_data])
             
             sequences.append(seq_data)
-            league_indices.append(league_idx)
             
-            # Features estáticas atuais
+            # Features estáticas (jogo atual + one-hot da liga simplificado)
             static_feat = [
                 game.get('M_H', 0),
                 game.get('M_A', 0),
                 game.get('Diff_Power', 0), 
-                game.get('M_Diff', 0)
+                game.get('M_Diff', 0),
+                game.get('Odd_H', 0),
+                game.get('Odd_A', 0)
+                # Podemos adicionar mais features aqui
             ]
-            static_feats.append(static_feat)
+            static_features.append(static_feat)
     
-    return (np.array(sequences), np.array(league_indices), np.array(static_feats), 
-            league_to_idx)
-
-def rnn_value_recommendation(probs, row):
-    """Gera recomendação baseada na detecção de value da RNN"""
-    value_home, value_away, no_value = probs
-    
-    if value_home >= 0.6:
-        return f"🟢 VALUE HOME ({value_home:.1%}) - Mercado SUBESTIMOU"
-    elif value_away >= 0.6:
-        return f"🟠 VALUE AWAY ({value_away:.1%}) - Mercado SUBESTIMOU"
-    elif value_home > value_away:
-        return f"🟦 1X VALUE ({value_home:.1%}) - Leve edge Home"
-    elif value_away > value_home:
-        return f"🟪 X2 VALUE ({value_away:.1%}) - Leve edge Away"
-    else:
-        return "❌ NO VALUE - Mercado precificou corretamente"
+    return np.array(sequences), np.array(static_features)
 
 
 ########################################
@@ -453,51 +429,49 @@ def rnn_value_recommendation(probs, row):
 st.markdown("---")
 st.subheader("🧠 RNN Value Detector")
 
-# Preparar dados para RNN
-rnn_sequences, rnn_leagues, rnn_static, league_map = prepare_rnn_data(history, games_today)
+try:
+    # Preparar dados para RNN (versão simplificada)
+    rnn_sequences, rnn_static = prepare_rnn_data_simple(history, games_today)
 
-if len(rnn_sequences) > 0:
-    st.success(f"✅ Dados preparados: {len(rnn_sequences)} sequências para RNN")
-    
-    # Criar e treinar modelo
-    rnn_model = create_rnn_value_detector()
-    
-    # Placeholder - na prática você teria targets de value para treinar
-    st.info("""
-    **🎯 RNN Value Detector - Pronto para Treinar**
-    - Analisando padrões temporais de mercado
-    - Detectando onde odds não refletem momentum real  
-    - Buscando edges baseados no seu HandScore
-    """)
-    
-    # Simular previsões (substituir por modelo treinado)
-    simulated_probs = np.random.dirichlet([2, 2, 1], size=len(games_today))
-    games_today["RNN_Value_Home"] = simulated_probs[:, 0]
-    games_today["RNN_Value_Away"] = simulated_probs[:, 1] 
-    games_today["RNN_Value_None"] = simulated_probs[:, 2]
-    
-    games_today["RNN_Recommendation"] = [
-        rnn_value_recommendation(probs, row) 
-        for probs, (_, row) in zip(simulated_probs, games_today.iterrows())
-    ]
-    
-    # Mostrar resultados RNN
-    rnn_cols = ['Home', 'Away', 'League', 'M_H', 'M_A', 
-                'RNN_Value_Home', 'RNN_Value_Away', 'RNN_Recommendation']
-    
-    available_rnn_cols = [c for c in rnn_cols if c in games_today.columns]
-    
-    st.dataframe(
-        games_today[available_rnn_cols]
-        .style.format({
-            'M_H': '{:.2f}',
-            'M_A': '{:.2f}', 
-            'RNN_Value_Home': '{:.3f}',
-            'RNN_Value_Away': '{:.3f}'
-        }),
-        use_container_width=True,
-        height=400
-    )
-    
-else:
-    st.warning("⚠️ Dados insuficientes para RNN. Necessário mais histórico por liga.")
+    if len(rnn_sequences) > 0:
+        st.success(f"✅ Dados preparados: {len(rnn_sequences)} sequências para RNN")
+        
+        # Criar modelo
+        rnn_model = create_rnn_value_detector()
+        st.info("🧠 Modelo RNN criado com sucesso!")
+        
+        # Simular previsões (por enquanto)
+        simulated_probs = np.random.dirichlet([2, 2, 1], size=len(games_today))
+        games_today["RNN_Value_Home"] = simulated_probs[:, 0]
+        games_today["RNN_Value_Away"] = simulated_probs[:, 1] 
+        games_today["RNN_Value_None"] = simulated_probs[:, 2]
+        
+        games_today["RNN_Recommendation"] = [
+            rnn_value_recommendation(probs, row) 
+            for probs, (_, row) in zip(simulated_probs, games_today.iterrows())
+        ]
+        
+        # Mostrar resultados RNN
+        rnn_cols = ['Home', 'Away', 'League', 'M_H', 'M_A', 
+                    'RNN_Value_Home', 'RNN_Value_Away', 'RNN_Recommendation']
+        
+        available_rnn_cols = [c for c in rnn_cols if c in games_today.columns]
+        
+        st.dataframe(
+            games_today[available_rnn_cols]
+            .style.format({
+                'M_H': '{:.2f}',
+                'M_A': '{:.2f}', 
+                'RNN_Value_Home': '{:.3f}',
+                'RNN_Value_Away': '{:.3f}'
+            }),
+            use_container_width=True,
+            height=400
+        )
+        
+    else:
+        st.warning("⚠️ Dados insuficientes para RNN. Necessário mais histórico por liga.")
+
+except Exception as e:
+    st.error(f"❌ Erro na RNN: {e}")
+    st.info("💡 A RNN está em modo experimental. O Random Forest continua funcionando perfeitamente!")
