@@ -948,6 +948,7 @@ try:
                     st.dataframe(
                         value_bets_made[available_results]
                         .style.format({
+                            'Goals_H_Today': '{:.0f}', 'Goals_A_Today': '{:.0f}',
                             'ML_Proba_Home': '{:.3f}', 'ML_Proba_Away': '{:.3f}',
                             'Market_Error_Home': '{:+.3f}', 'Market_Error_Away': '{:+.3f}'
                         })
