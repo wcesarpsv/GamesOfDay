@@ -1213,10 +1213,9 @@ else:
 
 
 ########################################
-#### BLOCO 6.9 – FEATURE SETUP #########
+###### BLOCO 6.9 – FEATURE SETUP #######
 ########################################
-# Define as features para treino dos modelos AH_Home e AH_Away
-
+# Define todas as famílias de features disponíveis
 feature_blocks = {
     "core": [
         "M_H", "M_A", "Diff_Power", "Diff_HT_P",
@@ -1233,24 +1232,54 @@ feature_blocks = {
     ],
 }
 
-# Seleciona as colunas válidas que realmente existem
-feature_blocks = {k: [c for c in v if c in history.columns] for k, v in feature_blocks.items()}
+# 🔒 Mantém apenas as features que realmente existem no histórico
+feature_blocks = {
+    k: [c for c in v if c in history.columns]
+    for k, v in feature_blocks.items()
+}
 
-# Junta tudo
-feature_cols_home = feature_blocks["core"] + feature_blocks["ail"] + feature_blocks["odds"]
-feature_cols_away = feature_blocks["core"] + feature_blocks["ail"] + feature_blocks["odds"]
+# =====================================================
+# ✅ Lógica do modo "Ignore Odds" (agora no lugar certo)
+# =====================================================
+if ignore_odds:
+    st.sidebar.info("🚫 Odds removidas do modelo para avaliar sensibilidade e valor real.")
+    feature_blocks["odds"] = []  # ✅ Agora já existe
+    PAGE_PREFIX = PAGE_PREFIX + "_NoOdds"
+    model_mode_label = "No Odds"
+else:
+    st.sidebar.info("🎯 Odds incluídas no modelo (modo padrão).")
+    model_mode_label = "With Odds"
 
-# Cria datasets de treino
+# =====================================================
+# ✅ Montagem final das listas de features
+# =====================================================
+feature_cols_home = (
+    feature_blocks["core"]
+    + feature_blocks["ail"]
+    + feature_blocks["odds"]
+)
+feature_cols_away = (
+    feature_blocks["core"]
+    + feature_blocks["ail"]
+    + feature_blocks["odds"]
+)
+
+# 🔍 Cria os DataFrames de treino e previsão
 X_ah_home = history[feature_cols_home].copy()
 X_ah_away = history[feature_cols_away].copy()
-
-# Cria datasets de previsão (jogos do dia)
 X_today_ah_home = games_today[feature_cols_home].copy()
 X_today_ah_away = games_today[feature_cols_away].copy()
 
-# Salva colunas numéricas para normalização posterior
-numeric_cols = [c for c in feature_cols_home if history[c].dtype != "object"]
+# 🔢 Define colunas numéricas para normalização
+numeric_cols = [
+    c for c in feature_cols_home
+    if history[c].dtype != "object" and np.issubdtype(history[c].dtype, np.number)
+]
 
+st.info(
+    f"🔧 Feature setup concluído – Home/Away com {len(feature_cols_home)} variáveis "
+    f"(modo: {model_mode_label})."
+)
 
 
 
