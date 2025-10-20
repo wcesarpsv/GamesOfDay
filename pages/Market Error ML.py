@@ -902,25 +902,27 @@ try:
         finished_games = games_today.dropna(subset=['Result_Today'])
         
         if not finished_games.empty:
-            # Função para verificar se recommendation foi correta
+            # Função para verificar se recommendation foi correta - CORRIGIDA
             def check_recommendation(rec, result):
-                if pd.isna(rec) or result is None or rec == '❌ No Value':
+                if pd.isna(rec) or result is None:
                     return None
                 rec = str(rec)
+                # Só considerar como value bet se for "Value Home" ou "Value Away"
                 if 'Value Home' in rec:
                     return result == "Home"
                 elif 'Value Away' in rec:
                     return result == "Away"
-                return None
+                else:
+                    return None  # Não é value bet, retorna None
             
             # Aplicar verificação
             finished_games['Value_Correct'] = finished_games.apply(
                 lambda r: check_recommendation(r['Value_ML_Pick'], r['Result_Today']), axis=1
             )
             
-            # Calcular estatísticas
-            value_bets_made = finished_games[finished_games['Value_ML_Pick'].str.contains('Value', na=False)]
-            correct_bets = value_bets_made['Value_Correct'].sum()
+            # 🔥 CORREÇÃO CRÍTICA: Filtrar apenas os jogos que REALMENTE tiveram value bets
+            value_bets_made = finished_games[finished_games['Value_ML_Pick'].str.contains('Value (Home|Away)', na=False, regex=True)]
+            correct_bets = value_bets_made['Value_Correct'].sum() if 'Value_Correct' in value_bets_made.columns else 0
             total_value_bets = len(value_bets_made)
             
             if total_value_bets > 0:
@@ -934,29 +936,33 @@ try:
                 with col3:
                     st.metric("Win Rate", f"{win_rate:.1f}%")
                 
-                # Tabela de resultados
+                # Tabela de resultados - MOSTRAR APENAS VALUE BETS
                 results_cols = [
                     'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 
                     'Result_Today', 'Value_ML_Pick', 'Value_Correct',
                     'ML_Proba_Home', 'ML_Proba_Away', 'Market_Error_Home', 'Market_Error_Away'
                 ]
-                available_results = [c for c in results_cols if c in finished_games.columns]
+                available_results = [c for c in results_cols if c in value_bets_made.columns]
                 
-                st.dataframe(
-                    finished_games[available_results]
-                    .style.format({
-                        'Goals_H_Today': '{:.0f}', 'Goals_A_Today': '{:.0f}',
-                        'ML_Proba_Home': '{:.3f}', 'ML_Proba_Away': '{:.3f}',
-                        'Market_Error_Home': '{:+.3f}', 'Market_Error_Away': '{:+.3f}'
-                    })
-                    .apply(lambda x: ['background: lightgreen' if x['Value_Correct'] == True 
-                                    else 'background: lightcoral' if x['Value_Correct'] == False 
-                                    else '' for _ in x], axis=1),
-                    use_container_width=True,
-                    height=400
-                )
+                if not value_bets_made.empty:
+                    st.dataframe(
+                        value_bets_made[available_results]
+                        .style.format({
+                            'ML_Proba_Home': '{:.3f}', 'ML_Proba_Away': '{:.3f}',
+                            'Market_Error_Home': '{:+.3f}', 'Market_Error_Away': '{:+.3f}'
+                        })
+                        .apply(lambda x: ['background: lightgreen' if x['Value_Correct'] == True 
+                                        else 'background: lightcoral' if x['Value_Correct'] == False 
+                                        else '' for _ in x], axis=1),
+                        use_container_width=True,
+                        height=400
+                    )
             else:
                 st.info("No value bets were made on finished games.")
+                
+                # Mostrar estatísticas gerais dos jogos finalizados
+                total_finished = len(finished_games)
+                st.info(f"📊 {total_finished} games finished, but no value bets were recommended with current filters.")
         else:
             st.info("No games with final results available yet.")
 
