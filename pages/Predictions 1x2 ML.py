@@ -69,7 +69,7 @@ if not files:
     st.stop()
 
 # Últimos dois arquivos (Hoje e Ontem)
-options = files[-2:] if len(files) >= 2 else files
+options = files[-5:] if len(files) >= 5 else files
 selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
 
 # Carregar os jogos do dia selecionado
