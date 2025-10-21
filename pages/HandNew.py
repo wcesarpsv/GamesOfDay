@@ -670,8 +670,8 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
     # ---------------- RESUMO LIVE ----------------
     def generate_live_summary(df):
-        """Gera resumo em tempo real dos resultados"""
-        finished_games = df.dropna(subset=['Result_Today'])
+        """Gera resumo em tempo real dos resultados de HANDICAP"""
+        finished_games = df.dropna(subset=['Handicap_Result'])
         
         if finished_games.empty:
             return {
