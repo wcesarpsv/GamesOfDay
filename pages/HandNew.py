@@ -281,100 +281,68 @@ history['Quadrante_Away'] = history.apply(
 
 
 ########################################
-#### 🧭 BLOCO – Distância Home ↔ Away
+#### 🎯 BLOCO – Gráfico Avançado de Distâncias Home ↔ Away
 ########################################
-import math
 from matplotlib.patches import FancyArrowPatch
+import matplotlib.cm as cm
 
-st.markdown("## 🧭 Distância e Separação entre Home × Away (Aggression × HandScore)")
+st.markdown("## 🎯 Visualização Avançada – Distância entre Times (Home × Away)")
 
-# Garantir que colunas necessárias existam
-required_cols = ["Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away"]
-if all(c in games_today.columns for c in required_cols):
+# Controle de número de confrontos
+max_n = len(games_today)
+n_to_show = st.slider("Quantos confrontos exibir (Top por distância):", 10, min(max_n, 200), 40, step=5)
 
-    # 1️⃣ Diferenças direcionais
-    games_today["ΔAgg"] = games_today["Aggression_Home"] - games_today["Aggression_Away"]
-    games_today["ΔHS"] = games_today["HandScore_Home"] - games_today["HandScore_Away"]
+# Ordenar pelos mais distantes
+df_plot = games_today.nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
 
-    # 2️⃣ Normalização (padroniza variância para cálculo da distância)
-    std_agg = np.nanstd(games_today[["Aggression_Home", "Aggression_Away"]].values)
-    std_hs = np.nanstd(games_today[["HandScore_Home", "HandScore_Away"]].values)
+# Criar figura
+fig, ax = plt.subplots(figsize=(9, 7))
+ax.set_title(f"Top {n_to_show} Distâncias – Aggression × HandScore", fontsize=12)
+ax.set_xlabel("Aggression (-1 zebra ↔ +1 favorito)")
+ax.set_ylabel("HandScore (-60 ↔ +60)")
+ax.grid(True, alpha=0.3)
 
-    std_agg = std_agg if std_agg > 0 else 1
-    std_hs = std_hs if std_hs > 0 else 1
+# Linha de referência diagonal verde
+ax.plot([-1, 1], [-60, 60], '--', color='limegreen', lw=1.5, alpha=0.8, label="Linha de equilíbrio")
 
-    # 3️⃣ Distância padronizada (Euclidiana)
-    games_today["Quadrant_Dist"] = np.sqrt(
-        (games_today["ΔAgg"] / std_agg) ** 2 +
-        (games_today["ΔHS"] / std_hs) ** 2
-    )
+# Normalizar distâncias para color map
+norm = plt.Normalize(df_plot["Quadrant_Dist"].min(), df_plot["Quadrant_Dist"].max())
+cmap = cm.get_cmap("viridis")
 
-    # 4️⃣ Score de separação (direcional)
-    games_today["Quadrant_Separation"] = 0.5 * games_today["ΔAgg"] + 0.5 * games_today["ΔHS"]
+# Desenhar vetores com cor e intensidade proporcional à distância
+for i, row in df_plot.iterrows():
+    try:
+        xh, xa = row["Aggression_Home"], row["Aggression_Away"]
+        yh, ya = row["HandScore_Home"], row["HandScore_Away"]
+        dist = row["Quadrant_Dist"]
 
-    # 5️⃣ Ângulo (orientação)
-    games_today["Quadrant_Angle"] = np.degrees(
-        np.arctan2(games_today["ΔHS"], games_today["ΔAgg"])
-    )
+        if not (pd.isna(xh) or pd.isna(xa) or pd.isna(yh) or pd.isna(ya)):
+            color = cmap(norm(dist))
+            ax.plot([xh, xa], [yh, ya], color=color, alpha=0.8, lw=1.5)
+            
+            # Destacar com rótulos os 10 maiores vetores
+            if i < 10:
+                ax.text(xh, yh, str(row["Home"]), fontsize=8, color='blue', weight='bold')
+                ax.text(xa, ya, str(row["Away"]), fontsize=8, color='red', weight='bold')
 
-    # 6️⃣ Métricas resumo
-    avg_dist = games_today["Quadrant_Dist"].mean()
-    max_dist = games_today["Quadrant_Dist"].max()
-    mean_sep = games_today["Quadrant_Separation"].mean()
+    except:
+        continue
 
-    colA, colB, colC = st.columns(3)
-    colA.metric("📏 Distância Média", f"{avg_dist:.2f}")
-    colB.metric("📐 Ângulo Médio", f"{games_today['Quadrant_Angle'].mean():.1f}°")
-    colC.metric("⚡ Separação Média", f"{mean_sep:.2f}")
+# Pontos Home e Away
+ax.scatter(df_plot["Aggression_Home"], df_plot["HandScore_Home"],
+           color='royalblue', label="Home", s=60, alpha=0.9)
+ax.scatter(df_plot["Aggression_Away"], df_plot["HandScore_Away"],
+           color='orangered', label="Away", s=60, alpha=0.9)
 
-    # 7️⃣ Visualização (Home ↔ Away no mesmo gráfico)
-    st.markdown("### 🎯 Mapa dos Confrontos – Distância entre Pontos Home/Away")
+# Legenda e barra de cor
+sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+sm.set_array([])
+cbar = plt.colorbar(sm, ax=ax)
+cbar.set_label("Distância Normalizada (Quadrant_Dist)", rotation=270, labelpad=15)
 
-    fig, ax = plt.subplots(figsize=(9, 7))
-    ax.set_title("Distância entre os Times – Aggression × HandScore", fontsize=12)
-    ax.set_xlabel("Aggression (-1 zebra ↔ +1 favorito)")
-    ax.set_ylabel("HandScore (-60 ↔ +60)")
-    ax.grid(True, alpha=0.3)
+ax.legend(loc='upper left')
+st.pyplot(fig)
 
-    # Desenhar setas (Home → Away)
-    for _, row in games_today.iterrows():
-        try:
-            xh, xa = row["Aggression_Home"], row["Aggression_Away"]
-            yh, ya = row["HandScore_Home"], row["HandScore_Away"]
-            if not (pd.isna(xh) or pd.isna(xa) or pd.isna(yh) or pd.isna(ya)):
-                arrow = FancyArrowPatch(
-                    (xh, yh), (xa, ya),
-                    arrowstyle='->', color='gray', alpha=0.5, lw=1.2
-                )
-                ax.add_patch(arrow)
-        except:
-            continue
-
-    # Pontos Home e Away
-    ax.scatter(games_today["Aggression_Home"], games_today["HandScore_Home"],
-               color='royalblue', label="Home", s=60, alpha=0.8)
-    ax.scatter(games_today["Aggression_Away"], games_today["HandScore_Away"],
-               color='orangered', label="Away", s=60, alpha=0.8)
-
-    ax.legend(loc='upper left')
-    st.pyplot(fig)
-
-    # 8️⃣ Exibir tabela resumo (Top 10 maiores distâncias)
-    st.markdown("### 🔍 Top 10 Confrontos com Maior Distância Home ↔ Away")
-    top_dist = games_today.nlargest(10, "Quadrant_Dist")[[
-        "Home", "Away", "League", "Quadrant_Dist", "Quadrant_Separation", "Quadrant_Angle"
-    ]]
-    st.dataframe(
-        top_dist.style.format({
-            "Quadrant_Dist": "{:.2f}",
-            "Quadrant_Separation": "{:.2f}",
-            "Quadrant_Angle": "{:.1f}"
-        }),
-        use_container_width=True
-    )
-
-else:
-    st.warning("⚠️ Colunas de Aggression e HandScore não disponíveis para cálculo de distância.")
 
 
 
