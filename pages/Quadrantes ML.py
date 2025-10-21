@@ -188,7 +188,7 @@ def plot_quadrantes_avancado(df, side="Home"):
         6: 'yellow',        # Market Overrates
         7: 'lightgray',     # Weak Underdog Forte
         8: 'gray',          # Weak Underdog
-        0: 'white'          # Neutro
+        0: 'black'          # Neutro
     }
     
     # Plotar cada ponto com cor do quadrante
