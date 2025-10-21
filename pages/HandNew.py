@@ -279,6 +279,106 @@ history['Quadrante_Away'] = history.apply(
     lambda x: classificar_quadrante(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
 )
 
+
+########################################
+#### 🧭 BLOCO – Distância Home ↔ Away
+########################################
+import math
+from matplotlib.patches import FancyArrowPatch
+
+st.markdown("## 🧭 Distância e Separação entre Home × Away (Aggression × HandScore)")
+
+# Garantir que colunas necessárias existam
+required_cols = ["Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away"]
+if all(c in games_today.columns for c in required_cols):
+
+    # 1️⃣ Diferenças direcionais
+    games_today["ΔAgg"] = games_today["Aggression_Home"] - games_today["Aggression_Away"]
+    games_today["ΔHS"] = games_today["HandScore_Home"] - games_today["HandScore_Away"]
+
+    # 2️⃣ Normalização (padroniza variância para cálculo da distância)
+    std_agg = np.nanstd(games_today[["Aggression_Home", "Aggression_Away"]].values)
+    std_hs = np.nanstd(games_today[["HandScore_Home", "HandScore_Away"]].values)
+
+    std_agg = std_agg if std_agg > 0 else 1
+    std_hs = std_hs if std_hs > 0 else 1
+
+    # 3️⃣ Distância padronizada (Euclidiana)
+    games_today["Quadrant_Dist"] = np.sqrt(
+        (games_today["ΔAgg"] / std_agg) ** 2 +
+        (games_today["ΔHS"] / std_hs) ** 2
+    )
+
+    # 4️⃣ Score de separação (direcional)
+    games_today["Quadrant_Separation"] = 0.5 * games_today["ΔAgg"] + 0.5 * games_today["ΔHS"]
+
+    # 5️⃣ Ângulo (orientação)
+    games_today["Quadrant_Angle"] = np.degrees(
+        np.arctan2(games_today["ΔHS"], games_today["ΔAgg"])
+    )
+
+    # 6️⃣ Métricas resumo
+    avg_dist = games_today["Quadrant_Dist"].mean()
+    max_dist = games_today["Quadrant_Dist"].max()
+    mean_sep = games_today["Quadrant_Separation"].mean()
+
+    colA, colB, colC = st.columns(3)
+    colA.metric("📏 Distância Média", f"{avg_dist:.2f}")
+    colB.metric("📐 Ângulo Médio", f"{games_today['Quadrant_Angle'].mean():.1f}°")
+    colC.metric("⚡ Separação Média", f"{mean_sep:.2f}")
+
+    # 7️⃣ Visualização (Home ↔ Away no mesmo gráfico)
+    st.markdown("### 🎯 Mapa dos Confrontos – Distância entre Pontos Home/Away")
+
+    fig, ax = plt.subplots(figsize=(9, 7))
+    ax.set_title("Distância entre os Times – Aggression × HandScore", fontsize=12)
+    ax.set_xlabel("Aggression (-1 zebra ↔ +1 favorito)")
+    ax.set_ylabel("HandScore (-60 ↔ +60)")
+    ax.grid(True, alpha=0.3)
+
+    # Desenhar setas (Home → Away)
+    for _, row in games_today.iterrows():
+        try:
+            xh, xa = row["Aggression_Home"], row["Aggression_Away"]
+            yh, ya = row["HandScore_Home"], row["HandScore_Away"]
+            if not (pd.isna(xh) or pd.isna(xa) or pd.isna(yh) or pd.isna(ya)):
+                arrow = FancyArrowPatch(
+                    (xh, yh), (xa, ya),
+                    arrowstyle='->', color='gray', alpha=0.5, lw=1.2
+                )
+                ax.add_patch(arrow)
+        except:
+            continue
+
+    # Pontos Home e Away
+    ax.scatter(games_today["Aggression_Home"], games_today["HandScore_Home"],
+               color='royalblue', label="Home", s=60, alpha=0.8)
+    ax.scatter(games_today["Aggression_Away"], games_today["HandScore_Away"],
+               color='orangered', label="Away", s=60, alpha=0.8)
+
+    ax.legend(loc='upper left')
+    st.pyplot(fig)
+
+    # 8️⃣ Exibir tabela resumo (Top 10 maiores distâncias)
+    st.markdown("### 🔍 Top 10 Confrontos com Maior Distância Home ↔ Away")
+    top_dist = games_today.nlargest(10, "Quadrant_Dist")[[
+        "Home", "Away", "League", "Quadrant_Dist", "Quadrant_Separation", "Quadrant_Angle"
+    ]]
+    st.dataframe(
+        top_dist.style.format({
+            "Quadrant_Dist": "{:.2f}",
+            "Quadrant_Separation": "{:.2f}",
+            "Quadrant_Angle": "{:.1f}"
+        }),
+        use_container_width=True
+    )
+
+else:
+    st.warning("⚠️ Colunas de Aggression e HandScore não disponíveis para cálculo de distância.")
+
+
+
+
 # ---------------- VISUALIZAÇÃO DOS QUADRANTES ----------------
 def plot_quadrantes_avancado(df, side="Home"):
     """Plot dos 8 quadrantes com cores e anotações"""
