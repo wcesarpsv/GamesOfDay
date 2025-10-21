@@ -589,44 +589,6 @@ else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
 
 
-# ---------------- RESUMO LIVE ----------------
-def generate_live_summary(df):
-    """Gera resumo em tempo real dos resultados"""
-    finished_games = df.dropna(subset=['Result_Today'])
-    
-    if finished_games.empty:
-        return {
-            "Total Jogos": len(df),
-            "Jogos Finalizados": 0,
-            "Apostas Quadrante": 0,
-            "Acertos Quadrante": 0,
-            "Winrate Quadrante": "0%",
-            "Profit Quadrante": 0,
-            "ROI Quadrante": "0%"
-        }
-    
-    quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
-    total_bets = len(quadrante_bets)
-    correct_bets = quadrante_bets['Quadrante_Correct'].sum()
-    winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
-    total_profit = quadrante_bets['Profit_Quadrante'].sum()
-    roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
-    
-    return {
-        "Total Jogos": len(df),
-        "Jogos Finalizados": len(finished_games),
-        "Apostas Quadrante": total_bets,
-        "Acertos Quadrante": int(correct_bets),
-        "Winrate Quadrante": f"{winrate:.1f}%",
-        "Profit Quadrante": f"{total_profit:.2f}u",
-        "ROI Quadrante": f"{roi:.1f}%"
-    }
-
-# Exibir resumo live
-st.markdown("## 📡 Live Score Monitor")
-live_summary = generate_live_summary(ranking_quadrantes)
-st.json(live_summary)
-
 
 # ---------------- EXIBIÇÃO DOS RESULTADOS DUAL ----------------
 st.markdown("## 🏆 Melhores Confrontos por Quadrantes ML (Home & Away)")
@@ -644,27 +606,61 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # Aplicar indicadores explicativos dual
     ranking_quadrantes = adicionar_indicadores_explicativos_dual(ranking_quadrantes)
 
-
     # ---------------- ATUALIZAR COM DADOS LIVE ----------------
-def update_real_time_data(df):
-    """Atualiza todos os dados em tempo real"""
-    # Resultados
-    df['Result_Today'] = df.apply(determine_real_time_result, axis=1)
+    def update_real_time_data(df):
+        """Atualiza todos os dados em tempo real"""
+        # Resultados
+        df['Result_Today'] = df.apply(determine_real_time_result, axis=1)
+        
+        # Performance das recomendações
+        df['Quadrante_Correct'] = df.apply(
+            lambda r: check_recommendation_correct(r['Recomendacao'], r['Result_Today']), axis=1
+        )
+        df['Profit_Quadrante'] = df.apply(
+            lambda r: calculate_real_time_profit(r['Recomendacao'], r['Result_Today'], r), axis=1
+        )
+        return df
+
+    # Aplicar atualização em tempo real
+    ranking_quadrantes = update_real_time_data(ranking_quadrantes)
     
-    # Performance das recomendações
-    df['Quadrante_Correct'] = df.apply(
-        lambda r: check_recommendation_correct(r['Recomendacao'], r['Result_Today']), axis=1
-    )
-    df['Profit_Quadrante'] = df.apply(
-        lambda r: calculate_real_time_profit(r['Recomendacao'], r['Result_Today'], r), axis=1
-    )
-    return df
+    # ---------------- RESUMO LIVE ----------------
+    def generate_live_summary(df):
+        """Gera resumo em tempo real dos resultados"""
+        finished_games = df.dropna(subset=['Result_Today'])
+        
+        if finished_games.empty:
+            return {
+                "Total Jogos": len(df),
+                "Jogos Finalizados": 0,
+                "Apostas Quadrante": 0,
+                "Acertos Quadrante": 0,
+                "Winrate Quadrante": "0%",
+                "Profit Quadrante": 0,
+                "ROI Quadrante": "0%"
+            }
+        
+        quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
+        total_bets = len(quadrante_bets)
+        correct_bets = quadrante_bets['Quadrante_Correct'].sum()
+        winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
+        total_profit = quadrante_bets['Profit_Quadrante'].sum()
+        roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
+        
+        return {
+            "Total Jogos": len(df),
+            "Jogos Finalizados": len(finished_games),
+            "Apostas Quadrante": total_bets,
+            "Acertos Quadrante": int(correct_bets),
+            "Winrate Quadrante": f"{winrate:.1f}%",
+            "Profit Quadrante": f"{total_profit:.2f}u",
+            "ROI Quadrante": f"{roi:.1f}%"
+        }
 
-# Aplicar atualização em tempo real
-ranking_quadrantes = update_real_time_data(ranking_quadrantes)
-
-
-
+    # Exibir resumo live APÓS criar ranking_quadrantes
+    st.markdown("## 📡 Live Score Monitor")
+    live_summary = generate_live_summary(ranking_quadrantes)
+    st.json(live_summary)
     
     # Ordenar por score principal (se existir) ou pelo score do home
     if 'Quadrante_ML_Score_Main' in ranking_quadrantes.columns:
@@ -672,7 +668,7 @@ ranking_quadrantes = update_real_time_data(ranking_quadrantes)
     else:
         ranking_quadrantes = ranking_quadrantes.sort_values('Quadrante_ML_Score_Home', ascending=False)
     
-        # Colunas para exibir - incluindo Live Score
+    # Colunas para exibir - incluindo Live Score
     colunas_possiveis = [
         'Ranking', 'Home', 'Away', 'League', 'ML_Side',
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
@@ -694,6 +690,8 @@ ranking_quadrantes = update_real_time_data(ranking_quadrantes)
     
 else:
     st.info("⚠️ Aguardando dados para gerar ranking dual")
+    
+
 
 # ---------------- RESUMO EXECUTIVO DUAL ----------------
 def resumo_quadrantes_hoje_dual(df):
