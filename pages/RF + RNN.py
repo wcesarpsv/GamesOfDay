@@ -287,7 +287,7 @@ if cat_cols:
 
 # Modelo RF (mantém igual)
 model = RandomForestClassifier(
-    n_estimators=200,
+    n_estimators=500,
     max_depth=10,
     min_samples_split=10,
     min_samples_leaf=4,
