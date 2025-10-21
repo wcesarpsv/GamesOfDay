@@ -309,65 +309,143 @@ st.dataframe(games_today[['Home','Away','Quadrant_Dist','Quadrant_Separation','Q
 ########################################
 #### 🎯 BLOCO – Gráfico Avançado de Distâncias Home ↔ Away
 ########################################
-from matplotlib.patches import FancyArrowPatch
-import matplotlib.cm as cm
+# from matplotlib.patches import FancyArrowPatch
+# import matplotlib.cm as cm
 
-st.markdown("## 🎯 Visualização Avançada – Distância entre Times (Home × Away)")
+# st.markdown("## 🎯 Visualização Avançada – Distância entre Times (Home × Away)")
 
-# Controle de número de confrontos
-max_n = len(games_today)
-n_to_show = st.slider("Quantos confrontos exibir (Top por distância):", 10, min(max_n, 200), 40, step=5)
+# # Controle de número de confrontos
+# max_n = len(games_today)
+# n_to_show = st.slider("Quantos confrontos exibir (Top por distância):", 10, min(max_n, 200), 40, step=5)
+
+# # Ordenar pelos mais distantes
+# df_plot = games_today.nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
+
+# # Criar figura
+# fig, ax = plt.subplots(figsize=(9, 7))
+# ax.set_title(f"Top {n_to_show} Distâncias – Aggression × HandScore", fontsize=12)
+# ax.set_xlabel("Aggression (-1 zebra ↔ +1 favorito)")
+# ax.set_ylabel("HandScore (-60 ↔ +60)")
+# ax.grid(True, alpha=0.3)
+
+# # Linha de referência diagonal verde
+# ax.plot([-1, 1], [-60, 60], '--', color='limegreen', lw=1.5, alpha=0.8, label="Linha de equilíbrio")
+
+# # Normalizar distâncias para color map
+# norm = plt.Normalize(df_plot["Quadrant_Dist"].min(), df_plot["Quadrant_Dist"].max())
+# cmap = cm.get_cmap("viridis")
+
+# # Desenhar vetores com cor e intensidade proporcional à distância
+# for i, row in df_plot.iterrows():
+#     try:
+#         xh, xa = row["Aggression_Home"], row["Aggression_Away"]
+#         yh, ya = row["HandScore_Home"], row["HandScore_Away"]
+#         dist = row["Quadrant_Dist"]
+
+#         if not (pd.isna(xh) or pd.isna(xa) or pd.isna(yh) or pd.isna(ya)):
+#             color = cmap(norm(dist))
+#             ax.plot([xh, xa], [yh, ya], color=color, alpha=0.8, lw=1.5)
+            
+#             # Destacar com rótulos os 10 maiores vetores
+#             if i < 10:
+#                 ax.text(xh, yh, str(row["Home"]), fontsize=8, color='blue', weight='bold')
+#                 ax.text(xa, ya, str(row["Away"]), fontsize=8, color='red', weight='bold')
+
+#     except:
+#         continue
+
+# # Pontos Home e Away
+# ax.scatter(df_plot["Aggression_Home"], df_plot["HandScore_Home"],
+#            color='royalblue', label="Home", s=60, alpha=0.9)
+# ax.scatter(df_plot["Aggression_Away"], df_plot["HandScore_Away"],
+#            color='orangered', label="Away", s=60, alpha=0.9)
+
+# # Legenda e barra de cor
+# sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+# sm.set_array([])
+# cbar = plt.colorbar(sm, ax=ax)
+# cbar.set_label("Distância Normalizada (Quadrant_Dist)", rotation=270, labelpad=15)
+
+# ax.legend(loc='upper left')
+# st.pyplot(fig)
+
+
+import plotly.graph_objects as go
+
+st.markdown("## 🎯 Visualização Interativa – Distância entre Times (Home × Away)")
 
 # Ordenar pelos mais distantes
 df_plot = games_today.nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
 
-# Criar figura
-fig, ax = plt.subplots(figsize=(9, 7))
-ax.set_title(f"Top {n_to_show} Distâncias – Aggression × HandScore", fontsize=12)
-ax.set_xlabel("Aggression (-1 zebra ↔ +1 favorito)")
-ax.set_ylabel("HandScore (-60 ↔ +60)")
-ax.grid(True, alpha=0.3)
+# Criar figura Plotly
+fig = go.Figure()
 
-# Linha de referência diagonal verde
-ax.plot([-1, 1], [-60, 60], '--', color='limegreen', lw=1.5, alpha=0.8, label="Linha de equilíbrio")
+# Adicionar vetores Home → Away
+for _, row in df_plot.iterrows():
+    xh, xa = row["Aggression_Home"], row["Aggression_Away"]
+    yh, ya = row["HandScore_Home"], row["HandScore_Away"]
+    
+    fig.add_trace(go.Scatter(
+        x=[xh, xa],
+        y=[yh, ya],
+        mode="lines+markers",
+        line=dict(color="gray", width=1),
+        marker=dict(size=5),
+        hoverinfo="text",
+        hovertext=(
+            f"<b>{row['Home']} vs {row['Away']}</b><br>"
+            f"🏆 {row.get('League','N/A')}<br>"
+            f"📏 Distância: {row['Quadrant_Dist']:.2f}<br>"
+            f"↔️ Separação: {row['Quadrant_Separation']:.1f}<br>"
+            f"📐 Ângulo: {row['Quadrant_Angle']:.1f}°"
+        ),
+        showlegend=False
+    ))
 
-# Normalizar distâncias para color map
-norm = plt.Normalize(df_plot["Quadrant_Dist"].min(), df_plot["Quadrant_Dist"].max())
-cmap = cm.get_cmap("viridis")
+# Adicionar pontos Home e Away
+fig.add_trace(go.Scatter(
+    x=df_plot["Aggression_Home"],
+    y=df_plot["HandScore_Home"],
+    mode="markers+text",
+    name="Home",
+    marker=dict(color="royalblue", size=8, opacity=0.8),
+    text=df_plot["Home"],
+    textposition="top center",
+    hoverinfo="skip"
+))
 
-# Desenhar vetores com cor e intensidade proporcional à distância
-for i, row in df_plot.iterrows():
-    try:
-        xh, xa = row["Aggression_Home"], row["Aggression_Away"]
-        yh, ya = row["HandScore_Home"], row["HandScore_Away"]
-        dist = row["Quadrant_Dist"]
+fig.add_trace(go.Scatter(
+    x=df_plot["Aggression_Away"],
+    y=df_plot["HandScore_Away"],
+    mode="markers+text",
+    name="Away",
+    marker=dict(color="orangered", size=8, opacity=0.8),
+    text=df_plot["Away"],
+    textposition="top center",
+    hoverinfo="skip"
+))
 
-        if not (pd.isna(xh) or pd.isna(xa) or pd.isna(yh) or pd.isna(ya)):
-            color = cmap(norm(dist))
-            ax.plot([xh, xa], [yh, ya], color=color, alpha=0.8, lw=1.5)
-            
-            # Destacar com rótulos os 10 maiores vetores
-            if i < 10:
-                ax.text(xh, yh, str(row["Home"]), fontsize=8, color='blue', weight='bold')
-                ax.text(xa, ya, str(row["Away"]), fontsize=8, color='red', weight='bold')
+# Linha diagonal de referência
+fig.add_trace(go.Scatter(
+    x=[-1, 1],
+    y=[-60, 60],
+    mode="lines",
+    line=dict(color="limegreen", width=2, dash="dash"),
+    name="Linha de equilíbrio"
+))
 
-    except:
-        continue
+# Layout
+fig.update_layout(
+    title=f"Top {n_to_show} Distâncias – Aggression × HandScore",
+    xaxis_title="Aggression (-1 zebra ↔ +1 favorito)",
+    yaxis_title="HandScore (-60 ↔ +60)",
+    template="plotly_white",
+    height=700,
+    hovermode="closest"
+)
 
-# Pontos Home e Away
-ax.scatter(df_plot["Aggression_Home"], df_plot["HandScore_Home"],
-           color='royalblue', label="Home", s=60, alpha=0.9)
-ax.scatter(df_plot["Aggression_Away"], df_plot["HandScore_Away"],
-           color='orangered', label="Away", s=60, alpha=0.9)
+st.plotly_chart(fig, use_container_width=True)
 
-# Legenda e barra de cor
-sm = cm.ScalarMappable(cmap=cmap, norm=norm)
-sm.set_array([])
-cbar = plt.colorbar(sm, ax=ax)
-cbar.set_label("Distância Normalizada (Quadrant_Dist)", rotation=270, labelpad=15)
-
-ax.legend(loc='upper left')
-st.pyplot(fig)
 
 
 
