@@ -684,7 +684,17 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     cols_finais = [c for c in colunas_possiveis if c in ranking_quadrantes.columns]
     
     st.dataframe(
-        estilo_tabela_quadrantes_dual(ranking_quadrantes[cols_finais].head(20)),
+        estilo_tabela_quadrantes_dual(ranking_quadrantes[cols_finais].head(20))
+        .format({
+            'Goals_H_Today': '{:.0f}',
+            'Goals_A_Today': '{:.0f}',
+            'Home_Red': '{:.0f}',
+            'Away_Red': '{:.0f}',
+            'Profit_Quadrante': '{:.2f}',
+            'Quadrante_ML_Score_Home': '{:.1%}',
+            'Quadrante_ML_Score_Away': '{:.1%}',
+            'Quadrante_ML_Score_Main': '{:.1%}'
+        }, na_rep="-"),
         use_container_width=True
     )
     
