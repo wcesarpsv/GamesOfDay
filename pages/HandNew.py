@@ -383,7 +383,7 @@ def check_handicap_recommendation_correct(rec, handicap_result):
         return handicap_result == "HOME_COVERED"
     
     # Para recomendações AWAY (Home NÃO deve cobrir)  
-    elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY']):
+    elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY', 'MODELO CONFIA AWAY']):
         return handicap_result in ["HOME_NOT_COVERED", "PUSH"]
     
     return None
