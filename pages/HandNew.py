@@ -361,7 +361,7 @@ def determine_handicap_result(row):
     margin = gh - ga
     
     # LINHA DO AWAY → inverter sinal para cálculo do Home
-    handicap_result = calc_handicap_result(margin, asian_line_decimal, invert=True)
+    handicap_result = calc_handicap_result(margin, asian_line_decimal, invert=False)
     
     # Determinar resultado
     if handicap_result > 0.5:
