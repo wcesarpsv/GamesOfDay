@@ -281,6 +281,31 @@ history['Quadrante_Away'] = history.apply(
 
 
 ########################################
+#### 🧮 BLOCO – Cálculo das Distâncias Home ↔ Away
+########################################
+def calcular_distancias_quadrantes(df):
+    """Calcula distância, separação média e ângulo entre os pontos Home e Away."""
+    df = df.copy()
+    if all(col in df.columns for col in ['Aggression_Home', 'Aggression_Away', 'HandScore_Home', 'HandScore_Away']):
+        dx = df['Aggression_Home'] - df['Aggression_Away']
+        dy = df['HandScore_Home'] - df['HandScore_Away']
+        df['Quadrant_Dist'] = np.sqrt(dx**2 + (dy/60)**2 * 2.5) * 10  # escala visual ajustada
+        df['Quadrant_Separation'] = 0.5 * (dy + 60 * dx)
+        df['Quadrant_Angle'] = np.degrees(np.arctan2(dy, dx))
+    else:
+        st.warning("⚠️ Colunas Aggression/HandScore não encontradas para calcular as distâncias.")
+        df['Quadrant_Dist'] = np.nan
+        df['Quadrant_Separation'] = np.nan
+        df['Quadrant_Angle'] = np.nan
+    return df
+
+# Aplicar ao games_today
+games_today = calcular_distancias_quadrantes(games_today)
+
+
+
+
+########################################
 #### 🎯 BLOCO – Gráfico Avançado de Distâncias Home ↔ Away
 ########################################
 from matplotlib.patches import FancyArrowPatch
@@ -344,27 +369,6 @@ ax.legend(loc='upper left')
 st.pyplot(fig)
 
 
-########################################
-#### 🧮 BLOCO – Cálculo das Distâncias Home ↔ Away
-########################################
-def calcular_distancias_quadrantes(df):
-    """Calcula distância, separação média e ângulo entre os pontos Home e Away."""
-    df = df.copy()
-    if all(col in df.columns for col in ['Aggression_Home', 'Aggression_Away', 'HandScore_Home', 'HandScore_Away']):
-        dx = df['Aggression_Home'] - df['Aggression_Away']
-        dy = df['HandScore_Home'] - df['HandScore_Away']
-        df['Quadrant_Dist'] = np.sqrt(dx**2 + (dy/60)**2 * 2.5) * 10  # escala visual ajustada
-        df['Quadrant_Separation'] = 0.5 * (dy + 60 * dx)
-        df['Quadrant_Angle'] = np.degrees(np.arctan2(dy, dx))
-    else:
-        st.warning("⚠️ Colunas Aggression/HandScore não encontradas para calcular as distâncias.")
-        df['Quadrant_Dist'] = np.nan
-        df['Quadrant_Separation'] = np.nan
-        df['Quadrant_Angle'] = np.nan
-    return df
-
-# Aplicar ao games_today
-games_today = calcular_distancias_quadrantes(games_today)
 
 
 
