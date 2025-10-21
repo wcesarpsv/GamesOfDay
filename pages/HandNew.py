@@ -303,7 +303,7 @@ def calcular_distancias_quadrantes(df):
 games_today = calcular_distancias_quadrantes(games_today)
 
 
-st.dataframe(games_today[['Home','Away','Quadrant_Dist','Quadrant_Separation','Quadrant_Angle']].head())
+st.dataframe(games_today[['Home','Away','Quadrant_Dist','Quadrant_Separation','Quadrant_Angle']].head(10))
 
 
 ########################################
