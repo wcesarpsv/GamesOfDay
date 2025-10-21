@@ -8,6 +8,7 @@ import re
 from sklearn.ensemble import RandomForestClassifier
 import matplotlib.pyplot as plt
 from datetime import datetime
+import math
 
 st.set_page_config(page_title="Análise de Quadrantes - Bet Indicator", layout="wide")
 st.title("🎯 Análise de Quadrantes - ML Avançado (Home & Away)")
