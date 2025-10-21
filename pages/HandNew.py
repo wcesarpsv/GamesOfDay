@@ -22,6 +22,22 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
 os.makedirs(MODELS_FOLDER, exist_ok=True)
 
+# ---------------- CONFIGURAÇÕES LIVE SCORE ----------------
+LIVESCORE_FOLDER = "LiveScore"
+
+def setup_livescore_columns(df):
+    """Garante que as colunas do Live Score existam no DataFrame"""
+    if 'Goals_H_Today' not in df.columns:
+        df['Goals_H_Today'] = np.nan
+    if 'Goals_A_Today' not in df.columns:
+        df['Goals_A_Today'] = np.nan
+    if 'Home_Red' not in df.columns:
+        df['Home_Red'] = np.nan
+    if 'Away_Red' not in df.columns:
+        df['Away_Red'] = np.nan
+    return df
+    
+
 # ---------------- Helpers Básicos ----------------
 def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -97,6 +113,65 @@ selected_date_str = date_match.group(0) if date_match else datetime.now().strfti
 # Jogos do dia
 games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
 games_today = filter_leagues(games_today)
+
+# ---------------- LIVE SCORE INTEGRATION ----------------
+def load_and_merge_livescore(games_today, selected_date_str):
+    """Carrega e faz merge dos dados do Live Score"""
+    
+    livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
+    
+    # Setup das colunas
+    games_today = setup_livescore_columns(games_today)
+    
+    if os.path.exists(livescore_file):
+        st.info(f"📡 LiveScore file found: {livescore_file}")
+        results_df = pd.read_csv(livescore_file)
+        
+        # Filtrar jogos cancelados/adiados
+        results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
+        
+        required_cols = [
+            'game_id', 'status', 'home_goal', 'away_goal',
+            'home_ht_goal', 'away_ht_goal',
+            'home_corners', 'away_corners', 
+            'home_yellow', 'away_yellow',
+            'home_red', 'away_red'
+        ]
+        
+        missing_cols = [col for col in required_cols if col not in results_df.columns]
+        
+        if missing_cols:
+            st.error(f"❌ LiveScore file missing columns: {missing_cols}")
+            return games_today
+        else:
+            # Fazer merge com os jogos do dia
+            games_today = games_today.merge(
+                results_df,
+                left_on='Id',
+                right_on='game_id',
+                how='left',
+                suffixes=('', '_RAW')
+            )
+            
+            # Atualizar gols apenas para jogos finalizados
+            games_today['Goals_H_Today'] = games_today['home_goal']
+            games_today['Goals_A_Today'] = games_today['away_goal']
+            games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
+            
+            # Atualizar cartões vermelhos
+            games_today['Home_Red'] = games_today['home_red']
+            games_today['Away_Red'] = games_today['away_red']
+            
+            st.success(f"✅ LiveScore merged: {len(results_df)} games loaded")
+            return games_today
+    else:
+        st.warning(f"⚠️ No LiveScore file found for: {selected_date_str}")
+        return games_today
+
+# Aplicar Live Score
+games_today = load_and_merge_livescore(games_today, selected_date_str)
+
+
 
 # Histórico consolidado
 history = filter_leagues(load_all_games(GAMES_FOLDER))
@@ -238,6 +313,66 @@ with col1:
     st.pyplot(plot_quadrantes_avancado(games_today, "Home"))
 with col2:
     st.pyplot(plot_quadrantes_avancado(games_today, "Away"))
+
+
+# ---------------- FUNÇÕES LIVE SCORE ----------------
+def determine_real_time_result(row):
+    """Determina o resultado do jogo baseado nos gols em tempo real"""
+    try:
+        gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
+        ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
+    except (ValueError, TypeError):
+        return None
+
+    if pd.isna(gh) or pd.isna(ga):
+        return None
+    if gh > ga:
+        return "Home"
+    elif gh < ga:
+        return "Away"
+    else:
+        return "Draw"
+
+def check_recommendation_correct(rec, result):
+    """Verifica se a recomendação estava correta"""
+    if pd.isna(rec) or result is None or rec == '❌ Avoid':
+        return None
+    rec = str(rec)
+    if 'Back Home' in rec or 'HOME' in rec or 'Home' in rec:
+        return result == "Home"
+    elif 'Back Away' in rec or 'AWAY' in rec or 'Away' in rec:
+        return result == "Away"
+    elif 'Back Draw' in rec or 'Draw' in rec:
+        return result == "Draw"
+    elif '1X' in rec:
+        return result in ["Home", "Draw"]
+    elif 'X2' in rec:
+        return result in ["Away", "Draw"]
+    return None
+
+def calculate_real_time_profit(rec, result, odds_row):
+    """Calcula profit em tempo real"""
+    if pd.isna(rec) or result is None or rec == '❌ Avoid':
+        return 0
+    rec = str(rec)
+    if 'Back Home' in rec or 'HOME' in rec:
+        odd = odds_row.get('Odd_H', np.nan)
+        return odd - 1 if result == "Home" else -1
+    elif 'Back Away' in rec or 'AWAY' in rec:
+        odd = odds_row.get('Odd_A', np.nan)
+        return odd - 1 if result == "Away" else -1
+    elif 'Back Draw' in rec:
+        odd = odds_row.get('Odd_D', np.nan)
+        return odd - 1 if result == "Draw" else -1
+    elif '1X' in rec:
+        odd = odds_row.get('Odd_1X', np.nan)
+        return odd - 1 if result in ["Home", "Draw"] else -1
+    elif 'X2' in rec:
+        odd = odds_row.get('Odd_X2', np.nan)
+        return odd - 1 if result in ["Away", "Draw"] else -1
+    return 0
+
+
 
 # ---------------- ML PARA RANKEAR CONFRONTOS (HOME E AWAY) ----------------
 def treinar_modelo_quadrantes_dual(history, games_today):
@@ -453,7 +588,46 @@ if not history.empty:
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
 
-# ---------------- EXIBIÇÃO DOS RESULTADOS DUAL ----------------
+
+# ---------------- RESUMO LIVE ----------------
+def generate_live_summary(df):
+    """Gera resumo em tempo real dos resultados"""
+    finished_games = df.dropna(subset=['Result_Today'])
+    
+    if finished_games.empty:
+        return {
+            "Total Jogos": len(df),
+            "Jogos Finalizados": 0,
+            "Apostas Quadrante": 0,
+            "Acertos Quadrante": 0,
+            "Winrate Quadrante": "0%",
+            "Profit Quadrante": 0,
+            "ROI Quadrante": "0%"
+        }
+    
+    quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
+    total_bets = len(quadrante_bets)
+    correct_bets = quadrante_bets['Quadrante_Correct'].sum()
+    winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
+    total_profit = quadrante_bets['Profit_Quadrante'].sum()
+    roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
+    
+    return {
+        "Total Jogos": len(df),
+        "Jogos Finalizados": len(finished_games),
+        "Apostas Quadrante": total_bets,
+        "Acertos Quadrante": int(correct_bets),
+        "Winrate Quadrante": f"{winrate:.1f}%",
+        "Profit Quadrante": f"{total_profit:.2f}u",
+        "ROI Quadrante": f"{roi:.1f}%"
+    }
+
+# Exibir resumo live
+st.markdown("## 📡 Live Score Monitor")
+live_summary = generate_live_summary(ranking_quadrantes)
+st.json(live_summary)
+
+
 # ---------------- EXIBIÇÃO DOS RESULTADOS DUAL ----------------
 st.markdown("## 🏆 Melhores Confrontos por Quadrantes ML (Home & Away)")
 
@@ -469,6 +643,28 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
     # Aplicar indicadores explicativos dual
     ranking_quadrantes = adicionar_indicadores_explicativos_dual(ranking_quadrantes)
+
+
+    # ---------------- ATUALIZAR COM DADOS LIVE ----------------
+def update_real_time_data(df):
+    """Atualiza todos os dados em tempo real"""
+    # Resultados
+    df['Result_Today'] = df.apply(determine_real_time_result, axis=1)
+    
+    # Performance das recomendações
+    df['Quadrante_Correct'] = df.apply(
+        lambda r: check_recommendation_correct(r['Recomendacao'], r['Result_Today']), axis=1
+    )
+    df['Profit_Quadrante'] = df.apply(
+        lambda r: calculate_real_time_profit(r['Recomendacao'], r['Result_Today'], r), axis=1
+    )
+    return df
+
+# Aplicar atualização em tempo real
+ranking_quadrantes = update_real_time_data(ranking_quadrantes)
+
+
+
     
     # Ordenar por score principal (se existir) ou pelo score do home
     if 'Quadrante_ML_Score_Main' in ranking_quadrantes.columns:
@@ -476,13 +672,16 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     else:
         ranking_quadrantes = ranking_quadrantes.sort_values('Quadrante_ML_Score_Home', ascending=False)
     
-    # Colunas para exibir - apenas as que existem
+        # Colunas para exibir - incluindo Live Score
     colunas_possiveis = [
-        'Ranking', 'Time', 'Home', 'Away', 'League', 'ML_Side',
+        'Ranking', 'Home', 'Away', 'League', 'ML_Side',
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
         'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
         'Quadrante_ML_Score_Main', 'Classificacao_Valor_Home', 
-        'Classificacao_Valor_Away', 'Recomendacao'
+        'Classificacao_Valor_Away', 'Recomendacao',
+        # Colunas Live Score
+        'Goals_H_Today', 'Goals_A_Today', 'Home_Red', 'Away_Red',
+        'Result_Today', 'Quadrante_Correct', 'Profit_Quadrante'
     ]
     
     # Filtrar colunas existentes
