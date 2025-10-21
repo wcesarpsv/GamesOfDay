@@ -390,30 +390,30 @@ def check_handicap_recommendation_correct(rec, handicap_result):
 
 
 def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal):
-    """Calcula profit considerando linhas fracionadas (meias apostas)"""
+    """Calcula profit considerando linhas de meia vitória (0.25 e -0.25)"""
     if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid' or pd.isna(asian_line_decimal):
         return 0
     
     rec = str(rec)
     
-    # Verificar se é linha fracionada (.25 ou .75)
-    is_fractional_line = (abs(asian_line_decimal * 4) % 1 == 0)  # Detecta .25, .75
+    # Verificar se é linha de MEIA VITÓRIA (apenas 0.25 e -0.25)
+    is_half_win_line = (abs(asian_line_decimal) == 0.25)
     
     # Para recomendações HOME
     if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME']):
         odd = odds_row.get('Odd_H_Asi', np.nan)
         
         if handicap_result == "HOME_COVERED":
-            # Se é linha fracionada, meia vitória
-            if is_fractional_line:
+            # Se é linha de meia vitória, meia vitória
+            if is_half_win_line:
                 return odd / 2  # Meia vitória
             else:
                 return odd  # Vitória total
         elif handicap_result == "PUSH":
             return 0  # PUSH - aposta anulada
         elif handicap_result == "HOME_NOT_COVERED":
-            # Se é linha fracionada, meia perda
-            if is_fractional_line:
+            # Se é linha de meia vitória, meia perda
+            if is_half_win_line:
                 return -0.5  # Meia aposta perdida
             else:
                 return -1  # Perda total
@@ -423,16 +423,16 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
         odd = odds_row.get('Odd_A_Asi', np.nan)
         
         if handicap_result == "HOME_NOT_COVERED":
-            # Se é linha fracionada, meia vitória
-            if is_fractional_line:
+            # Se é linha de meia vitória, meia vitória
+            if is_half_win_line:
                 return odd / 2  # Meia vitória
             else:
                 return odd  # Vitória total
         elif handicap_result == "PUSH":
             return 0  # PUSH - aposta anulada
         elif handicap_result == "HOME_COVERED":
-            # Se é linha fracionada, meia perda
-            if is_fractional_line:
+            # Se é linha de meia vitória, meia perda
+            if is_half_win_line:
                 return -0.5  # Meia aposta perdida
             else:
                 return -1  # Perda total
