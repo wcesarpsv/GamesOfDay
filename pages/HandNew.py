@@ -389,32 +389,45 @@ def check_handicap_recommendation_correct(rec, handicap_result):
     return None
 
 
-def calculate_handicap_profit(rec, handicap_result, odds_row):
-    """Calcula profit baseado no resultado do handicap"""
-    if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid':
+def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal):
+    """Calcula profit considerando linhas fracionadas (meias apostas)"""
+    if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid' or pd.isna(asian_line_decimal):
         return 0
     
     rec = str(rec)
     
-    # Para recomendações HOME - usar Odd_H
+    # Verificar se é linha fracionada (.25 ou .75)
+    is_fractional_line = (abs(asian_line_decimal * 4) % 1 == 0)  # Detecta .25, .75
+    
+    # Para recomendações HOME
     if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME']):
         odd = odds_row.get('Odd_H_Asi', np.nan)
+        
         if handicap_result == "HOME_COVERED":
-            return odd  # WIN
+            return odd   # WIN total
         elif handicap_result == "PUSH":
             return 0  # PUSH - aposta anulada
-        else:
-            return -1  # LOSS
+        elif handicap_result == "HOME_NOT_COVERED":
+            # Se é linha fracionada, meia perda
+            if is_fractional_line:
+                return -0.5  # Meia aposta perdida
+            else:
+                return -1  # Perda total
     
-    # Para recomendações AWAY - usar Odd_A  
-    elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY']):
+    # Para recomendações AWAY
+    elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY', 'MODELO CONFIA AWAY']):
         odd = odds_row.get('Odd_A_Asi', np.nan)
+        
         if handicap_result == "HOME_NOT_COVERED":
-            return odd  # WIN
+            return odd  # WIN total
         elif handicap_result == "PUSH":
             return 0  # PUSH - aposta anulada
-        else:
-            return -1  # LOSS
+        elif handicap_result == "HOME_COVERED":
+            # Se é linha fracionada, meia perda
+            if is_fractional_line:
+                return -0.5  # Meia aposta perdida
+            else:
+                return -1  # Perda total
     
     return 0
     
@@ -692,7 +705,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
         )
         df['Profit_Quadrante'] = df.apply(
-            lambda r: calculate_handicap_profit(r['Recomendacao'], r['Handicap_Result'], r), axis=1
+            lambda r: calculate_handicap_profit(r['Recomendacao'], r['Handicap_Result'], r, r['Asian_Line_Decimal']), axis=1
         )
         return df
 
