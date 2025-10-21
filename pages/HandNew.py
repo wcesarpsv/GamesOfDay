@@ -655,10 +655,10 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     # 🔹 Treinar modelos
     # -------------------------------
     model_home = RandomForestClassifier(
-        n_estimators=200, max_depth=10, random_state=42, n_jobs=-1
+        n_estimators=500, max_depth=10, random_state=42, n_jobs=-1
     )
     model_away = RandomForestClassifier(
-        n_estimators=200, max_depth=10, random_state=42, n_jobs=-1
+        n_estimators=500, max_depth=10, random_state=42, n_jobs=-1
     )
 
     model_home.fit(X, y_home)
