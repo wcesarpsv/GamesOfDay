@@ -95,6 +95,26 @@ def calc_handicap_result(margin, asian_line_str, invert=False):
             results.append(0.0)
     return np.mean(results)
 
+
+def convert_asian_line_to_decimal(line_str):
+    """Converte qualquer formato de Asian Line para valor decimal único"""
+    if pd.isna(line_str) or line_str == "":
+        return None
+    
+    try:
+        line_str = str(line_str).strip()
+        
+        # Se não tem "/" é valor único
+        if "/" not in line_str:
+            return float(line_str)
+        
+        # Se tem "/" é linha fracionada - calcular média
+        parts = [float(x) for x in line_str.split("/")]
+        return sum(parts) / len(parts)
+        
+    except (ValueError, TypeError):
+        return None
+
 # ---------------- Carregar Dados ----------------
 st.info("📂 Carregando dados para análise de quadrantes...")
 
@@ -176,6 +196,16 @@ games_today = load_and_merge_livescore(games_today, selected_date_str)
 # Histórico consolidado
 history = filter_leagues(load_all_games(GAMES_FOLDER))
 history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line"]).copy()
+
+# ---------------- CONVERSÃO ASIAN LINE ----------------
+# Aplicar conversão no histórico e jogos de hoje
+history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
+games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
+
+# Filtrar apenas jogos com linha válida no histórico
+history = history.dropna(subset=['Asian_Line_Decimal'])
+st.info(f"📊 Histórico com Asian Line válida: {len(history)} jogos")
+
 
 # Filtro anti-leakage temporal
 if "Date" in history.columns:
@@ -315,62 +345,76 @@ with col2:
     st.pyplot(plot_quadrantes_avancado(games_today, "Away"))
 
 
-# ---------------- FUNÇÕES LIVE SCORE ----------------
-def determine_real_time_result(row):
-    """Determina o resultado do jogo baseado nos gols em tempo real"""
+def determine_handicap_result(row):
+    """Determina se o HOME cobriu o handicap (linha do Away invertida)"""
     try:
         gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
         ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
+        asian_line_decimal = row.get('Asian_Line_Decimal')  # Linha do Away
     except (ValueError, TypeError):
         return None
 
-    if pd.isna(gh) or pd.isna(ga):
+    if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line_decimal):
         return None
-    if gh > ga:
-        return "Home"
-    elif gh < ga:
-        return "Away"
+    
+    # Calcular margin 
+    margin = gh - ga
+    
+    # LINHA DO AWAY → inverter sinal para cálculo do Home
+    handicap_result = calc_handicap_result(margin, asian_line_decimal, invert=True)
+    
+    # Determinar resultado
+    if handicap_result > 0.5:
+        return "HOME_COVERED"
+    elif handicap_result == 0.5:
+        return "PUSH"
     else:
-        return "Draw"
+        return "HOME_NOT_COVERED"
 
-def check_recommendation_correct(rec, result):
-    """Verifica se a recomendação estava correta"""
-    if pd.isna(rec) or result is None or rec == '❌ Avoid':
+def check_handicap_recommendation_correct(rec, handicap_result):
+    """Verifica se a recomendação de handicap estava correta"""
+    if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid':
         return None
+    
     rec = str(rec)
-    if 'Back Home' in rec or 'HOME' in rec or 'Home' in rec:
-        return result == "Home"
-    elif 'Back Away' in rec or 'AWAY' in rec or 'Away' in rec:
-        return result == "Away"
-    elif 'Back Draw' in rec or 'Draw' in rec:
-        return result == "Draw"
-    elif '1X' in rec:
-        return result in ["Home", "Draw"]
-    elif 'X2' in rec:
-        return result in ["Away", "Draw"]
+    
+    # Para recomendações HOME (Home deve cobrir)
+    if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME']):
+        return handicap_result == "HOME_COVERED"
+    
+    # Para recomendações AWAY (Home NÃO deve cobrir)  
+    elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY']):
+        return handicap_result in ["HOME_NOT_COVERED", "PUSH"]
+    
     return None
 
-def calculate_real_time_profit(rec, result, odds_row):
-    """Calcula profit em tempo real"""
-    if pd.isna(rec) or result is None or rec == '❌ Avoid':
+def calculate_handicap_profit(rec, handicap_result, odds_row):
+    """Calcula profit baseado no resultado do handicap"""
+    if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid':
         return 0
+    
     rec = str(rec)
-    if 'Back Home' in rec or 'HOME' in rec:
+    
+    # Para recomendações HOME - usar Odd_H
+    if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME']):
         odd = odds_row.get('Odd_H', np.nan)
-        return odd - 1 if result == "Home" else -1
-    elif 'Back Away' in rec or 'AWAY' in rec:
+        if handicap_result == "HOME_COVERED":
+            return odd - 1  # WIN
+        else:
+            return -1  # LOSS
+    
+    # Para recomendações AWAY - usar Odd_A  
+    elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY']):
         odd = odds_row.get('Odd_A', np.nan)
-        return odd - 1 if result == "Away" else -1
-    elif 'Back Draw' in rec:
-        odd = odds_row.get('Odd_D', np.nan)
-        return odd - 1 if result == "Draw" else -1
-    elif '1X' in rec:
-        odd = odds_row.get('Odd_1X', np.nan)
-        return odd - 1 if result in ["Home", "Draw"] else -1
-    elif 'X2' in rec:
-        odd = odds_row.get('Odd_X2', np.nan)
-        return odd - 1 if result in ["Away", "Draw"] else -1
+        if handicap_result in ["HOME_NOT_COVERED", "PUSH"]:
+            return odd - 1  # WIN
+        else:
+            return -1  # LOSS
+    
     return 0
+
+
+# ---------------- FUNÇÕES LIVE SCORE ----------------
 
 
 
@@ -608,16 +652,16 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
     # ---------------- ATUALIZAR COM DADOS LIVE ----------------
     def update_real_time_data(df):
-        """Atualiza todos os dados em tempo real"""
-        # Resultados
-        df['Result_Today'] = df.apply(determine_real_time_result, axis=1)
+        """Atualiza todos os dados em tempo real para HANDICAP"""
+        # Resultados do handicap
+        df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
         
-        # Performance das recomendações
+        # Performance das recomendações (baseado no handicap)
         df['Quadrante_Correct'] = df.apply(
-            lambda r: check_recommendation_correct(r['Recomendacao'], r['Result_Today']), axis=1
+            lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
         )
         df['Profit_Quadrante'] = df.apply(
-            lambda r: calculate_real_time_profit(r['Recomendacao'], r['Result_Today'], r), axis=1
+            lambda r: calculate_handicap_profit(r['Recomendacao'], r['Handicap_Result'], r), axis=1
         )
         return df
 
@@ -676,8 +720,8 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         'Quadrante_ML_Score_Main', 'Classificacao_Valor_Home', 
         'Classificacao_Valor_Away', 'Recomendacao',
         # Colunas Live Score
-        'Goals_H_Today', 'Goals_A_Today', 'Home_Red', 'Away_Red',
-        'Result_Today', 'Quadrante_Correct', 'Profit_Quadrante'
+        'Goals_H_Today', 'Goals_A_Today', 'Asian_Line_Decimal', 'Handicap_Result',
+        'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
     ]
     
     # Filtrar colunas existentes
