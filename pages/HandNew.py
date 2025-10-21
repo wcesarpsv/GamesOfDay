@@ -374,6 +374,10 @@ import plotly.graph_objects as go
 
 st.markdown("## 🎯 Visualização Interativa – Distância entre Times (Home × Away)")
 
+# Controle de número de confrontos a exibir
+max_n = len(games_today)
+n_to_show = st.slider("Quantos confrontos exibir (Top por distância):", 10, min(max_n, 200), 40, step=5)
+
 # Ordenar pelos mais distantes
 df_plot = games_today.nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
 
