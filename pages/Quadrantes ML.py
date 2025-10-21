@@ -173,6 +173,72 @@ history['Quadrante_Away'] = history.apply(
     lambda x: classificar_quadrante(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
 )
 
+# ---------------- VISUALIZAÇÃO DOS QUADRANTES ----------------
+def plot_quadrantes_avancado(df, side="Home"):
+    """Plot dos 8 quadrantes com cores e anotações"""
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    # Definir cores para cada quadrante
+    cores_quadrantes = {
+        1: 'lightgreen',    # Underdog Value Forte
+        2: 'green',         # Underdog Value
+        3: 'lightcoral',    # Favorite Reliable Forte
+        4: 'red',           # Favorite Reliable
+        5: 'lightyellow',   # Market Overrates Forte
+        6: 'yellow',        # Market Overrates
+        7: 'lightgray',     # Weak Underdog Forte
+        8: 'gray',          # Weak Underdog
+        0: 'white'          # Neutro
+    }
+    
+    # Plotar cada ponto com cor do quadrante
+    for quadrante_id in range(9):  # 0-8
+        mask = df[f'Quadrante_{side}'] == quadrante_id
+        if mask.any():
+            x = df.loc[mask, f'Aggression_{side}']
+            y = df.loc[mask, f'HandScore_{side}']
+            ax.scatter(x, y, c=cores_quadrantes[quadrante_id], 
+                      label=QUADRANTES_8.get(quadrante_id, {}).get('nome', 'Neutro'),
+                      alpha=0.7, s=50)
+    
+    # Linhas divisórias dos quadrantes
+    ax.axvline(x=0, color='black', linestyle='-', alpha=0.5)
+    ax.axvline(x=-0.5, color='black', linestyle='--', alpha=0.3)
+    ax.axvline(x=0.5, color='black', linestyle='--', alpha=0.3)
+    
+    ax.axhline(y=0, color='black', linestyle='-', alpha=0.5)
+    ax.axhline(y=15, color='black', linestyle='--', alpha=0.3)
+    ax.axhline(y=30, color='black', linestyle='--', alpha=0.3)
+    ax.axhline(y=-15, color='black', linestyle='--', alpha=0.3)
+    ax.axhline(y=-30, color='black', linestyle='--', alpha=0.3)
+    
+    # Anotações dos quadrantes
+    ax.text(-0.75, 45, "Underdog\nValue Forte", ha='center', fontsize=9, weight='bold')
+    ax.text(-0.25, 22, "Underdog\nValue", ha='center', fontsize=9)
+    ax.text(0.75, 45, "Favorite\nReliable Forte", ha='center', fontsize=9, weight='bold')
+    ax.text(0.25, 22, "Favorite\nReliable", ha='center', fontsize=9)
+    ax.text(0.75, -45, "Market\nOverrates Forte", ha='center', fontsize=9, weight='bold')
+    ax.text(0.25, -22, "Market\nOverrates", ha='center', fontsize=9)
+    ax.text(-0.75, -45, "Weak\nUnderdog Forte", ha='center', fontsize=9, weight='bold')
+    ax.text(-0.25, -22, "Weak\nUnderdog", ha='center', fontsize=9)
+    
+    ax.set_xlabel(f'Aggression_{side} (-1 zebra ↔ +1 favorito)')
+    ax.set_ylabel(f'HandScore_{side} (-60 a +60)')
+    ax.set_title(f'8 Quadrantes - {side}')
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    return fig
+
+# Exibir gráficos
+st.markdown("### 📈 Visualização dos Quadrantes")
+col1, col2 = st.columns(2)
+with col1:
+    st.pyplot(plot_quadrantes_avancado(games_today, "Home"))
+with col2:
+    st.pyplot(plot_quadrantes_avancado(games_today, "Away"))
+
 # ---------------- ML PARA RANKEAR CONFRONTOS ----------------
 def treinar_modelo_quadrantes(history, games_today):
     """Treina modelo ML baseado em quadrantes + ligas"""
