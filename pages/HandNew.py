@@ -761,8 +761,8 @@ def adicionar_indicadores_explicativos_dual(df):
 def estilo_tabela_quadrantes_dual(df):
     """Aplica estilo colorido à tabela dual"""
     def cor_classificacao(valor):
-        if '🏆 ALTO VALOR' in str(valor): return 'background-color: #90EE90; font-weight: bold'
-        elif '✅ BOM VALOR' in str(valor): return 'background-color: #FFFFE0; font-weight: bold' 
+        if '🏆 ALTO VALOR' in str(valor): return 'font-weight: bold'
+        elif '✅ BOM VALOR' in str(valor): return 'font-weight: bold' 
         elif '🔴 ALTO RISCO' in str(valor): return 'font-weight: bold'
         elif 'VALUE' in str(valor): return 'background-color: #98FB98'
         elif 'EVITAR' in str(valor): return 'background-color: #FFCCCB'
