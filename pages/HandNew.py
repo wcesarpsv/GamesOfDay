@@ -362,10 +362,28 @@ def estilo_tabela_quadrantes_dual(df):
         elif 'SUPERAVALIADO' in str(valor): return 'background-color: #FFA07A'
         else: return ''
     
-    return df.style.applymap(cor_classificacao, subset=['Classificacao_Valor_Home', 'Classificacao_Valor_Away', 'Recomendacao'])\
-                  .background_gradient(subset=['Quadrante_ML_Score_Home'], cmap='RdYlGn')\
-                  .background_gradient(subset=['Quadrante_ML_Score_Away'], cmap='RdYlGn')\
-                  .background_gradient(subset=['Quadrante_ML_Score_Main'], cmap='RdYlGn')
+    # Aplicar apenas às colunas que existem
+    colunas_para_estilo = []
+    if 'Classificacao_Valor_Home' in df.columns:
+        colunas_para_estilo.append('Classificacao_Valor_Home')
+    if 'Classificacao_Valor_Away' in df.columns:
+        colunas_para_estilo.append('Classificacao_Valor_Away')
+    if 'Recomendacao' in df.columns:
+        colunas_para_estilo.append('Recomendacao')
+    
+    styler = df.style
+    if colunas_para_estilo:
+        styler = styler.applymap(cor_classificacao, subset=colunas_para_estilo)
+    
+    # Aplicar gradientes apenas às colunas que existem
+    if 'Quadrante_ML_Score_Home' in df.columns:
+        styler = styler.background_gradient(subset=['Quadrante_ML_Score_Home'], cmap='RdYlGn')
+    if 'Quadrante_ML_Score_Away' in df.columns:
+        styler = styler.background_gradient(subset=['Quadrante_ML_Score_Away'], cmap='RdYlGn')
+    if 'Quadrante_ML_Score_Main' in df.columns:
+        styler = styler.background_gradient(subset=['Quadrante_ML_Score_Main'], cmap='RdYlGn')
+    
+    return styler
 
 # ---------------- ANÁLISE DE PADRÕES DUAL ----------------
 def analisar_padroes_quadrantes_dual(df):
@@ -436,6 +454,7 @@ else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
 
 # ---------------- EXIBIÇÃO DOS RESULTADOS DUAL ----------------
+# ---------------- EXIBIÇÃO DOS RESULTADOS DUAL ----------------
 st.markdown("## 🏆 Melhores Confrontos por Quadrantes ML (Home & Away)")
 
 if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
@@ -451,32 +470,28 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # Aplicar indicadores explicativos dual
     ranking_quadrantes = adicionar_indicadores_explicativos_dual(ranking_quadrantes)
     
-    # Ordenar por score principal
-    ranking_quadrantes = ranking_quadrantes.sort_values('Quadrante_ML_Score_Main', ascending=False)
+    # Ordenar por score principal (se existir) ou pelo score do home
+    if 'Quadrante_ML_Score_Main' in ranking_quadrantes.columns:
+        ranking_quadrantes = ranking_quadrantes.sort_values('Quadrante_ML_Score_Main', ascending=False)
+    else:
+        ranking_quadrantes = ranking_quadrantes.sort_values('Quadrante_ML_Score_Home', ascending=False)
     
-    # Colunas para exibir
-    cols_finais = [
+    # Colunas para exibir - apenas as que existem
+    colunas_possiveis = [
         'Ranking', 'Home', 'Away', 'League', 'ML_Side',
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
         'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
-        'Classificacao_Valor_Home', 'Classificacao_Valor_Away', 'Recomendacao'
+        'Quadrante_ML_Score_Main', 'Classificacao_Valor_Home', 
+        'Classificacao_Valor_Away', 'Recomendacao'
     ]
     
     # Filtrar colunas existentes
-    cols_finais = [c for c in cols_finais if c in ranking_quadrantes.columns]
+    cols_finais = [c for c in colunas_possiveis if c in ranking_quadrantes.columns]
     
     st.dataframe(
         estilo_tabela_quadrantes_dual(ranking_quadrantes[cols_finais].head(20)),
         use_container_width=True
     )
-    
-    # Análise de padrões dual
-    analisar_padroes_quadrantes_dual(ranking_quadrantes)
-    
-    # Resumo de distribuição
-    st.markdown("#### 📊 Distribuição de Lados Recomendados")
-    dist_lados = ranking_quadrantes['ML_Side'].value_counts()
-    st.dataframe(dist_lados, use_container_width=True)
     
 else:
     st.info("⚠️ Aguardando dados para gerar ranking dual")
