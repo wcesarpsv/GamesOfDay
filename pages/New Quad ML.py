@@ -128,17 +128,46 @@ def carregar_dados():
     
     st.info("📂 Carregando dados para análise de quadrantes...")
 
-    # Seleção de arquivo do dia
+    # Seleção de arquivo do dia - AGORA NA SIDEBAR
+    st.sidebar.markdown("### 📅 Seleção de Data")
+    
     files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
     if not files:
         st.warning("No CSV files found in GamesDay folder.")
         return None, None
 
-    options = files[-7:] if len(files) >= 7 else files
-    selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
-
+    # Extrair datas dos arquivos para mostrar de forma mais amigável
+    file_options = []
+    for f in files:
+        date_match = re.search(r"\d{4}-\d{2}-\d{2}", f)
+        if date_match:
+            date_str = date_match.group(0)
+            formatted_date = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+            file_options.append((f, formatted_date, date_str))
+    
+    # Ordenar por data (mais recente primeiro)
+    file_options.sort(key=lambda x: x[2], reverse=True)
+    
+    # Criar opções para o selectbox
+    options_display = [f"{date} - {filename}" for filename, date, _ in file_options[:10]]  # Últimos 10 dias
+    options_files = [filename for filename, _, _ in file_options[:10]]
+    
+    selected_display = st.sidebar.selectbox(
+        "Select Matchday File:", 
+        options_display,
+        index=0  # Mais recente por padrão
+    )
+    
+    # Encontrar o arquivo correspondente
+    selected_index = options_display.index(selected_display)
+    selected_file = options_files[selected_index]
+    
     date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
     selected_date_str = date_match.group(0) if date_match else datetime.now().strftime("%Y-%m-%d")
+    
+    # Mostrar data selecionada
+    formatted_selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+    st.sidebar.info(f"**Data selecionada:** {formatted_selected_date}")
 
     # Jogos do dia
     games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
@@ -154,7 +183,7 @@ def carregar_dados():
             selected_date = pd.to_datetime(selected_date_str)
             history["Date"] = pd.to_datetime(history["Date"], errors="coerce")
             history = history[history["Date"] < selected_date].copy()
-            st.info(f"📊 Treinando com {len(history)} jogos anteriores a {selected_date_str}")
+            st.info(f"📊 Treinando com {len(history)} jogos anteriores a {formatted_selected_date}")
         except Exception as e:
             st.error(f"Erro ao aplicar filtro temporal: {e}")
 
