@@ -763,7 +763,7 @@ def estilo_tabela_quadrantes_dual(df):
     def cor_classificacao(valor):
         if '🏆 ALTO VALOR' in str(valor): return 'background-color: #90EE90; font-weight: bold'
         elif '✅ BOM VALOR' in str(valor): return 'background-color: #FFFFE0; font-weight: bold' 
-        elif '🔴 ALTO RISCO' in str(valor): return 'background-color: #FFB6C1; font-weight: bold'
+        elif '🔴 ALTO RISCO' in str(valor): return 'font-weight: bold'
         elif 'VALUE' in str(valor): return 'background-color: #98FB98'
         elif 'EVITAR' in str(valor): return 'background-color: #FFCCCB'
         elif 'SUPERAVALIADO' in str(valor): return 'background-color: #FFA07A'
