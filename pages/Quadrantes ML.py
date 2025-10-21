@@ -173,72 +173,6 @@ history['Quadrante_Away'] = history.apply(
     lambda x: classificar_quadrante(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
 )
 
-# ---------------- VISUALIZAÇÃO DOS QUADRANTES ----------------
-def plot_quadrantes_avancado(df, side="Home"):
-    """Plot dos 8 quadrantes com cores e anotações"""
-    fig, ax = plt.subplots(figsize=(10, 8))
-    
-    # Definir cores para cada quadrante
-    cores_quadrantes = {
-        1: 'lightgreen',    # Underdog Value Forte
-        2: 'green',         # Underdog Value
-        3: 'lightcoral',    # Favorite Reliable Forte
-        4: 'red',           # Favorite Reliable
-        5: 'lightyellow',   # Market Overrates Forte
-        6: 'yellow',        # Market Overrates
-        7: 'lightgray',     # Weak Underdog Forte
-        8: 'gray',          # Weak Underdog
-        0: 'white'          # Neutro
-    }
-    
-    # Plotar cada ponto com cor do quadrante
-    for quadrante_id in range(9):  # 0-8
-        mask = df[f'Quadrante_{side}'] == quadrante_id
-        if mask.any():
-            x = df.loc[mask, f'Aggression_{side}']
-            y = df.loc[mask, f'HandScore_{side}']
-            ax.scatter(x, y, c=cores_quadrantes[quadrante_id], 
-                      label=QUADRANTES_8.get(quadrante_id, {}).get('nome', 'Neutro'),
-                      alpha=0.7, s=50)
-    
-    # Linhas divisórias dos quadrantes
-    ax.axvline(x=0, color='black', linestyle='-', alpha=0.5)
-    ax.axvline(x=-0.5, color='black', linestyle='--', alpha=0.3)
-    ax.axvline(x=0.5, color='black', linestyle='--', alpha=0.3)
-    
-    ax.axhline(y=0, color='black', linestyle='-', alpha=0.5)
-    ax.axhline(y=15, color='black', linestyle='--', alpha=0.3)
-    ax.axhline(y=30, color='black', linestyle='--', alpha=0.3)
-    ax.axhline(y=-15, color='black', linestyle='--', alpha=0.3)
-    ax.axhline(y=-30, color='black', linestyle='--', alpha=0.3)
-    
-    # Anotações dos quadrantes
-    ax.text(-0.75, 45, "Underdog\nValue Forte", ha='center', fontsize=9, weight='bold')
-    ax.text(-0.25, 22, "Underdog\nValue", ha='center', fontsize=9)
-    ax.text(0.75, 45, "Favorite\nReliable Forte", ha='center', fontsize=9, weight='bold')
-    ax.text(0.25, 22, "Favorite\nReliable", ha='center', fontsize=9)
-    ax.text(0.75, -45, "Market\nOverrates Forte", ha='center', fontsize=9, weight='bold')
-    ax.text(0.25, -22, "Market\nOverrates", ha='center', fontsize=9)
-    ax.text(-0.75, -45, "Weak\nUnderdog Forte", ha='center', fontsize=9, weight='bold')
-    ax.text(-0.25, -22, "Weak\nUnderdog", ha='center', fontsize=9)
-    
-    ax.set_xlabel(f'Aggression_{side} (-1 zebra ↔ +1 favorito)')
-    ax.set_ylabel(f'HandScore_{side} (-60 a +60)')
-    ax.set_title(f'8 Quadrantes - {side}')
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    return fig
-
-# Exibir gráficos
-st.markdown("### 📈 Visualização dos Quadrantes")
-col1, col2 = st.columns(2)
-with col1:
-    st.pyplot(plot_quadrantes_avancado(games_today, "Home"))
-with col2:
-    st.pyplot(plot_quadrantes_avancado(games_today, "Away"))
-
 # ---------------- ML PARA RANKEAR CONFRONTOS ----------------
 def treinar_modelo_quadrantes(history, games_today):
     """Treina modelo ML baseado em quadrantes + ligas"""
@@ -282,56 +216,126 @@ if not history.empty:
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
 
-# ---------------- PERFORMANCE HISTÓRICA ----------------
-def analisar_performance_quadrantes(history):
-    """Analisa performance histórica por combinação de quadrantes"""
+# ---------------- SISTEMA DE INDICAÇÕES EXPLÍCITAS ----------------
+def adicionar_indicadores_explicativos(df):
+    """Adiciona classificações e recomendações explícitas"""
+    df = df.copy()
     
-    # Criar combinação Home-Away
-    history['Combinacao_Quadrantes'] = history['Quadrante_Home'].astype(str) + '_' + history['Quadrante_Away'].astype(str)
+    # 1. CLASSIFICAÇÃO DE VALOR
+    conditions = [
+        df['Quadrante_ML_Score'] >= 0.60,
+        df['Quadrante_ML_Score'] >= 0.55,
+        df['Quadrante_ML_Score'] >= 0.50,
+        df['Quadrante_ML_Score'] >= 0.45,
+        df['Quadrante_ML_Score'] < 0.45
+    ]
+    choices = ['🏆 ALTO VALOR', '✅ BOM VALOR', '⚖️ NEUTRO', '⚠️ CAUTELA', '🔴 ALTO RISCO']
+    df['Classificacao_Valor'] = np.select(conditions, choices, default='⚖️ NEUTRO')
     
-    # Calcular métricas por combinação
-    performance = history.groupby('Combinacao_Quadrantes').agg({
-        'Target_AH_Home': ['count', 'mean', 'std'],
-        'Goals_H_FT': 'mean',
-        'Goals_A_FT': 'mean'
-    }).round(3)
+    # 2. RECOMENDAÇÃO DE APOSTA
+    def gerar_recomendacao(row):
+        home_q = row['Quadrante_Home_Label']
+        away_q = row['Quadrante_Away_Label']
+        score = row['Quadrante_ML_Score']
+        
+        # Combinações específicas
+        if home_q == 'Underdog Value' and away_q == 'Market Overrates':
+            return '🎯 VALUE NO HOME'
+        elif home_q == 'Market Overrates' and away_q == 'Underdog Value':
+            return '🎯 VALUE NO AWAY'
+        elif home_q == 'Favorite Reliable' and away_q == 'Weak Underdog':
+            return '💪 FAVORITO CONFIÁVEL'
+        elif home_q == 'Weak Underdog' and away_q == 'Favorite Reliable':
+            return '🚫 EVITAR HOME'
+        elif 'Market Overrates' in home_q:
+            return '🔴 HOME SUPERAVALIADO'
+        elif 'Market Overrates' in away_q:
+            return '🔴 AWAY SUPERAVALIADO'
+        elif score >= 0.55:
+            return '📈 MODELO CONFIA'
+        elif score <= 0.45:
+            return '📉 MODELO NÃO CONFIA'
+        else:
+            return '⚖️ ANALISAR OUTROS FATORES'
     
-    performance.columns = ['Jogos', 'Taxa_Acerto', 'Desvio_Padrao', 'Gols_Home', 'Gols_Away']
-    performance['ROI_Estimado'] = (performance['Taxa_Acerto'] * 1.91 - 1) * 100
+    df['Recomendacao'] = df.apply(gerar_recomendacao, axis=1)
     
-    # Adicionar labels
-    performance['Quadrante_Home_Label'] = performance.index.map(
-        lambda x: QUADRANTES_8.get(int(x.split('_')[0]), {}).get('nome', 'Neutro') if x != '0_0' else 'Neutro'
-    )
-    performance['Quadrante_Away_Label'] = performance.index.map(
-        lambda x: QUADRANTES_8.get(int(x.split('_')[1]), {}).get('nome', 'Neutro') if x != '0_0' else 'Neutro'
-    )
+    # 3. RANKING POR POTENCIAL
+    df['Ranking'] = df['Quadrante_ML_Score'].rank(ascending=False, method='dense').astype(int)
     
-    return performance.sort_values('Taxa_Acerto', ascending=False)
+    return df
 
-# Exibir performance histórica
-st.markdown("### 📊 Performance Histórica por Combinação de Quadrantes")
-
-if not history.empty:
-    performance_df = analisar_performance_quadrantes(history)
+def estilo_tabela_quadrantes(df):
+    """Aplica estilo colorido à tabela"""
+    def cor_classificacao(valor):
+        if valor == '🏆 ALTO VALOR': return 'background-color: #90EE90; font-weight: bold'
+        elif valor == '✅ BOM VALOR': return 'background-color: #FFFFE0; font-weight: bold' 
+        elif valor == '🔴 ALTO RISCO': return 'background-color: #FFB6C1; font-weight: bold'
+        elif 'VALUE' in valor: return 'background-color: #98FB98'
+        elif 'EVITAR' in valor: return 'background-color: #FFCCCB'
+        elif 'SUPERAVALIADO' in valor: return 'background-color: #FFA07A'
+        else: return ''
     
-    st.dataframe(
-        performance_df
-        .style.format({
-            'Taxa_Acerto': '{:.1%}',
-            'ROI_Estimado': '{:.1f}%',
-            'Gols_Home': '{:.1f}',
-            'Gols_Away': '{:.1f}'
-        })
-        .background_gradient(subset=['Taxa_Acerto'], cmap='RdYlGn')
-        .background_gradient(subset=['ROI_Estimado'], cmap='RdYlGn'),
-        use_container_width=True
-    )
-else:
-    st.info("⚠️ Sem dados históricos para análise de performance")
+    return df.style.applymap(cor_classificacao, subset=['Classificacao_Valor'])\
+                  .applymap(cor_classificacao, subset=['Recomendacao'])\
+                  .background_gradient(subset=['Quadrante_ML_Score'], cmap='RdYlGn')
 
-# ---------------- RANKING DOS MELHORES CONFRONTOS ----------------
-st.markdown("### 🏆 Melhores Confrontos por Quadrantes ML")
+# ---------------- ANÁLISE DE PADRÕES ----------------
+def analisar_padroes_quadrantes(df):
+    """Analisa padrões recorrentes nas combinações de quadrantes"""
+    st.markdown("### 🔍 Análise de Padrões por Combinação")
+    
+    padroes = {
+        'Underdog Value vs Market Overrates': {
+            'descricao': '🎯 **MELHOR PADRÃO** - Zebra com valor vs Favorito supervalorizado',
+            'prioridade': 1
+        },
+        'Favorite Reliable vs Weak Underdog': {
+            'descricao': '💪 **PADRÃO FORTE** - Favorito confiável contra time fraco',
+            'prioridade': 2
+        }, 
+        'Market Overrates vs Underdog Value': {
+            'descricao': '🔴 **PADRÃO PERIGOSO** - Favorito supervalorizado vs Zebra com valor',
+            'prioridade': 4
+        },
+        'Weak Underdog vs Favorite Reliable': {
+            'descricao': '🚫 **EVITAR** - Time fraco contra favorito confiável',
+            'prioridade': 5
+        },
+        'Underdog Value vs Weak Underdog': {
+            'descricao': '⚖️ **PADRÃO EQUILIBRADO** - Zebra com valor contra time fraco',
+            'prioridade': 3
+        }
+    }
+    
+    # Ordenar padrões por prioridade
+    padroes_ordenados = sorted(padroes.items(), key=lambda x: x[1]['prioridade'])
+    
+    for padrao, info in padroes_ordenados:
+        home_q, away_q = padrao.split(' vs ')
+        jogos = df[
+            (df['Quadrante_Home_Label'] == home_q) & 
+            (df['Quadrante_Away_Label'] == away_q)
+        ]
+        
+        if not jogos.empty:
+            st.write(f"**{padrao}**")
+            st.write(f"{info['descricao']}")
+            
+            cols_padrao = ['Ranking', 'Home', 'Away', 'League', 'Quadrante_ML_Score', 'Recomendacao']
+            cols_padrao = [c for c in cols_padrao if c in jogos.columns]
+            
+            st.dataframe(
+                jogos[cols_padrao]
+                .sort_values('Quadrante_ML_Score', ascending=False)
+                .style.format({'Quadrante_ML_Score': '{:.1%}'})
+                .background_gradient(subset=['Quadrante_ML_Score'], cmap='RdYlGn'),
+                use_container_width=True
+            )
+            st.write("---")
+
+# ---------------- EXIBIÇÃO DOS RESULTADOS ----------------
+st.markdown("## 🏆 Melhores Confrontos por Quadrantes ML")
 
 if not games_today.empty and 'Quadrante_ML_Score' in games_today.columns:
     # Preparar dados para exibição
@@ -343,79 +347,66 @@ if not games_today.empty and 'Quadrante_ML_Score' in games_today.columns:
         lambda x: QUADRANTES_8.get(x, {}).get('nome', 'Neutro') if x != 0 else 'Neutro'
     )
     
-    # Colunas para exibir
-    cols_ranking = [
-        'Home', 'Away', 'League', 
-        'Quadrante_Home_Label', 'Quadrante_Away_Label', 
-        'Quadrante_ML_Score', 'Asian_Line_Home_Display'
-    ]
-    
-    # Filtrar colunas existentes
-    cols_ranking = [c for c in cols_ranking if c in ranking_quadrantes.columns]
+    # Aplicar indicadores explicativos
+    ranking_quadrantes = adicionar_indicadores_explicativos(ranking_quadrantes)
     
     # Ordenar por score do ML
     ranking_quadrantes = ranking_quadrantes.sort_values('Quadrante_ML_Score', ascending=False)
     
+    # Colunas para exibir
+    cols_finais = [
+        'Ranking', 'Home', 'Away', 'League', 
+        'Quadrante_Home_Label', 'Quadrante_Away_Label',
+        'Quadrante_ML_Score', 'Classificacao_Valor', 'Recomendacao'
+    ]
+    
+    # Filtrar colunas existentes
+    cols_finais = [c for c in cols_finais if c in ranking_quadrantes.columns]
+    
     st.dataframe(
-        ranking_quadrantes[cols_ranking].head(15)
-        .style.format({
-            'Quadrante_ML_Score': '{:.1%}',
-            'Asian_Line_Home_Display': '{:+.2f}'
-        })
-        .background_gradient(subset=['Quadrante_ML_Score'], cmap='RdYlGn'),
+        estilo_tabela_quadrantes(ranking_quadrantes[cols_finais].head(20)),
         use_container_width=True
     )
+    
+    # Análise de padrões
+    analisar_padroes_quadrantes(ranking_quadrantes)
+    
 else:
     st.info("⚠️ Aguardando dados para gerar ranking")
 
 # ---------------- RESUMO EXECUTIVO ----------------
-def resumo_quadrantes_hoje(games_today):
+def resumo_quadrantes_hoje(df):
     """Resumo executivo dos quadrantes de hoje"""
     
     st.markdown("### 📋 Resumo Executivo - Quadrantes Hoje")
     
-    total_jogos = len(games_today)
-    jogos_quadrantes_fortes = len(games_today[
-        (games_today['Quadrante_Home'].isin([1, 3, 5, 7])) | 
-        (games_today['Quadrante_Away'].isin([1, 3, 5, 7]))
-    ])
+    if df.empty:
+        st.info("Nenhum dado disponível para resumo")
+        return
+    
+    total_jogos = len(df)
+    alto_valor = len(df[df['Classificacao_Valor'] == '🏆 ALTO VALOR'])
+    bom_valor = len(df[df['Classificacao_Valor'] == '✅ BOM VALOR'])
+    alto_risco = len(df[df['Classificacao_Valor'] == '🔴 ALTO RISCO'])
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.metric("Total Jogos", total_jogos)
     with col2:
-        st.metric("Jogos Quadrantes Fortes", jogos_quadrantes_fortes)
+        st.metric("🎯 Alto Valor", alto_valor)
     with col3:
-        taxa_fortes = (jogos_quadrantes_fortes/total_jogos*100) if total_jogos > 0 else 0
-        st.metric("Taxa Quadrantes Fortes", f"{taxa_fortes:.1f}%")
+        st.metric("✅ Bom Valor", bom_valor)
     with col4:
-        if 'Quadrante_ML_Score' in games_today.columns:
-            melhor_score = games_today['Quadrante_ML_Score'].max()
-            st.metric("Melhor Score ML", f"{melhor_score:.1%}")
-        else:
-            st.metric("Melhor Score ML", "N/A")
+        st.metric("🔴 Alto Risco", alto_risco)
+    
+    # Distribuição de recomendações
+    st.markdown("#### 📊 Distribuição de Recomendações")
+    dist_recomendacoes = df['Recomendacao'].value_counts()
+    st.dataframe(dist_recomendacoes, use_container_width=True)
 
-if not games_today.empty:
+if not games_today.empty and 'Classificacao_Valor' in games_today.columns:
     resumo_quadrantes_hoje(games_today)
-
-# ---------------- DISTRIBUIÇÃO DOS QUADRANTES ----------------
-st.markdown("### 📊 Distribuição dos Quadrantes - Hoje")
-
-if not games_today.empty:
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        dist_home = games_today['Quadrante_Home'].value_counts().sort_index()
-        dist_home.index = [QUADRANTES_8.get(i, {}).get('nome', 'Neutro') for i in dist_home.index]
-        st.write("**Home:**")
-        st.dataframe(dist_home)
-    
-    with col2:
-        dist_away = games_today['Quadrante_Away'].value_counts().sort_index()
-        dist_away.index = [QUADRANTES_8.get(i, {}).get('nome', 'Neutro') for i in dist_away.index]
-        st.write("**Away:**")
-        st.dataframe(dist_away)
 
 st.markdown("---")
 st.info("🎯 **Análise de Quadrantes ML** - Sistema avançado para identificação de value bets baseado em Aggression × HandScore")
