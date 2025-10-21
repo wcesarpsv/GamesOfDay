@@ -25,8 +25,24 @@ MODELS_FOLDER = "Models_Handicap"
 os.makedirs(MODELS_FOLDER, exist_ok=True)
 
 # =====================================================
-# BLOCO 2 - CARREGAMENTO E PREPROCESSAMENTO
+# BLOCO 2 - CARREGAMENTO E PREPROCESSAMENTO (CORRIGIDO)
 # =====================================================
+
+def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Pré-processa DataFrame para garantir colunas consistentes"""
+    df = df.copy()
+    if "Goals_H_FT_x" in df.columns:
+        df = df.rename(columns={"Goals_H_FT_x": "Goals_H_FT", "Goals_A_FT_x": "Goals_A_FT"})
+    elif "Goals_H_FT_y" in df.columns:
+        df = df.rename(columns={"Goals_H_FT_y": "Goals_H_FT", "Goals_A_FT_y": "Goals_A_FT"})
+    return df
+
+def verificar_colunas_obrigatorias(df):
+    """Verifica se as colunas necessárias existem no DataFrame"""
+    if df is None or df.empty:
+        return False
+    colunas_necessarias = ['Goals_H_FT', 'Goals_A_FT', 'Asian_Line', 'League', 'Home', 'Away']
+    return all(col in df.columns for col in colunas_necessarias)
 
 def verificar_estrutura_pastas():
     """Verifica se as pastas necessárias existem"""
@@ -37,7 +53,7 @@ def verificar_estrutura_pastas():
     return True
 
 def carregar_dados_simples():
-    """Carrega dados com fallbacks se arquivos não existirem"""
+    """Carrega dados com fallbacks robustos - VERSÃO CORRIGIDA"""
     
     # Verificar se existe a pasta
     if not verificar_estrutura_pastas():
@@ -48,8 +64,6 @@ def carregar_dados_simples():
         files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
         if not files:
             st.warning("📂 Nenhum arquivo CSV encontrado na pasta GamesDay")
-            
-            # Criar dados de exemplo para teste
             st.info("🔄 Criando dados de exemplo para demonstração...")
             return criar_dados_exemplo(), criar_dados_exemplo(), "2024-01-01"
         
@@ -57,18 +71,24 @@ def carregar_dados_simples():
         arquivo_recente = sorted(files)[-1]
         st.success(f"📁 Arquivo carregado: {arquivo_recente}")
         
-        # Carregar dados reais
-        games_today = pd.read_csv(os.path.join(GAMES_FOLDER, arquivo_recente))
-        historico = games_today.copy()  # Para demo, usamos os mesmos dados
+        # Carregar e pré-processar dados reais
+        games_today = preprocess_df(pd.read_csv(os.path.join(GAMES_FOLDER, arquivo_recente)))
+        historico = games_today.copy()
+        
+        # Verificar se colunas obrigatórias existem
+        if not verificar_colunas_obrigatorias(games_today):
+            st.warning("⚠️ Colunas obrigatórias não encontradas nos dados reais. Usando dados de exemplo.")
+            return criar_dados_exemplo(), criar_dados_exemplo(), "2024-01-01"
         
         return games_today, historico, arquivo_recente
         
     except Exception as e:
         st.error(f"❌ Erro ao carregar dados: {e}")
+        st.info("🔄 Criando dados de exemplo devido ao erro...")
         return criar_dados_exemplo(), criar_dados_exemplo(), "2024-01-01"
 
 def criar_dados_exemplo():
-    """Cria dados de exemplo para demonstração"""
+    """Cria dados de exemplo COMPLETOS para demonstração - VERSÃO CORRIGIDA"""
     np.random.seed(42)
     
     times = [
@@ -94,7 +114,17 @@ def criar_dados_exemplo():
             'Date': f"2024-01-{np.random.randint(1, 30):02d}"
         })
     
-    return pd.DataFrame(dados)
+    df = pd.DataFrame(dados)
+    
+    # GARANTIR que todas as colunas obrigatórias existem
+    colunas_obrigatorias = ['Goals_H_FT', 'Goals_A_FT', 'Asian_Line', 'League', 'Home', 'Away']
+    for col in colunas_obrigatorias:
+        if col not in df.columns:
+            st.error(f"❌ Coluna {col} não encontrada nos dados exemplo!")
+    
+    return df
+
+
 
 # =====================================================
 # BLOCO 3 - SISTEMA DE HANDICAP
