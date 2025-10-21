@@ -400,7 +400,7 @@ def calculate_handicap_profit(rec, handicap_result, odds_row):
     if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME']):
         odd = odds_row.get('Odd_H_Asi', np.nan)
         if handicap_result == "HOME_COVERED":
-            return odd - 1  # WIN
+            return odd  # WIN
         elif handicap_result == "PUSH":
             return 0  # PUSH - aposta anulada
         else:
@@ -410,7 +410,7 @@ def calculate_handicap_profit(rec, handicap_result, odds_row):
     elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY']):
         odd = odds_row.get('Odd_A_Asi', np.nan)
         if handicap_result == "HOME_NOT_COVERED":
-            return odd - 1  # WIN
+            return odd  # WIN
         elif handicap_result == "PUSH":
             return 0  # PUSH - aposta anulada
         else:
