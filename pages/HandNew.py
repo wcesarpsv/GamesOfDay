@@ -388,6 +388,7 @@ def check_handicap_recommendation_correct(rec, handicap_result):
     
     return None
 
+
 def calculate_handicap_profit(rec, handicap_result, odds_row):
     """Calcula profit baseado no resultado do handicap"""
     if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid':
@@ -399,19 +400,49 @@ def calculate_handicap_profit(rec, handicap_result, odds_row):
     if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME']):
         odd = odds_row.get('Odd_H_Asi', np.nan)
         if handicap_result == "HOME_COVERED":
-            return odd # WIN
+            return odd - 1  # WIN
+        elif handicap_result == "PUSH":
+            return 0  # PUSH - aposta anulada
         else:
             return -1  # LOSS
     
     # Para recomendações AWAY - usar Odd_A  
     elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY']):
         odd = odds_row.get('Odd_A_Asi', np.nan)
-        if handicap_result in ["HOME_NOT_COVERED", "PUSH"]:
-            return odd  # WIN
+        if handicap_result == "HOME_NOT_COVERED":
+            return odd - 1  # WIN
+        elif handicap_result == "PUSH":
+            return 0  # PUSH - aposta anulada
         else:
             return -1  # LOSS
     
     return 0
+    
+
+# def calculate_handicap_profit(rec, handicap_result, odds_row):
+#     """Calcula profit baseado no resultado do handicap"""
+#     if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid':
+#         return 0
+    
+#     rec = str(rec)
+    
+#     # Para recomendações HOME - usar Odd_H
+#     if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME']):
+#         odd = odds_row.get('Odd_H_Asi', np.nan)
+#         if handicap_result == "HOME_COVERED":
+#             return odd # WIN
+#         else:
+#             return -1  # LOSS
+    
+#     # Para recomendações AWAY - usar Odd_A  
+#     elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY']):
+#         odd = odds_row.get('Odd_A_Asi', np.nan)
+#         if handicap_result in ["HOME_NOT_COVERED", "PUSH"]:
+#             return odd  # WIN
+#         else:
+#             return -1  # LOSS
+    
+#     return 0
 
 
 # ---------------- FUNÇÕES LIVE SCORE ----------------
