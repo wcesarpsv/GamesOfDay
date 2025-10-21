@@ -390,54 +390,111 @@ def check_handicap_recommendation_correct(rec, handicap_result):
 
 
 def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal):
-    """Calcula profit considerando linhas de meia vitória (0.25 e -0.25)"""
+    """
+    Calcula o profit considerando todas as linhas asiáticas (±0.25, ±0.75, ±1.25, etc.)
+    incluindo meia vitória/perda e PUSH.
+    """
     if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid' or pd.isna(asian_line_decimal):
         return 0
+
+    rec = str(rec).upper()
+
+    # Define lado da aposta (home ou away)
+    is_home_bet = any(k in rec for k in ['HOME', 'FAVORITO HOME', 'VALUE NO HOME'])
+    is_away_bet = any(k in rec for k in ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+
+    if not (is_home_bet or is_away_bet):
+        return 0
+
+    # Define odd usada
+    odd = odds_row.get('Odd_H_Asi', np.nan) if is_home_bet else odds_row.get('Odd_A_Asi', np.nan)
+    if pd.isna(odd):
+        return 0
+
+    # Divide linha em duas partes se for quarter (ex: -0.75 => [-0.5, -1.0])
+    def split_line(line):
+        """Retorna duas sublinhas para quarter-lines, ou a própria linha se inteira."""
+        frac = abs(line) % 1
+        if frac == 0.25:
+            return [line - 0.25, line + 0.25]
+        elif frac == 0.75:
+            base = math.floor(abs(line))
+            base = base if line > 0 else -base
+            return [base + (0.5 if line > 0 else -0.5), base + (1.0 if line > 0 else -1.0)]
+        else:
+            return [line]
+
+    lines = split_line(asian_line_decimal)
+
+    # Função auxiliar para calcular resultado individual
+    def single_profit(is_home_bet, line, result):
+        if result == "PUSH":
+            return 0
+        elif (is_home_bet and result == "HOME_COVERED") or (not is_home_bet and result == "HOME_NOT_COVERED"):
+            return odd  # ganho líquido
+        elif (is_home_bet and result == "HOME_NOT_COVERED") or (not is_home_bet and result == "HOME_COVERED"):
+            return -1
+        return 0
+
+    # Se for linha fracionada (duas partes), calcula média
+    if len(lines) == 2:
+        p1 = single_profit(is_home_bet, lines[0], handicap_result)
+        p2 = single_profit(is_home_bet, lines[1], handicap_result)
+        return (p1 + p2) / 2
+    else:
+        return single_profit(is_home_bet, lines[0], handicap_result)
+
+
+
+# def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal):
+#     """Calcula profit considerando linhas de meia vitória (0.25 e -0.25)"""
+#     if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid' or pd.isna(asian_line_decimal):
+#         return 0
     
-    rec = str(rec)
+#     rec = str(rec)
     
-    # Verificar se é linha de MEIA VITÓRIA (apenas 0.25 e -0.25)
-    is_half_win_line = (abs(asian_line_decimal) == 0.25)
+#     # Verificar se é linha de MEIA VITÓRIA (apenas 0.25 e -0.25)
+#     is_half_win_line = (abs(asian_line_decimal) == 0.25)
     
-    # Para recomendações HOME
-    if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME']):
-        odd = odds_row.get('Odd_H_Asi', np.nan)
+#     # Para recomendações HOME
+#     if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME']):
+#         odd = odds_row.get('Odd_H_Asi', np.nan)
         
-        if handicap_result == "HOME_COVERED":
-            # Se é linha de meia vitória, meia vitória
-            if is_half_win_line:
-                return odd / 2  # Meia vitória
-            else:
-                return odd  # Vitória total
-        elif handicap_result == "PUSH":
-            return 0  # PUSH - aposta anulada
-        elif handicap_result == "HOME_NOT_COVERED":
-            # Se é linha de meia vitória, meia perda
-            if is_half_win_line:
-                return -0.5  # Meia aposta perdida
-            else:
-                return -1  # Perda total
+#         if handicap_result == "HOME_COVERED":
+#             # Se é linha de meia vitória, meia vitória
+#             if is_half_win_line:
+#                 return odd / 2  # Meia vitória
+#             else:
+#                 return odd  # Vitória total
+#         elif handicap_result == "PUSH":
+#             return 0  # PUSH - aposta anulada
+#         elif handicap_result == "HOME_NOT_COVERED":
+#             # Se é linha de meia vitória, meia perda
+#             if is_half_win_line:
+#                 return -0.5  # Meia aposta perdida
+#             else:
+#                 return -1  # Perda total
     
-    # Para recomendações AWAY
-    elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY', 'MODELO CONFIA AWAY']):
-        odd = odds_row.get('Odd_A_Asi', np.nan)
+#     # Para recomendações AWAY
+#     elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY', 'MODELO CONFIA AWAY']):
+#         odd = odds_row.get('Odd_A_Asi', np.nan)
         
-        if handicap_result == "HOME_NOT_COVERED":
-            # Se é linha de meia vitória, meia vitória
-            if is_half_win_line:
-                return odd / 2  # Meia vitória
-            else:
-                return odd  # Vitória total
-        elif handicap_result == "PUSH":
-            return 0  # PUSH - aposta anulada
-        elif handicap_result == "HOME_COVERED":
-            # Se é linha de meia vitória, meia perda
-            if is_half_win_line:
-                return -0.5  # Meia aposta perdida
-            else:
-                return -1  # Perda total
+#         if handicap_result == "HOME_NOT_COVERED":
+#             # Se é linha de meia vitória, meia vitória
+#             if is_half_win_line:
+#                 return odd / 2  # Meia vitória
+#             else:
+#                 return odd  # Vitória total
+#         elif handicap_result == "PUSH":
+#             return 0  # PUSH - aposta anulada
+#         elif handicap_result == "HOME_COVERED":
+#             # Se é linha de meia vitória, meia perda
+#             if is_half_win_line:
+#                 return -0.5  # Meia aposta perdida
+#             else:
+#                 return -1  # Perda total
     
-    return 0
+#     return 0
     
 
 # def calculate_handicap_profit(rec, handicap_result, odds_row):
