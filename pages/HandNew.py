@@ -400,11 +400,16 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
     is_fractional_line = (abs(asian_line_decimal * 4) % 1 == 0)  # Detecta .25, .75
     
     # Para recomendações HOME
+    # Para recomendações HOME
     if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME']):
         odd = odds_row.get('Odd_H_Asi', np.nan)
         
         if handicap_result == "HOME_COVERED":
-            return odd   # WIN total
+            # Se é linha fracionada, meia vitória
+            if is_fractional_line:
+                return odd / 2  # Meia vitória
+            else:
+                return odd  # Vitória total
         elif handicap_result == "PUSH":
             return 0  # PUSH - aposta anulada
         elif handicap_result == "HOME_NOT_COVERED":
@@ -412,14 +417,19 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
             if is_fractional_line:
                 return -0.5  # Meia aposta perdida
             else:
-                return -1  # Perda total
+            return -1  # Perda total
     
+    # Para recomendações AWAY
     # Para recomendações AWAY
     elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY', 'MODELO CONFIA AWAY']):
         odd = odds_row.get('Odd_A_Asi', np.nan)
         
         if handicap_result == "HOME_NOT_COVERED":
-            return odd  # WIN total
+            # Se é linha fracionada, meia vitória
+            if is_fractional_line:
+                return odd / 2  # Meia vitória
+            else:
+                return odd  # Vitória total
         elif handicap_result == "PUSH":
             return 0  # PUSH - aposta anulada
         elif handicap_result == "HOME_COVERED":
