@@ -964,6 +964,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         .format({
             'Goals_H_Today': '{:.0f}',
             'Goals_A_Today': '{:.0f}',
+            'Asian_Line_Decimal': '{:.2f}',
             'Home_Red': '{:.0f}',
             'Away_Red': '{:.0f}',
             'Profit_Quadrante': '{:.2f}',
