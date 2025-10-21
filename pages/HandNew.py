@@ -392,55 +392,79 @@ def check_handicap_recommendation_correct(rec, handicap_result):
 
 def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal):
     """
-    Calcula o profit líquido considerando linhas asiáticas (±0.25, ±0.75, etc.)
+    Calcula o profit líquido considerando todas as linhas asiáticas (±0.25, ±0.75, ±1.25, etc.)
     com suporte a meia vitória/perda e PUSH.
     
     A linha asiática sempre representa o HANDICAP DO AWAY.
     As odds já são líquidas (não subtrair 1).
     """
-    if pd.isna(rec) or handicap_result is None or rec == '❌ AVOID' or pd.isna(asian_line_decimal):
+    # ===============================
+    # 1️⃣ Validações iniciais
+    # ===============================
+    if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid' or pd.isna(asian_line_decimal):
         return 0
 
     rec = str(rec).upper()
 
-    # Determina o lado da aposta
+    # ===============================
+    # 2️⃣ Determinar lado da aposta
+    # ===============================
     is_home_bet = any(k in rec for k in ['HOME', 'FAVORITO HOME', 'VALUE NO HOME'])
     is_away_bet = any(k in rec for k in ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+
     if not (is_home_bet or is_away_bet):
         return 0
 
-    # Odd usada
-    odd = odds_row.get('ODD_H_ASI', np.nan) if is_home_bet else odds_row.get('ODD_A_ASI', np.nan)
+    # ===============================
+    # 3️⃣ Selecionar odd correta
+    # ===============================
+    odd = odds_row.get('Odd_H_Asi', np.nan) if is_home_bet else odds_row.get('Odd_A_Asi', np.nan)
     if pd.isna(odd):
         return 0
 
-    # Ajuste de linha (invertida para HOME)
-    line = -asian_line_decimal if is_home_bet else asian_line_decimal
-    abs_line = abs(line)
+    # ===============================
+    # 4️⃣ Determinar linhas fracionadas
+    # ===============================
+    def split_line(line):
+        """Divide quarter-lines (±0.25, ±0.75, etc.) em duas sublinhas."""
+        frac = abs(line) % 1
+        if frac == 0.25:
+            base = math.floor(abs(line))
+            base = base if line > 0 else -base
+            return [base, base + (0.5 if line > 0 else -0.5)]
+        elif frac == 0.75:
+            base = math.floor(abs(line))
+            base = base if line > 0 else -base
+            return [base + (0.5 if line > 0 else -0.5), base + (1.0 if line > 0 else -1.0)]
+        else:
+            return [line]
 
-    # Profit base
-    profit = 0
+    # ✅ Como a linha é do AWAY, invertemos o sinal se for aposta HOME
+    asian_line_for_eval = -asian_line_decimal if is_home_bet else asian_line_decimal
+    lines = split_line(asian_line_for_eval)
 
-    # PUSH
-    if handicap_result == "PUSH":
+    # ===============================
+    # 5️⃣ Função auxiliar: resultado individual
+    # ===============================
+    def single_profit(result):
+        """Calcula o lucro individual considerando o resultado e o lado apostado."""
+        if result == "PUSH":
+            return 0
+        elif (is_home_bet and result == "HOME_COVERED") or (is_away_bet and result == "HOME_NOT_COVERED"):
+            return odd  # vitória
+        elif (is_home_bet and result == "HOME_NOT_COVERED") or (is_away_bet and result == "HOME_COVERED"):
+            return -1  # derrota
         return 0
 
-    # Vitória
-    if (is_home_bet and handicap_result == "HOME_COVERED") or (is_away_bet and handicap_result == "HOME_NOT_COVERED"):
-        if abs_line % 1 == 0.25:   # meia vitória
-            profit = odd / 2
-        else:
-            profit = odd
-
-    # Derrota
-    elif (is_home_bet and handicap_result == "HOME_NOT_COVERED") or (is_away_bet and handicap_result == "HOME_COVERED"):
-        if abs_line % 1 == 0.25:   # meia perda
-            profit = -0.5
-        else:
-            profit = -1
-
-    return profit
-
+    # ===============================
+    # 6️⃣ Calcular média dos resultados (para quarter-lines)
+    # ===============================
+    if len(lines) == 2:
+        p1 = single_profit(handicap_result)
+        p2 = single_profit(handicap_result)
+        return (p1 + p2) / 2
+    else:
+        return single_profit(handicap_result)
 
 
     
