@@ -58,9 +58,6 @@ if 'modelo_quadrantes' not in st.session_state:
 st.success("✅ Bloco 1 carregado: Imports & Configurações")
 
 
-
-
-
 # BLOCO 2: DATA LOADER
 ########################################
 
@@ -208,6 +205,7 @@ if st.session_state.games_today is None or st.session_state.history is None:
             st.stop()
 
 st.success("✅ Bloco 2 carregado: Data Loader")
+
 
 
 # BLOCO 3: SISTEMA DE QUADRANTES
