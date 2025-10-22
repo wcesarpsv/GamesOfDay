@@ -1153,8 +1153,8 @@ def analisar_padroes_quadrantes_dual(df):
             st.write("---")
 
 # ---------------- EXECUÇÃO PRINCIPAL ----------------
-# Executar treinamento
-# 🧩 Garantir que os quadrantes estão definidos no histórico
+
+# 🧩 Garantir que os quadrantes estão definidos no histórico (ANTES do treino!)
 if 'Quadrante_Home' not in history.columns or 'Quadrante_Away' not in history.columns:
     st.info("🔧 Recalculando quadrantes no histórico...")
     history['Quadrante_Home'] = history.apply(
@@ -1164,18 +1164,20 @@ if 'Quadrante_Home' not in history.columns or 'Quadrante_Away' not in history.co
         lambda x: classificar_quadrante(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
     )
 
-# Executar treinamento
+# ⚙️ Agora sim, executa o treinamento
 if not history.empty:
     modelo_home, modelo_away, games_today = treinar_modelo_quadrantes_dual(history, games_today)
     st.success("✅ Modelo dual (Home/Away) treinado com sucesso!")
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
-    
+
+# 🧠 Verificação das novas features universais
 st.markdown("### 🧠 Verificação – Distância Universal (Z-score e Índice Global)")
 st.dataframe(
     games_today[["Home", "Away", "Quadrant_Dist", "Quadrant_Dist_Z", "Dist_Index", "Dist_Category"]].head(15),
     use_container_width=True
 )
+
 
 
 # ---------------- EXIBIÇÃO DOS RESULTADOS DUAL ----------------
