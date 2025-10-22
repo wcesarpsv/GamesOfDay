@@ -1022,8 +1022,8 @@ def treinar_modelo_quadrantes_dual(history, games_today):
             use_container_width=True
         )
     
-    except Exception as e:
-        st.warning(f"⚠️ Não foi possível gerar a comparação de importâncias: {e}")
+        except Exception as e:
+            st.warning(f"⚠️ Não foi possível gerar a comparação de importâncias: {e}")
     
     
     
