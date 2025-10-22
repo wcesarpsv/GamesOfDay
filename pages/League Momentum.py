@@ -672,16 +672,16 @@ def adicionar_contexto_liga(df):
     # ==============================
     # ✅ 4️⃣ Diagnóstico opcional (visual)
     # ==============================
-    try:
-        avg_df = (
-            df.groupby("League")[["Agg_Home_vs_Liga", "HS_Home_vs_Liga"]]
-            .mean()
-            .sort_values(by="Agg_Home_vs_Liga", ascending=False)
-        )
-        st.markdown("#### 📊 Médias Z-Score (Home vs Liga) por Competição")
-        st.dataframe(avg_df.style.format("{:.2f}"), use_container_width=True)
-    except:
-        pass
+    # try:
+    #     avg_df = (
+    #         df.groupby("League")[["Agg_Home_vs_Liga", "HS_Home_vs_Liga"]]
+    #         .mean()
+    #         .sort_values(by="Agg_Home_vs_Liga", ascending=False)
+    #     )
+    #     st.markdown("#### 📊 Médias Z-Score (Home vs Liga) por Competição")
+    #     st.dataframe(avg_df.style.format("{:.2f}"), use_container_width=True)
+    # except:
+    #     pass
 
     return df
 
