@@ -618,65 +618,115 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
 
 
 ########################################
-#### 🤖 BLOCO – Treinamento ML Dual (com Quadrant Distance Features)
+#### 🧮 BLOCO – Contexto de Liga e Treinamento ML Dual (versão aprimorada)
 ########################################
 from sklearn.ensemble import RandomForestClassifier
 
+def adicionar_contexto_liga(df):
+    """Adiciona médias por liga e desvios relativos (Aggression / HandScore)."""
+    df = df.copy()
+
+    required_cols = ["League", "Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away"]
+    if not all(col in df.columns for col in required_cols):
+        st.warning("⚠️ Colunas necessárias para contexto de liga ausentes.")
+        return df
+
+    # Médias por liga
+    league_means = (
+        df.groupby("League")[["Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away"]]
+        .mean()
+        .rename(columns={
+            "Aggression_Home": "League_Agg_HomeMean",
+            "Aggression_Away": "League_Agg_AwayMean",
+            "HandScore_Home": "League_HS_HomeMean",
+            "HandScore_Away": "League_HS_AwayMean",
+        })
+    )
+
+    # Merge com o dataframe principal
+    df = df.merge(league_means, on="League", how="left")
+
+    # Desvios relativos (quanto o time está acima/abaixo da média da liga)
+    df["Agg_Home_vs_Liga"] = df["Aggression_Home"] - df["League_Agg_HomeMean"]
+    df["Agg_Away_vs_Liga"] = df["Aggression_Away"] - df["League_Agg_AwayMean"]
+    df["HS_Home_vs_Liga"] = df["HandScore_Home"] - df["League_HS_HomeMean"]
+    df["HS_Away_vs_Liga"] = df["HandScore_Away"] - df["League_HS_AwayMean"]
+
+    return df
+
+
+########################################
+#### 🤖 BLOCO – Treinamento ML Dual com Contexto de Liga
+########################################
 def treinar_modelo_quadrantes_dual(history, games_today):
     """
     Treina modelo ML para Home e Away com base nos quadrantes,
-    ligas e métricas de distância entre times.
+    ligas, métricas de distância e contexto médio da liga.
     """
 
-    # -------------------------------
-    # 🔹 Garantir cálculo das distâncias
-    # -------------------------------
+    # ----------------------------------
+    # 🔹 Calcular distâncias e contexto de liga
+    # ----------------------------------
     history = calcular_distancias_quadrantes(history)
     games_today = calcular_distancias_quadrantes(games_today)
 
-    # -------------------------------
+    history = adicionar_contexto_liga(history)
+    games_today = adicionar_contexto_liga(games_today)
+
+    # ----------------------------------
     # 🔹 Preparar features básicas
-    # -------------------------------
+    # ----------------------------------
     quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
     quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
 
-    # 🔹 Novas features contínuas (Distância, Separação e Ângulo)
-    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle']].fillna(0)
+    # 🔹 Features contínuas (distâncias, ângulos e contexto de liga)
+    extras = history[[
+        "Quadrant_Dist", "Quadrant_Separation", "Quadrant_Angle",
+        "Agg_Home_vs_Liga", "HS_Home_vs_Liga",
+        "Agg_Away_vs_Liga", "HS_Away_vs_Liga"
+    ]].fillna(0)
 
-    # Combinar todas as features
+    # Combinar tudo
     X = pd.concat([quadrantes_home, quadrantes_away, ligas_dummies, extras], axis=1)
 
     # Targets
     y_home = history['Target_AH_Home']
-    y_away = 1 - y_home  # inverso lógico
+    y_away = 1 - y_home
 
-    # -------------------------------
-    # 🔹 Treinar modelos
-    # -------------------------------
+    # ----------------------------------
+    # 🔹 Treinar modelos balanceados
+    # ----------------------------------
     model_home = RandomForestClassifier(
-        n_estimators=500, max_depth=10, random_state=42, class_weight='balanced_subsample', n_jobs=-1
+        n_estimators=200, max_depth=10, random_state=42,
+        n_jobs=-1, class_weight="balanced_subsample"
     )
     model_away = RandomForestClassifier(
-        n_estimators=500, max_depth=10, random_state=42, class_weight='balanced_subsample', n_jobs=-1
+        n_estimators=200, max_depth=10, random_state=42,
+        n_jobs=-1, class_weight="balanced_subsample"
     )
 
     model_home.fit(X, y_home)
     model_away.fit(X, y_away)
 
-    # -------------------------------
-    # 🔹 Preparar dados para hoje
-    # -------------------------------
+    # ----------------------------------
+    # 🔹 Preparar dados para o dia atual
+    # ----------------------------------
     qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
     qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle']].fillna(0)
+
+    extras_today = games_today[[
+        "Quadrant_Dist", "Quadrant_Separation", "Quadrant_Angle",
+        "Agg_Home_vs_Liga", "HS_Home_vs_Liga",
+        "Agg_Away_vs_Liga", "HS_Away_vs_Liga"
+    ]].fillna(0)
 
     X_today = pd.concat([qh_today, qa_today, ligas_today, extras_today], axis=1)
 
-    # -------------------------------
+    # ----------------------------------
     # 🔹 Fazer previsões
-    # -------------------------------
+    # ----------------------------------
     probas_home = model_home.predict_proba(X_today)[:, 1]
     probas_away = model_away.predict_proba(X_today)[:, 1]
 
@@ -685,19 +735,20 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
     games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
 
-    # -------------------------------
-    # 🔹 Mostrar insights de importância
-    # -------------------------------
+    # ----------------------------------
+    # 🔹 Mostrar importância de features
+    # ----------------------------------
     try:
         importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
-        top_feats = importances.head(15)
+        top_feats = importances.head(20)
         st.markdown("### 🔍 Top Features mais importantes (Modelo HOME)")
         st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
     except Exception as e:
         st.warning(f"Não foi possível calcular importâncias: {e}")
 
-    st.success("✅ Modelo dual (Home/Away) treinado com sucesso com novas features!")
+    st.success("✅ Modelo dual (Home/Away) treinado com sucesso com contexto de liga!")
     return model_home, model_away, games_today
+
 
 
 # ---------------- SISTEMA DE INDICAÇÕES EXPLÍCITAS DUAL ----------------
