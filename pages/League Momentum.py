@@ -1154,29 +1154,45 @@ def analisar_padroes_quadrantes_dual(df):
 
 # ---------------- EXECUÇÃO PRINCIPAL ----------------
 
-# 🧩 Garantir que os quadrantes estão definidos no histórico (ANTES do treino!)
-if 'Quadrante_Home' not in history.columns or 'Quadrante_Away' not in history.columns:
-    st.info("🔧 Recalculando quadrantes no histórico...")
+st.markdown("## ⚙️ Execução Principal – Treinamento Dual por Quadrantes")
+
+# 🧩 1️⃣ Verificação do histórico
+if history.empty:
+    st.error("❌ Histórico vazio — não é possível treinar o modelo.")
+    st.stop()
+
+# 🧩 2️⃣ Verificar colunas essenciais
+required_cols = ["Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away"]
+missing_cols = [c for c in required_cols if c not in history.columns]
+if missing_cols:
+    st.error(f"❌ Histórico sem as colunas necessárias: {missing_cols}")
+    st.stop()
+
+# 🧩 3️⃣ Garantir que os quadrantes estejam definidos corretamente
+if ('Quadrante_Home' not in history.columns) or history['Quadrante_Home'].isna().all():
+    st.info("🔧 Recalculando Quadrante_Home no histórico...")
     history['Quadrante_Home'] = history.apply(
-        lambda x: classificar_quadrante(x.get('Aggression_Home'), x.get('HandScore_Home')), axis=1
-    )
-    history['Quadrante_Away'] = history.apply(
-        lambda x: classificar_quadrante(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
+        lambda x: classificar_quadrante(x['Aggression_Home'], x['HandScore_Home']), axis=1
     )
 
-# ⚙️ Agora sim, executa o treinamento
-if not history.empty:
+if ('Quadrante_Away' not in history.columns) or history['Quadrante_Away'].isna().all():
+    st.info("🔧 Recalculando Quadrante_Away no histórico...")
+    history['Quadrante_Away'] = history.apply(
+        lambda x: classificar_quadrante(x['Aggression_Away'], x['HandScore_Away']), axis=1
+    )
+
+# 🧩 4️⃣ Diagnóstico rápido
+st.write(f"✅ Histórico pronto com {len(history)} jogos válidos")
+st.write("📋 Colunas principais detectadas:", 
+         [c for c in history.columns if 'Quadrante' in c or 'Aggression' in c or 'HandScore' in c][:10])
+
+# 🧩 5️⃣ Treinamento
+try:
     modelo_home, modelo_away, games_today = treinar_modelo_quadrantes_dual(history, games_today)
     st.success("✅ Modelo dual (Home/Away) treinado com sucesso!")
-else:
-    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
-
-# 🧠 Verificação das novas features universais
-st.markdown("### 🧠 Verificação – Distância Universal (Z-score e Índice Global)")
-st.dataframe(
-    games_today[["Home", "Away", "Quadrant_Dist", "Quadrant_Dist_Z", "Dist_Index", "Dist_Category"]].head(15),
-    use_container_width=True
-)
+except Exception as e:
+    st.error(f"❌ Erro ao treinar o modelo dual: {e}")
+    st.stop()
 
 
 
