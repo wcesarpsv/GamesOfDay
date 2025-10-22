@@ -622,8 +622,14 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
 ########################################
 from sklearn.ensemble import RandomForestClassifier
 
+########################################
+#### 🧮 BLOCO – Contexto de Liga com Normalização Z-Score
+########################################
 def adicionar_contexto_liga(df):
-    """Adiciona médias por liga e desvios relativos (Aggression / HandScore)."""
+    """
+    Adiciona médias e desvios relativos por liga (Aggression / HandScore),
+    com normalização Z-score para evitar viés estrutural de mandante.
+    """
     df = df.copy()
 
     required_cols = ["League", "Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away"]
@@ -631,7 +637,9 @@ def adicionar_contexto_liga(df):
         st.warning("⚠️ Colunas necessárias para contexto de liga ausentes.")
         return df
 
-    # Médias por liga
+    # ==============================
+    # 📊 1️⃣ Médias por liga
+    # ==============================
     league_means = (
         df.groupby("League")[["Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away"]]
         .mean()
@@ -643,16 +651,40 @@ def adicionar_contexto_liga(df):
         })
     )
 
-    # Merge com o dataframe principal
     df = df.merge(league_means, on="League", how="left")
 
-    # Desvios relativos (quanto o time está acima/abaixo da média da liga)
+    # ==============================
+    # 📏 2️⃣ Desvios absolutos (time - média da liga)
+    # ==============================
     df["Agg_Home_vs_Liga"] = df["Aggression_Home"] - df["League_Agg_HomeMean"]
     df["Agg_Away_vs_Liga"] = df["Aggression_Away"] - df["League_Agg_AwayMean"]
     df["HS_Home_vs_Liga"] = df["HandScore_Home"] - df["League_HS_HomeMean"]
     df["HS_Away_vs_Liga"] = df["HandScore_Away"] - df["League_HS_AwayMean"]
 
+    # ==============================
+    # ⚖️ 3️⃣ Normalização Z-Score (por liga)
+    # ==============================
+    for col in ["Agg_Home_vs_Liga", "Agg_Away_vs_Liga", "HS_Home_vs_Liga", "HS_Away_vs_Liga"]:
+        std_col = df.groupby("League")[col].transform("std").replace(0, np.nan)
+        df[col] = df[col] / std_col
+        df[col] = df[col].fillna(0)
+
+    # ==============================
+    # ✅ 4️⃣ Diagnóstico opcional (visual)
+    # ==============================
+    try:
+        avg_df = (
+            df.groupby("League")[["Agg_Home_vs_Liga", "HS_Home_vs_Liga"]]
+            .mean()
+            .sort_values(by="Agg_Home_vs_Liga", ascending=False)
+        )
+        st.markdown("#### 📊 Médias Z-Score (Home vs Liga) por Competição")
+        st.dataframe(avg_df.style.format("{:.2f}"), use_container_width=True)
+    except:
+        pass
+
     return df
+
 
 
 ########################################
