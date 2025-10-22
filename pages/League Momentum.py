@@ -1129,6 +1129,11 @@ if not history.empty:
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
 
+st.markdown("### 🧠 Verificação – Distância Universal (Z-score e Índice Global)")
+st.dataframe(
+    games_today[["Home", "Away", "Quadrant_Dist", "Quadrant_Dist_Z", "Dist_Index", "Dist_Category"]].head(15),
+    use_container_width=True
+)
 
 
 # ---------------- EXIBIÇÃO DOS RESULTADOS DUAL ----------------
