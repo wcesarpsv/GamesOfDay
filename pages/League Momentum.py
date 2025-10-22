@@ -926,7 +926,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
         # Criar DataFrame de importância
         feature_importance = pd.DataFrame({
             "Feature": X.columns,
-            "Importance": modelo_home.feature_importances_
+            "Importance": model_home.feature_importances_
         }).sort_values(by="Importance", ascending=False)
     
         # Exibir tabela com formatação
