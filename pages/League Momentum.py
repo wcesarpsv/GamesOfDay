@@ -1016,6 +1016,168 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # Aplicar atualização em tempo real
     ranking_quadrantes = update_real_time_data(ranking_quadrantes)
 
+    ####################
+
+    # ========================
+    # 🧪 BLOCO DE VALIDAÇÃO DO ML
+    # ========================
+    
+    st.markdown("## 🧪 VALIDAÇÃO DO MODELO DE MACHINE LEARNING")
+    
+    if not ranking_quadrantes.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
+        
+        # 1. 📊 DISTRIBUIÇÃO DE RECOMENDAÇÕES
+        st.markdown("### 📊 Distribuição de Recomendações")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**Lado Recomendado (ML_Side):**")
+            dist_side = ranking_quadrantes['ML_Side'].value_counts()
+            st.dataframe(dist_side)
+            
+            # Gráfico de pizza CORRIGIDO
+            if not dist_side.empty:
+                fig_side = go.Figure(data=[go.Pie(
+                    labels=dist_side.index, 
+                    values=dist_side.values,
+                    hole=.3
+                )])
+                fig_side.update_layout(title="Distribuição HOME vs AWAY")
+                st.plotly_chart(fig_side, use_container_width=True)
+        
+        with col2:
+            st.write("**Tipos de Recomendação:**")
+            dist_rec = ranking_quadrantes['Recomendacao'].value_counts().head(10)
+            st.dataframe(dist_rec)
+        
+        # 2. 📈 ANÁLISE DAS PROBABILIDADES
+        st.markdown("### 📈 Análise das Probabilidades ML")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Probabilidade Média HOME", f"{games_today['Quadrante_ML_Score_Home'].mean():.1%}")
+            st.metric("Probabilidade Média AWAY", f"{games_today['Quadrante_ML_Score_Away'].mean():.1%}")
+        
+        with col2:
+            st.metric("Máxima Probabilidade", f"{games_today['Quadrante_ML_Score_Main'].max():.1%}")
+            st.metric("Mínima Probabilidade", f"{games_today['Quadrante_ML_Score_Main'].min():.1%}")
+        
+        with col3:
+            # Contar recomendações fortes (>55%)
+            strong_home = len(games_today[games_today['Quadrante_ML_Score_Home'] > 0.55])
+            strong_away = len(games_today[games_today['Quadrante_ML_Score_Away'] > 0.55])
+            st.metric("Recomendações Fortes HOME", strong_home)
+            st.metric("Recomendações Fortes AWAY", strong_away)
+        
+        # Histograma das probabilidades
+        fig_probs = go.Figure()
+        fig_probs.add_trace(go.Histogram(
+            x=games_today['Quadrante_ML_Score_Home'], 
+            name='HOME', 
+            opacity=0.7,
+            nbinsx=20
+        ))
+        fig_probs.add_trace(go.Histogram(
+            x=games_today['Quadrante_ML_Score_Away'], 
+            name='AWAY', 
+            opacity=0.7,
+            nbinsx=20
+        ))
+        fig_probs.update_layout(
+            title="Distribuição das Probabilidades ML",
+            xaxis_title="Probabilidade",
+            yaxis_title="Frequência",
+            barmode='overlay'
+        )
+        st.plotly_chart(fig_probs, use_container_width=True)
+        
+        # 3. 🎯 PERFORMANCE COM DADOS LIVE (SE DISPONÍVEL)
+        st.markdown("### 🎯 Performance com Dados em Tempo Real")
+        
+        finished_games = games_today.dropna(subset=['Handicap_Result'])
+        
+        if not finished_games.empty:
+            # Jogos com recomendações do quadrante
+            quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
+            
+            if not quadrante_bets.empty:
+                total_bets = len(quadrante_bets)
+                correct_bets = quadrante_bets['Quadrante_Correct'].sum()
+                winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
+                total_profit = quadrante_bets['Profit_Quadrante'].sum()
+                roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
+                
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Apostas do Quadrante", total_bets)
+                col2.metric("Acertos", f"{correct_bets} ({winrate:.1f}%)")
+                col3.metric("Profit Total", f"{total_profit:.2f}u")
+                col4.metric("ROI", f"{roi:.1f}%")
+                
+                # Performance por tipo de recomendação
+                st.write("**Performance por Tipo de Recomendação:**")
+                performance_by_rec = quadrante_bets.groupby('Recomendacao').agg({
+                    'Quadrante_Correct': ['count', 'sum', 'mean'],
+                    'Profit_Quadrante': 'sum'
+                }).round(3)
+                
+                performance_by_rec.columns = ['Total_Apostas', 'Acertos', 'Winrate', 'Profit']
+                performance_by_rec['Winrate'] = performance_by_rec['Winrate'] * 100
+                st.dataframe(performance_by_rec.sort_values('Profit', ascending=False))
+                
+            else:
+                st.info("⚠️ Nenhuma aposta do quadrante foi feita nos jogos finalizados")
+        else:
+            st.info("⏳ Aguardando jogos finalizados para análise de performance")
+        
+        # 4. 🔍 FEATURE IMPORTANCE (SE DISPONÍVEL)
+        st.markdown("### 🔍 Top Features Mais Importantes")
+        
+        try:
+            # Tentar obter feature importance do modelo HOME
+            if 'modelo_home' in locals() and hasattr(modelo_home, 'feature_importances_'):
+                feature_importance = pd.DataFrame({
+                    'feature': X.columns,
+                    'importance': modelo_home.feature_importances_
+                }).sort_values('importance', ascending=False).head(15)
+                
+                fig_features = px.bar(feature_importance, x='importance', y='feature', 
+                                     title='Top 15 Features Mais Importantes (Modelo HOME)')
+                st.plotly_chart(fig_features, use_container_width=True)
+                
+                st.write("**Top 10 Features:**")
+                st.dataframe(feature_importance.head(10))
+            else:
+                st.warning("Modelo HOME não disponível para feature importance")
+            
+        except Exception as e:
+            st.warning(f"⚠️ Não foi possível obter feature importance: {e}")
+        
+        # 5. 🎪 ANÁLISE DE PADRÕES
+        st.markdown("### 🎪 Análise de Padrões por Quadrante")
+        
+        # Success rate por quadrante
+        if 'Quadrante_Home_Label' in games_today.columns and 'Quadrante_Correct' in games_today.columns:
+            quadrante_performance = games_today.groupby('Quadrante_Home_Label').agg({
+                'Quadrante_Correct': ['count', 'mean'],
+                'Profit_Quadrante': 'sum'
+            }).round(3)
+            
+            if not quadrante_performance.empty:
+                quadrante_performance.columns = ['Total_Apostas', 'Winrate', 'Profit']
+                quadrante_performance['Winrate'] = quadrante_performance['Winrate'] * 100
+                st.dataframe(quadrante_performance.sort_values('Profit', ascending=False))
+    
+    else:
+        st.warning("⚠️ Dados insuficientes para validação do ML")
+    
+    st.markdown("---")
+
+
+    #####################
+
+
     # ---------------- RESUMO LIVE ----------------
     def generate_live_summary(df):
         """Gera resumo em tempo real dos resultados de HANDICAP"""
@@ -1094,163 +1256,6 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 else:
     st.info("⚠️ Aguardando dados para gerar ranking dual")
 
-
-
-# ========================
-# 🧪 BLOCO DE VALIDAÇÃO DO ML
-# ========================
-
-st.markdown("## 🧪 VALIDAÇÃO DO MODELO DE MACHINE LEARNING")
-
-if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
-    
-    # 1. 📊 DISTRIBUIÇÃO DE RECOMENDAÇÕES
-    st.markdown("### 📊 Distribuição de Recomendações")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.write("**Lado Recomendado (ML_Side):**")
-        dist_side = games_today['ML_Side'].value_counts()
-        st.dataframe(dist_side)
-        
-        # Gráfico de pizza CORRIGIDO
-        if not dist_side.empty:
-            fig_side = go.Figure(data=[go.Pie(
-                labels=dist_side.index, 
-                values=dist_side.values,
-                hole=.3
-            )])
-            fig_side.update_layout(title="Distribuição HOME vs AWAY")
-            st.plotly_chart(fig_side, use_container_width=True)
-    
-    with col2:
-        st.write("**Tipos de Recomendação:**")
-        dist_rec = games_today['Recomendacao'].value_counts().head(10)
-        st.dataframe(dist_rec)
-    
-    # 2. 📈 ANÁLISE DAS PROBABILIDADES
-    st.markdown("### 📈 Análise das Probabilidades ML")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("Probabilidade Média HOME", f"{games_today['Quadrante_ML_Score_Home'].mean():.1%}")
-        st.metric("Probabilidade Média AWAY", f"{games_today['Quadrante_ML_Score_Away'].mean():.1%}")
-    
-    with col2:
-        st.metric("Máxima Probabilidade", f"{games_today['Quadrante_ML_Score_Main'].max():.1%}")
-        st.metric("Mínima Probabilidade", f"{games_today['Quadrante_ML_Score_Main'].min():.1%}")
-    
-    with col3:
-        # Contar recomendações fortes (>55%)
-        strong_home = len(games_today[games_today['Quadrante_ML_Score_Home'] > 0.55])
-        strong_away = len(games_today[games_today['Quadrante_ML_Score_Away'] > 0.55])
-        st.metric("Recomendações Fortes HOME", strong_home)
-        st.metric("Recomendações Fortes AWAY", strong_away)
-    
-    # Histograma das probabilidades
-    fig_probs = go.Figure()
-    fig_probs.add_trace(go.Histogram(
-        x=games_today['Quadrante_ML_Score_Home'], 
-        name='HOME', 
-        opacity=0.7,
-        nbinsx=20
-    ))
-    fig_probs.add_trace(go.Histogram(
-        x=games_today['Quadrante_ML_Score_Away'], 
-        name='AWAY', 
-        opacity=0.7,
-        nbinsx=20
-    ))
-    fig_probs.update_layout(
-        title="Distribuição das Probabilidades ML",
-        xaxis_title="Probabilidade",
-        yaxis_title="Frequência",
-        barmode='overlay'
-    )
-    st.plotly_chart(fig_probs, use_container_width=True)
-    
-    # 3. 🎯 PERFORMANCE COM DADOS LIVE (SE DISPONÍVEL)
-    st.markdown("### 🎯 Performance com Dados em Tempo Real")
-    
-    finished_games = games_today.dropna(subset=['Handicap_Result'])
-    
-    if not finished_games.empty:
-        # Jogos com recomendações do quadrante
-        quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
-        
-        if not quadrante_bets.empty:
-            total_bets = len(quadrante_bets)
-            correct_bets = quadrante_bets['Quadrante_Correct'].sum()
-            winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
-            total_profit = quadrante_bets['Profit_Quadrante'].sum()
-            roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
-            
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Apostas do Quadrante", total_bets)
-            col2.metric("Acertos", f"{correct_bets} ({winrate:.1f}%)")
-            col3.metric("Profit Total", f"{total_profit:.2f}u")
-            col4.metric("ROI", f"{roi:.1f}%")
-            
-            # Performance por tipo de recomendação
-            st.write("**Performance por Tipo de Recomendação:**")
-            performance_by_rec = quadrante_bets.groupby('Recomendacao').agg({
-                'Quadrante_Correct': ['count', 'sum', 'mean'],
-                'Profit_Quadrante': 'sum'
-            }).round(3)
-            
-            performance_by_rec.columns = ['Total_Apostas', 'Acertos', 'Winrate', 'Profit']
-            performance_by_rec['Winrate'] = performance_by_rec['Winrate'] * 100
-            st.dataframe(performance_by_rec.sort_values('Profit', ascending=False))
-            
-        else:
-            st.info("⚠️ Nenhuma aposta do quadrante foi feita nos jogos finalizados")
-    else:
-        st.info("⏳ Aguardando jogos finalizados para análise de performance")
-    
-    # 4. 🔍 FEATURE IMPORTANCE (SE DISPONÍVEL)
-    st.markdown("### 🔍 Top Features Mais Importantes")
-    
-    try:
-        # Tentar obter feature importance do modelo HOME
-        if 'modelo_home' in locals() and hasattr(modelo_home, 'feature_importances_'):
-            feature_importance = pd.DataFrame({
-                'feature': X.columns,
-                'importance': modelo_home.feature_importances_
-            }).sort_values('importance', ascending=False).head(15)
-            
-            fig_features = px.bar(feature_importance, x='importance', y='feature', 
-                                 title='Top 15 Features Mais Importantes (Modelo HOME)')
-            st.plotly_chart(fig_features, use_container_width=True)
-            
-            st.write("**Top 10 Features:**")
-            st.dataframe(feature_importance.head(10))
-        else:
-            st.warning("Modelo HOME não disponível para feature importance")
-        
-    except Exception as e:
-        st.warning(f"⚠️ Não foi possível obter feature importance: {e}")
-    
-    # 5. 🎪 ANÁLISE DE PADRÕES
-    st.markdown("### 🎪 Análise de Padrões por Quadrante")
-    
-    # Success rate por quadrante
-    if 'Quadrante_Home_Label' in games_today.columns and 'Quadrante_Correct' in games_today.columns:
-        quadrante_performance = games_today.groupby('Quadrante_Home_Label').agg({
-            'Quadrante_Correct': ['count', 'mean'],
-            'Profit_Quadrante': 'sum'
-        }).round(3)
-        
-        if not quadrante_performance.empty:
-            quadrante_performance.columns = ['Total_Apostas', 'Winrate', 'Profit']
-            quadrante_performance['Winrate'] = quadrante_performance['Winrate'] * 100
-            st.dataframe(quadrante_performance.sort_values('Profit', ascending=False))
-
-else:
-    st.warning("⚠️ Dados insuficientes para validação do ML")
-
-st.markdown("---")
 
 
 
