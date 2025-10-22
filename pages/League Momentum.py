@@ -334,94 +334,6 @@ def calcular_distancias_quadrantes(df):
 # Aplicar ao games_today
 games_today = calcular_distancias_quadrantes(games_today)
 
-# ########################################
-# #### 🧪 BLOCO – Teste de Escalas (Distância Quadrantes)
-# ########################################
-# st.markdown("## 🧪 Teste de Escalas – Comparação entre Fórmulas de Distância")
-
-# def testar_variacoes_quadrant_dist(df):
-#     """Compara três métodos alternativos de cálculo de distância (A, B, C)."""
-#     df = df.copy()
-
-#     # Verificar se há colunas necessárias
-#     required_cols = ["League", "Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away"]
-#     if not all(col in df.columns for col in required_cols):
-#         st.warning("⚠️ Colunas necessárias ausentes para teste de distância.")
-#         return df
-
-#     # ==========================
-#     # MÉTODO A – Normalização por liga (Z-score por liga)
-#     # ==========================
-#     df["Agg_H_std_Liga"] = df.groupby("League")["Aggression_Home"].transform("std").replace(0, 0.001)
-#     df["HS_H_std_Liga"] = df.groupby("League")["HandScore_Home"].transform("std").replace(0, 0.001)
-
-#     dx_A = (df["Aggression_Home"] - df["Aggression_Away"]) / df["Agg_H_std_Liga"]
-#     dy_A = (df["HandScore_Home"] - df["HandScore_Away"]) / df["HS_H_std_Liga"]
-#     df["Quadrant_Dist_A"] = np.sqrt(dx_A**2 + dy_A**2)
-
-#     # ==========================
-#     # MÉTODO B – Calibração empírica (razão std HandScore/Aggression)
-#     # ==========================
-#     std_ratio = df["HandScore_Home"].std() / df["Aggression_Home"].std() if df["Aggression_Home"].std() != 0 else 1
-#     dx_B = df["Aggression_Home"] - df["Aggression_Away"]
-#     dy_B = (df["HandScore_Home"] - df["HandScore_Away"]) / std_ratio
-#     df["Quadrant_Dist_B"] = np.sqrt(dx_B**2 + dy_B**2)
-
-#     # ==========================
-#     # MÉTODO C – Padronização global (Z-score simples)
-#     # ==========================
-#     dx_C = (df["Aggression_Home"] - df["Aggression_Away"]) / df["Aggression_Home"].std()
-#     dy_C = (df["HandScore_Home"] - df["HandScore_Away"]) / df["HandScore_Home"].std()
-#     df["Quadrant_Dist_C"] = np.sqrt(dx_C**2 + dy_C**2)
-
-#     # ==========================
-#     # Consolidação
-#     # ==========================
-#     cols_show = [
-#         "Home", "Away", "League",
-#         "Quadrant_Dist", "Quadrant_Dist_A", "Quadrant_Dist_B", "Quadrant_Dist_C"
-#     ]
-#     df_result = df[cols_show].copy()
-
-#     # ==========================
-#     # Estatísticas comparativas
-#     # ==========================
-#     resumo = pd.DataFrame({
-#         "Média": [
-#             df["Quadrant_Dist"].mean(),
-#             df["Quadrant_Dist_A"].mean(),
-#             df["Quadrant_Dist_B"].mean(),
-#             df["Quadrant_Dist_C"].mean()
-#         ],
-#         "Desvio Padrão": [
-#             df["Quadrant_Dist"].std(),
-#             df["Quadrant_Dist_A"].std(),
-#             df["Quadrant_Dist_B"].std(),
-#             df["Quadrant_Dist_C"].std()
-#         ]
-#     }, index=["Original", "Método A (Liga Z)", "Método B (Razão Std)", "Método C (Z Global)"]).round(3)
-
-#     # Correlação entre métodos
-#     corr = df[["Quadrant_Dist", "Quadrant_Dist_A", "Quadrant_Dist_B", "Quadrant_Dist_C"]].corr().round(3)
-
-#     st.markdown("### 📊 Estatísticas comparativas")
-#     st.dataframe(resumo, use_container_width=True)
-
-#     st.markdown("### 🔗 Correlação entre métodos")
-#     st.dataframe(corr, use_container_width=True)
-
-#     st.markdown("### 📋 Amostra dos cálculos de distância (Top 15)")
-#     st.dataframe(df_result.head(15), use_container_width=True)
-
-#     return df
-
-# # Aplicar o teste
-# games_today_test = testar_variacoes_quadrant_dist(games_today)
-
-
-# st.dataframe(games_today[['Home','Away','Quadrant_Dist','Quadrant_Separation','Quadrant_Angle']].head(10))
-
-
 ########################################
 #### 🎯 BLOCO – Visualização Interativa com Filtro por Liga
 ########################################
@@ -544,12 +456,6 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
-
-
-
-
-
-
 
 # ---------------- VISUALIZAÇÃO DOS QUADRANTES ----------------
 def plot_quadrantes_avancado(df, side="Home"):
@@ -738,15 +644,6 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
     else:
         return single_profit(handicap_result)
 
-
-
-
-
-########################################
-#### 🧮 BLOCO – Contexto de Liga e Treinamento ML Dual (versão aprimorada)
-########################################
-from sklearn.ensemble import RandomForestClassifier
-
 ########################################
 #### 🧮 BLOCO – Contexto de Liga com Normalização Z-Score
 ########################################
@@ -795,32 +692,6 @@ def adicionar_contexto_liga(df):
         std_col = std_col.replace(0, 0.001)  
         df[col] = df[col] / std_col
         df[col] = df[col].fillna(0)
-
-    # # 🔍 DEBUG DETALHADO - Verificar cada passo
-    # st.markdown("#### 🔍 DEBUG DETALHADO - Cálculo Z-Score")
-    
-    # # 1. Verificar médias por liga
-    # st.write("**1. Médias por Liga (Aggression_Home):**")
-    # medias_agg = df.groupby("League")["Aggression_Home"].mean()
-    # st.write(medias_agg.head(10))
-    
-    # # 2. Verificar desvios padrão
-    # st.write("**2. Desvios Padrão por Liga (Aggression_Home):**")
-    # desvios_agg = df.groupby("League")["Aggression_Home"].std()
-    # st.write(desvios_agg.head(10))
-    
-    # # 3. Verificar se tem desvio zero
-    # st.write("**3. Ligas com desvio padrão ZERO:**")
-    # ligas_desvio_zero = desvios_agg[desvios_agg == 0]
-    # st.write(f"Ligas com desvio zero: {len(ligas_desvio_zero)}")
-    
-    # # 4. Verificar valores originais
-    # st.write("**4. Valores originais (exemplo):**")
-    # st.write(df[["League", "Aggression_Home", "Aggression_Away"]].head(10))
-    
-    # # 5. Verificar resultados Z-Score
-    # st.write("**5. Resultados Z-Score (exemplo):**")
-    # st.write(df[["League", "Agg_Home_vs_Liga", "HS_Home_vs_Liga"]].head(10))
 
     return df
 
@@ -1048,10 +919,6 @@ def treinar_modelo_quadrantes_dual(history, games_today):
 
     return model_home, model_away, games_today
 
-
-    
-    
-    
 # ---------------- SISTEMA DE INDICAÇÕES EXPLÍCITAS DUAL ----------------
 def adicionar_indicadores_explicativos_dual(df):
     """Adiciona classificações e recomendações explícitas para Home e Away"""
@@ -1207,405 +1074,198 @@ def analisar_padroes_quadrantes_dual(df):
                 use_container_width=True
             )
             st.write("---")
+
+# ---------------- EXECUÇÃO PRINCIPAL ----------------
     
-    # ---------------- EXECUÇÃO PRINCIPAL ----------------
+st.markdown("## ⚙️ Execução Principal – Treinamento Dual por Quadrantes")
     
-    st.markdown("## ⚙️ Execução Principal – Treinamento Dual por Quadrantes")
+# 🧩 1️⃣ Verificação do histórico
+if history.empty:
+    st.error("❌ Histórico vazio — não é possível treinar o modelo.")
+    st.stop()
     
-    # 🧩 1️⃣ Verificação do histórico
-    if history.empty:
-        st.error("❌ Histórico vazio — não é possível treinar o modelo.")
-        st.stop()
+# 🧩 2️⃣ Verificar colunas essenciais
+required_cols = ["Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away"]
+missing_cols = [c for c in required_cols if c not in history.columns]
+if missing_cols:
+    st.error(f"❌ Histórico sem as colunas necessárias: {missing_cols}")
+    st.stop()
     
-    # 🧩 2️⃣ Verificar colunas essenciais
-    required_cols = ["Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away"]
-    missing_cols = [c for c in required_cols if c not in history.columns]
-    if missing_cols:
-        st.error(f"❌ Histórico sem as colunas necessárias: {missing_cols}")
-        st.stop()
+# 🧩 3️⃣ Garantir que os quadrantes estejam definidos corretamente
+if ('Quadrante_Home' not in history.columns) or history['Quadrante_Home'].isna().all():
+    st.info("🔧 Recalculando Quadrante_Home no histórico...")
+    history['Quadrante_Home'] = history.apply(
+        lambda x: classificar_quadrante(x['Aggression_Home'], x['HandScore_Home']), axis=1
+    )
     
-    # 🧩 3️⃣ Garantir que os quadrantes estejam definidos corretamente
-    if ('Quadrante_Home' not in history.columns) or history['Quadrante_Home'].isna().all():
-        st.info("🔧 Recalculando Quadrante_Home no histórico...")
-        history['Quadrante_Home'] = history.apply(
-            lambda x: classificar_quadrante(x['Aggression_Home'], x['HandScore_Home']), axis=1
+if ('Quadrante_Away' not in history.columns) or history['Quadrante_Away'].isna().all():
+    st.info("🔧 Recalculando Quadrante_Away no histórico...")
+    history['Quadrante_Away'] = history.apply(
+        lambda x: classificar_quadrante(x['Aggression_Away'], x['HandScore_Away']), axis=1
+    )
+    
+# 🧩 4️⃣ Diagnóstico rápido
+st.write(f"✅ Histórico pronto com {len(history)} jogos válidos")
+st.write("📋 Colunas principais detectadas:", 
+         [c for c in history.columns if 'Quadrante' in c or 'Aggression' in c or 'HandScore' in c][:10])
+    
+# 🧩 5️⃣ Treinamento
+try:
+    modelo_home, modelo_away, games_today = treinar_modelo_quadrantes_dual(history, games_today)
+    st.success("✅ Modelo dual (Home/Away) treinado com sucesso!")
+except Exception as e:
+    st.error(f"❌ Erro ao treinar o modelo dual: {e}")
+    st.stop()
+
+# ---------------- EXIBIÇÃO DOS RESULTADOS DUAL ----------------
+st.markdown("## 🏆 Melhores Confrontos por Quadrantes ML (Home & Away)")
+
+if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
+    # Preparar dados para exibição
+    ranking_quadrantes = games_today.copy()
+    ranking_quadrantes['Quadrante_Home_Label'] = ranking_quadrantes['Quadrante_Home'].map(
+        lambda x: QUADRANTES_8.get(x, {}).get('nome', 'Neutro') if x != 0 else 'Neutro'
+    )
+    ranking_quadrantes['Quadrante_Away_Label'] = ranking_quadrantes['Quadrante_Away'].map(
+        lambda x: QUADRANTES_8.get(x, {}).get('nome', 'Neutro') if x != 0 else 'Neutro'
+    )
+
+    # Aplicar indicadores explicativos dual
+    ranking_quadrantes = adicionar_indicadores_explicativos_dual(ranking_quadrantes)
+
+    # ---------------- ATUALIZAR COM DADOS LIVE ----------------
+    def update_real_time_data(df):
+        """Atualiza todos os dados em tempo real para HANDICAP"""
+        # Resultados do handicap
+        df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
+
+        # Performance das recomendações (baseado no handicap)
+        df['Quadrante_Correct'] = df.apply(
+            lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
         )
-    
-    if ('Quadrante_Away' not in history.columns) or history['Quadrante_Away'].isna().all():
-        st.info("🔧 Recalculando Quadrante_Away no histórico...")
-        history['Quadrante_Away'] = history.apply(
-            lambda x: classificar_quadrante(x['Aggression_Away'], x['HandScore_Away']), axis=1
+        df['Profit_Quadrante'] = df.apply(
+            lambda r: calculate_handicap_profit(r['Recomendacao'], r['Handicap_Result'], r, r['Asian_Line_Decimal']), axis=1
         )
-    
-    # 🧩 4️⃣ Diagnóstico rápido
-    st.write(f"✅ Histórico pronto com {len(history)} jogos válidos")
-    st.write("📋 Colunas principais detectadas:", 
-             [c for c in history.columns if 'Quadrante' in c or 'Aggression' in c or 'HandScore' in c][:10])
-    
-    # 🧩 5️⃣ Treinamento
-    try:
-        modelo_home, modelo_away, games_today = treinar_modelo_quadrantes_dual(history, games_today)
-        st.success("✅ Modelo dual (Home/Away) treinado com sucesso!")
-    except Exception as e:
-        st.error(f"❌ Erro ao treinar o modelo dual: {e}")
-        st.stop()
-    
-    
-    
-    # ---------------- EXIBIÇÃO DOS RESULTADOS DUAL ----------------
-    st.markdown("## 🏆 Melhores Confrontos por Quadrantes ML (Home & Away)")
-    
-    if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
-        # Preparar dados para exibição
-        ranking_quadrantes = games_today.copy()
-        ranking_quadrantes['Quadrante_Home_Label'] = ranking_quadrantes['Quadrante_Home'].map(
-            lambda x: QUADRANTES_8.get(x, {}).get('nome', 'Neutro') if x != 0 else 'Neutro'
-        )
-        ranking_quadrantes['Quadrante_Away_Label'] = ranking_quadrantes['Quadrante_Away'].map(
-            lambda x: QUADRANTES_8.get(x, {}).get('nome', 'Neutro') if x != 0 else 'Neutro'
-        )
-    
-        # Aplicar indicadores explicativos dual
-        ranking_quadrantes = adicionar_indicadores_explicativos_dual(ranking_quadrantes)
-    
-        # ---------------- ATUALIZAR COM DADOS LIVE ----------------
-        def update_real_time_data(df):
-            """Atualiza todos os dados em tempo real para HANDICAP"""
-            # Resultados do handicap
-            df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
-    
-            # Performance das recomendações (baseado no handicap)
-            df['Quadrante_Correct'] = df.apply(
-                lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
-            )
-            df['Profit_Quadrante'] = df.apply(
-                lambda r: calculate_handicap_profit(r['Recomendacao'], r['Handicap_Result'], r, r['Asian_Line_Decimal']), axis=1
-            )
-            return df
-    
-        # Aplicar atualização em tempo real
-        ranking_quadrantes = update_real_time_data(ranking_quadrantes)
-    
-        # ####################
-    
-        # # ========================
-        # # 🧪 BLOCO DE VALIDAÇÃO DO ML
-        # # ========================
-        
-        # st.markdown("## 🧪 VALIDAÇÃO DO MODELO DE MACHINE LEARNING")
-        
-        # if not ranking_quadrantes.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
-            
-        #     # 1. 📊 DISTRIBUIÇÃO DE RECOMENDAÇÕES
-        #     st.markdown("### 📊 Distribuição de Recomendações")
-            
-        #     col1, col2 = st.columns(2)
-            
-        #     with col1:
-        #         st.write("**Lado Recomendado (ML_Side):**")
-        #         dist_side = ranking_quadrantes['ML_Side'].value_counts()
-        #         st.dataframe(dist_side)
-                
-        #         # Gráfico de pizza CORRIGIDO
-        #         if not dist_side.empty:
-        #             fig_side = go.Figure(data=[go.Pie(
-        #                 labels=dist_side.index, 
-        #                 values=dist_side.values,
-        #                 hole=.3
-        #             )])
-        #             fig_side.update_layout(title="Distribuição HOME vs AWAY")
-        #             st.plotly_chart(fig_side, use_container_width=True)
-            
-        #     with col2:
-        #         st.write("**Tipos de Recomendação:**")
-        #         dist_rec = ranking_quadrantes['Recomendacao'].value_counts().head(10)
-        #         st.dataframe(dist_rec)
-            
-        #     # 2. 📈 ANÁLISE DAS PROBABILIDADES
-        #     st.markdown("### 📈 Análise das Probabilidades ML")
-            
-        #     col1, col2, col3 = st.columns(3)
-            
-        #     with col1:
-        #         st.metric("Probabilidade Média HOME", f"{games_today['Quadrante_ML_Score_Home'].mean():.1%}")
-        #         st.metric("Probabilidade Média AWAY", f"{games_today['Quadrante_ML_Score_Away'].mean():.1%}")
-            
-        #     with col2:
-        #         st.metric("Máxima Probabilidade", f"{games_today['Quadrante_ML_Score_Main'].max():.1%}")
-        #         st.metric("Mínima Probabilidade", f"{games_today['Quadrante_ML_Score_Main'].min():.1%}")
-            
-        #     with col3:
-        #         # Contar recomendações fortes (>55%)
-        #         strong_home = len(games_today[games_today['Quadrante_ML_Score_Home'] > 0.55])
-        #         strong_away = len(games_today[games_today['Quadrante_ML_Score_Away'] > 0.55])
-        #         st.metric("Recomendações Fortes HOME", strong_home)
-        #         st.metric("Recomendações Fortes AWAY", strong_away)
-            
-        #     # Histograma das probabilidades
-        #     fig_probs = go.Figure()
-        #     fig_probs.add_trace(go.Histogram(
-        #         x=games_today['Quadrante_ML_Score_Home'], 
-        #         name='HOME', 
-        #         opacity=0.7,
-        #         nbinsx=20
-        #     ))
-        #     fig_probs.add_trace(go.Histogram(
-        #         x=games_today['Quadrante_ML_Score_Away'], 
-        #         name='AWAY', 
-        #         opacity=0.7,
-        #         nbinsx=20
-        #     ))
-        #     fig_probs.update_layout(
-        #         title="Distribuição das Probabilidades ML",
-        #         xaxis_title="Probabilidade",
-        #         yaxis_title="Frequência",
-        #         barmode='overlay'
-        #     )
-        #     st.plotly_chart(fig_probs, use_container_width=True)
-            
-        #     # 3. 🎯 PERFORMANCE COM DADOS LIVE (SE DISPONÍVEL)
-        #     st.markdown("### 🎯 Performance com Dados em Tempo Real")
-            
-        #     # ✅ VERIFICAÇÃO SEGURA - usar ranking_quadrantes e checar colunas
-        #     if 'Handicap_Result' in ranking_quadrantes.columns:
-        #         finished_games = ranking_quadrantes.dropna(subset=['Handicap_Result'])
-                
-        #         if not finished_games.empty:
-        #             # Jogos com recomendações do quadrante (verificar se coluna existe)
-        #             if 'Quadrante_Correct' in ranking_quadrantes.columns:
-        #                 quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
-        #             else:
-        #                 quadrante_bets = pd.DataFrame()
-        #                 st.info("⚠️ Coluna Quadrante_Correct não disponível")
-                    
-        #             if not quadrante_bets.empty:
-        #                 total_bets = len(quadrante_bets)
-        #                 correct_bets = quadrante_bets['Quadrante_Correct'].sum()
-        #                 winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
-                        
-        #                 # Calcular profit apenas se coluna existe
-        #                 if 'Profit_Quadrante' in quadrante_bets.columns:
-        #                     total_profit = quadrante_bets['Profit_Quadrante'].sum()
-        #                     roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
-        #                 else:
-        #                     total_profit = 0
-        #                     roi = 0
-                        
-        #                 col1, col2, col3, col4 = st.columns(4)
-        #                 col1.metric("Apostas do Quadrante", total_bets)
-        #                 col2.metric("Acertos", f"{correct_bets} ({winrate:.1f}%)")
-        #                 col3.metric("Profit Total", f"{total_profit:.2f}u")
-        #                 col4.metric("ROI", f"{roi:.1f}%")
-                        
-        #                 # Performance por tipo de recomendação (se coluna existe)
-        #                 if 'Recomendacao' in quadrante_bets.columns:
-        #                     st.write("**Performance por Tipo de Recomendação:**")
-        #                     performance_by_rec = quadrante_bets.groupby('Recomendacao').agg({
-        #                         'Quadrante_Correct': ['count', 'sum', 'mean'],
-        #                         'Profit_Quadrante': 'sum'
-        #                     }).round(3)
-                            
-        #                     performance_by_rec.columns = ['Total_Apostas', 'Acertos', 'Winrate', 'Profit']
-        #                     performance_by_rec['Winrate'] = performance_by_rec['Winrate'] * 100
-        #                     st.dataframe(performance_by_rec.sort_values('Profit', ascending=False))
-                        
-        #             else:
-        #                 st.info("⚠️ Nenhuma aposta do quadrante foi feita nos jogos finalizados")
-        #         else:
-        #             st.info("⏳ Aguardando jogos finalizados para análise de performance")
-        #     else:
-        #         st.info("⏳ Dados live não disponíveis - aguardando resultados dos jogos")
-            
-        #     # 4. 🔍 FEATURE IMPORTANCE (SE DISPONÍVEL)
-        #     st.markdown("### 🔍 Top Features Mais Importantes")
-            
-        #     try:
-        #         if 'modelo_home' in locals() and hasattr(modelo_home, 'feature_importances_'):
-        #             # Recriar os nomes das features como foram usadas no treinamento
-        #             feature_names = []
-                    
-        #             # Quadrantes Home (QH_1 a QH_8)
-        #             feature_names += [f'QH_{i}' for i in range(1, 9)]
-        #             # Quadrantes Away (QA_1 a QA_8)  
-        #             feature_names += [f'QA_{i}' for i in range(1, 9)]
-        #             # Ligas (exemplo: League_PremierLeague, etc.)
-        #             if 'League' in ranking_quadrantes.columns:
-        #                 top_leagues = ranking_quadrantes['League'].value_counts().head(10).index
-        #                 feature_names += [f'League_{league}' for league in top_leagues]
-        #             # Features contínuas
-        #             feature_names += [
-        #                 'Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle',
-        #                 'Agg_Home_vs_Liga', 'HS_Home_vs_Liga', 'Agg_Away_vs_Liga', 'HS_Away_vs_Liga'
-        #             ]
-                    
-        #             # Ajustar para o número real de features
-        #             importances = modelo_home.feature_importances_
-        #             if len(feature_names) > len(importances):
-        #                 feature_names = feature_names[:len(importances)]
-        #             elif len(feature_names) < len(importances):
-        #                 feature_names += [f'Extra_Feature_{i}' for i in range(len(feature_names), len(importances))]
-                    
-        #             feature_importance = pd.DataFrame({
-        #                 'feature': feature_names,
-        #                 'importance': importances
-        #             }).sort_values('importance', ascending=False).head(15)
-                    
-        #             fig_features = px.bar(feature_importance, x='importance', y='feature', 
-        #                                  title='Top 15 Features Mais Importantes (Modelo HOME)')
-        #             st.plotly_chart(fig_features, use_container_width=True)
-                    
-        #             st.write("**Top 10 Features:**")
-        #             st.dataframe(feature_importance.head(10))
-        #         else:
-        #             st.warning("Modelo HOME não disponível para feature importance")
-                
-        #     except Exception as e:
-        #         st.warning(f"⚠️ Não foi possível obter feature importance: {e}")
-            
-        #     # 5. 🎪 ANÁLISE DE PADRÕES
-        #     st.markdown("### 🎪 Análise de Padrões por Quadrante")
-            
-        #     # Success rate por quadrante
-        #     if 'Quadrante_Home_Label' in games_today.columns and 'Quadrante_Correct' in games_today.columns:
-        #         quadrante_performance = games_today.groupby('Quadrante_Home_Label').agg({
-        #             'Quadrante_Correct': ['count', 'mean'],
-        #             'Profit_Quadrante': 'sum'
-        #         }).round(3)
-                
-        #         if not quadrante_performance.empty:
-        #             quadrante_performance.columns = ['Total_Apostas', 'Winrate', 'Profit']
-        #             quadrante_performance['Winrate'] = quadrante_performance['Winrate'] * 100
-        #             st.dataframe(quadrante_performance.sort_values('Profit', ascending=False))
-        
-        # else:
-        #     st.warning("⚠️ Dados insuficientes para validação do ML")
-        
-        # st.markdown("---")
-    
-    
-        # #####################
-    
-    
-        # ---------------- RESUMO LIVE ----------------
-        def generate_live_summary(df):
-            """Gera resumo em tempo real dos resultados de HANDICAP"""
-            finished_games = df.dropna(subset=['Handicap_Result'])
-    
-            if finished_games.empty:
-                return {
-                    "Total Jogos": len(df),
-                    "Jogos Finalizados": 0,
-                    "Apostas Quadrante": 0,
-                    "Acertos Quadrante": 0,
-                    "Winrate Quadrante": "0%",
-                    "Profit Quadrante": 0,
-                    "ROI Quadrante": "0%"
-                }
-    
-            quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
-            total_bets = len(quadrante_bets)
-            correct_bets = quadrante_bets['Quadrante_Correct'].sum()
-            winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
-            total_profit = quadrante_bets['Profit_Quadrante'].sum()
-            roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
-    
+        return df
+
+    # Aplicar atualização em tempo real
+    ranking_quadrantes = update_real_time_data(ranking_quadrantes)
+
+    # ---------------- RESUMO LIVE ----------------
+    def generate_live_summary(df):
+        """Gera resumo em tempo real dos resultados de HANDICAP"""
+        finished_games = df.dropna(subset=['Handicap_Result'])
+
+        if finished_games.empty:
             return {
                 "Total Jogos": len(df),
-                "Jogos Finalizados": len(finished_games),
-                "Apostas Quadrante": total_bets,
-                "Acertos Quadrante": int(correct_bets),
-                "Winrate Quadrante": f"{winrate:.1f}%",
-                "Profit Quadrante": f"{total_profit:.2f}u",
-                "ROI Quadrante": f"{roi:.1f}%"
+                "Jogos Finalizados": 0,
+                "Apostas Quadrante": 0,
+                "Acertos Quadrante": 0,
+                "Winrate Quadrante": "0%",
+                "Profit Quadrante": 0,
+                "ROI Quadrante": "0%"
             }
-    
-        # Exibir resumo live APÓS criar ranking_quadrantes
-        st.markdown("## 📡 Live Score Monitor")
-        live_summary = generate_live_summary(ranking_quadrantes)
-        st.json(live_summary)
-    
-        # Ordenar por score principal (se existir) ou pelo score do home
-        if 'Quadrante_ML_Score_Main' in ranking_quadrantes.columns:
-            ranking_quadrantes = ranking_quadrantes.sort_values('Quadrante_ML_Score_Main', ascending=False)
-        else:
-            ranking_quadrantes = ranking_quadrantes.sort_values('Quadrante_ML_Score_Home', ascending=False)
-    
-        # Colunas para exibir - incluindo Live Score
-        colunas_possiveis = [
-            'League','Time', 'Home', 'Away', 'ML_Side',
-            'Quadrante_Home_Label', 'Quadrante_Away_Label',
-            'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
-            'Quadrante_ML_Score_Main', 'Classificacao_Valor_Home', 
-            'Classificacao_Valor_Away', 'Recomendacao',
-            # Colunas Live Score
-            'Goals_H_Today', 'Goals_A_Today', 'Asian_Line_Decimal', 'Handicap_Result',
-            'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
-        ]
-    
-        # Filtrar colunas existentes
-        cols_finais = [c for c in colunas_possiveis if c in ranking_quadrantes.columns]
-    
-        st.dataframe(
-            estilo_tabela_quadrantes_dual(ranking_quadrantes[cols_finais].head(20))
-            .format({
-                'Goals_H_Today': '{:.0f}',
-                'Goals_A_Today': '{:.0f}',
-                'Asian_Line_Decimal': '{:.2f}',
-                'Home_Red': '{:.0f}',
-                'Away_Red': '{:.0f}',
-                'Profit_Quadrante': '{:.2f}',
-                'Quadrante_ML_Score_Home': '{:.1%}',
-                'Quadrante_ML_Score_Away': '{:.1%}',
-                'Quadrante_ML_Score_Main': '{:.1%}'
-            }, na_rep="-"),
-            use_container_width=True
-        )
-    
+
+        quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
+        total_bets = len(quadrante_bets)
+        correct_bets = quadrante_bets['Quadrante_Correct'].sum()
+        winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
+        total_profit = quadrante_bets['Profit_Quadrante'].sum()
+        roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
+
+        return {
+            "Total Jogos": len(df),
+            "Jogos Finalizados": len(finished_games),
+            "Apostas Quadrante": total_bets,
+            "Acertos Quadrante": int(correct_bets),
+            "Winrate Quadrante": f"{winrate:.1f}%",
+            "Profit Quadrante": f"{total_profit:.2f}u",
+            "ROI Quadrante": f"{roi:.1f}%"
+        }
+
+    # Exibir resumo live APÓS criar ranking_quadrantes
+    st.markdown("## 📡 Live Score Monitor")
+    live_summary = generate_live_summary(ranking_quadrantes)
+    st.json(live_summary)
+
+    # Ordenar por score principal (se existir) ou pelo score do home
+    if 'Quadrante_ML_Score_Main' in ranking_quadrantes.columns:
+        ranking_quadrantes = ranking_quadrantes.sort_values('Quadrante_ML_Score_Main', ascending=False)
     else:
-        st.info("⚠️ Aguardando dados para gerar ranking dual")
-    
-    
-    
-    
-    # ---------------- RESUMO EXECUTIVO DUAL ----------------
-    def resumo_quadrantes_hoje_dual(df):
-        """Resumo executivo dos quadrantes de hoje com perspectiva dual"""
-    
-        st.markdown("### 📋 Resumo Executivo - Quadrantes Hoje (Dual)")
-    
-        if df.empty:
-            st.info("Nenhum dado disponível para resumo")
-            return
-    
-        total_jogos = len(df)
-        alto_valor_home = len(df[df['Classificacao_Valor_Home'] == '🏆 ALTO VALOR'])
-        bom_valor_home = len(df[df['Classificacao_Valor_Home'] == '✅ BOM VALOR'])
-        alto_valor_away = len(df[df['Classificacao_Valor_Away'] == '🏆 ALTO VALOR'])
-        bom_valor_away = len(df[df['Classificacao_Valor_Away'] == '✅ BOM VALOR'])
-    
-        home_recomendado = len(df[df['ML_Side'] == 'HOME'])
-        away_recomendado = len(df[df['ML_Side'] == 'AWAY'])
-    
-        col1, col2, col3, col4 = st.columns(4)
-    
-        with col1:
-            st.metric("Total Jogos", total_jogos)
-        with col2:
-            st.metric("🎯 Alto Valor Home", alto_valor_home)
-        with col3:
-            st.metric("🎯 Alto Valor Away", alto_valor_away)
-        with col4:
-            st.metric("📊 Home vs Away", f"{home_recomendado} : {away_recomendado}")
-    
-        # Distribuição de recomendações
-        st.markdown("#### 📊 Distribuição de Recomendações")
-        dist_recomendacoes = df['Recomendacao'].value_counts()
-        st.dataframe(dist_recomendacoes, use_container_width=True)
-    
-    if not games_today.empty and 'Classificacao_Valor_Home' in games_today.columns:
-        resumo_quadrantes_hoje_dual(games_today)
-    
-    
-    
-    st.markdown("---")
-    st.info("🎯 **Análise de Quadrantes ML Dual** - Sistema avançado para identificação de value bets em Home e Away baseado em Aggression × HandScore")
+        ranking_quadrantes = ranking_quadrantes.sort_values('Quadrante_ML_Score_Home', ascending=False)
+
+    # Colunas para exibir - incluindo Live Score
+    colunas_possiveis = [
+        'League','Time', 'Home', 'Away', 'ML_Side',
+        'Quadrante_Home_Label', 'Quadrante_Away_Label',
+        'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
+        'Quadrante_ML_Score_Main', 'Classificacao_Valor_Home', 
+        'Classificacao_Valor_Away', 'Recomendacao',
+        # Colunas Live Score
+        'Goals_H_Today', 'Goals_A_Today', 'Asian_Line_Decimal', 'Handicap_Result',
+        'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
+    ]
+
+    # Filtrar colunas existentes
+    cols_finais = [c for c in colunas_possiveis if c in ranking_quadrantes.columns]
+
+    st.dataframe(
+        estilo_tabela_quadrantes_dual(ranking_quadrantes[cols_finais].head(20))
+        .format({
+            'Goals_H_Today': '{:.0f}',
+            'Goals_A_Today': '{:.0f}',
+            'Asian_Line_Decimal': '{:.2f}',
+            'Home_Red': '{:.0f}',
+            'Away_Red': '{:.0f}',
+            'Profit_Quadrante': '{:.2f}',
+            'Quadrante_ML_Score_Home': '{:.1%}',
+            'Quadrante_ML_Score_Away': '{:.1%}',
+            'Quadrante_ML_Score_Main': '{:.1%}'
+        }, na_rep="-"),
+        use_container_width=True
+    )
+
+else:
+    st.info("⚠️ Aguardando dados para gerar ranking dual")
+
+# ---------------- RESUMO EXECUTIVO DUAL ----------------
+def resumo_quadrantes_hoje_dual(df):
+    """Resumo executivo dos quadrantes de hoje com perspectiva dual"""
+
+    st.markdown("### 📋 Resumo Executivo - Quadrantes Hoje (Dual)")
+
+    if df.empty:
+        st.info("Nenhum dado disponível para resumo")
+        return
+
+    total_jogos = len(df)
+    alto_valor_home = len(df[df['Classificacao_Valor_Home'] == '🏆 ALTO VALOR'])
+    bom_valor_home = len(df[df['Classificacao_Valor_Home'] == '✅ BOM VALOR'])
+    alto_valor_away = len(df[df['Classificacao_Valor_Away'] == '🏆 ALTO VALOR'])
+    bom_valor_away = len(df[df['Classificacao_Valor_Away'] == '✅ BOM VALOR'])
+
+    home_recomendado = len(df[df['ML_Side'] == 'HOME'])
+    away_recomendado = len(df[df['ML_Side'] == 'AWAY'])
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("Total Jogos", total_jogos)
+    with col2:
+        st.metric("🎯 Alto Valor Home", alto_valor_home)
+    with col3:
+        st.metric("🎯 Alto Valor Away", alto_valor_away)
+    with col4:
+        st.metric("📊 Home vs Away", f"{home_recomendado} : {away_recomendado}")
+
+    # Distribuição de recomendações
+    st.markdown("#### 📊 Distribuição de Recomendações")
+    dist_recomendacoes = df['Recomendacao'].value_counts()
+    st.dataframe(dist_recomendacoes, use_container_width=True)
+
+if not games_today.empty and 'Classificacao_Valor_Home' in games_today.columns:
+    resumo_quadrantes_hoje_dual(games_today)
+
+st.markdown("---")
+st.info("🎯 **Análise de Quadrantes ML Dual** - Sistema avançado para identificação de value bets em Home e Away baseado em Aggression × HandScore")
