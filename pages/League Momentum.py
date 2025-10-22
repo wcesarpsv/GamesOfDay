@@ -918,7 +918,6 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     ########################################
     #### 📋 Importância das Features (Tabela)
     ########################################
-    import pandas as pd
     
     st.markdown("### 📋 Importância das Features (Modelo HOME)")
     
