@@ -673,18 +673,18 @@ def adicionar_contexto_liga(df):
     # ✅ 4️⃣ Diagnóstico opcional (visual)
     # ==============================
     # 🔍 DEBUG VISUAL - Z-Score por Liga (APENAS games_today)
-    try:
-        avg_df = (
-            games_today.groupby("League")[["Agg_Home_vs_Liga", "HS_Home_vs_Liga"]]
-            .mean()
-            .sort_values(by="Agg_Home_vs_Liga", ascending=False)
-        )
-        st.markdown("#### 📊 Médias Z-Score (Home vs Liga) por Competição - HOJE")
-        st.dataframe(avg_df.style.format("{:.2f}"), use_container_width=True)
-    except Exception as e:
-        st.warning(f"Debug Z-Score não pôde ser exibido: {e}")
+    # try:
+    #     avg_df = (
+    #         games_today.groupby("League")[["Agg_Home_vs_Liga", "HS_Home_vs_Liga"]]
+    #         .mean()
+    #         .sort_values(by="Agg_Home_vs_Liga", ascending=False)
+    #     )
+    #     st.markdown("#### 📊 Médias Z-Score (Home vs Liga) por Competição - HOJE")
+    #     st.dataframe(avg_df.style.format("{:.2f}"), use_container_width=True)
+    # except Exception as e:
+    #     st.warning(f"Debug Z-Score não pôde ser exibido: {e}")
     
-    st.success("✅ Modelo dual (Home/Away) treinado com sucesso com contexto de liga!")
+    # st.success("✅ Modelo dual (Home/Away) treinado com sucesso com contexto de liga!")
         
 
     return df
@@ -783,13 +783,16 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     # 🔹 Mostrar importância de features
     # ----------------------------------
     try:
-        importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
-        top_feats = importances.head(20)
-        st.markdown("### 🔍 Top Features mais importantes (Modelo HOME)")
-        st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
+        avg_df = (
+            games_today.groupby("League")[["Agg_Home_vs_Liga", "HS_Home_vs_Liga"]]
+            .mean()
+            .sort_values(by="Agg_Home_vs_Liga", ascending=False)
+        )
+        st.markdown("#### 📊 Médias Z-Score (Home vs Liga) por Competição - HOJE")
+        st.dataframe(avg_df.style.format("{:.2f}"), use_container_width=True)
     except Exception as e:
-        st.warning(f"Não foi possível calcular importâncias: {e}")
-
+        st.warning(f"Debug Z-Score não pôde ser exibido: {e}")
+    
     st.success("✅ Modelo dual (Home/Away) treinado com sucesso com contexto de liga!")
     return model_home, model_away, games_today
 
