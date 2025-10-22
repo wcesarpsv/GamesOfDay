@@ -960,9 +960,9 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # Função de estilo atualizada
     def estilo_tabela_16_quadrantes(df):
         def cor_classificacao(valor):
-            if '🌟 ALTO POTENCIAL' in str(valor): return 'background-color: #98FB98; font-weight: bold'
-            elif '💼 VALOR SOLIDO' in str(valor): return 'background-color: #F0E68C; font-weight: bold'
-            elif '🔴 BAIXO POTENCIAL' in str(valor): return 'background-color: #FFCCCB; font-weight: bold'
+            if '🌟 ALTO POTENCIAL' in str(valor): return 'font-weight: bold'
+            elif '💼 VALOR SOLIDO' in str(valor): return 'font-weight: bold'
+            elif '🔴 BAIXO POTENCIAL' in str(valor): return 'font-weight: bold'
             elif '🏆 ALTO VALOR' in str(valor): return 'font-weight: bold'
             elif '🔴 ALTO RISCO' in str(valor): return 'font-weight: bold'
             elif 'VALUE' in str(valor): return 'background-color: #98FB98'
