@@ -679,7 +679,7 @@ def adicionar_contexto_liga(df):
             .sort_values(by="Agg_Home_vs_Liga", ascending=False)
         )
         st.markdown("#### 📊 Médias Z-Score (Home vs Liga) por Competição")
-        st.dataframe(avg_df.style.format("{:.2f}"), use_container_width=True)
+        st.dataframe(avg_df.style.format("{:.2f}"), use_container_width=False)
     except:
         pass
 
