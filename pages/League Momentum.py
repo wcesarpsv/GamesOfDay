@@ -685,8 +685,7 @@ def adicionar_contexto_liga(df):
         st.warning(f"Debug Z-Score não pôde ser exibido: {e}")
     
     st.success("✅ Modelo dual (Home/Away) treinado com sucesso com contexto de liga!")
-    return model_home, model_away, games_today
-    
+        
 
     return df
 
