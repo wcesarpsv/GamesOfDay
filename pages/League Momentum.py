@@ -824,6 +824,36 @@ def adicionar_contexto_liga(df):
 
     return df
 
+########################################
+#### 🧠 BLOCO – Distância Universal como Feature ML
+########################################
+def adicionar_feature_distancia_universal(df):
+    """
+    Adiciona métricas universais de distância padronizada entre confrontos:
+      - Quadrant_Dist_Z  → distância normalizada (Z-score global)
+      - Dist_Index       → escala 0–100 (comparável entre ligas)
+      - Dist_Category    → classificação interpretável
+    """
+    df = df.copy()
+
+    # 1️⃣ Z-score global da distância calibrada
+    mean_dist = df["Quadrant_Dist"].mean()
+    std_dist = df["Quadrant_Dist"].std() if df["Quadrant_Dist"].std() > 0 else 1
+    df["Quadrant_Dist_Z"] = (df["Quadrant_Dist"] - mean_dist) / std_dist
+
+    # 2️⃣ Converter para escala 0–100 (índice universal)
+    df["Dist_Index"] = ((df["Quadrant_Dist_Z"] - df["Quadrant_Dist_Z"].min()) /
+                        (df["Quadrant_Dist_Z"].max() - df["Quadrant_Dist_Z"].min())) * 100
+
+    # 3️⃣ Classificação interpretável
+    df["Dist_Category"] = pd.cut(
+        df["Quadrant_Dist_Z"],
+        bins=[-np.inf, -0.5, 0.5, 1.5, np.inf],
+        labels=["⚖️ Equilibrado", "📈 Leve Favorito", "🔥 Dominante", "🚨 Extremamente Desequilibrado"]
+    )
+
+    return df
+
 
 ########################################
 #### 🤖 BLOCO – Treinamento ML Dual com Contexto de Liga
@@ -842,6 +872,9 @@ def treinar_modelo_quadrantes_dual(history, games_today):
 
     history = adicionar_contexto_liga(history)
     games_today = adicionar_contexto_liga(games_today)
+
+    history = adicionar_feature_distancia_universal(history)
+    games_today = adicionar_feature_distancia_universal(games_today)
 
     # ----------------------------------
     # 🔹 Preparar features básicas
