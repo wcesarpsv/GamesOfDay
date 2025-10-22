@@ -915,6 +915,33 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     model_home.fit(X, y_home)
     model_away.fit(X, y_away)
 
+    ########################################
+    #### 📋 Importância das Features (Tabela)
+    ########################################
+    import pandas as pd
+    
+    st.markdown("### 📋 Importância das Features (Modelo HOME)")
+    
+    try:
+        # Criar DataFrame de importância
+        feature_importance = pd.DataFrame({
+            "Feature": X.columns,
+            "Importance": modelo_home.feature_importances_
+        }).sort_values(by="Importance", ascending=False)
+    
+        # Exibir tabela com formatação
+        st.dataframe(
+            feature_importance.style.format({"Importance": "{:.4f}"}).background_gradient(
+                subset=["Importance"], cmap="RdYlGn"
+            ),
+            use_container_width=True,
+            height=400
+        )
+    
+    except Exception as e:
+        st.warning(f"⚠️ Não foi possível gerar a tabela de importância das features: {e}")
+
+
     # ----------------------------------
     # 🔹 Preparar dados para o dia atual
     # ----------------------------------
@@ -1492,33 +1519,6 @@ def resumo_quadrantes_hoje_dual(df):
 
 if not games_today.empty and 'Classificacao_Valor_Home' in games_today.columns:
     resumo_quadrantes_hoje_dual(games_today)
-
-
-########################################
-#### 📋 Importância das Features (Tabela)
-########################################
-import pandas as pd
-
-st.markdown("### 📋 Importância das Features (Modelo HOME)")
-
-try:
-    # Criar DataFrame de importância
-    feature_importance = pd.DataFrame({
-        "Feature": X.columns,
-        "Importance": modelo_home.feature_importances_
-    }).sort_values(by="Importance", ascending=False)
-
-    # Exibir tabela com formatação
-    st.dataframe(
-        feature_importance.style.format({"Importance": "{:.4f}"}).background_gradient(
-            subset=["Importance"], cmap="RdYlGn"
-        ),
-        use_container_width=True,
-        height=400
-    )
-
-except Exception as e:
-    st.warning(f"⚠️ Não foi possível gerar a tabela de importância das features: {e}")
 
 
 
