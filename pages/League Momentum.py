@@ -1094,57 +1094,57 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         st.plotly_chart(fig_probs, use_container_width=True)
         
         # 3. 🎯 PERFORMANCE COM DADOS LIVE (SE DISPONÍVEL)
-    st.markdown("### 🎯 Performance com Dados em Tempo Real")
-    
-    # ✅ VERIFICAÇÃO SEGURA - usar ranking_quadrantes e checar colunas
-    if 'Handicap_Result' in ranking_quadrantes.columns:
-        finished_games = ranking_quadrantes.dropna(subset=['Handicap_Result'])
+        st.markdown("### 🎯 Performance com Dados em Tempo Real")
         
-        if not finished_games.empty:
-            # Jogos com recomendações do quadrante (verificar se coluna existe)
-            if 'Quadrante_Correct' in ranking_quadrantes.columns:
-                quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
-            else:
-                quadrante_bets = pd.DataFrame()
-                st.info("⚠️ Coluna Quadrante_Correct não disponível")
+        # ✅ VERIFICAÇÃO SEGURA - usar ranking_quadrantes e checar colunas
+        if 'Handicap_Result' in ranking_quadrantes.columns:
+            finished_games = ranking_quadrantes.dropna(subset=['Handicap_Result'])
             
-            if not quadrante_bets.empty:
-                total_bets = len(quadrante_bets)
-                correct_bets = quadrante_bets['Quadrante_Correct'].sum()
-                winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
-                
-                # Calcular profit apenas se coluna existe
-                if 'Profit_Quadrante' in quadrante_bets.columns:
-                    total_profit = quadrante_bets['Profit_Quadrante'].sum()
-                    roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
+            if not finished_games.empty:
+                # Jogos com recomendações do quadrante (verificar se coluna existe)
+                if 'Quadrante_Correct' in ranking_quadrantes.columns:
+                    quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
                 else:
-                    total_profit = 0
-                    roi = 0
+                    quadrante_bets = pd.DataFrame()
+                    st.info("⚠️ Coluna Quadrante_Correct não disponível")
                 
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Apostas do Quadrante", total_bets)
-                col2.metric("Acertos", f"{correct_bets} ({winrate:.1f}%)")
-                col3.metric("Profit Total", f"{total_profit:.2f}u")
-                col4.metric("ROI", f"{roi:.1f}%")
-                
-                # Performance por tipo de recomendação (se coluna existe)
-                if 'Recomendacao' in quadrante_bets.columns:
-                    st.write("**Performance por Tipo de Recomendação:**")
-                    performance_by_rec = quadrante_bets.groupby('Recomendacao').agg({
-                        'Quadrante_Correct': ['count', 'sum', 'mean'],
-                        'Profit_Quadrante': 'sum'
-                    }).round(3)
+                if not quadrante_bets.empty:
+                    total_bets = len(quadrante_bets)
+                    correct_bets = quadrante_bets['Quadrante_Correct'].sum()
+                    winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
                     
-                    performance_by_rec.columns = ['Total_Apostas', 'Acertos', 'Winrate', 'Profit']
-                    performance_by_rec['Winrate'] = performance_by_rec['Winrate'] * 100
-                    st.dataframe(performance_by_rec.sort_values('Profit', ascending=False))
-                
+                    # Calcular profit apenas se coluna existe
+                    if 'Profit_Quadrante' in quadrante_bets.columns:
+                        total_profit = quadrante_bets['Profit_Quadrante'].sum()
+                        roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
+                    else:
+                        total_profit = 0
+                        roi = 0
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("Apostas do Quadrante", total_bets)
+                    col2.metric("Acertos", f"{correct_bets} ({winrate:.1f}%)")
+                    col3.metric("Profit Total", f"{total_profit:.2f}u")
+                    col4.metric("ROI", f"{roi:.1f}%")
+                    
+                    # Performance por tipo de recomendação (se coluna existe)
+                    if 'Recomendacao' in quadrante_bets.columns:
+                        st.write("**Performance por Tipo de Recomendação:**")
+                        performance_by_rec = quadrante_bets.groupby('Recomendacao').agg({
+                            'Quadrante_Correct': ['count', 'sum', 'mean'],
+                            'Profit_Quadrante': 'sum'
+                        }).round(3)
+                        
+                        performance_by_rec.columns = ['Total_Apostas', 'Acertos', 'Winrate', 'Profit']
+                        performance_by_rec['Winrate'] = performance_by_rec['Winrate'] * 100
+                        st.dataframe(performance_by_rec.sort_values('Profit', ascending=False))
+                    
+                else:
+                    st.info("⚠️ Nenhuma aposta do quadrante foi feita nos jogos finalizados")
             else:
-                st.info("⚠️ Nenhuma aposta do quadrante foi feita nos jogos finalizados")
+                st.info("⏳ Aguardando jogos finalizados para análise de performance")
         else:
-            st.info("⏳ Aguardando jogos finalizados para análise de performance")
-    else:
-        st.info("⏳ Dados live não disponíveis - aguardando resultados dos jogos")
+            st.info("⏳ Dados live não disponíveis - aguardando resultados dos jogos")
         
         # 4. 🔍 FEATURE IMPORTANCE (SE DISPONÍVEL)
         st.markdown("### 🔍 Top Features Mais Importantes")
