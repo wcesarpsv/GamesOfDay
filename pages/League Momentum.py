@@ -645,7 +645,7 @@ def adicionar_contexto_liga(df):
         .mean()
         .rename(columns={
             "Aggression_Home": "League_Agg_HomeMean",
-            "Aggression_Away": "League_Agg_AwayMean",
+            "Aggression_Away": "League_Agg_AwayMean", 
             "HandScore_Home": "League_HS_HomeMean",
             "HandScore_Away": "League_HS_AwayMean",
         })
@@ -665,30 +665,39 @@ def adicionar_contexto_liga(df):
     # ⚖️ 3️⃣ Normalização Z-Score (por liga)
     # ==============================
     for col in ["Agg_Home_vs_Liga", "Agg_Away_vs_Liga", "HS_Home_vs_Liga", "HS_Away_vs_Liga"]:
-        std_col = df.groupby("League")[col].transform("std").replace(0, np.nan)
+        std_col = df.groupby("League")[col].transform("std")
+        # 🔧 CORREÇÃO: Evitar divisão por zero
+        std_col = std_col.replace(0, 0.001)  
         df[col] = df[col] / std_col
         df[col] = df[col].fillna(0)
 
-    # ==============================
-    # ✅ 4️⃣ Diagnóstico opcional (visual)
-    # ==============================
-    # 🔍 DEBUG VISUAL - Z-Score por Liga (APENAS games_today)
-    # try:
-    #     avg_df = (
-    #         games_today.groupby("League")[["Agg_Home_vs_Liga", "HS_Home_vs_Liga"]]
-    #         .mean()
-    #         .sort_values(by="Agg_Home_vs_Liga", ascending=False)
-    #     )
-    #     st.markdown("#### 📊 Médias Z-Score (Home vs Liga) por Competição - HOJE")
-    #     st.dataframe(avg_df.style.format("{:.2f}"), use_container_width=True)
-    # except Exception as e:
-    #     st.warning(f"Debug Z-Score não pôde ser exibido: {e}")
+    # 🔍 DEBUG DETALHADO - Verificar cada passo
+    st.markdown("#### 🔍 DEBUG DETALHADO - Cálculo Z-Score")
     
-    # st.success("✅ Modelo dual (Home/Away) treinado com sucesso com contexto de liga!")
-        
+    # 1. Verificar médias por liga
+    st.write("**1. Médias por Liga (Aggression_Home):**")
+    medias_agg = df.groupby("League")["Aggression_Home"].mean()
+    st.write(medias_agg.head(10))
+    
+    # 2. Verificar desvios padrão
+    st.write("**2. Desvios Padrão por Liga (Aggression_Home):**")
+    desvios_agg = df.groupby("League")["Aggression_Home"].std()
+    st.write(desvios_agg.head(10))
+    
+    # 3. Verificar se tem desvio zero
+    st.write("**3. Ligas com desvio padrão ZERO:**")
+    ligas_desvio_zero = desvios_agg[desvios_agg == 0]
+    st.write(f"Ligas com desvio zero: {len(ligas_desvio_zero)}")
+    
+    # 4. Verificar valores originais
+    st.write("**4. Valores originais (exemplo):**")
+    st.write(df[["League", "Aggression_Home", "Aggression_Away"]].head(10))
+    
+    # 5. Verificar resultados Z-Score
+    st.write("**5. Resultados Z-Score (exemplo):**")
+    st.write(df[["League", "Agg_Home_vs_Liga", "HS_Home_vs_Liga"]].head(10))
 
     return df
-
 
 
 ########################################
