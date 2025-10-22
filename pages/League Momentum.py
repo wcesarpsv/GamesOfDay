@@ -422,22 +422,25 @@ fig.add_trace(go.Scatter(
     hoverinfo="skip"
 ))
 
-# Linha diagonal de referência
-# Linha diagonal de referência - CORRIGIDA
-fig.add_trace(go.Scatter(
-    x=[0, 0],           # Mantém a mesma largura no eixo X
-    y=[-60, 60],            # 🔥 MUDANÇA: Agora corta no Y=0
-    mode="lines",
-    line=dict(color="limegreen", width=2, dash="dash"),
-    name="Eixo X e Y"
-))
 
 fig.add_trace(go.Scatter(
     x=[-1, 1],           # Mantém a mesma largura no eixo X
     y=[0, 0],            # 🔥 MUDANÇA: Agora corta no Y=0
     mode="lines",
-    line=dict(color="limegreen", width=2, dash="dash")
+    line=dict(color="limegreen", width=2, dash="dash"),
+    name="Eixo X"
 ))
+
+
+fig.add_trace(go.Scatter(
+    x=[0, 0],           # Mantém a mesma largura no eixo X
+    y=[-60, 60],            # 🔥 MUDANÇA: Agora corta no Y=0
+    mode="lines",
+    line=dict(color="limegreen", width=2, dash="dash"),
+    name="Eixo Y"
+))
+
+
 
 # Layout
 titulo = f"Top {n_to_show} Distâncias – Aggression × HandScore"
