@@ -1151,23 +1151,33 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         
         try:
             if 'modelo_home' in locals() and hasattr(modelo_home, 'feature_importances_'):
-                # Criar nomes de features baseados nos quadrantes
-                feature_names = [f'QH_{i}' for i in range(1, 9)] + [f'QA_{i}' for i in range(1, 9)] + [
+                # Recriar os nomes das features como foram usadas no treinamento
+                feature_names = []
+                
+                # Quadrantes Home (QH_1 a QH_8)
+                feature_names += [f'QH_{i}' for i in range(1, 9)]
+                # Quadrantes Away (QA_1 a QA_8)  
+                feature_names += [f'QA_{i}' for i in range(1, 9)]
+                # Ligas (exemplo: League_PremierLeague, etc.)
+                if 'League' in ranking_quadrantes.columns:
+                    top_leagues = ranking_quadrantes['League'].value_counts().head(10).index
+                    feature_names += [f'League_{league}' for league in top_leagues]
+                # Features contínuas
+                feature_names += [
                     'Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle',
                     'Agg_Home_vs_Liga', 'HS_Home_vs_Liga', 'Agg_Away_vs_Liga', 'HS_Away_vs_Liga'
                 ]
                 
-                # Garantir que temos o mesmo número de features
-                n_features = len(modelo_home.feature_importances_)
-                if len(feature_names) >= n_features:
-                    feature_names = feature_names[:n_features]
-                else:
-                    # Se tiver mais features, completar com genéricos
-                    feature_names += [f'Feature_{i}' for i in range(len(feature_names), n_features)]
+                # Ajustar para o número real de features
+                importances = modelo_home.feature_importances_
+                if len(feature_names) > len(importances):
+                    feature_names = feature_names[:len(importances)]
+                elif len(feature_names) < len(importances):
+                    feature_names += [f'Extra_Feature_{i}' for i in range(len(feature_names), len(importances))]
                 
                 feature_importance = pd.DataFrame({
                     'feature': feature_names,
-                    'importance': modelo_home.feature_importances_
+                    'importance': importances
                 }).sort_values('importance', ascending=False).head(15)
                 
                 fig_features = px.bar(feature_importance, x='importance', y='feature', 
