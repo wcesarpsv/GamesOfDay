@@ -1077,7 +1077,7 @@ def analisar_padroes_quadrantes_dual(df):
 
 # ---------------- EXECUÇÃO PRINCIPAL ----------------
     
-st.markdown("## ⚙️ Execução Principal – Treinamento Dual por Quadrantes")
+# st.markdown("## ⚙️ Execução Principal – Treinamento Dual por Quadrantes")
     
 # 🧩 1️⃣ Verificação do histórico
 if history.empty:
@@ -1105,9 +1105,9 @@ if ('Quadrante_Away' not in history.columns) or history['Quadrante_Away'].isna()
     )
     
 # 🧩 4️⃣ Diagnóstico rápido
-st.write(f"✅ Histórico pronto com {len(history)} jogos válidos")
-st.write("📋 Colunas principais detectadas:", 
-         [c for c in history.columns if 'Quadrante' in c or 'Aggression' in c or 'HandScore' in c][:10])
+# st.write(f"✅ Histórico pronto com {len(history)} jogos válidos")
+# st.write("📋 Colunas principais detectadas:", 
+#          [c for c in history.columns if 'Quadrante' in c or 'Aggression' in c or 'HandScore' in c][:10])
     
 # 🧩 5️⃣ Treinamento
 try:
