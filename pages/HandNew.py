@@ -396,20 +396,23 @@ fig.add_trace(go.Scatter(
 
 # Linha diagonal de referência
 fig.add_trace(go.Scatter(
-    x=[ 0, 0],
-    y=[-60, 60],
+    x=[-1, 1],
+    y=[ 0, 0],
     mode="lines",
     line=dict(color="limegreen", width=2, dash="dash"),
-    name="Linha de equilíbrio"
+    name="Eixo X"
 ))
 
 # Linha diagonal de referência
 fig.add_trace(go.Scatter(
-    x=[-1, 1],
-    y=[ 0, 0],
+    x=[ 0, 0],
+    y=[-60, 60],
     mode="lines",
-    line=dict(color="limegreen", width=2, dash="dash")
+    line=dict(color="limegreen", width=2, dash="dash"),
+    name="Eixo Y"
 ))
+
+
 
 
 # Layout
