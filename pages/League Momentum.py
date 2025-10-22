@@ -1150,10 +1150,23 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         st.markdown("### 🔍 Top Features Mais Importantes")
         
         try:
-            # Tentar obter feature importance do modelo HOME
             if 'modelo_home' in locals() and hasattr(modelo_home, 'feature_importances_'):
+                # Criar nomes de features baseados nos quadrantes
+                feature_names = [f'QH_{i}' for i in range(1, 9)] + [f'QA_{i}' for i in range(1, 9)] + [
+                    'Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle',
+                    'Agg_Home_vs_Liga', 'HS_Home_vs_Liga', 'Agg_Away_vs_Liga', 'HS_Away_vs_Liga'
+                ]
+                
+                # Garantir que temos o mesmo número de features
+                n_features = len(modelo_home.feature_importances_)
+                if len(feature_names) >= n_features:
+                    feature_names = feature_names[:n_features]
+                else:
+                    # Se tiver mais features, completar com genéricos
+                    feature_names += [f'Feature_{i}' for i in range(len(feature_names), n_features)]
+                
                 feature_importance = pd.DataFrame({
-                    'feature': X.columns,
+                    'feature': feature_names,
                     'importance': modelo_home.feature_importances_
                 }).sort_values('importance', ascending=False).head(15)
                 
