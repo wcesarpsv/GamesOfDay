@@ -806,89 +806,89 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     # except Exception as e:
     #     st.warning(f"⚠️ Não foi possível gerar a tabela de importância das features: {e}")
 
-    ########################################
-    #### 📊 Comparação Visual – Feature Importance (Home × Away)
-    ########################################
-    import plotly.express as px
-    import plotly.graph_objects as go
+    # ########################################
+    # #### 📊 Comparação Visual – Feature Importance (Home × Away)
+    # ########################################
+    # import plotly.express as px
+    # import plotly.graph_objects as go
 
-    try:
-        # Importância do modelo HOME
-        fi_home = pd.DataFrame({
-            "Feature": X.columns,
-            "Importance_Home": model_home.feature_importances_
-        }).sort_values(by="Importance_Home", ascending=False).reset_index(drop=True)
+    # try:
+    #     # Importância do modelo HOME
+    #     fi_home = pd.DataFrame({
+    #         "Feature": X.columns,
+    #         "Importance_Home": model_home.feature_importances_
+    #     }).sort_values(by="Importance_Home", ascending=False).reset_index(drop=True)
 
-        # Importância do modelo AWAY
-        fi_away = pd.DataFrame({
-            "Feature": X.columns,
-            "Importance_Away": model_away.feature_importances_
-        }).sort_values(by="Importance_Away", ascending=False).reset_index(drop=True)
+    #     # Importância do modelo AWAY
+    #     fi_away = pd.DataFrame({
+    #         "Feature": X.columns,
+    #         "Importance_Away": model_away.feature_importances_
+    #     }).sort_values(by="Importance_Away", ascending=False).reset_index(drop=True)
 
-        # Mesclar e normalizar
-        fi_merge = fi_home.merge(fi_away, on="Feature", how="outer").fillna(0)
-        fi_merge["Diff_Home_Away"] = fi_merge["Importance_Home"] - fi_merge["Importance_Away"]
+    #     # Mesclar e normalizar
+    #     fi_merge = fi_home.merge(fi_away, on="Feature", how="outer").fillna(0)
+    #     fi_merge["Diff_Home_Away"] = fi_merge["Importance_Home"] - fi_merge["Importance_Away"]
 
-        # Top 20 por importância média
-        fi_merge["Importance_Mean"] = (fi_merge["Importance_Home"] + fi_merge["Importance_Away"]) / 2
-        fi_top = fi_merge.nlargest(20, "Importance_Mean")
+    #     # Top 20 por importância média
+    #     fi_merge["Importance_Mean"] = (fi_merge["Importance_Home"] + fi_merge["Importance_Away"]) / 2
+    #     fi_top = fi_merge.nlargest(20, "Importance_Mean")
 
-        st.markdown("### 🧠 Comparação de Importância – Home × Away")
+    #     st.markdown("### 🧠 Comparação de Importância – Home × Away")
 
-        # --- Gráfico 1: barras lado a lado
-        fig1 = go.Figure()
-        fig1.add_trace(go.Bar(
-            x=fi_top["Feature"],
-            y=fi_top["Importance_Home"],
-            name="Home",
-            marker_color="royalblue"
-        ))
-        fig1.add_trace(go.Bar(
-            x=fi_top["Feature"],
-            y=fi_top["Importance_Away"],
-            name="Away",
-            marker_color="orangered"
-        ))
-        fig1.update_layout(
-            barmode="group",
-            title="Top 20 Features – Importância Comparada (Home vs Away)",
-            xaxis_title="Feature",
-            yaxis_title="Importância",
-            xaxis_tickangle=-45,
-            template="plotly_white",
-            height=500
-        )
-        st.plotly_chart(fig1, use_container_width=True)
+    #     # --- Gráfico 1: barras lado a lado
+    #     fig1 = go.Figure()
+    #     fig1.add_trace(go.Bar(
+    #         x=fi_top["Feature"],
+    #         y=fi_top["Importance_Home"],
+    #         name="Home",
+    #         marker_color="royalblue"
+    #     ))
+    #     fig1.add_trace(go.Bar(
+    #         x=fi_top["Feature"],
+    #         y=fi_top["Importance_Away"],
+    #         name="Away",
+    #         marker_color="orangered"
+    #     ))
+    #     fig1.update_layout(
+    #         barmode="group",
+    #         title="Top 20 Features – Importância Comparada (Home vs Away)",
+    #         xaxis_title="Feature",
+    #         yaxis_title="Importância",
+    #         xaxis_tickangle=-45,
+    #         template="plotly_white",
+    #         height=500
+    #     )
+    #     st.plotly_chart(fig1, use_container_width=True)
 
-        # --- Gráfico 2: Diferença Home - Away
-        fig2 = px.bar(
-            fi_top.sort_values("Diff_Home_Away", ascending=False),
-            x="Feature",
-            y="Diff_Home_Away",
-            color=fi_top["Diff_Home_Away"].apply(lambda x: "Home" if x > 0 else "Away"),
-            color_discrete_map={"Home": "royalblue", "Away": "orangered"},
-            title="Diferença de Importância (Home - Away)"
-        )
-        fig2.update_layout(
-            xaxis_tickangle=-45,
-            height=450,
-            template="plotly_white"
-        )
-        st.plotly_chart(fig2, use_container_width=True)
+    #     # --- Gráfico 2: Diferença Home - Away
+    #     fig2 = px.bar(
+    #         fi_top.sort_values("Diff_Home_Away", ascending=False),
+    #         x="Feature",
+    #         y="Diff_Home_Away",
+    #         color=fi_top["Diff_Home_Away"].apply(lambda x: "Home" if x > 0 else "Away"),
+    #         color_discrete_map={"Home": "royalblue", "Away": "orangered"},
+    #         title="Diferença de Importância (Home - Away)"
+    #     )
+    #     fig2.update_layout(
+    #         xaxis_tickangle=-45,
+    #         height=450,
+    #         template="plotly_white"
+    #     )
+    #     st.plotly_chart(fig2, use_container_width=True)
 
-        # --- Tabela resumo
-        st.markdown("### 📋 Tabela Resumo – Top 20 Features")
-        st.dataframe(
-            fi_top[["Feature", "Importance_Home", "Importance_Away", "Diff_Home_Away"]]
-            .round(5)
-            .sort_values("Importance_Home", ascending=False)
-            .style.background_gradient(subset=["Importance_Home"], cmap="Blues")
-            .background_gradient(subset=["Importance_Away"], cmap="Reds"),
-            use_container_width=True
-        )
+    #     # --- Tabela resumo
+    #     st.markdown("### 📋 Tabela Resumo – Top 20 Features")
+    #     st.dataframe(
+    #         fi_top[["Feature", "Importance_Home", "Importance_Away", "Diff_Home_Away"]]
+    #         .round(5)
+    #         .sort_values("Importance_Home", ascending=False)
+    #         .style.background_gradient(subset=["Importance_Home"], cmap="Blues")
+    #         .background_gradient(subset=["Importance_Away"], cmap="Reds"),
+    #         use_container_width=True
+    #     )
 
-    except Exception as e:
-        st.warning(f"⚠️ Não foi possível gerar a comparação de importâncias: {e}")
+    # except Exception as e:
+    #     st.warning(f"⚠️ Não foi possível gerar a comparação de importâncias: {e}")
 
     # ----------------------------------
     # 🔹 Preparar dados para o dia atual
