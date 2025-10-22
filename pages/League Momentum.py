@@ -397,8 +397,8 @@ fig.add_trace(go.Scatter(
 # Linha diagonal de referência
 # Linha diagonal de referência - CORRIGIDA
 fig.add_trace(go.Scatter(
-    x=[ 0, 0],           # Mantém a mesma largura no eixo X
-    y=[ -60, 60],            # 🔥 MUDANÇA: Agora corta no Y=0
+    x=[-1, 1],           # Mantém a mesma largura no eixo X
+    y=[-60, 60],            # 🔥 MUDANÇA: Agora corta no Y=0
     mode="lines",
     line=dict(color="limegreen", width=2, dash="dash"),
     name="Linha de equilíbrio"
