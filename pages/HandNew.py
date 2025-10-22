@@ -946,7 +946,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
     # Colunas para exibir - incluindo Live Score
     colunas_possiveis = [
-        'Ranking', 'Home', 'Away', 'League', 'ML_Side',
+        'League','Time', 'Home', 'Away', 'League', 'ML_Side',
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
         'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
         'Quadrante_ML_Score_Main', 'Classificacao_Valor_Home', 
