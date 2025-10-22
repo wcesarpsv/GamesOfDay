@@ -787,24 +787,24 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     ########################################
     #### 📋 Importância das Features (Tabela)
     ########################################
-    st.markdown("### 📋 Importância das Features (Modelo HOME)")
+    # st.markdown("### 📋 Importância das Features (Modelo HOME)")
 
-    try:
-        feature_importance = pd.DataFrame({
-            "Feature": X.columns,
-            "Importance": model_home.feature_importances_
-        }).sort_values(by="Importance", ascending=False)
+    # try:
+    #     feature_importance = pd.DataFrame({
+    #         "Feature": X.columns,
+    #         "Importance": model_home.feature_importances_
+    #     }).sort_values(by="Importance", ascending=False)
 
-        st.dataframe(
-            feature_importance.style.format({"Importance": "{:.4f}"}).background_gradient(
-                subset=["Importance"], cmap="RdYlGn"
-            ),
-            use_container_width=True,
-            height=400
-        )
+    #     st.dataframe(
+    #         feature_importance.style.format({"Importance": "{:.4f}"}).background_gradient(
+    #             subset=["Importance"], cmap="RdYlGn"
+    #         ),
+    #         use_container_width=True,
+    #         height=400
+    #     )
 
-    except Exception as e:
-        st.warning(f"⚠️ Não foi possível gerar a tabela de importância das features: {e}")
+    # except Exception as e:
+    #     st.warning(f"⚠️ Não foi possível gerar a tabela de importância das features: {e}")
 
     ########################################
     #### 📊 Comparação Visual – Feature Importance (Home × Away)
