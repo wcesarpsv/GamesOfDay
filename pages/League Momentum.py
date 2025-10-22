@@ -856,7 +856,7 @@ def adicionar_feature_distancia_universal(df):
 
 
 ########################################
-#### 🤖 BLOCO – Treinamento ML Dual com Contexto de Liga
+#### 🤖 BLOCO – Treinamento ML Dual com Contexto de Liga (versão final)
 ########################################
 def treinar_modelo_quadrantes_dual(history, games_today):
     """
@@ -909,8 +909,6 @@ def treinar_modelo_quadrantes_dual(history, games_today):
         n_estimators=200, max_depth=10, random_state=42,
         n_jobs=-1, class_weight="balanced_subsample"
     )
-    # # 🧠 DEBUG: Verificar se as novas features estão incluídas
-    # st.write("✅ Features usadas no treino:", list(X.columns[-10:]))
 
     model_home.fit(X, y_home)
     model_away.fit(X, y_away)
@@ -918,17 +916,14 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     ########################################
     #### 📋 Importância das Features (Tabela)
     ########################################
-    
     st.markdown("### 📋 Importância das Features (Modelo HOME)")
-    
+
     try:
-        # Criar DataFrame de importância
         feature_importance = pd.DataFrame({
             "Feature": X.columns,
             "Importance": model_home.feature_importances_
         }).sort_values(by="Importance", ascending=False)
-    
-        # Exibir tabela com formatação
+
         st.dataframe(
             feature_importance.style.format({"Importance": "{:.4f}"}).background_gradient(
                 subset=["Importance"], cmap="RdYlGn"
@@ -936,40 +931,39 @@ def treinar_modelo_quadrantes_dual(history, games_today):
             use_container_width=True,
             height=400
         )
-    
+
     except Exception as e:
         st.warning(f"⚠️ Não foi possível gerar a tabela de importância das features: {e}")
-
 
     ########################################
     #### 📊 Comparação Visual – Feature Importance (Home × Away)
     ########################################
     import plotly.express as px
     import plotly.graph_objects as go
-    
+
     try:
         # Importância do modelo HOME
         fi_home = pd.DataFrame({
             "Feature": X.columns,
             "Importance_Home": model_home.feature_importances_
         }).sort_values(by="Importance_Home", ascending=False).reset_index(drop=True)
-    
+
         # Importância do modelo AWAY
         fi_away = pd.DataFrame({
             "Feature": X.columns,
             "Importance_Away": model_away.feature_importances_
         }).sort_values(by="Importance_Away", ascending=False).reset_index(drop=True)
-    
+
         # Mesclar e normalizar
         fi_merge = fi_home.merge(fi_away, on="Feature", how="outer").fillna(0)
         fi_merge["Diff_Home_Away"] = fi_merge["Importance_Home"] - fi_merge["Importance_Away"]
-    
+
         # Top 20 por importância média
         fi_merge["Importance_Mean"] = (fi_merge["Importance_Home"] + fi_merge["Importance_Away"]) / 2
         fi_top = fi_merge.nlargest(20, "Importance_Mean")
-    
+
         st.markdown("### 🧠 Comparação de Importância – Home × Away")
-    
+
         # --- Gráfico 1: barras lado a lado
         fig1 = go.Figure()
         fig1.add_trace(go.Bar(
@@ -994,7 +988,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
             height=500
         )
         st.plotly_chart(fig1, use_container_width=True)
-    
+
         # --- Gráfico 2: Diferença Home - Away
         fig2 = px.bar(
             fi_top.sort_values("Diff_Home_Away", ascending=False),
@@ -1010,7 +1004,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
             template="plotly_white"
         )
         st.plotly_chart(fig2, use_container_width=True)
-    
+
         # --- Tabela resumo
         st.markdown("### 📋 Tabela Resumo – Top 20 Features")
         st.dataframe(
@@ -1021,38 +1015,39 @@ def treinar_modelo_quadrantes_dual(history, games_today):
             .background_gradient(subset=["Importance_Away"], cmap="Reds"),
             use_container_width=True
         )
-    
+
     except Exception as e:
         st.warning(f"⚠️ Não foi possível gerar a comparação de importâncias: {e}")
-    
+
     # ----------------------------------
     # 🔹 Preparar dados para o dia atual
     # ----------------------------------
     qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
     qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    
+
     extras_today = games_today[[
         "Quadrant_Dist", "Quadrant_Dist_Z", "Dist_Index",
         "Quadrant_Separation", "Quadrant_Angle",
         "Agg_Home_vs_Liga", "HS_Home_vs_Liga",
         "Agg_Away_vs_Liga", "HS_Away_vs_Liga"
     ]].fillna(0)
-    
+
     X_today = pd.concat([qh_today, qa_today, ligas_today, extras_today], axis=1)
-    
+
     # ----------------------------------
     # 🔹 Fazer previsões
     # ----------------------------------
     probas_home = model_home.predict_proba(X_today)[:, 1]
     probas_away = model_away.predict_proba(X_today)[:, 1]
-    
+
     games_today['Quadrante_ML_Score_Home'] = probas_home
     games_today['Quadrante_ML_Score_Away'] = probas_away
     games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
     games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
-    
+
     return model_home, model_away, games_today
+
 
     
     
