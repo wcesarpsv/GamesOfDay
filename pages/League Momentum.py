@@ -1114,10 +1114,15 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         dist_side = games_today['ML_Side'].value_counts()
         st.dataframe(dist_side)
         
-        # Gráfico de pizza
-        fig_side = px.pie(values=dist_side.values, names=dist_side.index, 
-                         title="Distribuição HOME vs AWAY")
-        st.plotly_chart(fig_side, use_container_width=True)
+        # Gráfico de pizza CORRIGIDO
+        if not dist_side.empty:
+            fig_side = go.Figure(data=[go.Pie(
+                labels=dist_side.index, 
+                values=dist_side.values,
+                hole=.3
+            )])
+            fig_side.update_layout(title="Distribuição HOME vs AWAY")
+            st.plotly_chart(fig_side, use_container_width=True)
     
     with col2:
         st.write("**Tipos de Recomendação:**")
@@ -1146,9 +1151,24 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
     # Histograma das probabilidades
     fig_probs = go.Figure()
-    fig_probs.add_trace(go.Histogram(x=games_today['Quadrante_ML_Score_Home'], name='HOME', opacity=0.7))
-    fig_probs.add_trace(go.Histogram(x=games_today['Quadrante_ML_Score_Away'], name='AWAY', opacity=0.7))
-    fig_probs.update_layout(title="Distribuição das Probabilidades ML", barmode='overlay')
+    fig_probs.add_trace(go.Histogram(
+        x=games_today['Quadrante_ML_Score_Home'], 
+        name='HOME', 
+        opacity=0.7,
+        nbinsx=20
+    ))
+    fig_probs.add_trace(go.Histogram(
+        x=games_today['Quadrante_ML_Score_Away'], 
+        name='AWAY', 
+        opacity=0.7,
+        nbinsx=20
+    ))
+    fig_probs.update_layout(
+        title="Distribuição das Probabilidades ML",
+        xaxis_title="Probabilidade",
+        yaxis_title="Frequência",
+        barmode='overlay'
+    )
     st.plotly_chart(fig_probs, use_container_width=True)
     
     # 3. 🎯 PERFORMANCE COM DADOS LIVE (SE DISPONÍVEL)
@@ -1194,17 +1214,20 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
     try:
         # Tentar obter feature importance do modelo HOME
-        feature_importance = pd.DataFrame({
-            'feature': X.columns,
-            'importance': modelo_home.feature_importances_
-        }).sort_values('importance', ascending=False).head(15)
-        
-        fig_features = px.bar(feature_importance, x='importance', y='feature', 
-                             title='Top 15 Features Mais Importantes (Modelo HOME)')
-        st.plotly_chart(fig_features, use_container_width=True)
-        
-        st.write("**Top 10 Features:**")
-        st.dataframe(feature_importance.head(10))
+        if 'modelo_home' in locals() and hasattr(modelo_home, 'feature_importances_'):
+            feature_importance = pd.DataFrame({
+                'feature': X.columns,
+                'importance': modelo_home.feature_importances_
+            }).sort_values('importance', ascending=False).head(15)
+            
+            fig_features = px.bar(feature_importance, x='importance', y='feature', 
+                                 title='Top 15 Features Mais Importantes (Modelo HOME)')
+            st.plotly_chart(fig_features, use_container_width=True)
+            
+            st.write("**Top 10 Features:**")
+            st.dataframe(feature_importance.head(10))
+        else:
+            st.warning("Modelo HOME não disponível para feature importance")
         
     except Exception as e:
         st.warning(f"⚠️ Não foi possível obter feature importance: {e}")
