@@ -973,7 +973,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
         # --- Gráfico 1: barras lado a lado
         fig1 = go.Figure()
         fig1.add_trace(go.Bar(
-            x=fi_top["Feature"], 
+            x=fi_top["Feature"],
             y=fi_top["Importance_Home"],
             name="Home",
             marker_color="royalblue"
@@ -1021,9 +1021,10 @@ def treinar_modelo_quadrantes_dual(history, games_today):
             .background_gradient(subset=["Importance_Away"], cmap="Reds"),
             use_container_width=True
         )
-           
+    
     except Exception as e:
         st.warning(f"⚠️ Não foi possível gerar a comparação de importâncias: {e}")
+
     
     
     
