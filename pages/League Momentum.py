@@ -1024,61 +1024,36 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     
     except Exception as e:
         st.warning(f"⚠️ Não foi possível gerar a comparação de importâncias: {e}")
+    
+    # ----------------------------------
+    # 🔹 Preparar dados para o dia atual
+    # ----------------------------------
+    qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
+    qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
+    ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
+    
+    extras_today = games_today[[
+        "Quadrant_Dist", "Quadrant_Dist_Z", "Dist_Index",
+        "Quadrant_Separation", "Quadrant_Angle",
+        "Agg_Home_vs_Liga", "HS_Home_vs_Liga",
+        "Agg_Away_vs_Liga", "HS_Away_vs_Liga"
+    ]].fillna(0)
+    
+    X_today = pd.concat([qh_today, qa_today, ligas_today, extras_today], axis=1)
+    
+    # ----------------------------------
+    # 🔹 Fazer previsões
+    # ----------------------------------
+    probas_home = model_home.predict_proba(X_today)[:, 1]
+    probas_away = model_away.predict_proba(X_today)[:, 1]
+    
+    games_today['Quadrante_ML_Score_Home'] = probas_home
+    games_today['Quadrante_ML_Score_Away'] = probas_away
+    games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
+    games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
+    
+    return model_home, model_away, games_today
 
-    
-    
-    
-        # ----------------------------------
-        # 🔹 Preparar dados para o dia atual
-        # ----------------------------------
-        qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
-        qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
-        ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    
-        extras_today = games_today[[
-            "Quadrant_Dist", "Quadrant_Dist_Z", "Dist_Index",
-            "Quadrant_Separation", "Quadrant_Angle",
-            "Agg_Home_vs_Liga", "HS_Home_vs_Liga",
-            "Agg_Away_vs_Liga", "HS_Away_vs_Liga"
-        ]].fillna(0)
-    
-        X_today = pd.concat([qh_today, qa_today, ligas_today, extras_today], axis=1)
-    
-        # ----------------------------------
-        # 🔹 Fazer previsões
-        # ----------------------------------
-        probas_home = model_home.predict_proba(X_today)[:, 1]
-        probas_away = model_away.predict_proba(X_today)[:, 1]
-    
-        games_today['Quadrante_ML_Score_Home'] = probas_home
-        games_today['Quadrante_ML_Score_Away'] = probas_away
-        games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
-        games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
-    
-        # ----------------------------------
-        # 🔍 Diagnóstico: distribuição das recomendações
-        # ----------------------------------
-        # st.markdown("### ⚖️ Distribuição das Recomendações ML (HOME vs AWAY)")
-        # dist = games_today['ML_Side'].value_counts(normalize=True).mul(100).round(1)
-        # st.write(dist.to_frame("Percentual (%)"))
-    
-    
-        # ----------------------------------
-        # 🔹 Mostrar importância de features
-        # ----------------------------------
-        # try:
-        #     avg_df = (
-        #         games_today.groupby("League")[["Agg_Home_vs_Liga", "HS_Home_vs_Liga"]]
-        #         .mean()
-        #         .sort_values(by="Agg_Home_vs_Liga", ascending=False)
-        #     )
-        #     st.markdown("#### 📊 Médias Z-Score (Home vs Liga) por Competição - HOJE")
-        #     st.dataframe(avg_df.style.format("{:.2f}"), use_container_width=True)
-        # except Exception as e:
-        #     st.warning(f"Debug Z-Score não pôde ser exibido: {e}")
-        
-        # st.success("✅ Modelo dual (Home/Away) treinado com sucesso com contexto de liga!")
-        return model_home, model_away, games_today
     
     
     
