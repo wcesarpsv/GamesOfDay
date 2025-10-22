@@ -281,113 +281,145 @@ history['Quadrante_Away'] = history.apply(
 
 
 ########################################
-#### 🧮 BLOCO – Cálculo das Distâncias Home ↔ Away
+#### 🧮 BLOCO – Cálculo de Distâncias (Versão Calibrada)
 ########################################
 def calcular_distancias_quadrantes(df):
-    """Calcula distância, separação média e ângulo entre os pontos Home e Away."""
+    """
+    Calcula a distância, separação e ângulo entre Home e Away de forma calibrada.
+    Inclui padronização por liga e tolerância mínima de desvio padrão para estabilidade.
+    """
     df = df.copy()
-    if all(col in df.columns for col in ['Aggression_Home', 'Aggression_Away', 'HandScore_Home', 'HandScore_Away']):
-        dx = df['Aggression_Home'] - df['Aggression_Away']
-        dy = df['HandScore_Home'] - df['HandScore_Away']
-        df['Quadrant_Dist'] = np.sqrt(dx**2 + (dy/60)**2 * 2.5) * 10  # escala visual ajustada
-        df['Quadrant_Separation'] = 0.5 * (dy + 60 * dx)
-        df['Quadrant_Angle'] = np.degrees(np.arctan2(dy, dx))
-    else:
-        st.warning("⚠️ Colunas Aggression/HandScore não encontradas para calcular as distâncias.")
-        df['Quadrant_Dist'] = np.nan
-        df['Quadrant_Separation'] = np.nan
-        df['Quadrant_Angle'] = np.nan
+
+    required_cols = ["League", "Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away"]
+    if not all(col in df.columns for col in required_cols):
+        st.warning("⚠️ Colunas necessárias ausentes para cálculo de distâncias calibradas.")
+        df["Quadrant_Dist"] = np.nan
+        df["Quadrant_Separation"] = np.nan
+        df["Quadrant_Angle"] = np.nan
+        return df
+
+    # ==============================
+    # 1️⃣ Cálculo da razão global (Método B base)
+    # ==============================
+    std_agg = df["Aggression_Home"].std()
+    std_hs = df["HandScore_Home"].std()
+    ratio = std_hs / std_agg if std_agg != 0 else 1.0
+
+    # ==============================
+    # 2️⃣ Padronização local por liga com tolerância mínima
+    # ==============================
+    df["Agg_H_std_Liga"] = df.groupby("League")["Aggression_Home"].transform("std")
+    df["HS_H_std_Liga"] = df.groupby("League")["HandScore_Home"].transform("std")
+
+    # Aplicar tolerância mínima (evita divisão por desvios muito baixos)
+    df["Agg_H_std_Liga"] = df["Agg_H_std_Liga"].clip(lower=0.05)
+    df["HS_H_std_Liga"] = df["HS_H_std_Liga"].clip(lower=1.0)
+
+    # ==============================
+    # 3️⃣ Cálculo das diferenças normalizadas
+    # ==============================
+    dx = (df["Aggression_Home"] - df["Aggression_Away"]) / df["Agg_H_std_Liga"]
+    dy = ((df["HandScore_Home"] - df["HandScore_Away"]) / df["HS_H_std_Liga"]) / ratio
+
+    # ==============================
+    # 4️⃣ Distância e métricas complementares
+    # ==============================
+    df["Quadrant_Dist"] = np.sqrt(dx**2 + dy**2) * 10  # escala ajustada p/ visual
+    df["Quadrant_Separation"] = 0.5 * (dy + 60 * dx)
+    df["Quadrant_Angle"] = np.degrees(np.arctan2(dy, dx))
+
     return df
+
 
 # Aplicar ao games_today
 games_today = calcular_distancias_quadrantes(games_today)
 
-########################################
-#### 🧪 BLOCO – Teste de Escalas (Distância Quadrantes)
-########################################
-st.markdown("## 🧪 Teste de Escalas – Comparação entre Fórmulas de Distância")
+# ########################################
+# #### 🧪 BLOCO – Teste de Escalas (Distância Quadrantes)
+# ########################################
+# st.markdown("## 🧪 Teste de Escalas – Comparação entre Fórmulas de Distância")
 
-def testar_variacoes_quadrant_dist(df):
-    """Compara três métodos alternativos de cálculo de distância (A, B, C)."""
-    df = df.copy()
+# def testar_variacoes_quadrant_dist(df):
+#     """Compara três métodos alternativos de cálculo de distância (A, B, C)."""
+#     df = df.copy()
 
-    # Verificar se há colunas necessárias
-    required_cols = ["League", "Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away"]
-    if not all(col in df.columns for col in required_cols):
-        st.warning("⚠️ Colunas necessárias ausentes para teste de distância.")
-        return df
+#     # Verificar se há colunas necessárias
+#     required_cols = ["League", "Aggression_Home", "Aggression_Away", "HandScore_Home", "HandScore_Away"]
+#     if not all(col in df.columns for col in required_cols):
+#         st.warning("⚠️ Colunas necessárias ausentes para teste de distância.")
+#         return df
 
-    # ==========================
-    # MÉTODO A – Normalização por liga (Z-score por liga)
-    # ==========================
-    df["Agg_H_std_Liga"] = df.groupby("League")["Aggression_Home"].transform("std").replace(0, 0.001)
-    df["HS_H_std_Liga"] = df.groupby("League")["HandScore_Home"].transform("std").replace(0, 0.001)
+#     # ==========================
+#     # MÉTODO A – Normalização por liga (Z-score por liga)
+#     # ==========================
+#     df["Agg_H_std_Liga"] = df.groupby("League")["Aggression_Home"].transform("std").replace(0, 0.001)
+#     df["HS_H_std_Liga"] = df.groupby("League")["HandScore_Home"].transform("std").replace(0, 0.001)
 
-    dx_A = (df["Aggression_Home"] - df["Aggression_Away"]) / df["Agg_H_std_Liga"]
-    dy_A = (df["HandScore_Home"] - df["HandScore_Away"]) / df["HS_H_std_Liga"]
-    df["Quadrant_Dist_A"] = np.sqrt(dx_A**2 + dy_A**2)
+#     dx_A = (df["Aggression_Home"] - df["Aggression_Away"]) / df["Agg_H_std_Liga"]
+#     dy_A = (df["HandScore_Home"] - df["HandScore_Away"]) / df["HS_H_std_Liga"]
+#     df["Quadrant_Dist_A"] = np.sqrt(dx_A**2 + dy_A**2)
 
-    # ==========================
-    # MÉTODO B – Calibração empírica (razão std HandScore/Aggression)
-    # ==========================
-    std_ratio = df["HandScore_Home"].std() / df["Aggression_Home"].std() if df["Aggression_Home"].std() != 0 else 1
-    dx_B = df["Aggression_Home"] - df["Aggression_Away"]
-    dy_B = (df["HandScore_Home"] - df["HandScore_Away"]) / std_ratio
-    df["Quadrant_Dist_B"] = np.sqrt(dx_B**2 + dy_B**2)
+#     # ==========================
+#     # MÉTODO B – Calibração empírica (razão std HandScore/Aggression)
+#     # ==========================
+#     std_ratio = df["HandScore_Home"].std() / df["Aggression_Home"].std() if df["Aggression_Home"].std() != 0 else 1
+#     dx_B = df["Aggression_Home"] - df["Aggression_Away"]
+#     dy_B = (df["HandScore_Home"] - df["HandScore_Away"]) / std_ratio
+#     df["Quadrant_Dist_B"] = np.sqrt(dx_B**2 + dy_B**2)
 
-    # ==========================
-    # MÉTODO C – Padronização global (Z-score simples)
-    # ==========================
-    dx_C = (df["Aggression_Home"] - df["Aggression_Away"]) / df["Aggression_Home"].std()
-    dy_C = (df["HandScore_Home"] - df["HandScore_Away"]) / df["HandScore_Home"].std()
-    df["Quadrant_Dist_C"] = np.sqrt(dx_C**2 + dy_C**2)
+#     # ==========================
+#     # MÉTODO C – Padronização global (Z-score simples)
+#     # ==========================
+#     dx_C = (df["Aggression_Home"] - df["Aggression_Away"]) / df["Aggression_Home"].std()
+#     dy_C = (df["HandScore_Home"] - df["HandScore_Away"]) / df["HandScore_Home"].std()
+#     df["Quadrant_Dist_C"] = np.sqrt(dx_C**2 + dy_C**2)
 
-    # ==========================
-    # Consolidação
-    # ==========================
-    cols_show = [
-        "Home", "Away", "League",
-        "Quadrant_Dist", "Quadrant_Dist_A", "Quadrant_Dist_B", "Quadrant_Dist_C"
-    ]
-    df_result = df[cols_show].copy()
+#     # ==========================
+#     # Consolidação
+#     # ==========================
+#     cols_show = [
+#         "Home", "Away", "League",
+#         "Quadrant_Dist", "Quadrant_Dist_A", "Quadrant_Dist_B", "Quadrant_Dist_C"
+#     ]
+#     df_result = df[cols_show].copy()
 
-    # ==========================
-    # Estatísticas comparativas
-    # ==========================
-    resumo = pd.DataFrame({
-        "Média": [
-            df["Quadrant_Dist"].mean(),
-            df["Quadrant_Dist_A"].mean(),
-            df["Quadrant_Dist_B"].mean(),
-            df["Quadrant_Dist_C"].mean()
-        ],
-        "Desvio Padrão": [
-            df["Quadrant_Dist"].std(),
-            df["Quadrant_Dist_A"].std(),
-            df["Quadrant_Dist_B"].std(),
-            df["Quadrant_Dist_C"].std()
-        ]
-    }, index=["Original", "Método A (Liga Z)", "Método B (Razão Std)", "Método C (Z Global)"]).round(3)
+#     # ==========================
+#     # Estatísticas comparativas
+#     # ==========================
+#     resumo = pd.DataFrame({
+#         "Média": [
+#             df["Quadrant_Dist"].mean(),
+#             df["Quadrant_Dist_A"].mean(),
+#             df["Quadrant_Dist_B"].mean(),
+#             df["Quadrant_Dist_C"].mean()
+#         ],
+#         "Desvio Padrão": [
+#             df["Quadrant_Dist"].std(),
+#             df["Quadrant_Dist_A"].std(),
+#             df["Quadrant_Dist_B"].std(),
+#             df["Quadrant_Dist_C"].std()
+#         ]
+#     }, index=["Original", "Método A (Liga Z)", "Método B (Razão Std)", "Método C (Z Global)"]).round(3)
 
-    # Correlação entre métodos
-    corr = df[["Quadrant_Dist", "Quadrant_Dist_A", "Quadrant_Dist_B", "Quadrant_Dist_C"]].corr().round(3)
+#     # Correlação entre métodos
+#     corr = df[["Quadrant_Dist", "Quadrant_Dist_A", "Quadrant_Dist_B", "Quadrant_Dist_C"]].corr().round(3)
 
-    st.markdown("### 📊 Estatísticas comparativas")
-    st.dataframe(resumo, use_container_width=True)
+#     st.markdown("### 📊 Estatísticas comparativas")
+#     st.dataframe(resumo, use_container_width=True)
 
-    st.markdown("### 🔗 Correlação entre métodos")
-    st.dataframe(corr, use_container_width=True)
+#     st.markdown("### 🔗 Correlação entre métodos")
+#     st.dataframe(corr, use_container_width=True)
 
-    st.markdown("### 📋 Amostra dos cálculos de distância (Top 15)")
-    st.dataframe(df_result.head(15), use_container_width=True)
+#     st.markdown("### 📋 Amostra dos cálculos de distância (Top 15)")
+#     st.dataframe(df_result.head(15), use_container_width=True)
 
-    return df
+#     return df
 
-# Aplicar o teste
-games_today_test = testar_variacoes_quadrant_dist(games_today)
+# # Aplicar o teste
+# games_today_test = testar_variacoes_quadrant_dist(games_today)
 
 
-st.dataframe(games_today[['Home','Away','Quadrant_Dist','Quadrant_Separation','Quadrant_Angle']].head(10))
+# st.dataframe(games_today[['Home','Away','Quadrant_Dist','Quadrant_Separation','Quadrant_Angle']].head(10))
 
 
 ########################################
