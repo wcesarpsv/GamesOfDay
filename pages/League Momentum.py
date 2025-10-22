@@ -885,7 +885,8 @@ def treinar_modelo_quadrantes_dual(history, games_today):
 
     # 🔹 Features contínuas (distâncias, ângulos e contexto de liga)
     extras = history[[
-        "Quadrant_Dist", "Quadrant_Separation", "Quadrant_Angle",
+        "Quadrant_Dist", "Quadrant_Dist_Z", "Dist_Index",
+        "Quadrant_Separation", "Quadrant_Angle",
         "Agg_Home_vs_Liga", "HS_Home_vs_Liga",
         "Agg_Away_vs_Liga", "HS_Away_vs_Liga"
     ]].fillna(0)
@@ -908,6 +909,8 @@ def treinar_modelo_quadrantes_dual(history, games_today):
         n_estimators=200, max_depth=10, random_state=42,
         n_jobs=-1, class_weight="balanced_subsample"
     )
+    # 🧠 DEBUG: Verificar se as novas features estão incluídas
+    st.write("✅ Features usadas no treino:", list(X.columns[-10:]))
 
     model_home.fit(X, y_home)
     model_away.fit(X, y_away)
@@ -920,7 +923,8 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
 
     extras_today = games_today[[
-        "Quadrant_Dist", "Quadrant_Separation", "Quadrant_Angle",
+        "Quadrant_Dist", "Quadrant_Dist_Z", "Dist_Index",
+        "Quadrant_Separation", "Quadrant_Angle",
         "Agg_Home_vs_Liga", "HS_Home_vs_Liga",
         "Agg_Away_vs_Liga", "HS_Away_vs_Liga"
     ]].fillna(0)
