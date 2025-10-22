@@ -736,6 +736,14 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
 
     # ----------------------------------
+    # 🔍 Diagnóstico: distribuição das recomendações
+    # ----------------------------------
+    st.markdown("### ⚖️ Distribuição das Recomendações ML (HOME vs AWAY)")
+    dist = games_today['ML_Side'].value_counts(normalize=True).mul(100).round(1)
+    st.write(dist.to_frame("Percentual (%)"))
+
+
+    # ----------------------------------
     # 🔹 Mostrar importância de features
     # ----------------------------------
     try:
