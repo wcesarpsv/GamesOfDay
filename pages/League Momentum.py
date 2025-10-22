@@ -515,13 +515,13 @@ def plot_quadrantes_avancado(df, side="Home"):
     plt.tight_layout()
     return fig
 
-# Exibir gráficos
-st.markdown("### 📈 Visualização dos Quadrantes")
-col1, col2 = st.columns(2)
-with col1:
-    st.pyplot(plot_quadrantes_avancado(games_today, "Home"))
-with col2:
-    st.pyplot(plot_quadrantes_avancado(games_today, "Away"))
+# # Exibir gráficos
+# st.markdown("### 📈 Visualização dos Quadrantes")
+# col1, col2 = st.columns(2)
+# with col1:
+#     st.pyplot(plot_quadrantes_avancado(games_today, "Home"))
+# with col2:
+#     st.pyplot(plot_quadrantes_avancado(games_today, "Away"))
 
 
 def determine_handicap_result(row):
