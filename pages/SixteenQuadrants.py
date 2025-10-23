@@ -376,11 +376,11 @@ def plot_quadrantes_16(df, side="Home"):
     fig, ax = plt.subplots(figsize=(14, 10))
     
     # 🎨 Cores nomeadas (tons claros = neutro / escuros = extremos)
-    cores_quadrantes_16 = {        
-        1: 'red', 2: 'deepskyblue', 3: 'deepskyblue', 4: 'blue',          # Fav Forte
-        5: 'red', 6: 'mediumseagreen', 7: 'mediumseagreen', 8: 'darkgreen',    # Fav Moderado
-        9: 'red', 10: 'mediumseagreen', 11: 'mediumseagreen', 12: 'darkgreen',  # Under Moderado
-        13: 'red', 14: 'indianred', 15: 'indianred', 16: 'gold'          # Under Forte
+    cores_quadrantes_16 = {
+        1: 'lightblue', 2: 'deepskyblue', 3: 'blue', 4: 'darkblue',          # Fav Forte
+        5: 'lightgreen', 6: 'mediumseagreen', 7: 'green', 8: 'darkgreen',    # Fav Moderado
+        9: 'moccasin', 10: 'gold', 11: 'orange', 12: 'chocolate',            # Under Moderado
+        13: 'lightcoral', 14: 'indianred', 15: 'red', 16: 'darkred'          # Under Forte
     }
 
     # 🔹 Plotar cada ponto de acordo com o quadrante
