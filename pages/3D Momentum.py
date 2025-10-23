@@ -1070,9 +1070,9 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # Função de estilo para tabela 3D
     def estilo_tabela_3d_quadrantes(df):
         def cor_classificacao_3d(valor):
-            if '🌟 ALTO POTENCIAL 3D' in str(valor): return 'background-color: #98FB98; font-weight: bold'
-            elif '💼 VALOR SOLIDO 3D' in str(valor): return 'background-color: #FFFACD; font-weight: bold'
-            elif '🔴 BAIXO POTENCIAL 3D' in str(valor): return 'background-color: #FFCCCB; font-weight: bold'
+            if '🌟 ALTO POTENCIAL 3D' in str(valor): return 'font-weight: bold'
+            elif '💼 VALOR SOLIDO 3D' in str(valor): return 'font-weight: bold'
+            elif '🔴 BAIXO POTENCIAL 3D' in str(valor): return 'font-weight: bold'
             elif '🏆 ALTO VALOR' in str(valor): return 'font-weight: bold'
             elif '🔴 ALTO RISCO' in str(valor): return 'font-weight: bold'
             elif 'VALUE' in str(valor): return 'background-color: #98FB98'
