@@ -810,7 +810,7 @@ if not games_today.empty and 'Momentum_ML_Score_Home' in games_today.columns:
     
     # Colunas para exibição momentum
     colunas_momentum = [
-        'Ranking_Momentum', 'League', 'Home', 'Away', 'ML_Side_Momentum',
+        'League', 'Time', 'Home', 'Away', 'ML_Side_Momentum',
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
         'Momentum_ML_Score_Home', 'Momentum_ML_Score_Away', 
         'Score_Final_Momentum', 'Classificacao_Momentum',
