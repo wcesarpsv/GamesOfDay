@@ -304,10 +304,10 @@ def plot_quadrantes_16(df, side="Home"):
     
     # Definir cores por categoria
     cores_categorias = {
-        'Fav Forte': 'lightcoral',
-        'Fav Moderado': 'lightpink', 
-        'Under Moderado': 'lightblue',
-        'Under Forte': 'lightsteelblue'
+        'Fav Forte': 'blue',
+        'Fav Moderado': 'black', 
+        'Under Moderado': 'black',
+        'Under Forte': 'red'
     }
     
     # Plotar cada ponto com cor da categoria
