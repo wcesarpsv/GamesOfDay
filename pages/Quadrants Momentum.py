@@ -9,13 +9,13 @@ from sklearn.ensemble import RandomForestClassifier
 import matplotlib.pyplot as plt
 from datetime import datetime
 import math
-import plotly.graph_objects as go  # IMPORT ADICIONADO
+import plotly.graph_objects as go
 
-st.set_page_config(page_title="Análise de Quadrantes - Bet Indicator", layout="wide")
-st.title("🎯 Análise de 16 Quadrantes - ML Avançado (Home & Away)")
+st.set_page_config(page_title="Análise de Momentum - Bet Indicator", layout="wide")
+st.title("🎯 Análise de 16 Quadrantes - MOMENTUM (z-score por Liga)")
 
 # ---------------- Configurações ----------------
-PAGE_PREFIX = "QuadrantesML"
+PAGE_PREFIX = "MomentumML"
 GAMES_FOLDER = "GamesDay"
 LIVESCORE_FOLDER = "LiveScore"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa", "trophy"]
@@ -116,7 +116,7 @@ def convert_asian_line_to_decimal(line_str):
         return None
 
 # ---------------- Carregar Dados ----------------
-st.info("📂 Carregando dados para análise de 16 quadrantes...")
+st.info("📂 Carregando dados para análise de MOMENTUM (z-score)...")
 
 # Seleção de arquivo do dia
 files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
@@ -223,104 +223,112 @@ history["Target_AH_Home"] = history.apply(
     lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line"], invert=False) > 0.5 else 0, axis=1
 )
 
-# ---------------- NOVO SISTEMA DE 16 QUADRANTES ----------------
-st.markdown("## 🎯 Sistema de 16 Quadrantes")
+# ---------------- SISTEMA DE 16 QUADRANTES COM MOMENTUM ----------------
+st.markdown("## 🎯 Sistema de 16 Quadrantes - MOMENTUM (z-score)")
 
-QUADRANTES_16 = {
-    # 🔵 QUADRANTE 1-4: FORTE FAVORITO (+0.75 a +1.0)
-    1: {"nome": "Fav Forte Muito Forte", "agg_min": 0.75, "agg_max": 1.0, "hs_min": 45, "hs_max": 60},
-    2: {"nome": "Fav Forte Forte", "agg_min": 0.75, "agg_max": 1.0, "hs_min": 30, "hs_max": 45},
-    3: {"nome": "Fav Forte Moderado", "agg_min": 0.75, "agg_max": 1.0, "hs_min": 15, "hs_max": 30},
-    4: {"nome": "Fav Forte Neutro", "agg_min": 0.75, "agg_max": 1.0, "hs_min": -15, "hs_max": 15},
+# DEFINIR QUADRANTES PARA MOMENTUM (range -3.5 a 3.5)
+QUADRANTES_MOMENTUM = {
+    # 🔵 QUADRANTE 1-4: FORTE FAVORITO (+0.75 a +1.0) + MOMENTUM ALTO
+    1: {"nome": "Fav Forte Momentum Muito Alto", "agg_min": 0.75, "agg_max": 1.0, "mom_min": 2.0, "mom_max": 3.5},
+    2: {"nome": "Fav Forte Momentum Alto", "agg_min": 0.75, "agg_max": 1.0, "mom_min": 1.0, "mom_max": 2.0},
+    3: {"nome": "Fav Forte Momentum Moderado", "agg_min": 0.75, "agg_max": 1.0, "mom_min": 0.0, "mom_max": 1.0},
+    4: {"nome": "Fav Forte Momentum Neutro", "agg_min": 0.75, "agg_max": 1.0, "mom_min": -1.0, "mom_max": 0.0},
     
     # 🟢 QUADRANTE 5-8: FAVORITO MODERADO (+0.25 a +0.75)
-    5: {"nome": "Fav Moderado Muito Forte", "agg_min": 0.25, "agg_max": 0.75, "hs_min": 45, "hs_max": 60},
-    6: {"nome": "Fav Moderado Forte", "agg_min": 0.25, "agg_max": 0.75, "hs_min": 30, "hs_max": 45},
-    7: {"nome": "Fav Moderado Moderado", "agg_min": 0.25, "agg_max": 0.75, "hs_min": 15, "hs_max": 30},
-    8: {"nome": "Fav Moderado Neutro", "agg_min": 0.25, "agg_max": 0.75, "hs_min": -15, "hs_max": 15},
+    5: {"nome": "Fav Moderado Momentum Muito Alto", "agg_min": 0.25, "agg_max": 0.75, "mom_min": 2.0, "mom_max": 3.5},
+    6: {"nome": "Fav Moderado Momentum Alto", "agg_min": 0.25, "agg_max": 0.75, "mom_min": 1.0, "mom_max": 2.0},
+    7: {"nome": "Fav Moderado Momentum Moderado", "agg_min": 0.25, "agg_max": 0.75, "mom_min": 0.0, "mom_max": 1.0},
+    8: {"nome": "Fav Moderado Momentum Neutro", "agg_min": 0.25, "agg_max": 0.75, "mom_min": -1.0, "mom_max": 0.0},
     
     # 🟡 QUADRANTE 9-12: UNDERDOG MODERADO (-0.75 a -0.25)
-    9: {"nome": "Under Moderado Neutro", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -15, "hs_max": 15},
-    10: {"nome": "Under Moderado Moderado", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -30, "hs_max": -15},
-    11: {"nome": "Under Moderado Forte", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -45, "hs_max": -30},
-    12: {"nome": "Under Moderado Muito Forte", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -60, "hs_max": -45},
+    9: {"nome": "Under Moderado Momentum Neutro", "agg_min": -0.75, "agg_max": -0.25, "mom_min": -1.0, "mom_max": 0.0},
+    10: {"nome": "Under Moderado Momentum Moderado", "agg_min": -0.75, "agg_max": -0.25, "mom_min": -2.0, "mom_max": -1.0},
+    11: {"nome": "Under Moderado Momentum Alto", "agg_min": -0.75, "agg_max": -0.25, "mom_min": -3.5, "mom_max": -2.0},
+    12: {"nome": "Under Moderado Momentum Muito Alto", "agg_min": -0.75, "agg_max": -0.25, "mom_min": -3.5, "mom_max": -2.0},
     
     # 🔴 QUADRANTE 13-16: FORTE UNDERDOG (-1.0 a -0.75)
-    13: {"nome": "Under Forte Neutro", "agg_min": -1.0, "agg_max": -0.75, "hs_min": -15, "hs_max": 15},
-    14: {"nome": "Under Forte Moderado", "agg_min": -1.0, "agg_max": -0.75, "hs_min": -30, "hs_max": -15},
-    15: {"nome": "Under Forte Forte", "agg_min": -1.0, "agg_max": -0.75, "hs_min": -45, "hs_max": -30},
-    16: {"nome": "Under Forte Muito Forte", "agg_min": -1.0, "agg_max": -0.75, "hs_min": -60, "hs_max": -45}
+    13: {"nome": "Under Forte Momentum Neutro", "agg_min": -1.0, "agg_max": -0.75, "mom_min": -1.0, "mom_max": 0.0},
+    14: {"nome": "Under Forte Momentum Moderado", "agg_min": -1.0, "agg_max": -0.75, "mom_min": -2.0, "mom_max": -1.0},
+    15: {"nome": "Under Forte Momentum Alto", "agg_min": -1.0, "agg_max": -0.75, "mom_min": -3.5, "mom_max": -2.0},
+    16: {"nome": "Under Forte Momentum Muito Alto", "agg_min": -1.0, "agg_max": -0.75, "mom_min": -3.5, "mom_max": -2.0}
 }
 
-def classificar_quadrante_16(agg, hs):
-    """Classifica Aggression e HandScore em um dos 16 quadrantes"""
-    if pd.isna(agg) or pd.isna(hs):
+def classificar_quadrante_momentum(agg, momentum):
+    """Classifica Aggression e Momentum em um dos 16 quadrantes"""
+    if pd.isna(agg) or pd.isna(momentum):
         return 0  # Neutro/Indefinido
     
-    for quadrante_id, config in QUADRANTES_16.items():
+    for quadrante_id, config in QUADRANTES_MOMENTUM.items():
         agg_ok = (config['agg_min'] <= agg <= config['agg_max'])
-        hs_ok = (config['hs_min'] <= hs <= config['hs_max'])
+        mom_ok = (config['mom_min'] <= momentum <= config['mom_max'])
             
-        if agg_ok and hs_ok:
+        if agg_ok and mom_ok:
             return quadrante_id
     
     return 0  # Caso não se enquadre em nenhum quadrante
 
-# Aplicar classificação aos dados
+# Aplicar classificação MOMENTUM aos dados
 games_today['Quadrante_Home'] = games_today.apply(
-    lambda x: classificar_quadrante_16(x.get('Aggression_Home'), x.get('HandScore_Home')), axis=1
+    lambda x: classificar_quadrante_momentum(x.get('Aggression_Home'), x.get('M_H')), axis=1
 )
 games_today['Quadrante_Away'] = games_today.apply(
-    lambda x: classificar_quadrante_16(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
+    lambda x: classificar_quadrante_momentum(x.get('Aggression_Away'), x.get('M_A')), axis=1
 )
 
 history['Quadrante_Home'] = history.apply(
-    lambda x: classificar_quadrante_16(x.get('Aggression_Home'), x.get('HandScore_Home')), axis=1
+    lambda x: classificar_quadrante_momentum(x.get('Aggression_Home'), x.get('M_H')), axis=1
 )
 history['Quadrante_Away'] = history.apply(
-    lambda x: classificar_quadrante_16(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
+    lambda x: classificar_quadrante_momentum(x.get('Aggression_Away'), x.get('M_A')), axis=1
 )
 
-# ---------------- CÁLCULO DE DISTÂNCIAS ----------------
-def calcular_distancias_quadrantes(df):
-    """Calcula distância, separação média e ângulo entre os pontos Home e Away."""
+# ---------------- CÁLCULO DE DISTÂNCIAS COM MOMENTUM ----------------
+def calcular_distancias_momentum(df):
+    """Calcula distância, separação média e ângulo entre os pontos Home e Away usando Momentum."""
     df = df.copy()
-    required_cols = ['Aggression_Home', 'Aggression_Away', 'HandScore_Home', 'HandScore_Away']
+    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A']
     if all(col in df.columns for col in required_cols):
         dx = df['Aggression_Home'] - df['Aggression_Away']
-        dy = df['HandScore_Home'] - df['HandScore_Away']
-        df['Quadrant_Dist'] = np.sqrt(dx**2 + (dy/60)**2 * 2.5) * 10  # escala visual ajustada
-        df['Quadrant_Separation'] = 0.5 * (dy + 60 * dx)
+        dy = df['M_H'] - df['M_A']  # Diferença de Momentum
+        df['Quadrant_Dist'] = np.sqrt(dx**2 + (dy/3.5)**2 * 2.5) * 10  # escala ajustada para momentum
+        df['Quadrant_Separation'] = 0.5 * (dy + 3.5 * dx)  # ajuste de escala
         df['Quadrant_Angle'] = np.degrees(np.arctan2(dy, dx))
     else:
-        st.warning("⚠️ Colunas Aggression/HandScore não encontradas para calcular as distâncias.")
+        st.warning("⚠️ Colunas Aggression/Momentum não encontradas para calcular as distâncias.")
         df['Quadrant_Dist'] = np.nan
         df['Quadrant_Separation'] = np.nan
         df['Quadrant_Angle'] = np.nan
     return df
 
 # Aplicar ao games_today
-games_today = calcular_distancias_quadrantes(games_today)
+games_today = calcular_distancias_momentum(games_today)
 
-# ---------------- VALIDAÇÃO DE DADOS ----------------
-def validar_dados_quadrantes(df):
-    """Valida se os dados necessários estão presentes"""
-    colunas_necessarias = ['Aggression_Home', 'HandScore_Home', 'Aggression_Away', 'HandScore_Away']
+# ---------------- VALIDAÇÃO DE DADOS MOMENTUM ----------------
+def validar_dados_momentum(df):
+    """Valida se os dados de Momentum estão presentes"""
+    colunas_necessarias = ['Aggression_Home', 'M_H', 'Aggression_Away', 'M_A']
     colunas_faltantes = [col for col in colunas_necessarias if col not in df.columns]
     
     if colunas_faltantes:
-        st.warning(f"⚠️ Colunas faltantes: {colunas_faltantes}")
+        st.warning(f"⚠️ Colunas Momentum faltantes: {colunas_faltantes}")
         return False
+    
+    # Verificar range do Momentum
+    if 'M_H' in df.columns:
+        mom_min = df['M_H'].min()
+        mom_max = df['M_H'].max()
+        st.info(f"📊 Range do Momentum: {mom_min:.2f} a {mom_max:.2f}")
+    
     return True
 
 # Validar dados antes de prosseguir
-if not validar_dados_quadrantes(games_today):
-    st.error("❌ Dados insuficientes para análise de quadrantes.")
+if not validar_dados_momentum(games_today):
+    st.error("❌ Dados de Momentum insuficientes para análise.")
     st.stop()
 
-# ---------------- VISUALIZAÇÃO DOS 16 QUADRANTES ----------------
-def plot_quadrantes_16(df, side="Home"):
-    """Plot dos 16 quadrantes com cores e anotações"""
+# ---------------- VISUALIZAÇÃO DOS 16 QUADRANTES MOMENTUM ----------------
+def plot_quadrantes_momentum(df, side="Home"):
+    """Plot dos 16 quadrantes com Momentum (z-score)"""
     fig, ax = plt.subplots(figsize=(14, 10))
     
     # Definir cores por categoria
@@ -335,13 +343,13 @@ def plot_quadrantes_16(df, side="Home"):
     for quadrante_id in range(1, 17):
         mask = df[f'Quadrante_{side}'] == quadrante_id
         if mask.any():
-            categoria = QUADRANTES_16[quadrante_id]['nome'].split()[0] + ' ' + QUADRANTES_16[quadrante_id]['nome'].split()[1]
+            categoria = QUADRANTES_MOMENTUM[quadrante_id]['nome'].split()[0] + ' ' + QUADRANTES_MOMENTUM[quadrante_id]['nome'].split()[1]
             cor = cores_categorias.get(categoria, 'gray')
             
             x = df.loc[mask, f'Aggression_{side}']
-            y = df.loc[mask, f'HandScore_{side}']
+            y = df.loc[mask, f'M_{side[0]}']  # M_H ou M_A
             ax.scatter(x, y, c=cor, 
-                      label=QUADRANTES_16[quadrante_id]['nome'],
+                      label=QUADRANTES_MOMENTUM[quadrante_id]['nome'],
                       alpha=0.7, s=50)
     
     # Linhas divisórias dos quadrantes (Aggression)
@@ -349,45 +357,45 @@ def plot_quadrantes_16(df, side="Home"):
         ax.axvline(x=x, color='black', linestyle='--', alpha=0.3)
     ax.axvline(x=0, color='black', linestyle='-', alpha=0.5)
     
-    # Linhas divisórias dos quadrantes (HandScore)  
-    for y in [-45, -30, -15, 15, 30, 45]:
+    # Linhas divisórias dos quadrantes (Momentum)  
+    for y in [-2.0, -1.0, 0, 1.0, 2.0]:
         ax.axhline(y=y, color='black', linestyle='--', alpha=0.3)
     ax.axhline(y=0, color='black', linestyle='-', alpha=0.5)
     
     # Anotações dos quadrantes
     annot_config = [
-        (0.875, 52.5, "Fav Forte\nMuito Forte", 8), (0.875, 37.5, "Fav Forte\nForte", 8),
-        (0.875, 22.5, "Fav Forte\nModerado", 8), (0.875, 0, "Fav Forte\nNeutro", 8),
-        (0.5, 52.5, "Fav Moderado\nMuito Forte", 8), (0.5, 37.5, "Fav Moderado\nForte", 8),
-        (0.5, 22.5, "Fav Moderado\nModerado", 8), (0.5, 0, "Fav Moderado\nNeutro", 8),
-        (-0.5, 0, "Under Moderado\nNeutro", 8), (-0.5, -22.5, "Under Moderado\nModerado", 8),
-        (-0.5, -37.5, "Under Moderado\nForte", 8), (-0.5, -52.5, "Under Moderado\nMuito Forte", 8),
-        (-0.875, 0, "Under Forte\nNeutro", 8), (-0.875, -22.5, "Under Forte\nModerado", 8),
-        (-0.875, -37.5, "Under Forte\nForte", 8), (-0.875, -52.5, "Under Forte\nMuito Forte", 8)
+        (0.875, 2.75, "Fav Forte\nMomentum Muito Alto", 7), (0.875, 1.5, "Fav Forte\nMomentum Alto", 7),
+        (0.875, 0.5, "Fav Forte\nMomentum Moderado", 7), (0.875, -0.5, "Fav Forte\nMomentum Neutro", 7),
+        (0.5, 2.75, "Fav Moderado\nMomentum Muito Alto", 7), (0.5, 1.5, "Fav Moderado\nMomentum Alto", 7),
+        (0.5, 0.5, "Fav Moderado\nMomentum Moderado", 7), (0.5, -0.5, "Fav Moderado\nMomentum Neutro", 7),
+        (-0.5, -0.5, "Under Moderado\nMomentum Neutro", 7), (-0.5, -1.5, "Under Moderado\nMomentum Moderado", 7),
+        (-0.5, -2.75, "Under Moderado\nMomentum Alto", 7), (-0.5, -2.75, "Under Moderado\nMomentum Muito Alto", 7),
+        (-0.875, -0.5, "Under Forte\nMomentum Neutro", 7), (-0.875, -1.5, "Under Forte\nMomentum Moderado", 7),
+        (-0.875, -2.75, "Under Forte\nMomentum Alto", 7), (-0.875, -2.75, "Under Forte\nMomentum Muito Alto", 7)
     ]
     
     for x, y, text, fontsize in annot_config:
         ax.text(x, y, text, ha='center', fontsize=fontsize, weight='bold')
     
     ax.set_xlabel(f'Aggression_{side} (-1 zebra ↔ +1 favorito)')
-    ax.set_ylabel(f'HandScore_{side} (-60 a +60)')
-    ax.set_title(f'16 Quadrantes - {side}')
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+    ax.set_ylabel(f'Momentum_{side} (z-score: -3.5 a +3.5)')
+    ax.set_title(f'16 Quadrantes MOMENTUM - {side}')
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=7)
     ax.grid(True, alpha=0.3)
     
     plt.tight_layout()
     return fig
 
-# Exibir gráficos
-st.markdown("### 📈 Visualização dos 16 Quadrantes")
+# Exibir gráficos MOMENTUM
+st.markdown("### 📈 Visualização dos 16 Quadrantes - MOMENTUM")
 col1, col2 = st.columns(2)
 with col1:
-    st.pyplot(plot_quadrantes_16(games_today, "Home"))
+    st.pyplot(plot_quadrantes_momentum(games_today, "Home"))
 with col2:
-    st.pyplot(plot_quadrantes_16(games_today, "Away"))
+    st.pyplot(plot_quadrantes_momentum(games_today, "Away"))
 
-# ---------------- VISUALIZAÇÃO INTERATIVA ----------------
-st.markdown("## 🎯 Visualização Interativa – Distância entre Times (Home × Away)")
+# ---------------- VISUALIZAÇÃO INTERATIVA MOMENTUM ----------------
+st.markdown("## 🎯 Visualização Interativa – Distância entre Times (Momentum)")
 
 # Filtros interativos
 if "League" in games_today.columns and not games_today["League"].isna().all():
@@ -419,7 +427,7 @@ fig = go.Figure()
 # Vetores Home → Away
 for _, row in df_plot.iterrows():
     xh, xa = row["Aggression_Home"], row["Aggression_Away"]
-    yh, ya = row["HandScore_Home"], row["HandScore_Away"]
+    yh, ya = row["M_H"], row["M_A"]
 
     fig.add_trace(go.Scatter(
         x=[xh, xa],
@@ -431,9 +439,10 @@ for _, row in df_plot.iterrows():
         hovertext=(
             f"<b>{row['Home']} vs {row['Away']}</b><br>"
             f"🏆 {row.get('League','N/A')}<br>"
-            f"🎯 Home: {QUADRANTES_16.get(row['Quadrante_Home'], {}).get('nome', 'N/A')}<br>"
-            f"🎯 Away: {QUADRANTES_16.get(row['Quadrante_Away'], {}).get('nome', 'N/A')}<br>"
-            f"📏 Distância: {row['Quadrant_Dist']:.2f}"
+            f"🎯 Home: {QUADRANTES_MOMENTUM.get(row['Quadrante_Home'], {}).get('nome', 'N/A')}<br>"
+            f"🎯 Away: {QUADRANTES_MOMENTUM.get(row['Quadrante_Away'], {}).get('nome', 'N/A')}<br>"
+            f"📏 Distância: {row['Quadrant_Dist']:.2f}<br>"
+            f"📊 M_H: {row['M_H']:.2f} | M_A: {row['M_A']:.2f}"
         ),
         showlegend=False
     ))
@@ -441,7 +450,7 @@ for _, row in df_plot.iterrows():
 # Pontos Home e Away
 fig.add_trace(go.Scatter(
     x=df_plot["Aggression_Home"],
-    y=df_plot["HandScore_Home"],
+    y=df_plot["M_H"],
     mode="markers+text",
     name="Home",
     marker=dict(color="royalblue", size=8, opacity=0.8),
@@ -452,7 +461,7 @@ fig.add_trace(go.Scatter(
 
 fig.add_trace(go.Scatter(
     x=df_plot["Aggression_Away"],
-    y=df_plot["HandScore_Away"],
+    y=df_plot["M_A"],
     mode="markers+text",
     name="Away",
     marker=dict(color="orangered", size=8, opacity=0.8),
@@ -462,14 +471,14 @@ fig.add_trace(go.Scatter(
 ))
 
 # Layout
-titulo = f"Top {n_to_show} Distâncias – 16 Quadrantes"
+titulo = f"Top {n_to_show} Distâncias – 16 Quadrantes MOMENTUM"
 if selected_league != "⚽ Todas as ligas":
     titulo += f" | {selected_league}"
 
 fig.update_layout(
     title=titulo,
     xaxis_title="Aggression (-1 zebra ↔ +1 favorito)",
-    yaxis_title="HandScore (-60 ↔ +60)",
+    yaxis_title="Momentum (z-score: -3.5 ↔ +3.5)",
     template="plotly_white",
     height=700,
     hovermode="closest",
@@ -478,14 +487,14 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# ---------------- MODELO ML ATUALIZADO PARA 16 QUADRANTES ----------------
-def treinar_modelo_quadrantes_16_dual(history, games_today):
+# ---------------- MODELO ML COM MOMENTUM ----------------
+def treinar_modelo_momentum_dual(history, games_today):
     """
-    Treina modelo ML para Home e Away com base nos 16 quadrantes
+    Treina modelo ML para Home e Away com base nos 16 quadrantes MOMENTUM
     """
     # Garantir cálculo das distâncias
-    history = calcular_distancias_quadrantes(history)
-    games_today = calcular_distancias_quadrantes(games_today)
+    history = calcular_distancias_momentum(history)
+    games_today = calcular_distancias_momentum(games_today)
 
     # Preparar features básicas
     quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
@@ -525,145 +534,124 @@ def treinar_modelo_quadrantes_16_dual(history, games_today):
     probas_home = model_home.predict_proba(X_today)[:, 1]
     probas_away = model_away.predict_proba(X_today)[:, 1]
 
-    games_today['Quadrante_ML_Score_Home'] = probas_home
-    games_today['Quadrante_ML_Score_Away'] = probas_away
-    games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
-    games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
+    games_today['Momentum_ML_Score_Home'] = probas_home
+    games_today['Momentum_ML_Score_Away'] = probas_away
+    games_today['Momentum_ML_Score_Main'] = np.maximum(probas_home, probas_away)
+    games_today['ML_Side_Momentum'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
 
     # Mostrar importância das features
     try:
         importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
         top_feats = importances.head(15)
-        st.markdown("### 🔍 Top Features mais importantes (Modelo HOME - 16 Quadrantes)")
+        st.markdown("### 🔍 Top Features mais importantes (Modelo MOMENTUM - HOME)")
         st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
     except Exception as e:
         st.warning(f"Não foi possível calcular importâncias: {e}")
 
-    st.success("✅ Modelo dual (Home/Away) com 16 quadrantes treinado com sucesso!")
+    st.success("✅ Modelo dual MOMENTUM com 16 quadrantes treinado com sucesso!")
     return model_home, model_away, games_today
 
-# ---------------- SISTEMA DE INDICAÇÕES PARA 16 QUADRANTES ----------------
-def adicionar_indicadores_explicativos_16_dual(df):
-    """Adiciona classificações e recomendações explícitas para 16 quadrantes"""
+# ---------------- SISTEMA DE INDICAÇÕES PARA MOMENTUM ----------------
+def adicionar_indicadores_momentum_dual(df):
+    """Adiciona classificações e recomendações explícitas para momentum"""
     df = df.copy()
     
     # Mapear quadrantes para labels
-    df['Quadrante_Home_Label'] = df['Quadrante_Home'].map(lambda x: QUADRANTES_16.get(x, {}).get('nome', 'Neutro'))
-    df['Quadrante_Away_Label'] = df['Quadrante_Away'].map(lambda x: QUADRANTES_16.get(x, {}).get('nome', 'Neutro'))
+    df['Quadrante_Home_Label'] = df['Quadrante_Home'].map(lambda x: QUADRANTES_MOMENTUM.get(x, {}).get('nome', 'Neutro'))
+    df['Quadrante_Away_Label'] = df['Quadrante_Away'].map(lambda x: QUADRANTES_MOMENTUM.get(x, {}).get('nome', 'Neutro'))
     
     # 1. CLASSIFICAÇÃO DE VALOR PARA HOME
     conditions_home = [
-        df['Quadrante_ML_Score_Home'] >= 0.65,
-        df['Quadrante_ML_Score_Home'] >= 0.58,
-        df['Quadrante_ML_Score_Home'] >= 0.52,
-        df['Quadrante_ML_Score_Home'] >= 0.48,
-        df['Quadrante_ML_Score_Home'] < 0.48
+        df['Momentum_ML_Score_Home'] >= 0.65,
+        df['Momentum_ML_Score_Home'] >= 0.58,
+        df['Momentum_ML_Score_Home'] >= 0.52,
+        df['Momentum_ML_Score_Home'] >= 0.48,
+        df['Momentum_ML_Score_Home'] < 0.48
     ]
     choices_home = ['🏆 ALTO VALOR', '✅ BOM VALOR', '⚖️ NEUTRO', '⚠️ CAUTELA', '🔴 ALTO RISCO']
-    df['Classificacao_Valor_Home'] = np.select(conditions_home, choices_home, default='⚖️ NEUTRO')
+    df['Classificacao_Valor_Home_Momentum'] = np.select(conditions_home, choices_home, default='⚖️ NEUTRO')
     
     # 2. CLASSIFICAÇÃO DE VALOR PARA AWAY
     conditions_away = [
-        df['Quadrante_ML_Score_Away'] >= 0.65,
-        df['Quadrante_ML_Score_Away'] >= 0.58,
-        df['Quadrante_ML_Score_Away'] >= 0.52,
-        df['Quadrante_ML_Score_Away'] >= 0.48,
-        df['Quadrante_ML_Score_Away'] < 0.48
+        df['Momentum_ML_Score_Away'] >= 0.65,
+        df['Momentum_ML_Score_Away'] >= 0.58,
+        df['Momentum_ML_Score_Away'] >= 0.52,
+        df['Momentum_ML_Score_Away'] >= 0.48,
+        df['Momentum_ML_Score_Away'] < 0.48
     ]
     choices_away = ['🏆 ALTO VALOR', '✅ BOM VALOR', '⚖️ NEUTRO', '⚠️ CAUTELA', '🔴 ALTO RISCO']
-    df['Classificacao_Valor_Away'] = np.select(conditions_away, choices_away, default='⚖️ NEUTRO')
+    df['Classificacao_Valor_Away_Momentum'] = np.select(conditions_away, choices_away, default='⚖️ NEUTRO')
     
-    # 3. RECOMENDAÇÃO DE APOSTA DUAL PARA 16 QUADRANTES
-    def gerar_recomendacao_16_dual(row):
+    # 3. RECOMENDAÇÃO DE APOSTA DUAL PARA MOMENTUM
+    def gerar_recomendacao_momentum_dual(row):
         home_q = row['Quadrante_Home_Label']
         away_q = row['Quadrante_Away_Label']
-        score_home = row['Quadrante_ML_Score_Home']
-        score_away = row['Quadrante_ML_Score_Away']
-        ml_side = row['ML_Side']
+        score_home = row['Momentum_ML_Score_Home']
+        score_away = row['Momentum_ML_Score_Away']
+        ml_side = row['ML_Side_Momentum']
         
-        # Padrões específicos para 16 quadrantes
-        if 'Fav Forte' in home_q and 'Under Forte' in away_q:
-            return f'💪 FAVORITO HOME FORTE ({score_home:.1%})'
-        elif 'Under Forte' in home_q and 'Fav Forte' in away_q:
-            return f'💪 FAVORITO AWAY FORTE ({score_away:.1%})'
-        elif 'Fav Moderado' in home_q and 'Under Moderado' in away_q and 'Forte' in away_q:
-            return f'🎯 VALUE NO HOME ({score_home:.1%})'
-        elif 'Under Moderado' in home_q and 'Fav Moderado' in away_q and 'Forte' in home_q:
-            return f'🎯 VALUE NO AWAY ({score_away:.1%})'
+        # Padrões específicos para momentum
+        if 'Momentum Muito Alto' in home_q and 'Momentum Muito Alto' not in away_q:
+            return f'🚀 HOME COM MOMENTUM EXPLOSIVO ({score_home:.1%})'
+        elif 'Momentum Muito Alto' in away_q and 'Momentum Muito Alto' not in home_q:
+            return f'🚀 AWAY COM MOMENTUM EXPLOSIVO ({score_away:.1%})'
+        elif 'Fav Forte' in home_q and 'Momentum Alto' in home_q and 'Under Forte' in away_q:
+            return f'💪 FAVORITO HOME COM MOMENTUM ({score_home:.1%})'
+        elif 'Under Forte' in home_q and 'Fav Forte' in away_q and 'Momentum Alto' in away_q:
+            return f'💪 FAVORITO AWAY COM MOMENTUM ({score_away:.1%})'
         elif ml_side == 'HOME' and score_home >= 0.60:
-            return f'📈 MODELO CONFIA HOME ({score_home:.1%})'
+            return f'📈 MOMENTUM CONFIA HOME ({score_home:.1%})'
         elif ml_side == 'AWAY' and score_away >= 0.60:
-            return f'📈 MODELO CONFIA AWAY ({score_away:.1%})'
-        elif 'Neutro' in home_q and score_away >= 0.58:
-            return f'🔄 AWAY EM NEUTRO ({score_away:.1%})'
-        elif 'Neutro' in away_q and score_home >= 0.58:
-            return f'🔄 HOME EM NEUTRO ({score_home:.1%})'
+            return f'📈 MOMENTUM CONFIA AWAY ({score_away:.1%})'
+        elif 'Momentum Neutro' in home_q and score_away >= 0.58:
+            return f'🔄 AWAY EM MOMENTUM NEUTRO ({score_away:.1%})'
+        elif 'Momentum Neutro' in away_q and score_home >= 0.58:
+            return f'🔄 HOME EM MOMENTUM NEUTRO ({score_home:.1%})'
         else:
-            return f'⚖️ ANALISAR (H:{score_home:.1%} A:{score_away:.1%})'
+            return f'⚖️ ANALISAR MOMENTUM (H:{score_home:.1%} A:{score_away:.1%})'
     
-    df['Recomendacao'] = df.apply(gerar_recomendacao_16_dual, axis=1)
+    df['Recomendacao_Momentum'] = df.apply(gerar_recomendacao_momentum_dual, axis=1)
     
     # 4. RANKING POR MELHOR PROBABILIDADE
-    df['Ranking'] = df['Quadrante_ML_Score_Main'].rank(ascending=False, method='dense').astype(int)
+    df['Ranking_Momentum'] = df['Momentum_ML_Score_Main'].rank(ascending=False, method='dense').astype(int)
     
     return df
 
-# ---------------- EXECUÇÃO PRINCIPAL ----------------
-# Executar treinamento
+# ---------------- EXECUÇÃO PRINCIPAL MOMENTUM ----------------
+# Executar treinamento MOMENTUM
 if not history.empty:
-    modelo_home, modelo_away, games_today = treinar_modelo_quadrantes_16_dual(history, games_today)
+    modelo_home_momentum, modelo_away_momentum, games_today = treinar_modelo_momentum_dual(history, games_today)
 else:
-    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
+    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo MOMENTUM")
 
-# ---------------- ANÁLISE DE PADRÕES PARA 16 QUADRANTES ----------------
-def analisar_padroes_quadrantes_16_dual(df):
-    """Analisa padrões recorrentes nas combinações de 16 quadrantes"""
-    st.markdown("### 🔍 Análise de Padrões por Combinação (16 Quadrantes)")
+# ---------------- ANÁLISE DE PADRÕES PARA MOMENTUM ----------------
+def analisar_padroes_momentum_dual(df):
+    """Analisa padrões recorrentes nas combinações de momentum"""
+    st.markdown("### 🔍 Análise de Padrões MOMENTUM")
     
-    # Padrões prioritários para 16 quadrantes
-    padroes_16 = {
-        'Fav Forte Forte vs Under Forte Muito Forte': {
-            'descricao': '🎯 **MELHOR PADRÃO HOME** - Favorito forte contra underdog muito fraco',
+    # Padrões prioritários para momentum
+    padroes_momentum = {
+        'Fav Forte Momentum Muito Alto vs Under Forte Momentum Muito Alto': {
+            'descricao': '🎯 **MELHOR PADRÃO MOMENTUM** - Favorito explosivo vs underdog em crise',
             'lado_recomendado': 'HOME',
             'prioridade': 1,
-            'score_min': 0.65
+            'score_min': 0.68
         },
-        'Under Forte Muito Forte vs Fav Forte Forte': {
-            'descricao': '🎯 **MELHOR PADRÃO AWAY** - Underdog muito fraco contra favorito forte',
-            'lado_recomendado': 'AWAY', 
+        'Under Forte Momentum Muito Alto vs Fav Forte Momentum Muito Alto': {
+            'descricao': '🎯 **MOMENTUM CONTRÁRIO** - Underdog em crise vs favorito explosivo', 
+            'lado_recomendado': 'AWAY',
             'prioridade': 1,
-            'score_min': 0.65
+            'score_min': 0.68
         },
-        'Fav Moderado Forte vs Under Moderado Forte': {
-            'descricao': '💪 **PADRÃO VALUE HOME** - Favorito moderado contra underdog moderado fraco',
+        'Fav Moderado Momentum Alto vs Under Moderado Momentum Alto': {
+            'descricao': '💪 **PADRÃO VALUE MOMENTUM** - Favorito com bom momento vs underdog fraco',
             'lado_recomendado': 'HOME',
             'prioridade': 2,
-            'score_min': 0.58
-        },
-        'Under Moderado Forte vs Fav Moderado Forte': {
-            'descricao': '💪 **PADRÃO VALUE AWAY** - Underdog moderado fraco contra favorito moderado',
-            'lado_recomendado': 'AWAY',
-            'prioridade': 2, 
-            'score_min': 0.58
-        },
-        'Fav Forte Neutro vs Under Forte Neutro': {
-            'descricao': '📊 **PADRÃO NEUTRO HOME** - Favorito forte neutro contra underdog neutro',
-            'lado_recomendado': 'HOME',
-            'prioridade': 3,
-            'score_min': 0.55
-        },
-        'Under Forte Neutro vs Fav Forte Neutro': {
-            'descricao': '📊 **PADRÃO NEUTRO AWAY** - Underdog neutro contra favorito forte neutro',
-            'lado_recomendado': 'AWAY',
-            'prioridade': 3,
-            'score_min': 0.55
+            'score_min': 0.60
         }
     }
     
-    # Ordenar padrões por prioridade
-    padroes_ordenados = sorted(padroes_16.items(), key=lambda x: x[1]['prioridade'])
-    
-    for padrao, info in padroes_ordenados:
+    for padrao, info in padroes_momentum.items():
         home_q, away_q = padrao.split(' vs ')
         
         # Buscar jogos que correspondem ao padrão
@@ -674,9 +662,9 @@ def analisar_padroes_quadrantes_16_dual(df):
         
         # Filtrar por score mínimo se especificado
         if info['lado_recomendado'] == 'HOME':
-            score_col = 'Quadrante_ML_Score_Home'
+            score_col = 'Momentum_ML_Score_Home'
         else:
-            score_col = 'Quadrante_ML_Score_Away'
+            score_col = 'Momentum_ML_Score_Away'
             
         if 'score_min' in info:
             jogos = jogos[jogos[score_col] >= info['score_min']]
@@ -688,7 +676,7 @@ def analisar_padroes_quadrantes_16_dual(df):
             st.write(f"🎯 **Jogos encontrados**: {len(jogos)}")
             
             # Colunas para exibir
-            cols_padrao = ['Ranking', 'Home', 'Away', 'League', score_col, 'Recomendacao', 'Quadrant_Dist']
+            cols_padrao = ['Ranking_Momentum', 'Home', 'Away', 'League', score_col, 'Recomendacao_Momentum', 'Quadrant_Dist']
             cols_padrao = [c for c in cols_padrao if c in jogos.columns]
             
             # Ordenar por score
@@ -706,35 +694,32 @@ def analisar_padroes_quadrantes_16_dual(df):
             )
             st.write("---")
 
-# ---------------- ESTRATÉGIAS AVANÇADAS PARA 16 QUADRANTES ----------------
-def gerar_estrategias_16_quadrantes(df):
-    """Gera estratégias específicas baseadas nos 16 quadrantes"""
-    st.markdown("### 🎯 Estratégias por Categoria - 16 Quadrantes")
+# ---------------- ESTRATÉGIAS AVANÇADAS PARA MOMENTUM ----------------
+def gerar_estrategias_momentum(df):
+    """Gera estratégias específicas baseadas no momentum"""
+    st.markdown("### 🎯 Estratégias MOMENTUM - z-score por Liga")
     
     estrategias = {
-        'Fav Forte': {
-            'descricao': '**Favoritos Fortes** - Times com alta aggression e handscore',
-            'quadrantes': [1, 2, 3, 4],
-            'estrategia': 'Apostar como favoritos, especialmente contra underdogs fracos',
-            'confianca': 'Alta'
+        'Momentum Explosivo': {
+            'descricao': '**Times com Momentum Muito Alto (z-score > 2.0)**',
+            'quadrantes': [1, 5],
+            'estrategia': 'Apostar fortemente, especialmente como favoritos',
+            'confianca': 'Muito Alta',
+            'observacao': 'Raros e muito valiosos - indicam desempenho excepcional'
         },
-        'Fav Moderado': {
-            'descricao': '**Favoritos Moderados** - Times com aggression positiva moderada', 
-            'quadrantes': [5, 6, 7, 8],
-            'estrategia': 'Buscar value, especialmente quando têm handscore forte',
-            'confianca': 'Média-Alta'
+        'Momentum Positivo': {
+            'descricao': '**Times com Momentum Alto (z-score 1.0-2.0)**', 
+            'quadrantes': [2, 6],
+            'estrategia': 'Buscar value, confiar no momento positivo',
+            'confianca': 'Alta',
+            'observacao': 'Bom equilíbrio entre frequência e confiabilidade'
         },
-        'Under Moderado': {
-            'descricao': '**Underdogs Moderados** - Times com aggression negativa moderada',
-            'quadrantes': [9, 10, 11, 12],
-            'estrategia': 'Apostar contra quando enfrentam favoritos supervalorizados',
-            'confianca': 'Média'
-        },
-        'Under Forte': {
-            'descricao': '**Underdogs Fortes** - Times com aggression muito negativa',
-            'quadrantes': [13, 14, 15, 16], 
-            'estrategia': 'Evitar ou apostar contra, exceto em situações muito específicas',
-            'confianca': 'Baixa'
+        'Momentum de Crise': {
+            'descricao': '**Times com Momentum Muito Baixo (z-score < -2.0)**',
+            'quadrantes': [12, 16],
+            'estrategia': 'Apostar contra, especialmente como underdogs',
+            'confianca': 'Alta',
+            'observacao': 'Times em crise tendem a piorar o desempenho'
         }
     }
     
@@ -743,6 +728,7 @@ def gerar_estrategias_16_quadrantes(df):
         st.write(f"📋 {info['descricao']}")
         st.write(f"🎯 Estratégia: {info['estrategia']}")
         st.write(f"📊 Confiança: {info['confianca']}")
+        st.write(f"💡 Observação: {info['observacao']}")
         
         # Mostrar quadrantes específicos
         quadrantes_str = ", ".join([f"Q{q}" for q in info['quadrantes']])
@@ -757,282 +743,158 @@ def gerar_estrategias_16_quadrantes(df):
             with col1:
                 st.metric("Jogos Encontrados", len(jogos_categoria))
             with col2:
-                avg_score = jogos_categoria['Quadrante_ML_Score_Main'].mean()
+                avg_score = jogos_categoria['Momentum_ML_Score_Main'].mean()
                 st.metric("Score Médio", f"{avg_score:.1%}")
             with col3:
-                high_value = len(jogos_categoria[jogos_categoria['Quadrante_ML_Score_Main'] >= 0.60])
+                high_value = len(jogos_categoria[jogos_categoria['Momentum_ML_Score_Main'] >= 0.65])
                 st.metric("Alto Valor", high_value)
         
         st.write("---")
 
-# ---------------- SISTEMA DE SCORING PARA 16 QUADRANTES ----------------
-def calcular_pontuacao_quadrante_16(quadrante_id):
-    """Calcula pontuação base para cada quadrante (0-100)"""
+# ---------------- SISTEMA DE SCORING PARA MOMENTUM ----------------
+def calcular_pontuacao_momentum_quadrante(quadrante_id):
+    """Calcula pontuação base para cada quadrante momentum (0-100)"""
     scores_base = {
-        # Fav Forte: alta pontuação
-        1: 85, 2: 80, 3: 75, 4: 70,
-        # Fav Moderado: média-alta
-        5: 70, 6: 65, 7: 60, 8: 55,
-        # Under Moderado: média-baixa  
-        9: 50, 10: 45, 11: 40, 12: 35,
-        # Under Forte: baixa pontuação
-        13: 35, 14: 30, 15: 25, 16: 20
+        # Fav Forte com Momentum Alto: máxima pontuação
+        1: 95, 2: 85, 3: 75, 4: 65,
+        # Fav Moderado com Momentum Alto
+        5: 90, 6: 80, 7: 70, 8: 60,
+        # Under Moderado com Momentum Baixo  
+        9: 55, 10: 45, 11: 35, 12: 25,
+        # Under Forte com Momentum Baixo
+        13: 50, 14: 40, 15: 30, 16: 20
     }
     return scores_base.get(quadrante_id, 50)
 
-def gerar_score_combinado_16(df):
-    """Gera score combinado considerando ambos os quadrantes"""
+def gerar_score_combinado_momentum(df):
+    """Gera score combinado considerando momentum"""
     df = df.copy()
     
-    # Score base dos quadrantes
-    df['Score_Base_Home'] = df['Quadrante_Home'].apply(calcular_pontuacao_quadrante_16)
-    df['Score_Base_Away'] = df['Quadrante_Away'].apply(calcular_pontuacao_quadrante_16)
+    # Score base dos quadrantes momentum
+    df['Score_Base_Home_Momentum'] = df['Quadrante_Home'].apply(calcular_pontuacao_momentum_quadrante)
+    df['Score_Base_Away_Momentum'] = df['Quadrante_Away'].apply(calcular_pontuacao_momentum_quadrante)
     
     # Score combinado (média ponderada)
-    df['Score_Combinado'] = (df['Score_Base_Home'] * 0.6 + df['Score_Base_Away'] * 0.4)
+    df['Score_Combinado_Momentum'] = (df['Score_Base_Home_Momentum'] * 0.6 + df['Score_Base_Away_Momentum'] * 0.4)
     
-    # Ajustar pelo ML Score
-    df['Score_Final'] = df['Score_Combinado'] * df['Quadrante_ML_Score_Main']
+    # Ajustar pelo ML Score Momentum
+    df['Score_Final_Momentum'] = df['Score_Combinado_Momentum'] * df['Momentum_ML_Score_Main']
     
-    # Classificar por potencial
+    # Classificar por potencial momentum
     conditions = [
-        df['Score_Final'] >= 60,
-        df['Score_Final'] >= 45, 
-        df['Score_Final'] >= 30,
-        df['Score_Final'] < 30
+        df['Score_Final_Momentum'] >= 70,
+        df['Score_Final_Momentum'] >= 50, 
+        df['Score_Final_Momentum'] >= 30,
+        df['Score_Final_Momentum'] < 30
     ]
-    choices = ['🌟 ALTO POTENCIAL', '💼 VALOR SOLIDO', '⚖️ NEUTRO', '🔴 BAIXO POTENCIAL']
-    df['Classificacao_Potencial'] = np.select(conditions, choices, default='⚖️ NEUTRO')
+    choices = ['🚀 MOMENTUM EXPLOSIVO', '📈 MOMENTUM POSITIVO', '⚖️ MOMENTUM NEUTRO', '🔻 MOMENTUM NEGATIVO']
+    df['Classificacao_Momentum'] = np.select(conditions, choices, default='⚖️ MOMENTUM NEUTRO')
     
     return df
 
-# ---------------- FUNÇÕES LIVE SCORE CORRIGIDAS ----------------
-def determine_handicap_result(row):
-    """Determina se o HOME cobriu o handicap"""
-    try:
-        gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
-        ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
-        asian_line_str = row.get('Asian_Line')
-    except (ValueError, TypeError):
-        return None
+# ---------------- EXIBIÇÃO DOS RESULTADOS MOMENTUM ----------------
+st.markdown("## 🏆 Melhores Confrontos por MOMENTUM ML")
 
-    if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line_str):
-        return None
-    
-    margin = gh - ga
-    handicap_result = calc_handicap_result(margin, asian_line_str, invert=False)
-    
-    if handicap_result > 0.5:
-        return "HOME_COVERED"
-    elif handicap_result == 0.5:
-        return "PUSH"
-    else:
-        return "HOME_NOT_COVERED"
-
-def check_handicap_recommendation_correct(rec, handicap_result):
-    """Verifica se a recomendação estava correta"""
-    if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid':
-        return None
-    
-    rec = str(rec)
-    
-    if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME']):
-        return handicap_result == "HOME_COVERED"
-    elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY', 'MODELO CONFIA AWAY']):
-        return handicap_result in ["HOME_NOT_COVERED", "PUSH"]
-    
-    return None
-
-def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal):
-    """Calcula profit para handicap asiático"""
-    if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid' or pd.isna(asian_line_decimal):
-        return 0
-
-    rec = str(rec).upper()
-    is_home_bet = any(k in rec for k in ['HOME', 'FAVORITO HOME', 'VALUE NO HOME'])
-    is_away_bet = any(k in rec for k in ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
-
-    if not (is_home_bet or is_away_bet):
-        return 0
-
-    odd = odds_row.get('Odd_H_Asi', np.nan) if is_home_bet else odds_row.get('Odd_A_Asi', np.nan)
-    if pd.isna(odd):
-        return 0
-
-    def split_line(line):
-        frac = abs(line) % 1
-        if frac == 0.25:
-            base = math.floor(abs(line))
-            base = base if line > 0 else -base
-            return [base, base + (0.5 if line > 0 else -0.5)]
-        elif frac == 0.75:
-            base = math.floor(abs(line))
-            base = base if line > 0 else -base
-            return [base + (0.5 if line > 0 else -0.5), base + (1.0 if line > 0 else -1.0)]
-        else:
-            return [line]
-
-    asian_line_for_eval = -asian_line_decimal if is_home_bet else asian_line_decimal
-    lines = split_line(asian_line_for_eval)
-
-    def single_profit(result):
-        if result == "PUSH":
-            return 0
-        elif (is_home_bet and result == "HOME_COVERED") or (is_away_bet and result == "HOME_NOT_COVERED"):
-            return odd
-        elif (is_home_bet and result == "HOME_NOT_COVERED") or (is_away_bet and result == "HOME_COVERED"):
-            return -1
-        return 0
-
-    if len(lines) == 2:
-        p1 = single_profit(handicap_result)
-        p2 = single_profit(handicap_result)
-        return (p1 + p2) / 2
-    else:
-        return single_profit(handicap_result)
-
-def update_real_time_data(df):
-    """Atualiza todos os dados em tempo real"""
-    df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
-    df['Quadrante_Correct'] = df.apply(
-        lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
-    )
-    df['Profit_Quadrante'] = df.apply(
-        lambda r: calculate_handicap_profit(r['Recomendacao'], r['Handicap_Result'], r, r['Asian_Line_Decimal']), axis=1
-    )
-    return df
-
-# ---------------- EXIBIÇÃO DOS RESULTADOS PARA 16 QUADRANTES ----------------
-st.markdown("## 🏆 Melhores Confrontos por 16 Quadrantes ML")
-
-if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
+if not games_today.empty and 'Momentum_ML_Score_Home' in games_today.columns:
     # Preparar dados para exibição
-    ranking_quadrantes = games_today.copy()
+    ranking_momentum = games_today.copy()
     
-    # Aplicar indicadores explicativos para 16 quadrantes
-    ranking_quadrantes = adicionar_indicadores_explicativos_16_dual(ranking_quadrantes)
+    # Aplicar indicadores explicativos para momentum
+    ranking_momentum = adicionar_indicadores_momentum_dual(ranking_momentum)
     
-    # Aplicar scoring combinado
-    ranking_quadrantes = gerar_score_combinado_16(ranking_quadrantes)
+    # Aplicar scoring combinado momentum
+    ranking_momentum = gerar_score_combinado_momentum(ranking_momentum)
     
-    # Aplicar atualização em tempo real
-    ranking_quadrantes = update_real_time_data(ranking_quadrantes)
+    # Ordenar por score final momentum
+    ranking_momentum = ranking_momentum.sort_values('Score_Final_Momentum', ascending=False)
     
-    # ---------------- RESUMO LIVE ----------------
-    def generate_live_summary(df):
-        """Gera resumo em tempo real"""
-        finished_games = df.dropna(subset=['Handicap_Result'])
-        
-        if finished_games.empty:
-            return {
-                "Total Jogos": len(df),
-                "Jogos Finalizados": 0,
-                "Apostas Quadrante": 0,
-                "Acertos Quadrante": 0,
-                "Winrate Quadrante": "0%",
-                "Profit Quadrante": 0,
-                "ROI Quadrante": "0%"
-            }
-        
-        quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
-        total_bets = len(quadrante_bets)
-        correct_bets = quadrante_bets['Quadrante_Correct'].sum()
-        winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
-        total_profit = quadrante_bets['Profit_Quadrante'].sum()
-        roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
-        
-        return {
-            "Total Jogos": len(df),
-            "Jogos Finalizados": len(finished_games),
-            "Apostas Quadrante": total_bets,
-            "Acertos Quadrante": int(correct_bets),
-            "Winrate Quadrante": f"{winrate:.1f}%",
-            "Profit Quadrante": f"{total_profit:.2f}u",
-            "ROI Quadrante": f"{roi:.1f}%"
-        }
-
-    # Exibir resumo live
-    st.markdown("## 📡 Live Score Monitor - 16 Quadrantes")
-    live_summary = generate_live_summary(ranking_quadrantes)
-    st.json(live_summary)
-    
-    # Ordenar por score final
-    ranking_quadrantes = ranking_quadrantes.sort_values('Score_Final', ascending=False)
-    
-    # Colunas para exibir
-    colunas_possiveis = [
-        'Ranking', 'League', 'Home', 'Away', 'ML_Side',
+    # Colunas para exibição momentum
+    colunas_momentum = [
+        'Ranking_Momentum', 'League', 'Home', 'Away', 'ML_Side_Momentum',
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
-        'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
-        'Score_Final', 'Classificacao_Potencial',
-        'Classificacao_Valor_Home', 'Classificacao_Valor_Away', 'Recomendacao',
-        # Colunas Live Score
-        'Goals_H_Today', 'Goals_A_Today', 'Asian_Line_Decimal', 'Handicap_Result',
-        'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
+        'Momentum_ML_Score_Home', 'Momentum_ML_Score_Away', 
+        'Score_Final_Momentum', 'Classificacao_Momentum',
+        'Classificacao_Valor_Home_Momentum', 'Classificacao_Valor_Away_Momentum', 'Recomendacao_Momentum',
+        'M_H', 'M_A', 'Quadrant_Dist'
     ]
     
     # Filtrar colunas existentes
-    cols_finais = [c for c in colunas_possiveis if c in ranking_quadrantes.columns]
+    cols_finais_momentum = [c for c in colunas_momentum if c in ranking_momentum.columns]
     
-    # Função de estilo atualizada
-    def estilo_tabela_16_quadrantes(df):
-        def cor_classificacao(valor):
-            if '🌟 ALTO POTENCIAL' in str(valor): return 'font-weight: bold'
-            elif '💼 VALOR SOLIDO' in str(valor): return 'font-weight: bold'
-            elif '🔴 BAIXO POTENCIAL' in str(valor): return 'font-weight: bold'
+    # Função de estilo para momentum
+    def estilo_tabela_momentum(df):
+        def cor_classificacao_momentum(valor):
+            if '🚀 MOMENTUM EXPLOSIVO' in str(valor): return 'background-color: #FFD700; font-weight: bold'
+            elif '📈 MOMENTUM POSITIVO' in str(valor): return 'background-color: #98FB98; font-weight: bold'
+            elif '🔻 MOMENTUM NEGATIVO' in str(valor): return 'background-color: #FFCCCB; font-weight: bold'
             elif '🏆 ALTO VALOR' in str(valor): return 'font-weight: bold'
             elif '🔴 ALTO RISCO' in str(valor): return 'font-weight: bold'
-            elif 'VALUE' in str(valor): return 'background-color: #98FB98'
-            elif 'EVITAR' in str(valor): return 'background-color: #FFCCCB'
+            elif 'EXPLOSIVO' in str(valor): return 'background-color: #FFD700'
             else: return ''
         
         colunas_para_estilo = []
-        for col in ['Classificacao_Potencial', 'Classificacao_Valor_Home', 'Classificacao_Valor_Away', 'Recomendacao']:
+        for col in ['Classificacao_Momentum', 'Classificacao_Valor_Home_Momentum', 
+                   'Classificacao_Valor_Away_Momentum', 'Recomendacao_Momentum']:
             if col in df.columns:
                 colunas_para_estilo.append(col)
         
         styler = df.style
         if colunas_para_estilo:
-            styler = styler.applymap(cor_classificacao, subset=colunas_para_estilo)
+            styler = styler.applymap(cor_classificacao_momentum, subset=colunas_para_estilo)
         
         # Aplicar gradientes
-        if 'Quadrante_ML_Score_Home' in df.columns:
-            styler = styler.background_gradient(subset=['Quadrante_ML_Score_Home'], cmap='RdYlGn')
-        if 'Quadrante_ML_Score_Away' in df.columns:
-            styler = styler.background_gradient(subset=['Quadrante_ML_Score_Away'], cmap='RdYlGn')
-        if 'Score_Final' in df.columns:
-            styler = styler.background_gradient(subset=['Score_Final'], cmap='RdYlGn')
+        if 'Momentum_ML_Score_Home' in df.columns:
+            styler = styler.background_gradient(subset=['Momentum_ML_Score_Home'], cmap='RdYlGn')
+        if 'Momentum_ML_Score_Away' in df.columns:
+            styler = styler.background_gradient(subset=['Momentum_ML_Score_Away'], cmap='RdYlGn')
+        if 'Score_Final_Momentum' in df.columns:
+            styler = styler.background_gradient(subset=['Score_Final_Momentum'], cmap='RdYlGn')
         
         return styler
 
     st.dataframe(
-        estilo_tabela_16_quadrantes(ranking_quadrantes[cols_finais].head(25))
+        estilo_tabela_momentum(ranking_momentum[cols_finais_momentum].head(25))
         .format({
-            'Goals_H_Today': '{:.0f}',
-            'Goals_A_Today': '{:.0f}',
-            'Asian_Line_Decimal': '{:.2f}',
-            'Home_Red': '{:.0f}',
-            'Away_Red': '{:.0f}',
-            'Profit_Quadrante': '{:.2f}',
-            'Quadrante_ML_Score_Home': '{:.1%}',
-            'Quadrante_ML_Score_Away': '{:.1%}',
-            'Score_Final': '{:.1f}'
+            'M_H': '{:.2f}',
+            'M_A': '{:.2f}',
+            'Quadrant_Dist': '{:.2f}',
+            'Momentum_ML_Score_Home': '{:.1%}',
+            'Momentum_ML_Score_Away': '{:.1%}',
+            'Score_Final_Momentum': '{:.1f}'
         }, na_rep="-"),
         use_container_width=True
     )
     
-    # ---------------- ANÁLISES ESPECÍFICAS ----------------
-    analisar_padroes_quadrantes_16_dual(ranking_quadrantes)
-    gerar_estrategias_16_quadrantes(ranking_quadrantes)
+    # ---------------- ANÁLISES ESPECÍFICAS MOMENTUM ----------------
+    analisar_padroes_momentum_dual(ranking_momentum)
+    gerar_estrategias_momentum(ranking_momentum)
     
 else:
-    st.info("⚠️ Aguardando dados para gerar ranking de 16 quadrantes")
+    st.info("⚠️ Aguardando dados para gerar ranking de MOMENTUM")
 
-# ---------------- RESUMO EXECUTIVO PARA 16 QUADRANTES ----------------
-def resumo_16_quadrantes_hoje(df):
-    """Resumo executivo dos 16 quadrantes de hoje"""
+# ---------------- COMPARAÇÃO ENTRE ABORDAGENS ----------------
+st.markdown("## 🔄 Comparação: HandScore vs Momentum")
+
+if not games_today.empty and all(col in games_today.columns for col in ['Quadrante_ML_Score_Home', 'Momentum_ML_Score_Home']):
+    col1, col2, col3 = st.columns(3)
     
-    st.markdown("### 📋 Resumo Executivo - 16 Quadrantes Hoje")
+    with col1:
+        avg_handscore = games_today['Quadrante_ML_Score_Home'].mean()
+        st.metric("📊 Média HandScore", f"{avg_handscore:.1%}")
+    
+    with col2:
+        avg_momentum = games_today['Momentum_ML_Score_Home'].mean()
+        st.metric("🚀 Média Momentum", f"{avg_momentum:.1%}")
+    
+    with col3:
+        diff = avg_momentum - avg_handscore
+        st.metric("📈 Diferença", f"{diff:+.1%}")
+
+# ---------------- RESUMO EXECUTIVO MOMENTUM ----------------
+def resumo_momentum_hoje(df):
+    """Resumo executivo do momentum de hoje"""
+    
+    st.markdown("### 📋 Resumo Executivo - MOMENTUM Hoje")
     
     if df.empty:
         st.info("Nenhum dado disponível para resumo")
@@ -1040,54 +902,49 @@ def resumo_16_quadrantes_hoje(df):
     
     total_jogos = len(df)
     
-    # Estatísticas de classificação
-    alto_potencial = len(df[df['Classificacao_Potencial'] == '🌟 ALTO POTENCIAL'])
-    valor_solido = len(df[df['Classificacao_Potencial'] == '💼 VALOR SOLIDO'])
+    # Estatísticas de classificação momentum
+    momentum_explosivo = len(df[df['Classificacao_Momentum'] == '🚀 MOMENTUM EXPLOSIVO'])
+    momentum_positivo = len(df[df['Classificacao_Momentum'] == '📈 MOMENTUM POSITIVO'])
     
-    alto_valor_home = len(df[df['Classificacao_Valor_Home'] == '🏆 ALTO VALOR'])
-    alto_valor_away = len(df[df['Classificacao_Valor_Away'] == '🏆 ALTO VALOR'])
+    alto_valor_home_momentum = len(df[df['Classificacao_Valor_Home_Momentum'] == '🏆 ALTO VALOR'])
+    alto_valor_away_momentum = len(df[df['Classificacao_Valor_Away_Momentum'] == '🏆 ALTO VALOR'])
     
-    home_recomendado = len(df[df['ML_Side'] == 'HOME'])
-    away_recomendado = len(df[df['ML_Side'] == 'AWAY'])
-    
-    # Distribuição por categoria de quadrante
-    fav_forte = len(df[df['Quadrante_Home'].isin([1,2,3,4]) | df['Quadrante_Away'].isin([1,2,3,4])])
-    fav_moderado = len(df[df['Quadrante_Home'].isin([5,6,7,8]) | df['Quadrante_Away'].isin([5,6,7,8])])
-    under_moderado = len(df[df['Quadrante_Home'].isin([9,10,11,12]) | df['Quadrante_Away'].isin([9,10,11,12])])
-    under_forte = len(df[df['Quadrante_Home'].isin([13,14,15,16]) | df['Quadrante_Away'].isin([13,14,15,16])])
+    # Distribuição por categoria de momentum
+    momentum_muito_alto = len(df[df['Quadrante_Home'].isin([1,5]) | df['Quadrante_Away'].isin([1,5])])
+    momentum_alto = len(df[df['Quadrante_Home'].isin([2,6]) | df['Quadrante_Away'].isin([2,6])])
+    momentum_baixo = len(df[df['Quadrante_Home'].isin([11,12,15,16]) | df['Quadrante_Away'].isin([11,12,15,16])])
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.metric("Total Jogos", total_jogos)
-        st.metric("🌟 Alto Potencial", alto_potencial)
+        st.metric("🚀 Momentum Explosivo", momentum_explosivo)
     with col2:
-        st.metric("🎯 Alto Valor Home", alto_valor_home)
-        st.metric("🎯 Alto Valor Away", alto_valor_away)
+        st.metric("🎯 Alto Valor Home", alto_valor_home_momentum)
+        st.metric("🎯 Alto Valor Away", alto_valor_away_momentum)
     with col3:
-        st.metric("📊 Home vs Away", f"{home_recomendado} : {away_recomendado}")
-        st.metric("💼 Valor Sólido", valor_solido)
+        st.metric("📈 Momentum Positivo", momentum_positivo)
+        st.metric("💼 Valor Sólido", momentum_positivo + momentum_explosivo)
     with col4:
-        st.metric("⚔️ Fav Forte", fav_forte)
-        st.metric("⚔️ Under Forte", under_forte)
-    
-    # Distribuição de recomendações
-    st.markdown("#### 📊 Distribuição de Recomendações")
-    if 'Recomendacao' in df.columns:
-        dist_recomendacoes = df['Recomendacao'].value_counts()
-        st.dataframe(dist_recomendacoes, use_container_width=True)
+        st.metric("⚡ Momentum Muito Alto", momentum_muito_alto)
+        st.metric("🔻 Momentum Baixo", momentum_baixo)
 
-if not games_today.empty and 'Classificacao_Potencial' in games_today.columns:
-    resumo_16_quadrantes_hoje(games_today)
+if not games_today.empty and 'Classificacao_Momentum' in games_today.columns:
+    resumo_momentum_hoje(games_today)
 
 st.markdown("---")
-st.success("🎯 **Sistema de 16 Quadrantes ML** implementado com sucesso!")
+st.success("🎯 **Sistema de 16 Quadrantes MOMENTUM** implementado com sucesso!")
 st.info("""
-**Resumo das melhorias:**
-- 🔢 16 quadrantes para granularidade máxima
-- 🎯 Estratégias específicas por categoria  
-- 📊 Scoring combinado inteligente
-- 🔍 Análise de padrões avançada
-- 📈 Visualizações otimizadas
-- ✅ Código corrigido e validado
+**Vantagens do Momentum (z-score):**
+- ✅ **Comparação justa** entre ligas diferentes
+- ✅ **Detecção de outliers** - momentos verdadeiramente excepcionais  
+- ✅ **Normalização estatística** - melhor para modelos ML
+- ✅ **Range consistente** (-3.5 a +3.5) vs HandScore variável
+- ✅ **Remove viés de liga** - Premier League vs Série B
+
+**Próximos passos:**
+1. Compare os resultados com a versão HandScore
+2. Verifique se há ganho na precisão do ML
+3. Analise os padrões específicos de momentum
+4. Ajuste os thresholds com base no backtest
 """)
