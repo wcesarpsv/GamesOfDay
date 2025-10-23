@@ -1075,8 +1075,8 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             elif '🔴 BAIXO POTENCIAL 3D' in str(valor): return 'font-weight: bold'
             elif '🏆 ALTO VALOR' in str(valor): return 'font-weight: bold'
             elif '🔴 ALTO RISCO' in str(valor): return 'font-weight: bold'
-            elif 'VALUE' in str(valor): return 'background-color: #98FB98'
-            elif 'EVITAR' in str(valor): return 'background-color: #FFCCCB'
+            elif 'VALUE' in str(valor): return 'font-weight: bold'
+            elif 'EVITAR' in str(valor): return 'font-weight: bold'
             else: return ''
 
         colunas_para_estilo = []
