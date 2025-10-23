@@ -334,7 +334,7 @@ def plot_quadrantes_momentum(df, side="Home"):
     # Definir cores por categoria
     cores_categorias = {
         'Fav Forte': 'red',
-        'Fav Moderado': 'lightred', 
+        'Fav Moderado': 'lightcoral', 
         'Under Moderado': 'lightyellow',
         'Under Forte': 'yellow'
     }
