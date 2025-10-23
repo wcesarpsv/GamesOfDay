@@ -824,9 +824,9 @@ if not games_today.empty and 'Momentum_ML_Score_Home' in games_today.columns:
     # Função de estilo para momentum
     def estilo_tabela_momentum(df):
         def cor_classificacao_momentum(valor):
-            if '🚀 MOMENTUM EXPLOSIVO' in str(valor): return 'background-color: #FFD700; font-weight: bold'
-            elif '📈 MOMENTUM POSITIVO' in str(valor): return 'background-color: #98FB98; font-weight: bold'
-            elif '🔻 MOMENTUM NEGATIVO' in str(valor): return 'background-color: #FFCCCB; font-weight: bold'
+            if '🚀 MOMENTUM EXPLOSIVO' in str(valor): return 'font-weight: bold'
+            elif '📈 MOMENTUM POSITIVO' in str(valor): return 'font-weight: bold'
+            elif '🔻 MOMENTUM NEGATIVO' in str(valor): return 'font-weight: bold'
             elif '🏆 ALTO VALOR' in str(valor): return 'font-weight: bold'
             elif '🔴 ALTO RISCO' in str(valor): return 'font-weight: bold'
             elif 'EXPLOSIVO' in str(valor): return 'background-color: #FFD700'
