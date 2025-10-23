@@ -377,10 +377,10 @@ def plot_quadrantes_16(df, side="Home"):
     
     # 🎨 Cores nomeadas (tons claros = neutro / escuros = extremos)
     cores_quadrantes_16 = {
-        1: 'lightblue',  2: 'deepskyblue',  3: 'blue',       4: 'darkblue',     # Fav Forte
-        5: 'lightgreen', 6: 'black', 7: 'green',     8: 'black',    # Fav Moderado
-        9: 'black',  10: 'gold',        11: 'orange',    12: 'chocolate',   # Under Moderado
-        13: 'black',14: 'black',  15: 'red',       16: 'darkred'      # Under Forte
+        1: 'darkblue',  2: 'blue',  3: 'blue',       4: 'darkblue',     # Fav Forte
+        5: 'green', 6: 'black', 7: 'black',     8: 'green',    # Fav Moderado
+        9: 'black',  10: 'black',        11: 'black',    12: 'black',   # Under Moderado
+        13: 'indianred',14: 'indianred',  15: 'darkred',       16: 'darkred'      # Under Forte
     }
 
     # 🔹 Plotar cada ponto de acordo com o quadrante
