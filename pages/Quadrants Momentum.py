@@ -1,0 +1,631 @@
+from __future__ import annotations
+import streamlit as st
+import pandas as pd
+import numpy as np
+import os
+import joblib
+import re
+from sklearn.ensemble import RandomForestClassifier
+import matplotlib.pyplot as plt
+from datetime import datetime
+import math
+import plotly.graph_objects as go # Importado para o final do script
+import warnings
+warnings.filterwarnings("ignore") # Para evitar warnings de libs como Pandas/Sklearn no Streamlit
+
+st.set_page_config(page_title="Análise de Quadrantes - Bet Indicator", layout="wide")
+st.title("🎯 Análise de 16 Quadrantes - ML Avançado (Aggression x Momentum)")
+
+# ---------------- Configurações ----------------
+PAGE_PREFIX = "QuadrantesML_Momentum"
+GAMES_FOLDER = "GamesDay"
+LIVESCORE_FOLDER = "LiveScore"
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa", "trophy"]
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
+os.makedirs(MODELS_FOLDER, exist_ok=True)
+
+# ---------------- CONFIGURAÇÕES LIVE SCORE ----------------
+# ... (Funções setup_livescore_columns, preprocess_df, load_all_games, filter_leagues, etc. permanecem as mesmas)
+# ... (Omitidas para brevidade, mas você deve manter as suas)
+
+def setup_livescore_columns(df):
+    """Garante que as colunas do Live Score existam no DataFrame"""
+    if 'Goals_H_Today' not in df.columns:
+        df['Goals_H_Today'] = np.nan
+    if 'Goals_A_Today' not in df.columns:
+        df['Goals_A_Today'] = np.nan
+    if 'Home_Red' not in df.columns:
+        df['Home_Red'] = np.nan
+    if 'Away_Red' not in df.columns:
+        df['Away_Red'] = np.nan
+    return df
+
+def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    if "Goals_H_FT_x" in df.columns:
+        df = df.rename(columns={"Goals_H_FT_x": "Goals_H_FT", "Goals_A_FT_x": "Goals_A_FT"})
+    elif "Goals_H_FT_y" in df.columns:
+        df = df.rename(columns={"Goals_H_FT_y": "Goals_H_FT", "Goals_A_FT_y": "Goals_A_FT"})
+    return df
+
+def load_all_games(folder: str) -> pd.DataFrame:
+    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
+    if not files:
+        return pd.DataFrame()
+    dfs = [preprocess_df(pd.read_csv(os.path.join(folder, f))) for f in files]
+    return pd.concat(dfs, ignore_index=True)
+
+def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or "League" not in df.columns:
+        return df
+    pattern = "|".join(EXCLUDED_LEAGUE_KEYWORDS)
+    return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
+
+def calc_handicap_result(margin, asian_line_str, invert=False):
+    """Retorna média de pontos por linha (1 win, 0.5 push, 0 loss)"""
+    if pd.isna(asian_line_str):
+        return np.nan
+    if invert:
+        margin = -margin
+    try:
+        parts = [float(x) for x in str(asian_line_str).split('/')]
+    except:
+        return np.nan
+    results = []
+    for line in parts:
+        if margin > line:
+            results.append(1.0)
+        elif margin == line:
+            results.append(0.5)
+        else:
+            results.append(0.0)
+    return np.mean(results)
+
+def convert_asian_line_to_decimal(line_str):
+    """Converte qualquer formato de Asian Line para valor decimal único"""
+    if pd.isna(line_str) or line_str == "":
+        return None
+    
+    try:
+        line_str = str(line_str).strip()
+        # Se não tem "/" é valor único
+        if "/" not in line_str:
+            return float(line_str)
+        # Se tem "/" é linha fracionada - calcular média
+        parts = [float(x) for x in line_str.split("/")]
+        return sum(parts) / len(parts)
+    except (ValueError, TypeError):
+        return None
+
+# ---------------- Carregar Dados (mantido o seu fluxo) ----------------
+
+st.info("📂 Carregando dados para análise de 16 quadrantes...")
+
+# Seleção de arquivo do dia
+files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
+if not files:
+    st.warning("No CSV files found in GamesDay folder.")
+    st.stop()
+
+options = files[-7:] if len(files) >= 7 else files
+selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
+
+date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
+selected_date_str = date_match.group(0) if date_match else datetime.now().strftime("%Y-%m-%d")
+
+# Jogos do dia
+games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
+games_today = filter_leagues(games_today)
+
+# Função de Live Score (mantida)
+def load_and_merge_livescore(games_today, selected_date_str):
+    # ... (código da sua função load_and_merge_livescore)
+    livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
+    games_today = setup_livescore_columns(games_today)
+    if os.path.exists(livescore_file):
+        st.info(f"📡 LiveScore file found: {livescore_file}")
+        results_df = pd.read_csv(livescore_file)
+        results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
+        required_cols = ['game_id', 'status', 'home_goal', 'away_goal', 'home_red', 'away_red']
+        missing_cols = [col for col in required_cols if col not in results_df.columns]
+        if missing_cols:
+            st.error(f"❌ LiveScore file missing columns: {missing_cols}")
+            return games_today
+        else:
+            games_today = games_today.merge(
+                results_df,
+                left_on='Id',
+                right_on='game_id',
+                how='left',
+                suffixes=('', '_RAW')
+            )
+            games_today['Goals_H_Today'] = games_today['home_goal']
+            games_today['Goals_A_Today'] = games_today['away_goal']
+            games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
+            games_today['Home_Red'] = games_today['home_red']
+            games_today['Away_Red'] = games_today['away_red']
+            st.success(f"✅ LiveScore merged: {len(results_df)} games loaded")
+            return games_today
+    else:
+        st.warning(f"⚠️ No LiveScore file found for: {selected_date_str}")
+        return games_today
+
+# Aplicar Live Score
+games_today = load_and_merge_livescore(games_today, selected_date_str)
+
+# Histórico consolidado
+history = filter_leagues(load_all_games(GAMES_FOLDER))
+history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line"]).copy()
+
+# ---------------- CONVERSÃO ASIAN LINE E FILTROS (mantido) ----------------
+# Aplicar conversão no histórico e jogos de hoje
+history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
+games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
+
+# Filtrar apenas jogos com linha válida no histórico
+history = history.dropna(subset=['Asian_Line_Decimal'])
+
+# Filtro anti-leakage temporal
+if "Date" in history.columns:
+    try:
+        selected_date = pd.to_datetime(selected_date_str)
+        history["Date"] = pd.to_datetime(history["Date"], errors="coerce")
+        history = history[history["Date"] < selected_date].copy()
+        st.info(f"📊 Treinando com {len(history)} jogos anteriores a {selected_date_str}")
+    except Exception as e:
+        st.error(f"Erro ao aplicar filtro temporal: {e}")
+
+# Targets AH históricos
+history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
+history["Target_AH_Home"] = history.apply(
+    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line"], invert=False) > 0.5 else 0, axis=1
+)
+
+# ---------------- NOVO SISTEMA DE 16 QUADRANTES (AGGRESSION X MOMENTUM) ----------------
+st.markdown("## 🎯 Sistema de 16 Quadrantes (Aggression x Momentum)")
+
+# *** AJUSTE PRINCIPAL: REDEFINIÇÃO DOS QUADRANTES PARA O EIXO Y (MOMENTUM) ***
+QUADRANTES_MOMENTUM_16 = {
+    # O Eixo Y (M) agora usa Z-Scores de -3.5 a 3.5. Vamos usar faixas de Z-Score:
+    # M_MU = Momentum Muito Alto (M > 1.5)
+    # M_F = Momentum Forte (1.5 > M > 0.5)
+    # M_M = Momentum Moderado (0.5 > M > -0.5)
+    # M_N = Momentum Negativo (M < -0.5)
+
+    # 🔵 QUADRANTE 1-4: FORTE FAVORITO (Aggression +0.75 a +1.0)
+    1: {"nome": "Fav Forte M_Muito Alto", "agg_min": 0.75, "agg_max": 1.0, "m_min": 1.5, "m_max": 3.5},
+    2: {"nome": "Fav Forte M_Forte",      "agg_min": 0.75, "agg_max": 1.0, "m_min": 0.5, "m_max": 1.5},
+    3: {"nome": "Fav Forte M_Moderado",   "agg_min": 0.75, "agg_max": 1.0, "m_min": -0.5, "m_max": 0.5},
+    4: {"nome": "Fav Forte M_Negativo",   "agg_min": 0.75, "agg_max": 1.0, "m_min": -3.5, "m_max": -0.5}, # Combina as duas faixas negativas
+
+    # 🟢 QUADRANTE 5-8: FAVORITO MODERADO (Aggression +0.25 a +0.75)
+    5: {"nome": "Fav Moderado M_Muito Alto", "agg_min": 0.25, "agg_max": 0.75, "m_min": 1.5, "m_max": 3.5},
+    6: {"nome": "Fav Moderado M_Forte",      "agg_min": 0.25, "agg_max": 0.75, "m_min": 0.5, "m_max": 1.5},
+    7: {"nome": "Fav Moderado M_Moderado",   "agg_min": 0.25, "agg_max": 0.75, "m_min": -0.5, "m_max": 0.5},
+    8: {"nome": "Fav Moderado M_Negativo",   "agg_min": 0.25, "agg_max": 0.75, "m_min": -3.5, "m_max": -0.5},
+
+    # 🟡 QUADRANTE 9-12: UNDERDOG MODERADO (Aggression -0.75 a -0.25)
+    9: {"nome": "Under Moderado M_Positivo",  "agg_min": -0.75, "agg_max": -0.25, "m_min": 0.5, "m_max": 3.5}, # Combina as duas faixas positivas
+    10: {"nome": "Under Moderado M_Moderado", "agg_min": -0.75, "agg_max": -0.25, "m_min": -0.5, "m_max": 0.5},
+    11: {"nome": "Under Moderado M_Forte Neg.", "agg_min": -0.75, "agg_max": -0.25, "m_min": -1.5, "m_max": -0.5},
+    12: {"nome": "Under Moderado M_Muito Neg.", "agg_min": -0.75, "agg_max": -0.25, "m_min": -3.5, "m_max": -1.5},
+
+    # 🔴 QUADRANTE 13-16: FORTE UNDERDOG (Aggression -1.0 a -0.75)
+    13: {"nome": "Under Forte M_Positivo",      "agg_min": -1.0, "agg_max": -0.75, "m_min": 0.5, "m_max": 3.5},
+    14: {"nome": "Under Forte M_Moderado",      "agg_min": -1.0, "agg_max": -0.75, "m_min": -0.5, "m_max": 0.5},
+    15: {"nome": "Under Forte M_Forte Neg.",    "agg_min": -1.0, "agg_max": -0.75, "m_min": -1.5, "m_max": -0.5},
+    16: {"nome": "Under Forte M_Muito Neg.",    "agg_min": -1.0, "agg_max": -0.75, "m_min": -3.5, "m_max": -1.5}
+}
+
+def classificar_quadrante_momentum_16(agg, momentum):
+    """Classifica Aggression e Momentum (M) em um dos 16 quadrantes"""
+    if pd.isna(agg) or pd.isna(momentum):
+        return 0  # Neutro/Indefinido
+    
+    for quadrante_id, config in QUADRANTES_MOMENTUM_16.items():
+        agg_ok = (config['agg_min'] <= agg <= config['agg_max'])
+        # Ajustado para 'm_min' e 'm_max'
+        m_ok = (config['m_min'] <= momentum <= config['m_max'])
+            
+        if agg_ok and m_ok:
+            return quadrante_id
+    
+    return 0  # Caso não se enquadre em nenhum quadrante
+
+# Aplicar classificação aos dados (assumindo 'Aggression_Home' e 'Aggression_Away' já existem)
+# Assumindo que as colunas M_H e M_A mapeiam para Home e Away, respectivamente
+games_today['Quadrante_Home'] = games_today.apply(
+    lambda x: classificar_quadrante_momentum_16(x.get('Aggression_Home'), x.get('M_H')), axis=1
+)
+games_today['Quadrante_Away'] = games_today.apply(
+    lambda x: classificar_quadrante_momentum_16(x.get('Aggression_Away'), x.get('M_A')), axis=1
+)
+
+history['Quadrante_Home'] = history.apply(
+    lambda x: classificar_quadrante_momentum_16(x.get('Aggression_Home'), x.get('M_H')), axis=1
+)
+history['Quadrante_Away'] = history.apply(
+    lambda x: classificar_quadrante_momentum_16(x.get('Aggression_Away'), x.get('M_A')), axis=1
+)
+st.info(f"📊 Quadrantes classificados usando Aggression e Momentum (M)")
+
+
+# ---------------- CÁLCULO DE DISTÂNCIAS (ADAPTADO PARA MOMENTUM) ----------------
+def calcular_distancias_quadrantes(df):
+    """Calcula distância, separação média e ângulo entre os pontos Home e Away (Agg x M)."""
+    df = df.copy()
+    # Usando M_H e M_A no lugar de HandScore_Home/Away
+    if all(col in df.columns for col in ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A']):
+        dx = df['Aggression_Home'] - df['Aggression_Away']
+        dy = df['M_H'] - df['M_A'] # Diferença no Z-Score
+        # A escala visual ajustada é crítica. 
+        # O Aggression (x) vai de -1 a 1 (amplitude 2). O Momentum (y) vai de -3.5 a 3.5 (amplitude 7).
+        # Vamos dar um peso um pouco menor para o eixo Y para equilibrar os eixos.
+        df['Quadrant_Dist'] = np.sqrt(dx**2 + (dy/3.5)**2) * 5 # Normalizado por 3.5 e escalado por 5
+        df['Quadrant_Separation'] = dy * 10 + dx * 20 # Combinação linear para separar
+        df['Quadrant_Angle'] = np.degrees(np.arctan2(dy, dx))
+    else:
+        st.warning("⚠️ Colunas Aggression/M_H/M_A não encontradas para calcular as distâncias.")
+        df['Quadrant_Dist'] = np.nan
+        df['Quadrant_Separation'] = np.nan
+        df['Quadrant_Angle'] = np.nan
+    return df
+
+# Aplicar ao games_today
+games_today = calcular_distancias_quadrantes(games_today)
+history = calcular_distancias_quadrantes(history) # Aplicar no histórico também
+
+# ---------------- VISUALIZAÇÃO DOS 16 QUADRANTES (ADAPTADO) ----------------
+@st.cache_resource
+def plot_quadrantes_16(df, side="Home"):
+    """Plot dos 16 quadrantes com cores e anotações (Aggression x Momentum)"""
+    fig, ax = plt.subplots(figsize=(14, 10))
+    
+    # Definir cores por categoria (mantido o esquema de cores)
+    cores_categorias = {
+        'Fav Forte': 'lightcoral',
+        'Fav Moderado': 'lightpink', 
+        'Under Moderado': 'lightblue',
+        'Under Forte': 'lightsteelblue'
+    }
+    
+    # Plotar cada ponto com cor da categoria
+    for quadrante_id in range(1, 17):
+        mask = df[f'Quadrante_{side}'] == quadrante_id
+        if mask.any():
+            # Usa o novo dicionário
+            categoria = QUADRANTES_MOMENTUM_16[quadrante_id]['nome'].split()[0] + ' ' + QUADRANTES_MOMENTUM_16[quadrante_id]['nome'].split()[1]
+            cor = cores_categorias.get(categoria, 'gray')
+            
+            x = df.loc[mask, f'Aggression_{side}']
+            # Eixo Y agora é M_H ou M_A
+            y = df.loc[mask, f'M_{side[0]}']
+            ax.scatter(x, y, c=cor, 
+                      label=QUADRANTES_MOMENTUM_16[quadrante_id]['nome'],
+                      alpha=0.7, s=50)
+    
+    # Linhas divisórias dos quadrantes (Aggression)
+    for x in [-0.75, -0.25, 0.25, 0.75]:
+        ax.axvline(x=x, color='black', linestyle='--', alpha=0.3)
+    ax.axvline(x=0, color='black', linestyle='-', alpha=0.5)
+    
+    # Linhas divisórias dos quadrantes (MOMENTUM)  
+    # Novas linhas baseadas no Z-Score: -1.5, -0.5, 0.5, 1.5
+    for y in [-1.5, -0.5, 0.5, 1.5]:
+        ax.axhline(y=y, color='black', linestyle='--', alpha=0.3)
+    ax.axhline(y=0, color='black', linestyle='-', alpha=0.5)
+    
+    # Anotações dos quadrantes (Apenas um exemplo das 4 principais categorias para economizar espaço)
+    ax.text(0.875, 2.5, "Fav Forte\nMuito Alto", ha='center', fontsize=8, weight='bold')
+    ax.text(0.5, 1.0, "Fav Moderado\nForte", ha='center', fontsize=8, weight='bold')
+    ax.text(-0.5, -1.0, "Under Moderado\nForte Neg.", ha='center', fontsize=8, weight='bold')
+    ax.text(-0.875, -2.5, "Under Forte\nM. Negativo", ha='center', fontsize=8, weight='bold')
+
+    ax.set_xlabel(f'Aggression_{side} (-1 zebra ↔ +1 favorito)')
+    ax.set_ylabel(f'Momentum (M_{side[0]}) (-3.5 zebra ↔ +3.5 favorito)') # Ajustado
+    ax.set_title(f'16 Quadrantes (Aggression x Momentum) - {side}')
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+    ax.grid(True, alpha=0.3)
+    ax.set_ylim(-3.5, 3.5) # Limitar o eixo Y para a escala do Z-Score
+    ax.set_xlim(-1.0, 1.0)
+    
+    plt.tight_layout()
+    return fig
+
+# Exibir gráficos
+st.markdown("### 📈 Visualização dos 16 Quadrantes (Aggression x Momentum)")
+col1, col2 = st.columns(2)
+# Filtrar dados nulos para plotagem
+df_plot_filtered = games_today.dropna(subset=['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A'])
+
+with col1:
+    st.pyplot(plot_quadrantes_16(df_plot_filtered, "Home"))
+with col2:
+    st.pyplot(plot_quadrantes_16(df_plot_filtered, "Away"))
+
+# ---------------- VISUALIZAÇÃO INTERATIVA (ADAPTADO) ----------------
+
+st.markdown("## 🎯 Visualização Interativa – Distância entre Times (Aggression x Momentum)")
+
+# Filtros interativos (mantidos)
+if "League" in games_today.columns and not games_today["League"].isna().all():
+    leagues = sorted(games_today["League"].dropna().unique())
+    selected_league = st.selectbox(
+        "Selecione a liga para análise:",
+        options=["⚽ Todas as ligas"] + leagues,
+        index=0
+    )
+
+    if selected_league != "⚽ Todas as ligas":
+        df_filtered = games_today[games_today["League"] == selected_league].copy()
+    else:
+        df_filtered = games_today.copy()
+else:
+    st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
+    df_filtered = games_today.copy()
+
+# Controle de número de confrontos (mantido)
+max_n = len(df_filtered)
+n_to_show = st.slider("Quantos confrontos exibir (Top por distância):", 10, min(max_n, 200), 40, step=5)
+
+# Preparar dados
+df_plot = df_filtered.dropna(subset=["Quadrant_Dist"]).nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
+
+# Criar gráfico Plotly
+fig = go.Figure()
+
+# Vetores Home → Away
+for _, row in df_plot.iterrows():
+    xh, xa = row["Aggression_Home"], row["Aggression_Away"]
+    # Eixo Y agora é M_H e M_A
+    yh, ya = row["M_H"], row["M_A"]
+
+    fig.add_trace(go.Scatter(
+        x=[xh, xa],
+        y=[yh, ya],
+        mode="lines+markers",
+        line=dict(color="gray", width=1),
+        marker=dict(size=5),
+        hoverinfo="text",
+        hovertext=(
+            f"<b>{row['Home']} vs {row['Away']}</b><br>"
+            f"🏆 {row.get('League','N/A')}<br>"
+            f"🎯 Home: {QUADRANTES_MOMENTUM_16.get(row['Quadrante_Home'], {}).get('nome', 'N/A')}<br>"
+            f"🎯 Away: {QUADRANTES_MOMENTUM_16.get(row['Quadrante_Away'], {}).get('nome', 'N/A')}<br>"
+            f"📏 Distância: {row['Quadrant_Dist']:.2f}"
+        ),
+        showlegend=False
+    ))
+
+# Pontos Home e Away
+fig.add_trace(go.Scatter(
+    x=df_plot["Aggression_Home"],
+    y=df_plot["M_H"],
+    mode="markers+text",
+    name="Home",
+    marker=dict(color="royalblue", size=8, opacity=0.8),
+    text=df_plot["Home"],
+    textposition="top center",
+    hoverinfo="skip"
+))
+
+fig.add_trace(go.Scatter(
+    x=df_plot["Aggression_Away"],
+    y=df_plot["M_A"],
+    mode="markers+text",
+    name="Away",
+    marker=dict(color="orangered", size=8, opacity=0.8),
+    text=df_plot["Away"],
+    textposition="top center",
+    hoverinfo="skip"
+))
+
+# Layout
+titulo = f"Top {n_to_show} Distâncias – 16 Quadrantes (Aggression x Momentum)"
+if selected_league != "⚽ Todas as ligas":
+    titulo += f" | {selected_league}"
+
+fig.update_layout(
+    title=titulo,
+    xaxis_title="Aggression (-1 zebra ↔ +1 favorito)",
+    yaxis_title="Momentum (M) (-3.5 zebra ↔ +3.5 favorito)", # Ajustado
+    template="plotly_white",
+    height=700,
+    hovermode="closest",
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+)
+# Limitar eixos
+fig.update_xaxes(range=[-1.0, 1.0])
+fig.update_yaxes(range=[-3.5, 3.5])
+
+
+st.plotly_chart(fig, use_container_width=True)
+
+# ---------------- MODELO ML ATUALIZADO PARA 16 QUADRANTES (MOMENTUM) ----------------
+# Adicionando cache para não retreinar a cada interação
+@st.cache_resource
+def treinar_modelo_quadrantes_16_dual(history, games_today):
+    """
+    Treina modelo ML para Home e Away com base nos 16 quadrantes (Aggression x M)
+    """
+    # Garantir cálculo das distâncias
+    history = calcular_distancias_quadrantes(history)
+    games_today = calcular_distancias_quadrantes(games_today)
+
+    # Preparar features básicas
+    # Os dummies são gerados com base na nova classificação Aggression x M
+    quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
+    quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
+    ligas_dummies = pd.get_dummies(history['League'], prefix='League')
+
+    # Features contínuas (incluindo M_H e M_A, além das métricas de distância)
+    # Note que M_H/M_A já são Z-Scores, o que é ótimo para o ML.
+    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle', 'M_H', 'M_A']].fillna(0)
+
+    # Combinar todas as features
+    X = pd.concat([quadrantes_home, quadrantes_away, ligas_dummies, extras], axis=1)
+
+    # Targets
+    y_home = history['Target_AH_Home']
+    y_away = 1 - y_home  # inverso lógico
+
+    # Treinar modelos (mantidas as configurações originais do RF)
+    model_home = RandomForestClassifier(
+        n_estimators=500, max_depth=12, random_state=42, class_weight='balanced_subsample', n_jobs=-1
+    )
+    model_away = RandomForestClassifier(
+        n_estimators=500, max_depth=12, random_state=42, class_weight='balanced_subsample', n_jobs=-1
+    )
+    
+    # Garantir que o X não esteja vazio
+    if X.empty or y_home.empty:
+        st.error("❌ Dados insuficientes para treinar o modelo após os filtros.")
+        return None, None, games_today
+    
+    # Garantir que todas as colunas sejam float/int antes do fit
+    X = X.select_dtypes(include=np.number)
+
+
+    model_home.fit(X, y_home)
+    model_away.fit(X, y_away)
+
+    # Preparar dados para hoje
+    # Reindex para garantir que as dummies de hoje tenham as mesmas colunas das dummies de treino
+    qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
+    qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
+    ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
+    # Features contínuas de hoje
+    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle', 'M_H', 'M_A']].fillna(0)
+
+    X_today = pd.concat([qh_today, qa_today, ligas_today, extras_today], axis=1)
+    
+    # Garantir que X_today tenha as mesmas colunas de X na mesma ordem
+    X_today = X_today.reindex(columns=X.columns, fill_value=0)
+
+    # Fazer previsões
+    probas_home = model_home.predict_proba(X_today)[:, 1]
+    probas_away = model_away.predict_proba(X_today)[:, 1]
+
+    games_today['Quadrante_ML_Score_Home'] = probas_home
+    games_today['Quadrante_ML_Score_Away'] = probas_away
+    games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
+    games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
+
+    # Mostrar importância das features
+    try:
+        importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
+        top_feats = importances.head(15)
+        st.markdown("### 🔍 Top Features mais importantes (Modelo HOME - Aggression x Momentum)")
+        st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
+    except Exception as e:
+        st.warning(f"Não foi possível calcular importâncias: {e}")
+
+    st.success("✅ Modelo dual (Home/Away) com 16 quadrantes (Aggression x M) treinado com sucesso!")
+    return model_home, model_away, games_today
+
+# ---------------- EXECUÇÃO PRINCIPAL ----------------
+# Executar treinamento
+if not history.empty and 'M_H' in history.columns and 'Aggression_Home' in history.columns:
+    modelo_home, modelo_away, games_today = treinar_modelo_quadrantes_16_dual(history, games_today)
+else:
+    st.warning("⚠️ Histórico vazio ou colunas Aggression/M_H/M_A ausentes - não foi possível treinar o modelo")
+
+# ---------------- SISTEMA DE INDICAÇÕES (ADAPTADO) ----------------
+# Garantir que o resultado do ML exista antes de continuar
+if 'Quadrante_ML_Score_Main' in games_today.columns:
+
+    def adicionar_indicadores_explicativos_16_dual(df):
+        """Adiciona classificações e recomendações explícitas para 16 quadrantes (Agg x M)"""
+        df = df.copy()
+    
+        # Mapear quadrantes para labels (usando o novo dicionário)
+        df['Quadrante_Home_Label'] = df['Quadrante_Home'].map(lambda x: QUADRANTES_MOMENTUM_16.get(x, {}).get('nome', 'Neutro'))
+        df['Quadrante_Away_Label'] = df['Quadrante_Away'].map(lambda x: QUADRANTES_MOMENTUM_16.get(x, {}).get('nome', 'Neutro'))
+    
+        # 1. CLASSIFICAÇÃO DE VALOR PARA HOME (mantida a lógica de score)
+        conditions_home = [
+            df['Quadrante_ML_Score_Home'] >= 0.65,
+            df['Quadrante_ML_Score_Home'] >= 0.58,
+            df['Quadrante_ML_Score_Home'] >= 0.52,
+            df['Quadrante_ML_Score_Home'] >= 0.48,
+            df['Quadrante_ML_Score_Home'] < 0.48
+        ]
+        choices_home = ['🏆 ALTO VALOR', '✅ BOM VALOR', '⚖️ NEUTRO', '⚠️ CAUTELA', '🔴 ALTO RISCO']
+        df['Classificacao_Valor_Home'] = np.select(conditions_home, choices_home, default='⚖️ NEUTRO')
+    
+        # 2. CLASSIFICAÇÃO DE VALOR PARA AWAY (mantida a lógica de score)
+        conditions_away = [
+            df['Quadrante_ML_Score_Away'] >= 0.65,
+            df['Quadrante_ML_Score_Away'] >= 0.58,
+            df['Quadrante_ML_Score_Away'] >= 0.52,
+            df['Quadrante_ML_Score_Away'] >= 0.48,
+            df['Quadrante_ML_Score_Away'] < 0.48
+        ]
+        choices_away = ['🏆 ALTO VALOR', '✅ BOM VALOR', '⚖️ NEUTRO', '⚠️ CAUTELA', '🔴 ALTO RISCO']
+        df['Classificacao_Valor_Away'] = np.select(conditions_away, choices_away, default='⚖️ NEUTRO')
+    
+        # 3. RECOMENDAÇÃO DE APOSTA DUAL (Lógica de strings adaptada para o novo nome)
+        def gerar_recomendacao_16_dual(row):
+            home_q = row['Quadrante_Home_Label']
+            away_q = row['Quadrante_Away_Label']
+            score_home = row['Quadrante_ML_Score_Home']
+            score_away = row['Quadrante_ML_Score_Away']
+            ml_side = row['ML_Side']
+        
+            # Adaptação dos padrões específicos para "M_Muito Alto" e "M_Muito Neg."
+            if 'Fav Forte' in home_q and 'M_Muito Alto' in home_q and 'M_Muito Neg.' in away_q:
+                return f'💪 FAVORITO HOME FORTE (MOMENTUM) ({score_home:.1%})'
+            elif 'Fav Forte' in away_q and 'M_Muito Alto' in away_q and 'M_Muito Neg.' in home_q:
+                return f'💪 FAVORITO AWAY FORTE (MOMENTUM) ({score_away:.1%})'
+            elif ml_side == 'HOME' and score_home >= 0.60:
+                return f'📈 MODELO CONFIA HOME ({score_home:.1%})'
+            elif ml_side == 'AWAY' and score_away >= 0.60:
+                return f'📈 MODELO CONFIA AWAY ({score_away:.1%})'
+            elif 'M_Moderado' in home_q and score_away >= 0.58:
+                return f'🔄 AWAY EM MODERADO ({score_away:.1%})'
+            elif 'M_Moderado' in away_q and score_home >= 0.58:
+                return f'🔄 HOME EM MODERADO ({score_home:.1%})'
+            else:
+                return f'⚖️ ANALISAR (H:{score_home:.1%} A:{score_away:.1%})'
+    
+        df['Recomendacao'] = df.apply(gerar_recomendacao_16_dual, axis=1)
+    
+        # 4. RANKING POR MELHOR PROBABILIDADE
+        df['Ranking'] = df['Quadrante_ML_Score_Main'].rank(ascending=False, method='dense').astype(int)
+    
+        return df
+
+    games_today = adicionar_indicadores_explicativos_16_dual(games_today)
+
+    # ... (Restante das funções: analisar_padroes_quadrantes_16_dual, gerar_estrategias_16_quadrantes, calcular_pontuacao_quadrante_16, gerar_score_combinado_16)
+    # ... (Estas funções devem ser adaptadas para usar QUADRANTES_MOMENTUM_16, M_H, M_A, etc.)
+
+    # ---------------- VISUALIZAÇÃO DOS RESULTADOS FINAIS (Tabela) ----------------
+    st.markdown("### 🥇 Principais Indicações (Ranking pelo Modelo)")
+    cols_display = [
+        'Ranking', 'Home', 'Away', 'League', 'Asian_Line_Decimal', 'M_H', 'M_A',
+        'Aggression_Home', 'Aggression_Away', 'Quadrante_Home_Label', 'Quadrante_Away_Label',
+        'Quadrant_Dist', 'Quadrante_ML_Score_Main', 'ML_Side', 'Recomendacao'
+    ]
+
+    # Ordenar e exibir o DataFrame
+    df_final = games_today.sort_values("Ranking", ascending=True)
+
+    st.dataframe(
+        df_final[[c for c in cols_display if c in df_final.columns]].head(50)
+        .style.format({
+            'Asian_Line_Decimal': '{:.2f}',
+            'M_H': '{:.2f}',
+            'M_A': '{:.2f}',
+            'Aggression_Home': '{:.2f}',
+            'Aggression_Away': '{:.2f}',
+            'Quadrant_Dist': '{:.2f}',
+            'Quadrante_ML_Score_Main': '{:.1%}'
+        })
+        .background_gradient(subset=['Quadrante_ML_Score_Main'], cmap='RdYlGn'),
+        use_container_width=True
+    )
+
+# ... (Se necessário, você pode adicionar a lógica adaptada das outras funções aqui)
