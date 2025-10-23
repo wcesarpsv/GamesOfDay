@@ -810,7 +810,7 @@ if not games_today.empty and 'Momentum_ML_Score_Home' in games_today.columns:
     
     # Colunas para exibição momentum
     colunas_momentum = [
-        'League', 'Time', 'Home', 'Away', 'ML_Side_Momentum',
+        'League', 'Time', 'Home', 'Away', 'Goals_H_Today','Goals_A_Today','ML_Side_Momentum',
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
         'Momentum_ML_Score_Home', 'Momentum_ML_Score_Away', 
         'Score_Final_Momentum', 'Classificacao_Momentum',
@@ -855,6 +855,8 @@ if not games_today.empty and 'Momentum_ML_Score_Home' in games_today.columns:
     st.dataframe(
         estilo_tabela_momentum(ranking_momentum[cols_finais_momentum].head(25))
         .format({
+            'Goals_H_Today': '{:.0f}',
+            'Goals_A_Today': '{:.0f}',
             'M_H': '{:.2f}',
             'M_A': '{:.2f}',
             'Quadrant_Dist': '{:.2f}',
