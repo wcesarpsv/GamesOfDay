@@ -303,19 +303,28 @@ def plot_quadrantes_16(df, side="Home"):
     fig, ax = plt.subplots(figsize=(14, 10))
     
     # Definir cores por categoria
-    cores_categorias = {
-        'Fav Forte': 'blue',
-        'Fav Moderado': 'black', 
-        'Under Moderado': 'black',
-        'Under Forte': 'red'
+    # cores_categorias = {
+    #     'Fav Forte': 'blue',
+    #     'Fav Moderado': 'black', 
+    #     'Under Moderado': 'black',
+    #     'Under Forte': 'red'
+    # }
+    # 🎨 Cores nomeadas por quadrante (tons claros = neutro / escuros = extremos)
+    cores_quadrantes_16 = {
+        1: 'lightblue', 2: 'deepskyblue', 3: 'blue', 4: 'darkblue',          # Fav Forte
+        5: 'lightgreen', 6: 'mediumseagreen', 7: 'green', 8: 'darkgreen',    # Fav Moderado
+        9: 'moccasin', 10: 'gold', 11: 'orange', 12: 'chocolate',            # Under Moderado
+        13: 'lightcoral', 14: 'indianred', 15: 'red', 16: 'darkred'          # Under Forte
     }
+
     
     # Plotar cada ponto com cor da categoria
     for quadrante_id in range(1, 17):
         mask = df[f'Quadrante_{side}'] == quadrante_id
         if mask.any():
             categoria = QUADRANTES_16[quadrante_id]['nome'].split()[0] + ' ' + QUADRANTES_16[quadrante_id]['nome'].split()[1]
-            cor = cores_categorias.get(categoria, 'gray')
+            # cor = cores_categorias.get(categoria, 'gray')
+             cor = cores_quadrantes_16.get(quadrante_id, 'gray')
             
             x = df.loc[mask, f'Aggression_{side}']
             y = df.loc[mask, f'HandScore_{side}']
