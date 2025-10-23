@@ -377,7 +377,7 @@ def plot_quadrantes_16(df, side="Home"):
     
     # 🎨 Cores nomeadas (tons claros = neutro / escuros = extremos)
     cores_quadrantes_16 = {
-        1: 'blue',  2: 'yellow',  3: 'darkblue', 4: 'gold',     # Fav Forte
+        1: 'blue',  2: 'yellow',  3: 'orange', 4: 'gold',     # Fav Forte
         5: 'darkblue', 6: 'darkred', 7: 'green', 8: 'red',    # Fav Moderado
         9: 'black',  10: 'black', 11: 'black', 12: 'black',   # Under Moderado
         13: 'black',14: 'black',  15: 'black', 16: 'black'  # Under Forte
