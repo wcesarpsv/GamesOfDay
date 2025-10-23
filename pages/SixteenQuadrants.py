@@ -297,74 +297,156 @@ def calcular_distancias_quadrantes(df):
 # Aplicar ao games_today
 games_today = calcular_distancias_quadrantes(games_today)
 
-# ---------------- VISUALIZAÇÃO DOS 16 QUADRANTES ----------------
-def plot_quadrantes_16(df, side="Home"):
-    """Plot dos 16 quadrantes com cores e anotações"""
-    fig, ax = plt.subplots(figsize=(14, 10))
+# # ---------------- VISUALIZAÇÃO DOS 16 QUADRANTES ----------------
+# def plot_quadrantes_16(df, side="Home"):
+#     """Plot dos 16 quadrantes com cores e anotações"""
+#     fig, ax = plt.subplots(figsize=(14, 10))
     
-    # Definir cores por categoria
-    # cores_categorias = {
-    #     'Fav Forte': 'blue',
-    #     'Fav Moderado': 'black', 
-    #     'Under Moderado': 'black',
-    #     'Under Forte': 'red'
-    # }
-    # 🎨 Cores nomeadas por quadrante (tons claros = neutro / escuros = extremos)
-    cores_quadrantes_16 = {
-        1: 'lightblue', 2: 'deepskyblue', 3: 'blue', 4: 'darkblue',          # Fav Forte
-        5: 'lightgreen', 6: 'mediumseagreen', 7: 'green', 8: 'darkgreen',    # Fav Moderado
-        9: 'moccasin', 10: 'gold', 11: 'orange', 12: 'chocolate',            # Under Moderado
-        13: 'lightcoral', 14: 'indianred', 15: 'red', 16: 'darkred'          # Under Forte
-    }
+#     # Definir cores por categoria
+#     # cores_categorias = {
+#     #     'Fav Forte': 'blue',
+#     #     'Fav Moderado': 'black', 
+#     #     'Under Moderado': 'black',
+#     #     'Under Forte': 'red'
+#     # }
+#     # 🎨 Cores nomeadas por quadrante (tons claros = neutro / escuros = extremos)
+#     cores_quadrantes_16 = {
+#         1: 'lightblue', 2: 'deepskyblue', 3: 'blue', 4: 'darkblue',          # Fav Forte
+#         5: 'lightgreen', 6: 'mediumseagreen', 7: 'green', 8: 'darkgreen',    # Fav Moderado
+#         9: 'moccasin', 10: 'gold', 11: 'orange', 12: 'chocolate',            # Under Moderado
+#         13: 'lightcoral', 14: 'indianred', 15: 'red', 16: 'darkred'          # Under Forte
+#     }
 
     
-    # Plotar cada ponto com cor da categoria
+#     # Plotar cada ponto com cor da categoria
+#     for quadrante_id in range(1, 17):
+#         mask = df[f'Quadrante_{side}'] == quadrante_id
+#         if mask.any():
+#             categoria = QUADRANTES_16[quadrante_id]['nome'].split()[0] + ' ' + QUADRANTES_16[quadrante_id]['nome'].split()[1]
+#             # cor = cores_categorias.get(categoria, 'gray')
+#              cor = cores_quadrantes_16.get(quadrante_id, 'gray')
+            
+#             x = df.loc[mask, f'Aggression_{side}']
+#             y = df.loc[mask, f'HandScore_{side}']
+#             ax.scatter(x, y, c=cor, 
+#                       label=QUADRANTES_16[quadrante_id]['nome'],
+#                       alpha=0.7, s=50)
+    
+#     # Linhas divisórias dos quadrantes (Aggression)
+#     for x in [-0.75, -0.25, 0.25, 0.75]:
+#         ax.axvline(x=x, color='black', linestyle='--', alpha=0.3)
+#     ax.axvline(x=0, color='black', linestyle='-', alpha=0.5)
+    
+#     # Linhas divisórias dos quadrantes (HandScore)  
+#     for y in [-45, -30, -15, 15, 30, 45]:
+#         ax.axhline(y=y, color='black', linestyle='--', alpha=0.3)
+#     ax.axhline(y=0, color='black', linestyle='-', alpha=0.5)
+    
+#     # Anotações dos quadrantes
+#     annot_config = [
+#         (0.875, 52.5, "Fav Forte\nMuito Forte", 8), (0.875, 37.5, "Fav Forte\nForte", 8),
+#         (0.875, 22.5, "Fav Forte\nModerado", 8), (0.875, 0, "Fav Forte\nNeutro", 8),
+#         (0.5, 52.5, "Fav Moderado\nMuito Forte", 8), (0.5, 37.5, "Fav Moderado\nForte", 8),
+#         (0.5, 22.5, "Fav Moderado\nModerado", 8), (0.5, 0, "Fav Moderado\nNeutro", 8),
+#         (-0.5, 0, "Under Moderado\nNeutro", 8), (-0.5, -22.5, "Under Moderado\nModerado", 8),
+#         (-0.5, -37.5, "Under Moderado\nForte", 8), (-0.5, -52.5, "Under Moderado\nMuito Forte", 8),
+#         (-0.875, 0, "Under Forte\nNeutro", 8), (-0.875, -22.5, "Under Forte\nModerado", 8),
+#         (-0.875, -37.5, "Under Forte\nForte", 8), (-0.875, -52.5, "Under Forte\nMuito Forte", 8)
+#     ]
+    
+#     for x, y, text, fontsize in annot_config:
+#         ax.text(x, y, text, ha='center', fontsize=fontsize, weight='bold')
+    
+#     ax.set_xlabel(f'Aggression_{side} (-1 zebra ↔ +1 favorito)')
+#     ax.set_ylabel(f'HandScore_{side} (-60 a +60)')
+#     ax.set_title(f'16 Quadrantes - {side}')
+#     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+#     ax.grid(True, alpha=0.3)
+    
+#     plt.tight_layout()
+#     return fig
+
+########################################
+#### 🎨 Função de Plotagem – 16 Quadrantes com Cores Nomeadas
+########################################
+def plot_quadrantes_16(df, side="Home"):
+    """Plot dos 16 quadrantes com cores distintas e legenda por categoria."""
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(14, 10))
+    
+    # 🎨 Cores nomeadas (tons claros = neutro / escuros = extremos)
+    cores_quadrantes_16 = {
+        1: 'lightblue',  2: 'deepskyblue',  3: 'blue',       4: 'darkblue',     # Fav Forte
+        5: 'lightgreen', 6: 'mediumseagreen', 7: 'green',     8: 'darkgreen',    # Fav Moderado
+        9: 'moccasin',  10: 'gold',        11: 'orange',    12: 'chocolate',   # Under Moderado
+        13: 'lightcoral',14: 'indianred',  15: 'red',       16: 'darkred'      # Under Forte
+    }
+
+    # 🔹 Plotar cada ponto de acordo com o quadrante
     for quadrante_id in range(1, 17):
         mask = df[f'Quadrante_{side}'] == quadrante_id
         if mask.any():
-            categoria = QUADRANTES_16[quadrante_id]['nome'].split()[0] + ' ' + QUADRANTES_16[quadrante_id]['nome'].split()[1]
-            # cor = cores_categorias.get(categoria, 'gray')
-             cor = cores_quadrantes_16.get(quadrante_id, 'gray')
-            
+            cor = cores_quadrantes_16.get(quadrante_id, 'gray')
             x = df.loc[mask, f'Aggression_{side}']
             y = df.loc[mask, f'HandScore_{side}']
-            ax.scatter(x, y, c=cor, 
-                      label=QUADRANTES_16[quadrante_id]['nome'],
-                      alpha=0.7, s=50)
-    
-    # Linhas divisórias dos quadrantes (Aggression)
+            ax.scatter(
+                x, y, c=cor, s=55, alpha=0.8, edgecolors='k', linewidths=0.4,
+                label=f"Q{quadrante_id} – {QUADRANTES_16[quadrante_id]['nome']}"
+            )
+
+    # 🔲 Linhas divisórias
     for x in [-0.75, -0.25, 0.25, 0.75]:
         ax.axvline(x=x, color='black', linestyle='--', alpha=0.3)
     ax.axvline(x=0, color='black', linestyle='-', alpha=0.5)
-    
-    # Linhas divisórias dos quadrantes (HandScore)  
     for y in [-45, -30, -15, 15, 30, 45]:
         ax.axhline(y=y, color='black', linestyle='--', alpha=0.3)
     ax.axhline(y=0, color='black', linestyle='-', alpha=0.5)
-    
-    # Anotações dos quadrantes
+
+    # 🏷️ Anotações dos quadrantes (posições médias)
     annot_config = [
-        (0.875, 52.5, "Fav Forte\nMuito Forte", 8), (0.875, 37.5, "Fav Forte\nForte", 8),
-        (0.875, 22.5, "Fav Forte\nModerado", 8), (0.875, 0, "Fav Forte\nNeutro", 8),
-        (0.5, 52.5, "Fav Moderado\nMuito Forte", 8), (0.5, 37.5, "Fav Moderado\nForte", 8),
-        (0.5, 22.5, "Fav Moderado\nModerado", 8), (0.5, 0, "Fav Moderado\nNeutro", 8),
-        (-0.5, 0, "Under Moderado\nNeutro", 8), (-0.5, -22.5, "Under Moderado\nModerado", 8),
-        (-0.5, -37.5, "Under Moderado\nForte", 8), (-0.5, -52.5, "Under Moderado\nMuito Forte", 8),
-        (-0.875, 0, "Under Forte\nNeutro", 8), (-0.875, -22.5, "Under Forte\nModerado", 8),
-        (-0.875, -37.5, "Under Forte\nForte", 8), (-0.875, -52.5, "Under Forte\nMuito Forte", 8)
+        (0.875, 52.5, "Fav Forte\nMuito Forte", 8),
+        (0.875, 37.5, "Fav Forte\nForte", 8),
+        (0.875, 22.5, "Fav Forte\nModerado", 8),
+        (0.875, 0, "Fav Forte\nNeutro", 8),
+        (0.5, 52.5, "Fav Moderado\nMuito Forte", 8),
+        (0.5, 37.5, "Fav Moderado\nForte", 8),
+        (0.5, 22.5, "Fav Moderado\nModerado", 8),
+        (0.5, 0, "Fav Moderado\nNeutro", 8),
+        (-0.5, 0, "Under Moderado\nNeutro", 8),
+        (-0.5, -22.5, "Under Moderado\nModerado", 8),
+        (-0.5, -37.5, "Under Moderado\nForte", 8),
+        (-0.5, -52.5, "Under Moderado\nMuito Forte", 8),
+        (-0.875, 0, "Under Forte\nNeutro", 8),
+        (-0.875, -22.5, "Under Forte\nModerado", 8),
+        (-0.875, -37.5, "Under Forte\nForte", 8),
+        (-0.875, -52.5, "Under Forte\nMuito Forte", 8)
     ]
-    
     for x, y, text, fontsize in annot_config:
         ax.text(x, y, text, ha='center', fontsize=fontsize, weight='bold')
-    
-    ax.set_xlabel(f'Aggression_{side} (-1 zebra ↔ +1 favorito)')
-    ax.set_ylabel(f'HandScore_{side} (-60 a +60)')
-    ax.set_title(f'16 Quadrantes - {side}')
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+
+    # 🔧 Configurações gerais
+    ax.set_xlabel(f"Aggression_{side} (-1 zebra ↔ +1 favorito)", fontsize=11)
+    ax.set_ylabel(f"HandScore_{side} (-60 ↔ +60)", fontsize=11)
+    ax.set_title(f"🎯 16 Quadrantes – {side}", fontsize=14, weight='bold')
+
+    # 🔖 Legenda agrupada por família
+    handles, labels = ax.get_legend_handles_labels()
+    ordem = [
+        (1, "Fav Forte"), (5, "Fav Moderado"),
+        (9, "Under Moderado"), (13, "Under Forte")
+    ]
+    legenda_labels = []
+    for base, nome in ordem:
+        cor_exemplo = cores_quadrantes_16[base]
+        legenda_labels.append(plt.Line2D([0], [0], marker='o', color='w', label=nome,
+                                         markerfacecolor=cor_exemplo, markersize=10))
+    ax.legend(handles=legenda_labels, loc='upper left', fontsize=10, title="Categorias Principais")
+
     ax.grid(True, alpha=0.3)
-    
     plt.tight_layout()
     return fig
+
 
 # Exibir gráficos
 st.markdown("### 📈 Visualização dos 16 Quadrantes")
