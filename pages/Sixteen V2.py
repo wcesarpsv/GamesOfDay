@@ -1176,6 +1176,8 @@ if not games_today.empty and 'Classificacao_Potencial' in games_today.columns:
 
 st.markdown("---")
 
+# Garantir que o histórico tenha os vetores sin/cos
+history = calcular_distancias_quadrantes(history)
 
 ########################################
 ### 📊 BLOCO – Mapa Angular de Valor (EV Map)
