@@ -133,6 +133,26 @@ selected_date_str = date_match.group(0) if date_match else datetime.now().strfti
 games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
 games_today = filter_leagues(games_today)
 
+
+
+# ---------------- CACHE INTELIGENTE ----------------
+@st.cache_data(ttl=3600)  # Cache de 1 hora
+def load_cached_data(selected_file):
+    """Cache apenas dos dados pesados"""
+    games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
+    games_today = filter_leagues(games_today)
+    
+    history = filter_leagues(load_all_games(GAMES_FOLDER))
+    history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line"]).copy()
+    
+    return games_today, history
+
+# No lugar do carregamento atual, use:
+games_today, history = load_cached_data(selected_file)
+
+
+
+
 # ---------------- LIVE SCORE INTEGRATION ----------------
 def load_and_merge_livescore(games_today, selected_date_str):
     """Carrega e faz merge dos dados do Live Score"""
