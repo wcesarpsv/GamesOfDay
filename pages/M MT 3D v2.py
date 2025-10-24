@@ -329,10 +329,10 @@ def calcular_distancias_3d(df):
     """
     Calcula distância 3D e ângulos usando Aggression, Momentum (liga) e Momentum (time)
     Novo vetor 3D: [Aggression, M, MT]
+    Inclui projeções trigonométricas (sin/cos) para uso no modelo ML.
     """
     df = df.copy()
     
-    # Verificar se as colunas necessárias existem
     required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
     missing_cols = [col for col in required_cols if col not in df.columns]
     
@@ -341,43 +341,59 @@ def calcular_distancias_3d(df):
         for col in [
             'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
             'Quadrant_Angle_XY', 'Quadrant_Angle_XZ', 'Quadrant_Angle_YZ',
+            'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
+            'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
+            'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
             'Momentum_Diff', 'Momentum_Diff_MT', 'Magnitude_3D'
         ]:
             df[col] = np.nan
         return df
 
-    # Diferenças nas 3 dimensões
+    # --- Diferenças nas 3 dimensões ---
     dx = df['Aggression_Home'] - df['Aggression_Away']   # X: perfil tático
-    dy = df['M_H'] - df['M_A']                           # Y: momentum por liga
-    dz = df['MT_H'] - df['MT_A']                         # Z: momentum individual
+    dy = df['M_H'] - df['M_A']                           # Y: momentum liga
+    dz = df['MT_H'] - df['MT_A']                         # Z: momentum time
 
-    # Distância Euclidiana 3D com pesos balanceados
+    # --- Distância Euclidiana 3D com pesos ---
     df['Quadrant_Dist_3D'] = np.sqrt(
         (dx)**2 * 1.5 +        # Aggression (-1 a 1)
         (dy/3.5)**2 * 2.0 +    # Momentum Liga (-3.5 a 3.5)
         (dz/3.5)**2 * 1.8      # Momentum Time (-3.5 a 3.5)
     ) * 10
 
-    # Ângulos entre planos
+    # --- Ângulos entre planos (em graus, apenas para visualização) ---
     df['Quadrant_Angle_XY'] = np.degrees(np.arctan2(dy, dx))  # Aggression × M (Liga)
     df['Quadrant_Angle_XZ'] = np.degrees(np.arctan2(dz, dx))  # Aggression × MT (Time)
     df['Quadrant_Angle_YZ'] = np.degrees(np.arctan2(dz, dy))  # M (Liga) × MT (Time)
 
-    # Separação ponderada (3D)
+    # --- Projeções trigonométricas (sin/cos) – features para ML ---
+    angle_xy = np.arctan2(dy, dx)
+    angle_xz = np.arctan2(dz, dx)
+    angle_yz = np.arctan2(dz, dy)
+
+    df['Quadrant_Sin_XY'] = np.sin(angle_xy)
+    df['Quadrant_Cos_XY'] = np.cos(angle_xy)
+    df['Quadrant_Sin_XZ'] = np.sin(angle_xz)
+    df['Quadrant_Cos_XZ'] = np.cos(angle_xz)
+    df['Quadrant_Sin_YZ'] = np.sin(angle_yz)
+    df['Quadrant_Cos_YZ'] = np.cos(angle_yz)
+
+    # --- Separação ponderada (3D) ---
     df['Quadrant_Separation_3D'] = (
         0.4 * (60 * dx) +    # peso tático
         0.35 * (20 * dy) +   # peso momentum liga
         0.25 * (20 * dz)     # peso momentum time
     )
 
-    # Diferenças individuais de momentum
-    df['Momentum_Diff'] = dy       # diferença de momentum por liga
-    df['Momentum_Diff_MT'] = dz    # diferença de momentum individual
+    # --- Diferenças individuais de momentum ---
+    df['Momentum_Diff'] = dy       # diferença momentum liga
+    df['Momentum_Diff_MT'] = dz    # diferença momentum time
 
-    # Magnitude vetorial total (força global)
+    # --- Magnitude vetorial total ---
     df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
 
     return df
+
 
 
 # Aplicar cálculo 3D ao games_today
@@ -605,22 +621,25 @@ st.plotly_chart(fig_3d, use_container_width=True)
 def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
     """
     Treina modelo ML 3D para Home e Away com base nos 16 quadrantes + Momentum
+    Agora inclui projeções trigonométricas sin/cos.
     """
     # Garantir cálculo das distâncias 3D
     history = calcular_distancias_3d(history)
     games_today = calcular_distancias_3d(games_today)
 
-    # Preparar features básicas
+    # Features categóricas (quadrantes + liga)
     quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
     quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
 
-    # Features 3D contínuas
+    # Features 3D contínuas (agora com sin/cos)
     extras_3d = history[[
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D', 
-        'Quadrant_Angle_XY', 'Quadrant_Angle_XZ', 'Quadrant_Angle_YZ',
+        'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
+        'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
+        'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
         'Momentum_Diff', 'Magnitude_3D',
-        'M_H', 'M_A', 'MT_H', 'MT_A' # Momentums individuais
+        'M_H', 'M_A', 'MT_H', 'MT_A'
     ]].fillna(0)
 
     # Combinar todas as features
@@ -628,33 +647,37 @@ def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
 
     # Targets
     y_home = history['Target_AH_Home']
-    y_away = 1 - y_home  # inverso lógico
+    y_away = 1 - y_home
 
-    # Treinar modelos
+    # Modelos RandomForest dual
     model_home = RandomForestClassifier(
-        n_estimators=500, max_depth=12, random_state=42, class_weight='balanced_subsample', n_jobs=-1
+        n_estimators=500, max_depth=12, random_state=42,
+        class_weight='balanced_subsample', n_jobs=-1
     )
     model_away = RandomForestClassifier(
-        n_estimators=500, max_depth=12, random_state=42, class_weight='balanced_subsample', n_jobs=-1
+        n_estimators=500, max_depth=12, random_state=42,
+        class_weight='balanced_subsample', n_jobs=-1
     )
 
     model_home.fit(X, y_home)
     model_away.fit(X, y_away)
 
-    # Preparar dados para hoje
+    # Preparar dados de hoje com as mesmas features
     qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
     qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
     extras_today = games_today[[
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
-        'Quadrant_Angle_XY', 'Quadrant_Angle_XZ', 'Quadrant_Angle_YZ', 
+        'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
+        'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
+        'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
         'Momentum_Diff', 'Magnitude_3D',
         'M_H', 'M_A', 'MT_H', 'MT_A'
     ]].fillna(0)
 
     X_today = pd.concat([qh_today, qa_today, ligas_today, extras_today], axis=1)
 
-    # Fazer previsões
+    # Previsões
     probas_home = model_home.predict_proba(X_today)[:, 1]
     probas_away = model_away.predict_proba(X_today)[:, 1]
 
@@ -663,24 +686,18 @@ def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
     games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
     games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
 
-    # Mostrar importância das features 3D
-    try:
-        importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
-        top_feats = importances.head(15)
-        st.markdown("### 🔍 Top Features mais importantes (Modelo 3D HOME)")
-        st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
-        
-        # Verificar se features 3D estão entre as mais importantes
-        features_3d_no_top = [feat for feat in top_feats.index if any(keyword in feat for keyword in [
-            'Dist_3D', 'Separation_3D', 'Angle_', 'Momentum', 'M_H', 'M_A'
-        ])]
-        st.info(f"📊 Features 3D no Top 15: {len(features_3d_no_top)}")
-        
-    except Exception as e:
-        st.warning(f"Não foi possível calcular importâncias: {e}")
+    # Importância das features
+    importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
+    top_feats = importances.head(15)
+    st.markdown("### 🔍 Top Features mais importantes (Modelo 3D HOME)")
+    st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
 
-    st.success("✅ Modelo 3D dual (Home/Away) com 16 quadrantes treinado com sucesso!")
+    features_3d_no_top = [feat for feat in top_feats.index if any(k in feat for k in ['Sin', 'Cos', 'Dist_3D', 'Momentum'])]
+    st.info(f"📊 Features vetoriais 3D (sin/cos + momentum) no Top 15: {len(features_3d_no_top)}")
+
+    st.success("✅ Modelo 3D dual (Home/Away) atualizado com vetores sin/cos!")
     return model_home, model_away, games_today
+
 
 # ---------------- SISTEMA DE INDICAÇÕES 3D PARA 16 QUADRANTES ----------------
 def adicionar_indicadores_explicativos_3d_16_dual(df):
