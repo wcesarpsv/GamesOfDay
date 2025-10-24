@@ -277,51 +277,51 @@ history['Quadrante_Away'] = history.apply(
     lambda x: classificar_quadrante_16(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
 )
 
-# =====================================================
-# 🧠 Fallback automático: calcular MT_H e MT_A se não existirem
-# =====================================================
+# # =====================================================
+# # 🧠 Fallback automático: calcular MT_H e MT_A se não existirem
+# # =====================================================
 
-def calcular_momentum_time(df, window=6):
-    """
-    Calcula o Momentum do Time (MT_) baseado em média móvel do HandScore,
-    caso as colunas MT_H / MT_A não existam ou estejam vazias.
-    """
-    df = df.copy()
+# def calcular_momentum_time(df, window=6):
+#     """
+#     Calcula o Momentum do Time (MT_) baseado em média móvel do HandScore,
+#     caso as colunas MT_H / MT_A não existam ou estejam vazias.
+#     """
+#     df = df.copy()
 
-    # Criar cópia segura
-    if 'MT_H' not in df.columns:
-        df['MT_H'] = np.nan
-    if 'MT_A' not in df.columns:
-        df['MT_A'] = np.nan
+#     # Criar cópia segura
+#     if 'MT_H' not in df.columns:
+#         df['MT_H'] = np.nan
+#     if 'MT_A' not in df.columns:
+#         df['MT_A'] = np.nan
 
-    # Concatenar todos os times
-    all_teams = pd.unique(df[['Home', 'Away']].values.ravel())
+#     # Concatenar todos os times
+#     all_teams = pd.unique(df[['Home', 'Away']].values.ravel())
 
-    # Loop em todos os times e calcular média móvel separada para Home e Away
-    for team in all_teams:
-        # ---- HOME ----
-        mask_home = df['Home'] == team
-        if mask_home.sum() > 0:
-            series = df.loc[mask_home, 'HandScore_Home'].astype(float)
-            rolling_mean = series.rolling(window=window, min_periods=2).mean()
-            zscore = (rolling_mean - rolling_mean.mean()) / rolling_mean.std(ddof=0)
-            df.loc[mask_home, 'MT_H'] = df.loc[mask_home, 'MT_H'].fillna(zscore)
+#     # Loop em todos os times e calcular média móvel separada para Home e Away
+#     for team in all_teams:
+#         # ---- HOME ----
+#         mask_home = df['Home'] == team
+#         if mask_home.sum() > 0:
+#             series = df.loc[mask_home, 'HandScore_Home'].astype(float)
+#             rolling_mean = series.rolling(window=window, min_periods=2).mean()
+#             zscore = (rolling_mean - rolling_mean.mean()) / rolling_mean.std(ddof=0)
+#             df.loc[mask_home, 'MT_H'] = df.loc[mask_home, 'MT_H'].fillna(zscore)
 
-        # ---- AWAY ----
-        mask_away = df['Away'] == team
-        if mask_away.sum() > 0:
-            series = df.loc[mask_away, 'HandScore_Away'].astype(float)
-            rolling_mean = series.rolling(window=window, min_periods=2).mean()
-            zscore = (rolling_mean - rolling_mean.mean()) / rolling_mean.std(ddof=0)
-            df.loc[mask_away, 'MT_A'] = df.loc[mask_away, 'MT_A'].fillna(zscore)
+#         # ---- AWAY ----
+#         mask_away = df['Away'] == team
+#         if mask_away.sum() > 0:
+#             series = df.loc[mask_away, 'HandScore_Away'].astype(float)
+#             rolling_mean = series.rolling(window=window, min_periods=2).mean()
+#             zscore = (rolling_mean - rolling_mean.mean()) / rolling_mean.std(ddof=0)
+#             df.loc[mask_away, 'MT_A'] = df.loc[mask_away, 'MT_A'].fillna(zscore)
 
-    # Repreencher possíveis NaN restantes com 0
-    df['MT_H'] = df['MT_H'].fillna(0)
-    df['MT_A'] = df['MT_A'].fillna(0)
+#     # Repreencher possíveis NaN restantes com 0
+#     df['MT_H'] = df['MT_H'].fillna(0)
+#     df['MT_A'] = df['MT_A'].fillna(0)
 
-    return df
+#     return df
 
-dfz = calcular_momentum_time(dfz)
+# dfz = calcular_momentum_time(dfz)
 
 
 # ---------------- CÁLCULO DE DISTÂNCIAS 3D (Aggression × M × MT) ----------------
