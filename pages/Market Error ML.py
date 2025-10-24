@@ -469,6 +469,36 @@ except Exception as e:
     st.error(f"Error training main model: {e}")
     st.stop()
 
+
+########################################
+### Bloco 6.5 – Debug: Verificar Dados ##
+########################################
+
+st.header("🔍 Debug - Verificar Dados Preparados")
+
+st.subheader("Colunas disponíveis em games_today:")
+st.write(f"Total colunas: {len(games_today.columns)}")
+st.write(list(games_today.columns))
+
+st.subheader("Colunas CRÍTICAS - Status:")
+critical_cols = ['M_Diff', 'Home_Band', 'Away_Band', 'League_Classification', 'Dominant', 'Odd_1X', 'Odd_X2']
+for col in critical_cols:
+    exists = col in games_today.columns
+    st.write(f"{col}: {'✅' if exists else '❌'}")
+
+st.subheader("Primeiras linhas dos dados:")
+st.dataframe(games_today.head(3))
+
+st.subheader("Estatísticas básicas:")
+if not games_today.empty:
+    st.write(f"Total jogos: {len(games_today)}")
+    st.write(f"Jogos com M_H: {games_today['M_H'].notna().sum()}")
+    st.write(f"Jogos com M_A: {games_today['M_A'].notna().sum()}")
+
+# 🛑 PARAR AQUI para diagnóstico
+st.stop()
+
+
 ########################################
 ### Bloco 7 – Market Error Analysis ####
 ########################################
