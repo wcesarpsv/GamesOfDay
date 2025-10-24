@@ -558,9 +558,10 @@ fig_3d = go.Figure()
 # =====================================================
 
 # Cálculo automático de ranges com folga
-xmax = df_site[["Aggression_Home", "Aggression_Away"]].abs().max().max()
-ymax = df_site[["M_H", "M_A"]].abs().max().max()
-zmax = df_site[["MT_H", "MT_A"]].abs().max().max()
+xmax = df_plot[["Aggression_Home", "Aggression_Away"]].abs().max().max()
+ymax = df_plot[["M_H", "M_A"]].abs().max().max()
+zmax = df_plot[["MT_H", "MT_A"]].abs().max().max()
+
 
 # Adiciona 15% de folga
 xrange = [-xmax * 1.15, xmax * 1.15]
