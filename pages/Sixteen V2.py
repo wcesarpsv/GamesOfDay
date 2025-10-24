@@ -1353,9 +1353,6 @@ st.markdown("---")
 
 
 
-
-
-
 st.success("🎯 **Sistema de 16 Quadrantes ML** implementado com sucesso!")
 st.info("""
 **Resumo das melhorias:**
@@ -1365,5 +1362,8 @@ st.info("""
 - 🔍 Análise de padrões avançada
 - 📈 Visualizações otimizadas
 """)
+
+
+st.write(df[['M_H', 'M_A', 'MT_H', 'MT_A']].describe())
 
 # [CONTINUA... O RESTANTE DO CÓDIGO É SIMILAR COM AS FUNÇÕES ATUALIZADAS]
