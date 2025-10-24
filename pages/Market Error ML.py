@@ -362,6 +362,69 @@ with st.spinner(f"Loading data for {selected_date}..."):
 if games_today is None:
     st.stop()
 
+# 🔥 🔥 🔥 ADICIONE A CORREÇÃO MANUAL AQUI:
+st.header("🔍 Verificação do prepare_games_data")
+
+# Lista de features que DEVERIAM existir
+expected_features = ['M_Diff', 'Home_Band', 'Away_Band', 'Dominant', 'League_Classification', 'Odd_1X', 'Odd_X2']
+missing_features = [f for f in expected_features if f not in games_today.columns]
+
+if missing_features:
+    st.warning(f"⚠️ Features faltantes: {missing_features}")
+    st.info("Aplicando correção manual...")
+    
+    # 1. Calcular M_Diff
+    if 'M_Diff' not in games_today.columns:
+        games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
+        st.success("✅ M_Diff criada")
+
+    # 2. Calcular odds dupla chance
+    if all(col in games_today.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
+        if 'Odd_1X' not in games_today.columns or 'Odd_X2' not in games_today.columns:
+            probs_dc = pd.DataFrame()
+            probs_dc['p_H'] = 1 / games_today['Odd_H']
+            probs_dc['p_D'] = 1 / games_today['Odd_D']
+            probs_dc['p_A'] = 1 / games_today['Odd_A']
+            probs_dc = probs_dc.div(probs_dc.sum(axis=1), axis=0)
+            games_today['Odd_1X'] = 1 / (probs_dc['p_H'] + probs_dc['p_D'])
+            games_today['Odd_X2'] = 1 / (probs_dc['p_A'] + probs_dc['p_D'])
+            st.success("✅ Odd_1X e Odd_X2 criadas")
+
+    # 3. Criar bandas simples
+    if 'Home_Band' not in games_today.columns:
+        games_today['Home_Band'] = np.where(
+            games_today['M_H'] > 0.5, 'Top 20%',
+            np.where(games_today['M_H'] < -0.5, 'Bottom 20%', 'Balanced')
+        )
+        st.success("✅ Home_Band criada")
+
+    if 'Away_Band' not in games_today.columns:
+        games_today['Away_Band'] = np.where(
+            games_today['M_A'] > 0.5, 'Top 20%', 
+            np.where(games_today['M_A'] < -0.5, 'Bottom 20%', 'Balanced')
+        )
+        st.success("✅ Away_Band criada")
+
+    # 4. Criar dominant side
+    if 'Dominant' not in games_today.columns:
+        try:
+            games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
+            st.success("✅ Dominant criada")
+        except Exception as e:
+            st.error(f"Erro ao criar Dominant: {e}")
+            games_today['Dominant'] = "Mixed / Neutral"  # Fallback
+
+    # 5. League classification fallback
+    if 'League_Classification' not in games_today.columns:
+        games_today['League_Classification'] = 'Medium Variation'
+        st.success("✅ League_Classification criada")
+
+    st.success("🎉 Todas as features recriadas manualmente!")
+else:
+    st.success("✅ Todas as features já existem!")
+
+
+
 # Aplicar filtros de liga
 league_filters = []
 if show_high_var:
