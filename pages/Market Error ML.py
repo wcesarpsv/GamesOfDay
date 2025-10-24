@@ -520,6 +520,45 @@ if not games_today.empty:
 st.stop()
 
 
+
+########################################
+### Bloco 6.9 – Debug do prepare_games_data ###
+########################################
+
+st.header("🔍 Debug - prepare_games_data")
+
+# Verificar se as funções de preparação estão funcionando
+st.subheader("1. Verificar compute_double_chance_odds:")
+games_test = games_today.copy()
+games_test = compute_double_chance_odds(games_test)
+st.write(f"Odd_1X criada: {'Odd_1X' in games_test.columns}")
+st.write(f"Odd_X2 criada: {'Odd_X2' in games_test.columns}")
+
+st.subheader("2. Verificar M_Diff:")
+games_test['M_Diff'] = games_test['M_H'] - games_test['M_A'] 
+st.write(f"M_Diff criada: {'M_Diff' in games_test.columns}")
+
+st.subheader("3. Verificar dominant_side:")
+try:
+    games_test['Dominant'] = games_test.apply(dominant_side, axis=1)
+    st.write(f"Dominant criada: {'Dominant' in games_test.columns}")
+except Exception as e:
+    st.error(f"Erro em dominant_side: {e}")
+
+st.subheader("4. Colunas FINAIS em games_today:")
+st.write("Colunas disponíveis:")
+st.write(list(games_today.columns))
+
+st.subheader("5. Comparação - O que DEVERIA existir vs o que EXISTE:")
+expected_features = ['M_Diff', 'Home_Band', 'Away_Band', 'Dominant', 'League_Classification', 'Odd_1X', 'Odd_X2']
+for feat in expected_features:
+    exists = feat in games_today.columns
+    st.write(f"{feat}: {'✅' if exists else '❌'}")
+
+# 🛑 PARAR AQUI
+st.stop()
+
+
 ########################################
 ### Bloco 7 – Market Error Analysis ####
 ########################################
