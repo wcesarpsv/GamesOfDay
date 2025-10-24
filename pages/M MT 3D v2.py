@@ -489,30 +489,11 @@ fig_3d.add_trace(go.Scatter3d(
     hoverinfo='skip'
 ))
 
-# # Adicionar pontos Away (vermelho)
-# fig_3d.add_trace(go.Scatter3d(
-#     x=df_plot["Aggression_Away"],
-#     y=df_plot["M_A"],
-#     z=df_plot["MT_A"],
-#     mode='markers+text',
-#     name='Away',
-#     marker=dict(
-#         color='orangered',
-#         size=8,
-#         opacity=0.8,
-#         symbol='diamond'
-#     ),
-#     text=df_plot["Away"],
-#     textposition="top center",
-#     hoverinfo='skip'
-# ))
-
-
 # Adicionar pontos Away (vermelho)
 fig_3d.add_trace(go.Scatter3d(
     x=df_plot["Aggression_Away"],
-    y=df_plot["HandScore_Away"], 
-    z=df_plot["M_A"],
+    y=df_plot["M_A"],
+    z=df_plot["MT_A"],
     mode='markers+text',
     name='Away',
     marker=dict(
@@ -525,6 +506,7 @@ fig_3d.add_trace(go.Scatter3d(
     textposition="top center",
     hoverinfo='skip'
 ))
+
 
 # Layout do gráfico 3D
 titulo_3d = f"Top {n_to_show} Distâncias 3D – Aggression × HandScore × Momentum"
