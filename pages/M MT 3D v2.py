@@ -520,155 +520,220 @@ with col1:
 with col2:
     st.pyplot(plot_quadrantes_16(games_today, "Away"))
 
-# ---------------- VISUALIZAÇÃO INTERATIVA 3D ----------------
+
+# ---------------- VISUALIZAÇÃO INTERATIVA 3D COM TAMANHO FIXO ----------------
 import plotly.graph_objects as go
 
-st.markdown("## 🎯 Visualização Interativa 3D – Aggression × Momentum (Liga) × Momentum (Time)")
+st.markdown("## 🎯 Visualização Interativa 3D – Tamanho Fixo")
 
-# Filtros interativos
-if "League" in games_today.columns and not games_today["League"].isna().all():
-    leagues = sorted(games_today["League"].dropna().unique())
-    selected_league = st.selectbox(
-        "Selecione a liga para análise:",
-        options=["⚽ Todas as ligas"] + leagues,
-        index=0
-    )
+# Filtros interativos (mantenha o mesmo código anterior...)
 
-    if selected_league != "⚽ Todas as ligas":
-        df_filtered = games_today[games_today["League"] == selected_league].copy()
-    else:
-        df_filtered = games_today.copy()
-else:
-    st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
-    df_filtered = games_today.copy()
+# ---------------------- CONFIGURAÇÃO COM TAMANHO FIXO ----------------------
+def create_fixed_3d_plot(df_plot, n_to_show, selected_league):
+    """Cria gráfico 3D com tamanho fixo para referência espacial consistente"""
+    
+    fig_3d = go.Figure()
 
-# Controle de número de confrontos
-max_n = len(df_filtered)
-n_to_show = st.slider("Quantos confrontos exibir (Top por distância 3D):", 10, min(max_n, 200), 40, step=5)
+    # RANGES FIXOS PARA REFERÊNCIA ESPACIAL
+    X_RANGE = [-1.2, 1.2]      # Aggression (-1.2 a +1.2)
+    Y_RANGE = [-4.0, 4.0]      # Momentum Liga (-4.0 a +4.0)  
+    Z_RANGE = [-4.0, 4.0]      # Momentum Time (-4.0 a +4.0)
 
-# Preparar dados para visualização 3D
-df_plot = df_filtered.nlargest(n_to_show, "Quadrant_Dist_3D").reset_index(drop=True)
+    for _, row in df_plot.iterrows():
+        # Garantir valores válidos (fallback = 0)
+        xh = row.get("Aggression_Home", 0) or 0
+        yh = row.get("M_H", 0) if not pd.isna(row.get("M_H")) else 0
+        zh = row.get("MT_H", 0) if not pd.isna(row.get("MT_H")) else 0
 
-# Criar gráfico 3D interativo com MT (Momentum Time)
-fig_3d = go.Figure()
+        xa = row.get("Aggression_Away", 0) or 0
+        ya = row.get("M_A", 0) if not pd.isna(row.get("M_A")) else 0
+        za = row.get("MT_A", 0) if not pd.isna(row.get("MT_A")) else 0
 
-# ---------------------- NOVO BLOCO 3D SEGURO ----------------------
-for _, row in df_plot.iterrows():
-    # Garantir valores válidos (fallback = 0)
-    xh = row.get("Aggression_Home", 0) or 0
-    yh = row.get("M_H", 0) if not pd.isna(row.get("M_H")) else 0
-    zh = row.get("MT_H", 0) if not pd.isna(row.get("MT_H")) else 0
+        # Verificar se há dados válidos para traçar
+        if all(v == 0 for v in [xh, yh, zh, xa, ya, za]):
+            continue
 
-    xa = row.get("Aggression_Away", 0) or 0
-    ya = row.get("M_A", 0) if not pd.isna(row.get("M_A")) else 0
-    za = row.get("MT_A", 0) if not pd.isna(row.get("MT_A")) else 0
+        # Plotar linha de conexão (Home → Away)
+        fig_3d.add_trace(go.Scatter3d(
+            x=[xh, xa],
+            y=[yh, ya], 
+            z=[zh, za],
+            mode='lines+markers',
+            line=dict(color='gray', width=4),
+            marker=dict(size=5),
+            hoverinfo='text',
+            hovertext=(
+                f"<b>{row.get('Home','N/A')} vs {row.get('Away','N/A')}</b><br>"
+                f"🏆 {row.get('League','N/A')}<br>"
+                f"🎯 Home: {QUADRANTES_16.get(row.get('Quadrante_Home'), {}).get('nome', 'N/A')}<br>"
+                f"🎯 Away: {QUADRANTES_16.get(row.get('Quadrante_Away'), {}).get('nome', 'N/A')}<br>"
+                f"📏 Dist 3D: {row.get('Quadrant_Dist_3D', np.nan):.2f}<br>"
+                f"📍 Agg_H: {xh:.2f} | Agg_A: {xa:.2f}<br>"
+                f"⚙️ M_H: {row.get('M_H', np.nan):.2f} | M_A: {row.get('M_A', np.nan):.2f}<br>"
+                f"🔥 MT_H: {row.get('MT_H', np.nan):.2f} | MT_A: {row.get('MT_A', np.nan):.2f}"
+            ),
+            showlegend=False
+        ))
 
-    # Verificar se há dados válidos para traçar
-    if all(v == 0 for v in [xh, yh, zh, xa, ya, za]):
-        continue  # ignora linhas totalmente vazias
-
-    # Plotar linha de conexão (Home → Away)
+    # Adicionar pontos Home (azul)
     fig_3d.add_trace(go.Scatter3d(
-        x=[xh, xa],
-        y=[yh, ya],
-        z=[zh, za],
-        mode='lines+markers',
-        line=dict(color='gray', width=3),
-        marker=dict(size=4),
-        hoverinfo='text',
-        hovertext=(
-            f"<b>{row.get('Home','N/A')} vs {row.get('Away','N/A')}</b><br>"
-            f"🏆 {row.get('League','N/A')}<br>"
-            f"🎯 Home: {QUADRANTES_16.get(row.get('Quadrante_Home'), {}).get('nome', 'N/A')}<br>"
-            f"🎯 Away: {QUADRANTES_16.get(row.get('Quadrante_Away'), {}).get('nome', 'N/A')}<br>"
-            f"📏 Dist 3D: {row.get('Quadrant_Dist_3D', np.nan):.2f}<br>"
-            f"⚙️ M_H: {row.get('M_H', np.nan):.2f} | M_A: {row.get('M_A', np.nan):.2f}<br>"
-            f"🔥 MT_H: {row.get('MT_H', np.nan):.2f} | MT_A: {row.get('MT_A', np.nan):.2f}<br>"
-            f"Δ Momentum Liga: {row.get('Momentum_Diff', np.nan):.2f}<br>"
-            f"Δ Momentum Time: {row.get('Momentum_Diff_MT', np.nan):.2f}"
+        x=df_plot["Aggression_Home"],
+        y=df_plot["M_H"], 
+        z=df_plot["MT_H"],
+        mode='markers+text',
+        name='Home',
+        marker=dict(
+            color='royalblue',
+            size=10,
+            opacity=0.9,
+            symbol='circle',
+            line=dict(color='darkblue', width=2)
         ),
+        text=df_plot["Home"],
+        textposition="top center",
+        hoverinfo='skip'
+    ))
+
+    # Adicionar pontos Away (vermelho)
+    fig_3d.add_trace(go.Scatter3d(
+        x=df_plot["Aggression_Away"],
+        y=df_plot["M_A"],
+        z=df_plot["MT_A"], 
+        mode='markers+text',
+        name='Away',
+        marker=dict(
+            color='orangered',
+            size=10,
+            opacity=0.9,
+            symbol='diamond',
+            line=dict(color='darkred', width=2)
+        ),
+        text=df_plot["Away"],
+        textposition="top center",
+        hoverinfo='skip'
+    ))
+
+    # ---------------------- PLANOS DE REFERÊNCIA FIXOS ----------------------
+    # Plano XY (z=0) - para referência
+    x_plane = np.array([X_RANGE[0], X_RANGE[1], X_RANGE[1], X_RANGE[0]])
+    y_plane = np.array([Y_RANGE[0], Y_RANGE[0], Y_RANGE[1], Y_RANGE[1]])
+    z_plane = np.array([0, 0, 0, 0])
+    
+    fig_3d.add_trace(go.Mesh3d(
+        x=x_plane, y=y_plane, z=z_plane,
+        color='lightgray',
+        opacity=0.1,
+        name='Plano Neutro (Z=0)'
+    ))
+
+    # Linhas dos eixos principais
+    fig_3d.add_trace(go.Scatter3d(
+        x=[X_RANGE[0], X_RANGE[1]], y=[0, 0], z=[0, 0],
+        mode='lines',
+        line=dict(color='red', width=4),
+        name='Eixo X (Aggression)',
+        showlegend=False
+    ))
+    
+    fig_3d.add_trace(go.Scatter3d(
+        x=[0, 0], y=[Y_RANGE[0], Y_RANGE[1]], z=[0, 0],
+        mode='lines', 
+        line=dict(color='green', width=4),
+        name='Eixo Y (Momentum Liga)',
+        showlegend=False
+    ))
+    
+    fig_3d.add_trace(go.Scatter3d(
+        x=[0, 0], y=[0, 0], z=[Z_RANGE[0], Z_RANGE[1]],
+        mode='lines',
+        line=dict(color='blue', width=4),
+        name='Eixo Z (Momentum Time)',
         showlegend=False
     ))
 
+    # ---------------------- LAYOUT COM TAMANHO FIXO ----------------------
+    titulo_3d = f"Top {n_to_show} Distâncias 3D – Tamanho Fixo"
+    if selected_league != "⚽ Todas as ligas":
+        titulo_3d += f" | {selected_league}"
 
-# Adicionar pontos Home (azul)
-fig_3d.add_trace(go.Scatter3d(
-    x=df_plot["Aggression_Home"],
-    y=df_plot["M_H"],
-    z=df_plot["MT_H"],
-    mode='markers+text',
-    name='Home',
-    marker=dict(
-        color='royalblue',
-        size=8,
-        opacity=0.8,
-        symbol='circle'
-    ),
-    text=df_plot["Home"],
-    textposition="top center",
-    hoverinfo='skip'
-))
-
-# Adicionar pontos Away (vermelho)
-fig_3d.add_trace(go.Scatter3d(
-    x=df_plot["Aggression_Away"],
-    y=df_plot["M_A"],
-    z=df_plot["MT_A"],
-    mode='markers+text',
-    name='Away',
-    marker=dict(
-        color='orangered',
-        size=8,
-        opacity=0.8,
-        symbol='diamond'
-    ),
-    text=df_plot["Away"],
-    textposition="top center",
-    hoverinfo='skip'
-))
-
-
-# Layout do gráfico 3D
-titulo_3d = f"Top {n_to_show} Distâncias 3D – Aggression × Momentum (Liga) × Momentum (Time)"
-if selected_league != "⚽ Todas as ligas":
-    titulo_3d += f" | {selected_league}"
-
-fig_3d.update_layout(
-    title=titulo_3d,
-    scene=dict(
-        xaxis=dict(
-            title='Aggression (-1 zebra ↔ +1 favorito)',
-            range=[-1.1, 1.1],
-            backgroundcolor="rgba(240,240,240,0.05)",
-            gridcolor="gray",
-            showbackground=True
+    fig_3d.update_layout(
+        title=dict(
+            text=titulo_3d,
+            x=0.5,
+            font=dict(size=16, color='white')
         ),
-        yaxis=dict(
-            title='Momentum (Liga)',
-            range=[-3.5, 3.5],
-            backgroundcolor="rgba(240,240,240,0.05)",
-            gridcolor="gray",
-            showbackground=True
+        scene=dict(
+            # RANGES FIXOS PARA REFERÊNCIA CONSISTENTE
+            xaxis=dict(
+                title='Aggression (-1 zebra ↔ +1 favorito)',
+                range=X_RANGE,
+                backgroundcolor="rgba(20,20,20,0.1)",
+                gridcolor="gray",
+                showbackground=True,
+                gridwidth=2,
+                zerolinecolor="red",
+                zerolinewidth=4
+            ),
+            yaxis=dict(
+                title='Momentum (Liga)',
+                range=Y_RANGE, 
+                backgroundcolor="rgba(20,20,20,0.1)",
+                gridcolor="gray",
+                showbackground=True,
+                gridwidth=2,
+                zerolinecolor="green",
+                zerolinewidth=4
+            ),
+            zaxis=dict(
+                title='Momentum (Time)',
+                range=Z_RANGE,
+                backgroundcolor="rgba(20,20,20,0.1)", 
+                gridcolor="gray",
+                showbackground=True,
+                gridwidth=2,
+                zerolinecolor="blue",
+                zerolinewidth=4
+            ),
+            
+            # CONFIGURAÇÃO DE CÂMERA FIXA
+            aspectmode="cube",  # FORÇA PROPORÇÕES IGUAIS
+            camera=dict(
+                eye=dict(x=1.8, y=1.8, z=1.2),  # POSIÇÃO FIXA DA CÂMERA
+                up=dict(x=0, y=0, z=1),
+                center=dict(x=0, y=0, z=0)
+            )
         ),
-        zaxis=dict(
-            title='Momentum (Time)',
-            range=[-3.5, 3.5],
-            backgroundcolor="rgba(240,240,240,0.05)",
-            gridcolor="gray",
-            showbackground=True
-        ),
-        aspectmode="cube",  # garante proporção igual entre eixos
-        camera=dict(
-            eye=dict(x=1.8, y=1.8, z=1.2)
+        template="plotly_dark",
+        height=800,  # ALTURA FIXA
+        margin=dict(l=0, r=0, b=0, t=50),
+        legend=dict(
+            x=0.02,
+            y=0.98,
+            bgcolor="rgba(0,0,0,0.5)"
         )
-    ),
-    template="plotly_dark",
-    height=700,
-    margin=dict(l=0, r=0, b=0, t=40)
-)
+    )
+    
+    return fig_3d
 
+# Substituir a chamada do gráfico 3D existente por:
+fig_3d_fixed = create_fixed_3d_plot(df_plot, n_to_show, selected_league)
+st.plotly_chart(fig_3d_fixed, use_container_width=True)
 
-st.plotly_chart(fig_3d, use_container_width=True)
+# ---------------------- LEGENDA DE REFERÊNCIA ----------------------
+st.markdown("""
+### 🎯 Legenda do Espaço 3D Fixo
+
+**Eixos com Ranges Fixos:**
+- **X (Vermelho)**: Aggression → `-1.2` (Zebra Extrema) ↔ `+1.2` (Favorito Extremo)
+- **Y (Verde)**: Momentum Liga → `-4.0` (Muito Negativo) ↔ `+4.0` (Muito Positivo)  
+- **Z (Azul)**: Momentum Time → `-4.0` (Muito Negativo) ↔ `+4.0` (Muito Positivo)
+
+**Referências Visuais:**
+- 📍 **Plano Cinza**: Ponto neutro (Z=0) - momentum time equilibrado
+- 🔵 **Bolas Azuis**: Times da Casa (Home)
+- 🔴 **Losangos Vermelhos**: Visitantes (Away)
+- ⚫ **Linhas Cinzas**: Conexões entre confrontos
+""")
 
 # ---------------- MODELO ML 3D PARA 16 QUADRANTES ----------------
 def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
