@@ -321,6 +321,7 @@ def calcular_momentum_time(df, window=6):
 
     return df
 
+dfz = calcular_momentum_time(dfz)
 
 
 # ---------------- CÁLCULO DE DISTÂNCIAS 3D (Aggression × M × MT) ----------------
