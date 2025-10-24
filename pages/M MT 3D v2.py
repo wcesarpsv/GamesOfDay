@@ -552,6 +552,55 @@ df_plot = df_filtered.nlargest(n_to_show, "Quadrant_Dist_3D").reset_index(drop=T
 # Criar gráfico 3D interativo com MT (Momentum Time)
 fig_3d = go.Figure()
 
+
+# =====================================================
+# 🎨 BLOCO – Escala Adaptativa 3D (Aspecto Realista)
+# =====================================================
+
+# Cálculo automático de ranges com folga
+xmax = df_site[["Aggression_Home", "Aggression_Away"]].abs().max().max()
+ymax = df_site[["M_H", "M_A"]].abs().max().max()
+zmax = df_site[["MT_H", "MT_A"]].abs().max().max()
+
+# Adiciona 15% de folga
+xrange = [-xmax * 1.15, xmax * 1.15]
+yrange = [-ymax * 1.15, ymax * 1.15]
+zrange = [-zmax * 1.15, zmax * 1.15]
+
+fig_3d.update_layout(
+    title=titulo_3d,
+    scene=dict(
+        xaxis=dict(
+            title='Aggression (Domínio de Jogo)',
+            range=xrange,
+            backgroundcolor="rgba(240,240,240,0.05)",
+            gridcolor="gray",
+            showbackground=True
+        ),
+        yaxis=dict(
+            title='Momentum (Liga)',
+            range=yrange,
+            backgroundcolor="rgba(240,240,240,0.05)",
+            gridcolor="gray",
+            showbackground=True
+        ),
+        zaxis=dict(
+            title='Momentum (Time)',
+            range=zrange,
+            backgroundcolor="rgba(240,240,240,0.05)",
+            gridcolor="gray",
+            showbackground=True
+        ),
+        # Proporções reais e câmera estável
+        aspectmode="cube",
+        aspectratio=dict(x=1, y=1, z=1),
+        camera=dict(eye=dict(x=1.6, y=1.8, z=1.2))
+    ),
+    template="plotly_dark",
+    height=850,
+    margin=dict(l=0, r=0, b=0, t=60)
+)
+
 # ---------------------- NOVO BLOCO 3D SEGURO ----------------------
 for _, row in df_plot.iterrows():
     # Garantir valores válidos (fallback = 0)
@@ -1338,40 +1387,40 @@ if not games_today.empty and 'Classificacao_Potencial_3D' in games_today.columns
     resumo_3d_16_quadrantes_hoje(games_today)
 
 
-########################################
-#### 🧭 BLOCO DE VALIDAÇÃO DE ÂNGULOS E EIXOS
-########################################
-def diagnostico_vetorial(df, home_team, away_team):
-    jogo = df[(df['Home'] == home_team) & (df['Away'] == away_team)]
-    if jogo.empty:
-        st.warning("⚠️ Jogo não encontrado.")
-        return
+# ########################################
+# #### 🧭 BLOCO DE VALIDAÇÃO DE ÂNGULOS E EIXOS
+# ########################################
+# def diagnostico_vetorial(df, home_team, away_team):
+#     jogo = df[(df['Home'] == home_team) & (df['Away'] == away_team)]
+#     if jogo.empty:
+#         st.warning("⚠️ Jogo não encontrado.")
+#         return
 
-    dx = jogo['Aggression_Home'].values[0] - jogo['Aggression_Away'].values[0]
-    dy = jogo['M_H'].values[0] - jogo['M_A'].values[0]
-    dz = jogo['MT_H'].values[0] - jogo['MT_A'].values[0]
+#     dx = jogo['Aggression_Home'].values[0] - jogo['Aggression_Away'].values[0]
+#     dy = jogo['M_H'].values[0] - jogo['M_A'].values[0]
+#     dz = jogo['MT_H'].values[0] - jogo['MT_A'].values[0]
 
-    angle_XY = np.degrees(np.arctan2(dy, dx))
-    angle_XZ = np.degrees(np.arctan2(dz, dx))
-    angle_YZ = np.degrees(np.arctan2(dz, dy))
+#     angle_XY = np.degrees(np.arctan2(dy, dx))
+#     angle_XZ = np.degrees(np.arctan2(dz, dx))
+#     angle_YZ = np.degrees(np.arctan2(dz, dy))
 
-    st.markdown("### 🧮 Diagnóstico do Vetor 3D")
-    st.write(f"**Home:** {home_team} | **Away:** {away_team}")
-    st.write(f"dx (Aggression): {dx:.4f}")
-    st.write(f"dy (M - Liga): {dy:.4f}")
-    st.write(f"dz (MT - Time): {dz:.4f}")
-    st.write(f"angle_XY (Agg × M): {angle_XY:.2f}°")
-    st.write(f"angle_XZ (Agg × MT): {angle_XZ:.2f}°")
-    st.write(f"angle_YZ (M × MT): {angle_YZ:.2f}°")
+#     st.markdown("### 🧮 Diagnóstico do Vetor 3D")
+#     st.write(f"**Home:** {home_team} | **Away:** {away_team}")
+#     st.write(f"dx (Aggression): {dx:.4f}")
+#     st.write(f"dy (M - Liga): {dy:.4f}")
+#     st.write(f"dz (MT - Time): {dz:.4f}")
+#     st.write(f"angle_XY (Agg × M): {angle_XY:.2f}°")
+#     st.write(f"angle_XZ (Agg × MT): {angle_XZ:.2f}°")
+#     st.write(f"angle_YZ (M × MT): {angle_YZ:.2f}°")
 
-    # Quick check visual
-    if abs(dz) < 1e-6:
-        st.info("📉 MT_ ≈ 0 → vetor achatado no plano XY (sem componente vertical).")
-    else:
-        st.success("📈 MT_ ≠ 0 → componente vertical detectada (ângulo 3D ativo).")
+#     # Quick check visual
+#     if abs(dz) < 1e-6:
+#         st.info("📉 MT_ ≈ 0 → vetor achatado no plano XY (sem componente vertical).")
+#     else:
+#         st.success("📈 MT_ ≠ 0 → componente vertical detectada (ângulo 3D ativo).")
 
-# exemplo de uso:
-diagnostico_vetorial(games_today, "Bahia", "Internacional RS")
+# # exemplo de uso:
+# diagnostico_vetorial(games_today, "Bahia", "Internacional RS")
 
 
 
