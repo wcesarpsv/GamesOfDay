@@ -466,7 +466,10 @@ try:
     main_model, encoder, features_raw = train_main_model(history, selected_date)
     if main_model is None:
         st.stop()
-    st.success("✅ Main ML model trained successfully!")st.subheader("🔍 Verificação das Features do Modelo")
+    st.success("✅ Main ML model trained successfully!")
+    
+    # 🔥 🔥 🔥 ADICIONE AQUI O NOVO CÓDIGO:
+    st.subheader("🔍 Verificação das Features do Modelo")
     st.write(f"Features_raw retornadas pelo modelo: {features_raw}")
     st.write(f"Tipo: {type(features_raw)}, Quantidade: {len(features_raw)}")
     
