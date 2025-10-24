@@ -1175,6 +1175,59 @@ if not games_today.empty and 'Classificacao_Potencial' in games_today.columns:
     resumo_16_quadrantes_hoje(games_today)
 
 st.markdown("---")
+
+
+########################################
+### 📊 BLOCO – Mapa Angular de Valor (EV Map)
+########################################
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+st.markdown("## 🧭 Mapa Angular de Valor – Espaço Vetorial (sin/cos)")
+
+try:
+    # ✅ Garantir que o histórico tenha sin/cos e target
+    df_ev = history.copy()
+    df_ev = df_ev.dropna(subset=['Quadrant_Sin', 'Quadrant_Cos', 'Target_AH_Home'])
+    
+    # 🔹 Discretizar o plano (binning 2D)
+    bins = 30
+    df_ev['bin_sin'] = pd.cut(df_ev['Quadrant_Sin'], bins=bins)
+    df_ev['bin_cos'] = pd.cut(df_ev['Quadrant_Cos'], bins=bins)
+
+    # 🔹 Calcular média do target por célula
+    heatmap_data = df_ev.groupby(['bin_sin', 'bin_cos'])['Target_AH_Home'].mean().unstack()
+
+    # 🔹 Criar figura
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.heatmap(
+        heatmap_data,
+        cmap='RdYlGn',
+        cbar_kws={'label': 'Média de Acerto (Target_AH_Home)'},
+        center=0.5,
+        ax=ax
+    )
+
+    ax.set_title("🧭 Mapa Angular de Valor (sin/cos) – Histórico", fontsize=14, weight='bold')
+    ax.set_xlabel("Quadrant_Cos → Dominância (Aggression)")
+    ax.set_ylabel("Quadrant_Sin → Eficiência (HandScore)")
+
+    st.pyplot(fig)
+
+    st.info("""
+    **Leitura rápida:**
+    - 🟢 Regiões verdes → confrontos em que o Home cobre com frequência (valor no favorito).
+    - 🔴 Regiões vermelhas → confrontos em que o favorito falha (valor no underdog).
+    - Eixo X: diferença de agressividade (cos)
+    - Eixo Y: diferença de eficiência (sin)
+    """)
+
+except Exception as e:
+    st.warning(f"⚠️ Falha ao gerar o mapa angular: {e}")
+
+
+
+
 st.success("🎯 **Sistema de 16 Quadrantes ML** implementado com sucesso!")
 st.info("""
 **Resumo das melhorias:**
