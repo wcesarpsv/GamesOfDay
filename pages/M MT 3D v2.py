@@ -509,8 +509,8 @@ fig_3d.update_layout(
     title=titulo_3d,
     scene=dict(
         xaxis_title='Aggression (-1 zebra ↔ +1 favorito)',
-        yaxis_title= 'Momentum (Liga)',
-        zaxis_title= 'Momentum (Time)',
+        yaxis_title= 'Momentum (Time)',
+        zaxis_title= 'Momentum (Liga)',
         camera=dict(
             eye=dict(x=1.5, y=1.5, z=1.5)
         )
