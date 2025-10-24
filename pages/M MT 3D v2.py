@@ -759,23 +759,6 @@ st.markdown("""
 
 
 
-
-# ---------------------- LEGENDA DE REFERÊNCIA ----------------------
-st.markdown("""
-### 🎯 Legenda do Espaço 3D Fixo
-
-**Eixos com Ranges Fixos:**
-- **X (Vermelho)**: Aggression → `-1.2` (Zebra Extrema) ↔ `+1.2` (Favorito Extremo)
-- **Y (Verde)**: Momentum Liga → `-4.0` (Muito Negativo) ↔ `+4.0` (Muito Positivo)  
-- **Z (Azul)**: Momentum Time → `-4.0` (Muito Negativo) ↔ `+4.0` (Muito Positivo)
-
-**Referências Visuais:**
-- 📍 **Plano Cinza**: Ponto neutro (Z=0) - momentum time equilibrado
-- 🔵 **Bolas Azuis**: Times da Casa (Home)
-- 🔴 **Losangos Vermelhos**: Visitantes (Away)
-- ⚫ **Linhas Cinzas**: Conexões entre confrontos
-""")
-
 # ---------------- MODELO ML 3D PARA 16 QUADRANTES ----------------
 def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
     """
