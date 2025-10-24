@@ -405,6 +405,8 @@ def train_main_model(_history, target_date):
     
     st.info(f"📊 Training model with {len(training_data)} games before {target_date}")
 
+    
+
     # Preparar target
     def map_result(row):
         if row['Goals_H_FT'] > row['Goals_A_FT']:
@@ -465,6 +467,20 @@ try:
     if main_model is None:
         st.stop()
     st.success("✅ Main ML model trained successfully!")
+    # NO FINAL do Bloco 6 (depois de train_main_model), ADICIONE:
+
+    # 🔥 GARANTIR que features_raw tem valores válidos
+    if not features_raw or len(features_raw) == 0:
+        st.warning("⚠️ features_raw está vazio! Usando fallback...")
+        features_raw = [
+            'M_H', 'M_A', 'Diff_Power', 'M_Diff',
+            'Home_Band', 'Away_Band', 'Dominant', 'League_Classification',
+            'Odd_H', 'Odd_D', 'Odd_A', 'Odd_1X', 'Odd_X2'
+        ]
+        # Filtrar apenas as que existem nos dados de treino
+        features_raw = [f for f in features_raw if f in history.columns]
+
+st.success(f"✅ Features para predição: {len(features_raw)} features")
 except Exception as e:
     st.error(f"Error training main model: {e}")
     st.stop()
