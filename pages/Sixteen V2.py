@@ -1228,6 +1228,75 @@ except Exception as e:
     st.warning(f"⚠️ Falha ao gerar o mapa angular: {e}")
 
 
+########################################
+### 🌐 BLOCO – Mapa Angular Interativo (Plotly)
+########################################
+import plotly.express as px
+
+st.markdown("## 🌐 Mapa Angular Interativo – Jogos Reais no Espaço sin/cos")
+
+try:
+    # ✅ Garantir que o histórico tenha sin/cos
+    df_plot = history.copy()
+    df_plot = df_plot.dropna(subset=['Quadrant_Sin', 'Quadrant_Cos', 'Target_AH_Home'])
+
+    # 🔹 Calcular cor (verde = acerto, vermelho = erro)
+    df_plot['Color'] = df_plot['Target_AH_Home'].apply(lambda x: 'green' if x >= 0.5 else 'red')
+
+    # 🔹 Definir tamanho por distância vetorial (quanto mais distinto o confronto, maior o ponto)
+    df_plot['Size'] = df_plot['Quadrant_Dist'].clip(0, 40)
+
+    # 🔹 Texto hover detalhado
+    df_plot['HoverText'] = (
+        "<b>" + df_plot['Home'] + " vs " + df_plot['Away'] + "</b><br>" +
+        "🏆 " + df_plot.get('League', 'N/A').astype(str) + "<br>" +
+        "⚙️ Linha Asiática: " + df_plot.get('Asian_Line', '').astype(str) + "<br>" +
+        "🎯 Target_AH_Home: " + df_plot['Target_AH_Home'].astype(str)
+    )
+
+    # 🔹 Criar figura
+    fig = px.scatter(
+        df_plot,
+        x='Quadrant_Cos',
+        y='Quadrant_Sin',
+        color='Color',
+        color_discrete_map={'green': 'green', 'red': 'red'},
+        size='Size',
+        hover_name='HoverText',
+        title='Mapa Angular Interativo – Home (verde) vs Falhas (vermelho)',
+        opacity=0.75,
+        height=700
+    )
+
+    # Ajustes visuais
+    fig.update_layout(
+        xaxis_title="Quadrant_Cos → Dominância (Aggression)",
+        yaxis_title="Quadrant_Sin → Eficiência (HandScore)",
+        template="plotly_white",
+        showlegend=False,
+        hoverlabel=dict(bgcolor="white", font_size=12),
+    )
+
+    # Grade e eixo central
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+    fig.add_vline(x=0, line_dash="dash", line_color="gray", opacity=0.5)
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.info("""
+    **Como interpretar:**
+    - 🟢 Pontos verdes → jogos onde o favorito cobriu o handicap.
+    - 🔴 Pontos vermelhos → jogos onde o favorito não cobriu (valor no underdog).
+    - Eixo X (`cos`): diferença de agressividade.
+    - Eixo Y (`sin`): diferença de eficiência.
+    - Padrões visíveis (concentrações de cor) revelam **zonas do espaço vetorial** onde o mercado erra.
+    """)
+
+except Exception as e:
+    st.warning(f"⚠️ Falha ao gerar o mapa interativo: {e}")
+
+
+
 
 
 st.success("🎯 **Sistema de 16 Quadrantes ML** implementado com sucesso!")
