@@ -1283,6 +1283,51 @@ st.plotly_chart(fig, use_container_width=True)
 
 
 
+########################################
+### 💰 ROI Map Vetorial (sin/cos)
+########################################
+st.markdown("## 💰 ROI Map Vetorial (sin/cos) – Onde o mercado mais erra")
+
+# Garantir que temos dados válidos
+df_roi = history.copy().dropna(subset=['Quadrant_Sin','Quadrant_Cos','Odd_H','Target_AH_Home'])
+
+# 🔹 Calcular ROI por jogo (simples: se acertou, ganha (odd-1); se errou, perde 1)
+df_roi['ROI_Game'] = np.where(df_roi['Target_AH_Home'] == 1, df_roi['Odd_H'] - 1, -1)
+
+# 🔹 Discretizar o espaço angular
+bins = np.linspace(-1, 1, 21)
+df_roi['bin_sin'] = pd.cut(df_roi['Quadrant_Sin'], bins=bins, include_lowest=True)
+df_roi['bin_cos'] = pd.cut(df_roi['Quadrant_Cos'], bins=bins, include_lowest=True)
+
+# 🔹 Agrupar por célula vetorial e calcular média de ROI
+roi_map = (
+    df_roi.groupby(['bin_sin','bin_cos'], observed=False)['ROI_Game']
+    .mean()
+    .reset_index()
+)
+
+pivot = roi_map.pivot(index='bin_sin', columns='bin_cos', values='ROI_Game')
+
+# 🔹 Plotar Heatmap (ROI médio por célula)
+fig, ax = plt.subplots(figsize=(10,8))
+sns.heatmap(
+    pivot,
+    cmap='RdYlGn',
+    center=0,
+    cbar_kws={'label': 'ROI Médio'},
+    annot=False,
+    linewidths=0.3
+)
+ax.set_title("💰 ROI Map Vetorial (sin/cos) – Histórico", fontsize=14, weight='bold')
+ax.set_xlabel("Quadrant_Cos → Dominância (Aggression)")
+ax.set_ylabel("Quadrant_Sin → Eficiência (HandScore)")
+
+st.pyplot(fig)
+
+
+
+
+
 
 
 
