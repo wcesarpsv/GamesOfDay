@@ -351,8 +351,8 @@ def calcular_distancias_3d(df):
 
     # --- Diferenças nas 3 dimensões ---
     dx = df['Aggression_Home'] - df['Aggression_Away']   # X: perfil tático
-    dy = df['M_H'] - df['M_A']                           # Y: momentum liga
-    dz = df['MT_H'] - df['MT_A']                         # Z: momentum time
+    dy = df['MT_H'] - df['MT_A']                           # Y: momentum liga
+    dz = df['M_H'] - df['M_A']                         # Z: momentum time
 
     # --- Distância Euclidiana 3D com pesos ---
     df['Quadrant_Dist_3D'] = np.sqrt(
