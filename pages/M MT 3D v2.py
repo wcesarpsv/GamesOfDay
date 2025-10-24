@@ -408,7 +408,7 @@ with col2:
 # ---------------- VISUALIZAÇÃO INTERATIVA 3D ----------------
 import plotly.graph_objects as go
 
-st.markdown("## 🎯 Visualização Interativa 3D – Aggression × HandScore × Momentum")
+st.markdown("## 🎯 Visualização Interativa 3D – Aggression × Momentum (Liga) × Momentum (Time)")
 
 # Filtros interativos
 if "League" in games_today.columns and not games_today["League"].isna().all():
@@ -509,7 +509,7 @@ fig_3d.add_trace(go.Scatter3d(
 
 
 # Layout do gráfico 3D
-titulo_3d = f"Top {n_to_show} Distâncias 3D – Aggression × HandScore × Momentum"
+titulo_3d = f"Top {n_to_show} Distâncias 3D – Aggression × Momentum (Liga) × Momentum (Time)"
 if selected_league != "⚽ Todas as ligas":
     titulo_3d += f" | {selected_league}"
 
@@ -517,8 +517,8 @@ fig_3d.update_layout(
     title=titulo_3d,
     scene=dict(
         xaxis_title='Aggression (-1 zebra ↔ +1 favorito)',
-        yaxis_title= 'Momentum (Time)',
-        zaxis_title= 'Momentum (Liga)',
+        yaxis_title= 'Momentum (Liga)',
+        zaxis_title= 'Momentum (Time)',
         camera=dict(
             eye=dict(x=1.5, y=1.5, z=1.5)
         )
