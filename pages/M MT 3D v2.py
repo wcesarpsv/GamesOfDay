@@ -1284,6 +1284,10 @@ def resumo_3d_16_quadrantes_hoje(df):
 if not games_today.empty and 'Classificacao_Potencial_3D' in games_today.columns:
     resumo_3d_16_quadrantes_hoje(games_today)
 
+
+st.write(df[['M_H', 'M_A', 'MT_H', 'MT_A']].describe())
+
+
 st.markdown("---")
 st.success("🎯 **Sistema 3D de 16 Quadrantes ML** implementado com sucesso!")
 st.info("""
