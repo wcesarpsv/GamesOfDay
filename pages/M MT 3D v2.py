@@ -526,7 +526,29 @@ import plotly.graph_objects as go
 
 st.markdown("## 🎯 Visualização Interativa 3D – Tamanho Fixo")
 
-# Filtros interativos (mantenha o mesmo código anterior...)
+# Filtros interativos
+if "League" in games_today.columns and not games_today["League"].isna().all():
+    leagues = sorted(games_today["League"].dropna().unique())
+    selected_league = st.selectbox(
+        "Selecione a liga para análise:",
+        options=["⚽ Todas as ligas"] + leagues,
+        index=0
+    )
+
+    if selected_league != "⚽ Todas as ligas":
+        df_filtered = games_today[games_today["League"] == selected_league].copy()
+    else:
+        df_filtered = games_today.copy()
+else:
+    st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
+    df_filtered = games_today.copy()
+
+# Controle de número de confrontos
+max_n = len(df_filtered)
+n_to_show = st.slider("Quantos confrontos exibir (Top por distância 3D):", 10, min(max_n, 200), 40, step=5)
+
+# Preparar dados para visualização 3D
+df_plot = df_filtered.nlargest(n_to_show, "Quadrant_Dist_3D").reset_index(drop=True)
 
 # ---------------------- CONFIGURAÇÃO COM TAMANHO FIXO ----------------------
 def create_fixed_3d_plot(df_plot, n_to_show, selected_league):
@@ -715,9 +737,28 @@ def create_fixed_3d_plot(df_plot, n_to_show, selected_league):
     
     return fig_3d
 
-# Substituir a chamada do gráfico 3D existente por:
+# Criar e exibir o gráfico 3D com tamanho fixo
 fig_3d_fixed = create_fixed_3d_plot(df_plot, n_to_show, selected_league)
 st.plotly_chart(fig_3d_fixed, use_container_width=True)
+
+# ---------------------- LEGENDA DE REFERÊNCIA ----------------------
+st.markdown("""
+### 🎯 Legenda do Espaço 3D Fixo
+
+**Eixos com Ranges Fixos:**
+- **X (Vermelho)**: Aggression → `-1.2` (Zebra Extrema) ↔ `+1.2` (Favorito Extremo)
+- **Y (Verde)**: Momentum Liga → `-4.0` (Muito Negativo) ↔ `+4.0` (Muito Positivo)  
+- **Z (Azul)**: Momentum Time → `-4.0` (Muito Negativo) ↔ `+4.0` (Muito Positivo)
+
+**Referências Visuais:**
+- 📍 **Plano Cinza**: Ponto neutro (Z=0) - momentum time equilibrado
+- 🔵 **Bolas Azuis**: Times da Casa (Home)
+- 🔴 **Losangos Vermelhos**: Visitantes (Away)
+- ⚫ **Linhas Cinzas**: Conexões entre confrontos
+""")
+
+
+
 
 # ---------------------- LEGENDA DE REFERÊNCIA ----------------------
 st.markdown("""
