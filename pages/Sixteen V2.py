@@ -553,6 +553,29 @@ fig.add_trace(go.Scatter(
     hoverinfo="skip"
 ))
 
+
+
+# Linha de referência
+fig.add_trace(go.Scatter(
+    x=[-1, 1],
+    y=[ 0, 0],
+    mode="lines",
+    line=dict(color="limegreen", width=2, dash="dash"),
+    name="Eixo X"
+))
+
+# Linha de referência
+fig.add_trace(go.Scatter(
+    x=[ 0, 0],
+    y=[-60, 60],
+    mode="lines",
+    line=dict(color="limegreen", width=2, dash="dash"),
+    name="Eixo Y"
+))
+
+
+
+
 # Layout
 titulo = f"Top {n_to_show} Distâncias – 16 Quadrantes"
 if selected_league != "⚽ Todas as ligas":
