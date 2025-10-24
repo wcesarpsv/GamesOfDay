@@ -516,17 +516,37 @@ if selected_league != "⚽ Todas as ligas":
 fig_3d.update_layout(
     title=titulo_3d,
     scene=dict(
-        xaxis_title='Aggression (-1 zebra ↔ +1 favorito)',
-        yaxis_title= 'Momentum (Liga)',
-        zaxis_title= 'Momentum (Time)',
+        xaxis=dict(
+            title='Aggression (-1 zebra ↔ +1 favorito)',
+            range=[-1.1, 1.1],
+            backgroundcolor="rgba(240,240,240,0.05)",
+            gridcolor="gray",
+            showbackground=True
+        ),
+        yaxis=dict(
+            title='Momentum (Liga)',
+            range=[-3.5, 3.5],
+            backgroundcolor="rgba(240,240,240,0.05)",
+            gridcolor="gray",
+            showbackground=True
+        ),
+        zaxis=dict(
+            title='Momentum (Time)',
+            range=[-3.5, 3.5],
+            backgroundcolor="rgba(240,240,240,0.05)",
+            gridcolor="gray",
+            showbackground=True
+        ),
+        aspectmode="cube",  # garante proporção igual entre eixos
         camera=dict(
-            eye=dict(x=1.5, y=1.5, z=1.5)
+            eye=dict(x=1.8, y=1.8, z=1.2)
         )
     ),
-    template="plotly_white",
+    template="plotly_dark",
     height=700,
-    margin=dict(l=0, r=0, b=0, t=30)
+    margin=dict(l=0, r=0, b=0, t=40)
 )
+
 
 st.plotly_chart(fig_3d, use_container_width=True)
 
