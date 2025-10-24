@@ -522,28 +522,48 @@ try:
     st.header("🔍 Debug Detalhado - Fluxo de Dados")
     
     st.subheader("1. Status Inicial:")
-    st.write(f"Total jogos inicial: {len(games_today)}")
+    st.write(f"Total jogos em games_today: {len(games_today)}")
     
-    st.subheader("2. Verificar Features Raw:")
-    st.write(f"Features_raw esperadas: {features_raw}")
-    st.write(f"Features disponíveis: {[f for f in features_raw if f in games_today.columns]}")
+    st.subheader("2. 🔥 VERIFICAR FEATURES_RAW CRITICAMENTE:")
+    st.write(f"Tipo de features_raw: {type(features_raw)}")
+    st.write(f"features_raw = {features_raw}")
     
-    st.subheader("3. Preparar X_today - ANTES do processamento:")
-    X_today_raw = games_today[[f for f in features_raw if f in games_today.columns]].copy()
-    st.write(f"X_today shape inicial: {X_today_raw.shape}")
-    st.write(f"Colunas em X_today: {list(X_today_raw.columns)}")
+    if features_raw is None:
+        st.error("❌ features_raw é None!")
+        st.stop()
+        
+    if len(features_raw) == 0:
+        st.error("❌ features_raw está VAZIO!")
+        st.stop()
     
-    st.subheader("4. Verificar Valores Faltantes:")
-    missing_count = X_today_raw.isna().sum()
-    st.write("Valores faltantes por coluna:")
-    st.write(missing_count[missing_count > 0])
+    st.subheader("3. Intersecção Features vs Dados:")
+    available_features = [f for f in features_raw if f in games_today.columns]
+    st.write(f"Features disponíveis: {available_features}")
+    st.write(f"Count: {len(available_features)}")
     
-    st.subheader("5. Verificar Categorical Columns:")
-    cat_cols = [c for c in ['Dominant','League_Classification'] if c in X_today_raw]
-    st.write(f"Colunas categóricas: {cat_cols}")
-    if cat_cols:
-        for col in cat_cols:
-            st.write(f"Valores únicos em {col}: {X_today_raw[col].unique()}")
+    st.subheader("4. Features FALTANTES:")
+    missing_features = [f for f in features_raw if f not in games_today.columns]
+    st.write(f"Features faltantes: {missing_features}")
+    
+    st.subheader("5. Criar X_today manualmente para teste:")
+    if available_features:
+        X_today_test = games_today[available_features].copy()
+        st.write(f"X_today_test shape: {X_today_test.shape}")
+        st.write("Primeiras linhas:")
+        st.dataframe(X_today_test.head(3))
+    else:
+        st.error("❌ NENHUMA feature disponível!")
+        
+        # 🆘 FALLBACK: Usar features básicas
+        st.subheader("🆘 FALLBACK - Usando features básicas:")
+        basic_fallback = ['M_H', 'M_A', 'Diff_Power', 'M_Diff', 'Odd_H', 'Odd_A']
+        available_basic = [f for f in basic_fallback if f in games_today.columns]
+        st.write(f"Features básicas disponíveis: {available_basic}")
+        
+        if available_basic:
+            X_today_fallback = games_today[available_basic].copy()
+            st.write(f"X_today_fallback shape: {X_today_fallback.shape}")
+            st.dataframe(X_today_fallback.head(3))
     
     # 🛑 PARAR para análise
     st.stop()
