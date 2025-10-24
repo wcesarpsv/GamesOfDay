@@ -434,32 +434,39 @@ n_to_show = st.slider("Quantos confrontos exibir (Top por distância 3D):", 10, 
 # Preparar dados para visualização 3D
 df_plot = df_filtered.nlargest(n_to_show, "Quadrant_Dist_3D").reset_index(drop=True)
 
-# Criar gráfico 3D interativo
+# Criar gráfico 3D interativo com MT (Momentum Time)
 fig_3d = go.Figure()
 
-# Adicionar vetores 3D Home → Away
 for _, row in df_plot.iterrows():
-    # Coordenadas Home
-    xh, yh, zh = row["Aggression_Home"], row["HandScore_Home"], row["M_H"]
-    # Coordenadas Away  
-    xa, ya, za = row["Aggression_Away"], row["HandScore_Away"], row["M_A"]
+    # Coordenadas Home (X, Y, Z)
+    xh = row.get("Aggression_Home", 0)
+    yh = row.get("M_H", 0)      # Momentum por liga
+    zh = row.get("MT_H", 0)     # Momentum individual (time)
 
-    # Vetor linha entre Home e Away
+    # Coordenadas Away
+    xa = row.get("Aggression_Away", 0)
+    ya = row.get("M_A", 0)
+    za = row.get("MT_A", 0)
+
+    # Vetor Home → Away
     fig_3d.add_trace(go.Scatter3d(
         x=[xh, xa],
-        y=[yh, ya], 
+        y=[yh, ya],
         z=[zh, za],
         mode='lines+markers',
-        line=dict(color='gray', width=4),
+        line=dict(color='gray', width=3),
         marker=dict(size=3),
         hoverinfo='text',
         hovertext=(
-            f"<b>{row['Home']} vs {row['Away']}</b><br>"
+            f"<b>{row.get('Home','N/A')} vs {row.get('Away','N/A')}</b><br>"
             f"🏆 {row.get('League','N/A')}<br>"
-            f"🎯 Home: {QUADRANTES_16.get(row['Quadrante_Home'], {}).get('nome', 'N/A')}<br>"
-            f"🎯 Away: {QUADRANTES_16.get(row['Quadrante_Away'], {}).get('nome', 'N/A')}<br>"
-            f"📏 Dist 3D: {row['Quadrant_Dist_3D']:.2f}<br>"
-            f"📈 Momentum H: {row['M_H']:.2f} | A: {row['M_A']:.2f}"
+            f"🎯 Home: {QUADRANTES_16.get(row.get('Quadrante_Home'), {}).get('nome', 'N/A')}<br>"
+            f"🎯 Away: {QUADRANTES_16.get(row.get('Quadrante_Away'), {}).get('nome', 'N/A')}<br>"
+            f"📏 Dist 3D: {row.get('Quadrant_Dist_3D', np.nan):.2f}<br>"
+            f"⚙️ M_H: {row.get('M_H', np.nan):.2f} | M_A: {row.get('M_A', np.nan):.2f}<br>"
+            f"🔥 MT_H: {row.get('MT_H', np.nan):.2f} | MT_A: {row.get('MT_A', np.nan):.2f}<br>"
+            f"Δ Momentum Liga: {row.get('Momentum_Diff', np.nan):.2f}<br>"
+            f"Δ Momentum Time: {row.get('Momentum_Diff_MT', np.nan):.2f}"
         ),
         showlegend=False
     ))
@@ -467,8 +474,8 @@ for _, row in df_plot.iterrows():
 # Adicionar pontos Home (azul)
 fig_3d.add_trace(go.Scatter3d(
     x=df_plot["Aggression_Home"],
-    y=df_plot["HandScore_Home"],
-    z=df_plot["M_H"],
+    y=df_plot["M_H"],
+    z=df_plot["MT_H"],
     mode='markers+text',
     name='Home',
     marker=dict(
@@ -481,6 +488,25 @@ fig_3d.add_trace(go.Scatter3d(
     textposition="top center",
     hoverinfo='skip'
 ))
+
+# Adicionar pontos Away (vermelho)
+fig_3d.add_trace(go.Scatter3d(
+    x=df_plot["Aggression_Away"],
+    y=df_plot["M_A"],
+    z=df_plot["MT_A"],
+    mode='markers+text',
+    name='Away',
+    marker=dict(
+        color='orangered',
+        size=8,
+        opacity=0.8,
+        symbol='diamond'
+    ),
+    text=df_plot["Away"],
+    textposition="top center",
+    hoverinfo='skip'
+))
+
 
 # Adicionar pontos Away (vermelho)
 fig_3d.add_trace(go.Scatter3d(
