@@ -1176,153 +1176,153 @@ if not games_today.empty and 'Classificacao_Potencial' in games_today.columns:
 
 st.markdown("---")
 
-# Garantir que o histórico tenha os vetores sin/cos
-history = calcular_distancias_quadrantes(history)
+# # Garantir que o histórico tenha os vetores sin/cos
+# history = calcular_distancias_quadrantes(history)
 
-########################################
-### 📊 BLOCO – Mapa Angular de Valor (EV Map)
-########################################
-import matplotlib.pyplot as plt
-import seaborn as sns
+# ########################################
+# ### 📊 BLOCO – Mapa Angular de Valor (EV Map)
+# ########################################
+# import matplotlib.pyplot as plt
+# import seaborn as sns
 
-st.markdown("## 🧭 Mapa Angular de Valor – Espaço Vetorial (sin/cos)")
+# st.markdown("## 🧭 Mapa Angular de Valor – Espaço Vetorial (sin/cos)")
 
-try:
-    # ✅ Garantir que o histórico tenha sin/cos e target
-    df_ev = history.copy()
-    df_ev = df_ev.dropna(subset=['Quadrant_Sin', 'Quadrant_Cos', 'Target_AH_Home'])
+# try:
+#     # ✅ Garantir que o histórico tenha sin/cos e target
+#     df_ev = history.copy()
+#     df_ev = df_ev.dropna(subset=['Quadrant_Sin', 'Quadrant_Cos', 'Target_AH_Home'])
     
-    # 🔹 Discretizar o plano (binning 2D)
-    bins = 30
-    df_ev['bin_sin'] = pd.cut(df_ev['Quadrant_Sin'], bins=bins)
-    df_ev['bin_cos'] = pd.cut(df_ev['Quadrant_Cos'], bins=bins)
+#     # 🔹 Discretizar o plano (binning 2D)
+#     bins = 30
+#     df_ev['bin_sin'] = pd.cut(df_ev['Quadrant_Sin'], bins=bins)
+#     df_ev['bin_cos'] = pd.cut(df_ev['Quadrant_Cos'], bins=bins)
 
-    # 🔹 Calcular média do target por célula
-    heatmap_data = df_ev.groupby(['bin_sin', 'bin_cos'])['Target_AH_Home'].mean().unstack()
+#     # 🔹 Calcular média do target por célula
+#     heatmap_data = df_ev.groupby(['bin_sin', 'bin_cos'])['Target_AH_Home'].mean().unstack()
 
-    # 🔹 Criar figura
-    fig, ax = plt.subplots(figsize=(8, 6))
-    sns.heatmap(
-        heatmap_data,
-        cmap='RdYlGn',
-        cbar_kws={'label': 'Média de Acerto (Target_AH_Home)'},
-        center=0.5,
-        ax=ax
-    )
+#     # 🔹 Criar figura
+#     fig, ax = plt.subplots(figsize=(8, 6))
+#     sns.heatmap(
+#         heatmap_data,
+#         cmap='RdYlGn',
+#         cbar_kws={'label': 'Média de Acerto (Target_AH_Home)'},
+#         center=0.5,
+#         ax=ax
+#     )
 
-    ax.set_title("🧭 Mapa Angular de Valor (sin/cos) – Histórico", fontsize=14, weight='bold')
-    ax.set_xlabel("Quadrant_Cos → Dominância (Aggression)")
-    ax.set_ylabel("Quadrant_Sin → Eficiência (HandScore)")
+#     ax.set_title("🧭 Mapa Angular de Valor (sin/cos) – Histórico", fontsize=14, weight='bold')
+#     ax.set_xlabel("Quadrant_Cos → Dominância (Aggression)")
+#     ax.set_ylabel("Quadrant_Sin → Eficiência (HandScore)")
 
-    st.pyplot(fig)
+#     st.pyplot(fig)
 
-    st.info("""
-    **Leitura rápida:**
-    - 🟢 Regiões verdes → confrontos em que o Home cobre com frequência (valor no favorito).
-    - 🔴 Regiões vermelhas → confrontos em que o favorito falha (valor no underdog).
-    - Eixo X: diferença de agressividade (cos)
-    - Eixo Y: diferença de eficiência (sin)
-    """)
+#     st.info("""
+#     **Leitura rápida:**
+#     - 🟢 Regiões verdes → confrontos em que o Home cobre com frequência (valor no favorito).
+#     - 🔴 Regiões vermelhas → confrontos em que o favorito falha (valor no underdog).
+#     - Eixo X: diferença de agressividade (cos)
+#     - Eixo Y: diferença de eficiência (sin)
+#     """)
 
-except Exception as e:
-    st.warning(f"⚠️ Falha ao gerar o mapa angular: {e}")
-
-
-import plotly.express as px
-
-# Garantir df_plot com colunas necessárias
-df_plot = history.copy().dropna(subset=['Quadrant_Sin','Quadrant_Cos','Target_AH_Home'])
-
-# Cor + tamanho (opcional)
-df_plot['Color'] = df_plot['Target_AH_Home'].apply(lambda x: 'green' if x >= 0.5 else 'red')
-df_plot['Size']  = df_plot['Quadrant_Dist'].clip(0, 40)
-
-# ⚠️ Passe os dados que serão usados no hovertemplate via custom_data (ordem importa!)
-custom_cols = ['Home','Away','League','Asian_Line','Target_AH_Home','Quadrant_Cos','Quadrant_Sin','Size']
-
-fig = px.scatter(
-    df_plot,
-    x='Quadrant_Cos',
-    y='Quadrant_Sin',
-    color='Color',
-    color_discrete_map={'green':'green','red':'red'},
-    size='Size',
-    custom_data=custom_cols,   # 👈 ESSENCIAL para %{customdata[i]}
-    opacity=0.8,
-    height=700,
-    title='Mapa Angular Interativo – Home (verde) vs Falhas (vermelho)',
-    template='plotly_white'    # troque para 'plotly_dark' se preferir
-)
-
-# Hover template usando APENAS tags seguras (<br>, <b>) e sem <hr>
-fig.update_traces(
-    hovertemplate=(
-        "<b>%{customdata[0]} vs %{customdata[1]}</b><br>" +
-        "🏆 <b>Liga:</b> %{customdata[2]}<br>" +
-        "⚙️ <b>Linha Asiática:</b> %{customdata[3]}<br>" +
-        "🎯 <b>Target_AH_Home:</b> %{customdata[4]:.2f}<br>" +
-        "📊 <b>Quadrant_Cos:</b> %{customdata[5]:.3f}<br>" +
-        "📈 <b>Quadrant_Sin:</b> %{customdata[6]:.3f}<br>" +
-        "📏 <b>Distância Vetorial:</b> %{customdata[7]:.1f}<extra></extra>"
-    ),
-    marker=dict(line=dict(width=0.5, color='rgba(0,0,0,0.3)'))  # borda leve
-)
-
-fig.update_layout(
-    xaxis_title="Quadrant_Cos → Dominância (Aggression)",
-    yaxis_title="Quadrant_Sin → Eficiência (HandScore)",
-    showlegend=False,
-    hoverlabel=dict(bgcolor="rgba(255,255,255,0.95)", font_size=13, font_color="black")
-)
-
-# Eixos de referência
-fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.4)
-fig.add_vline(x=0, line_dash="dash", line_color="gray", opacity=0.4)
-
-st.plotly_chart(fig, use_container_width=True)
+# except Exception as e:
+#     st.warning(f"⚠️ Falha ao gerar o mapa angular: {e}")
 
 
+# import plotly.express as px
 
-########################################
-### 💰 ROI Map Vetorial (sin/cos)
-########################################
-st.markdown("## 💰 ROI Map Vetorial (sin/cos) – Onde o mercado mais erra")
+# # Garantir df_plot com colunas necessárias
+# df_plot = history.copy().dropna(subset=['Quadrant_Sin','Quadrant_Cos','Target_AH_Home'])
 
-# Garantir que temos dados válidos
-df_roi = history.copy().dropna(subset=['Quadrant_Sin','Quadrant_Cos','Odd_H','Target_AH_Home'])
+# # Cor + tamanho (opcional)
+# df_plot['Color'] = df_plot['Target_AH_Home'].apply(lambda x: 'green' if x >= 0.5 else 'red')
+# df_plot['Size']  = df_plot['Quadrant_Dist'].clip(0, 40)
 
-# 🔹 Calcular ROI por jogo (simples: se acertou, ganha (odd-1); se errou, perde 1)
-df_roi['ROI_Game'] = np.where(df_roi['Target_AH_Home'] == 1, df_roi['Odd_H'] - 1, -1)
+# # ⚠️ Passe os dados que serão usados no hovertemplate via custom_data (ordem importa!)
+# custom_cols = ['Home','Away','League','Asian_Line','Target_AH_Home','Quadrant_Cos','Quadrant_Sin','Size']
 
-# 🔹 Discretizar o espaço angular
-bins = np.linspace(-1, 1, 21)
-df_roi['bin_sin'] = pd.cut(df_roi['Quadrant_Sin'], bins=bins, include_lowest=True)
-df_roi['bin_cos'] = pd.cut(df_roi['Quadrant_Cos'], bins=bins, include_lowest=True)
+# fig = px.scatter(
+#     df_plot,
+#     x='Quadrant_Cos',
+#     y='Quadrant_Sin',
+#     color='Color',
+#     color_discrete_map={'green':'green','red':'red'},
+#     size='Size',
+#     custom_data=custom_cols,   # 👈 ESSENCIAL para %{customdata[i]}
+#     opacity=0.8,
+#     height=700,
+#     title='Mapa Angular Interativo – Home (verde) vs Falhas (vermelho)',
+#     template='plotly_white'    # troque para 'plotly_dark' se preferir
+# )
 
-# 🔹 Agrupar por célula vetorial e calcular média de ROI
-roi_map = (
-    df_roi.groupby(['bin_sin','bin_cos'], observed=False)['ROI_Game']
-    .mean()
-    .reset_index()
-)
+# # Hover template usando APENAS tags seguras (<br>, <b>) e sem <hr>
+# fig.update_traces(
+#     hovertemplate=(
+#         "<b>%{customdata[0]} vs %{customdata[1]}</b><br>" +
+#         "🏆 <b>Liga:</b> %{customdata[2]}<br>" +
+#         "⚙️ <b>Linha Asiática:</b> %{customdata[3]}<br>" +
+#         "🎯 <b>Target_AH_Home:</b> %{customdata[4]:.2f}<br>" +
+#         "📊 <b>Quadrant_Cos:</b> %{customdata[5]:.3f}<br>" +
+#         "📈 <b>Quadrant_Sin:</b> %{customdata[6]:.3f}<br>" +
+#         "📏 <b>Distância Vetorial:</b> %{customdata[7]:.1f}<extra></extra>"
+#     ),
+#     marker=dict(line=dict(width=0.5, color='rgba(0,0,0,0.3)'))  # borda leve
+# )
 
-pivot = roi_map.pivot(index='bin_sin', columns='bin_cos', values='ROI_Game')
+# fig.update_layout(
+#     xaxis_title="Quadrant_Cos → Dominância (Aggression)",
+#     yaxis_title="Quadrant_Sin → Eficiência (HandScore)",
+#     showlegend=False,
+#     hoverlabel=dict(bgcolor="rgba(255,255,255,0.95)", font_size=13, font_color="black")
+# )
 
-# 🔹 Plotar Heatmap (ROI médio por célula)
-fig, ax = plt.subplots(figsize=(10,8))
-sns.heatmap(
-    pivot,
-    cmap='RdYlGn',
-    center=0,
-    cbar_kws={'label': 'ROI Médio'},
-    annot=False,
-    linewidths=0.3
-)
-ax.set_title("💰 ROI Map Vetorial (sin/cos) – Histórico", fontsize=14, weight='bold')
-ax.set_xlabel("Quadrant_Cos → Dominância (Aggression)")
-ax.set_ylabel("Quadrant_Sin → Eficiência (HandScore)")
+# # Eixos de referência
+# fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.4)
+# fig.add_vline(x=0, line_dash="dash", line_color="gray", opacity=0.4)
 
-st.pyplot(fig)
+# st.plotly_chart(fig, use_container_width=True)
+
+
+
+# ########################################
+# ### 💰 ROI Map Vetorial (sin/cos)
+# ########################################
+# st.markdown("## 💰 ROI Map Vetorial (sin/cos) – Onde o mercado mais erra")
+
+# # Garantir que temos dados válidos
+# df_roi = history.copy().dropna(subset=['Quadrant_Sin','Quadrant_Cos','Odd_H','Target_AH_Home'])
+
+# # 🔹 Calcular ROI por jogo (simples: se acertou, ganha (odd-1); se errou, perde 1)
+# df_roi['ROI_Game'] = np.where(df_roi['Target_AH_Home'] == 1, df_roi['Odd_H'] - 1, -1)
+
+# # 🔹 Discretizar o espaço angular
+# bins = np.linspace(-1, 1, 21)
+# df_roi['bin_sin'] = pd.cut(df_roi['Quadrant_Sin'], bins=bins, include_lowest=True)
+# df_roi['bin_cos'] = pd.cut(df_roi['Quadrant_Cos'], bins=bins, include_lowest=True)
+
+# # 🔹 Agrupar por célula vetorial e calcular média de ROI
+# roi_map = (
+#     df_roi.groupby(['bin_sin','bin_cos'], observed=False)['ROI_Game']
+#     .mean()
+#     .reset_index()
+# )
+
+# pivot = roi_map.pivot(index='bin_sin', columns='bin_cos', values='ROI_Game')
+
+# # 🔹 Plotar Heatmap (ROI médio por célula)
+# fig, ax = plt.subplots(figsize=(10,8))
+# sns.heatmap(
+#     pivot,
+#     cmap='RdYlGn',
+#     center=0,
+#     cbar_kws={'label': 'ROI Médio'},
+#     annot=False,
+#     linewidths=0.3
+# )
+# ax.set_title("💰 ROI Map Vetorial (sin/cos) – Histórico", fontsize=14, weight='bold')
+# ax.set_xlabel("Quadrant_Cos → Dominância (Aggression)")
+# ax.set_ylabel("Quadrant_Sin → Eficiência (HandScore)")
+
+# st.pyplot(fig)
 
 
 
