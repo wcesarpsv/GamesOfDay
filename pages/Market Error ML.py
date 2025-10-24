@@ -517,6 +517,37 @@ if not all(col in games_today.columns for col in required_odds_cols):
 
 # Calcular probabilidades implícitas do mercado
 try:
+
+    # 🔥 DEBUG DETALHADO - No início do try do Bloco 7
+    st.header("🔍 Debug Detalhado - Fluxo de Dados")
+    
+    st.subheader("1. Status Inicial:")
+    st.write(f"Total jogos inicial: {len(games_today)}")
+    
+    st.subheader("2. Verificar Features Raw:")
+    st.write(f"Features_raw esperadas: {features_raw}")
+    st.write(f"Features disponíveis: {[f for f in features_raw if f in games_today.columns]}")
+    
+    st.subheader("3. Preparar X_today - ANTES do processamento:")
+    X_today_raw = games_today[[f for f in features_raw if f in games_today.columns]].copy()
+    st.write(f"X_today shape inicial: {X_today_raw.shape}")
+    st.write(f"Colunas em X_today: {list(X_today_raw.columns)}")
+    
+    st.subheader("4. Verificar Valores Faltantes:")
+    missing_count = X_today_raw.isna().sum()
+    st.write("Valores faltantes por coluna:")
+    st.write(missing_count[missing_count > 0])
+    
+    st.subheader("5. Verificar Categorical Columns:")
+    cat_cols = [c for c in ['Dominant','League_Classification'] if c in X_today_raw]
+    st.write(f"Colunas categóricas: {cat_cols}")
+    if cat_cols:
+        for col in cat_cols:
+            st.write(f"Valores únicos em {col}: {X_today_raw[col].unique()}")
+    
+    # 🛑 PARAR para análise
+    st.stop()
+
     probs = pd.DataFrame()
     probs['p_H'] = 1 / games_today['Odd_H']
     probs['p_D'] = 1 / games_today['Odd_D']
