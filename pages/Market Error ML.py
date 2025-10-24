@@ -466,10 +466,10 @@ try:
     main_model, encoder, features_raw = train_main_model(history, selected_date)
     if main_model is None:
         st.stop()
-    st.success("✅ Main ML model trained successfully!")
-    # NO FINAL do Bloco 6 (depois de train_main_model), ADICIONE:
-
-    # 🔥 GARANTIR que features_raw tem valores válidos
+    st.success("✅ Main ML model trained successfully!")st.subheader("🔍 Verificação das Features do Modelo")
+    st.write(f"Features_raw retornadas pelo modelo: {features_raw}")
+    st.write(f"Tipo: {type(features_raw)}, Quantidade: {len(features_raw)}")
+    
     if not features_raw or len(features_raw) == 0:
         st.warning("⚠️ features_raw está vazio! Usando fallback...")
         features_raw = [
@@ -479,8 +479,10 @@ try:
         ]
         # Filtrar apenas as que existem nos dados de treino
         features_raw = [f for f in features_raw if f in history.columns]
+        st.info(f"✅ Fallback features: {features_raw}")
 
-st.success(f"✅ Features para predição: {len(features_raw)} features")
+    st.success(f"✅ Features finais para predição: {len(features_raw)} features")
+    
 except Exception as e:
     st.error(f"Error training main model: {e}")
     st.stop()
