@@ -665,55 +665,6 @@ fig_3d.update_layout(
     template="plotly_dark",
     height=700,
     margin=dict(l=0, r=0, b=0, t=40)
-
-    # =====================================================
-    # 🎨 BLOCO – Escala Adaptativa 3D (Aspecto Realista)
-    # =====================================================
-    
-    # Cálculo automático de ranges com folga
-    xmax = df_site[["Aggression_Home", "Aggression_Away"]].abs().max().max()
-    ymax = df_site[["M_H", "M_A"]].abs().max().max()
-    zmax = df_site[["MT_H", "MT_A"]].abs().max().max()
-    
-    # Adiciona 15% de folga
-    xrange = [-xmax * 1.15, xmax * 1.15]
-    yrange = [-ymax * 1.15, ymax * 1.15]
-    zrange = [-zmax * 1.15, zmax * 1.15]
-    
-    fig_3d.update_layout(
-        title=titulo_3d,
-        scene=dict(
-            xaxis=dict(
-                title='Aggression (Domínio de Jogo)',
-                range=xrange,
-                backgroundcolor="rgba(240,240,240,0.05)",
-                gridcolor="gray",
-                showbackground=True
-            ),
-            yaxis=dict(
-                title='Momentum (Liga)',
-                range=yrange,
-                backgroundcolor="rgba(240,240,240,0.05)",
-                gridcolor="gray",
-                showbackground=True
-            ),
-            zaxis=dict(
-                title='Momentum (Time)',
-                range=zrange,
-                backgroundcolor="rgba(240,240,240,0.05)",
-                gridcolor="gray",
-                showbackground=True
-            ),
-            # Proporções reais e câmera estável
-            aspectmode="cube",
-            aspectratio=dict(x=1, y=1, z=1),
-            camera=dict(eye=dict(x=1.6, y=1.8, z=1.2))
-        ),
-        template="plotly_dark",
-        height=850,
-        margin=dict(l=0, r=0, b=0, t=60)
-    )
-
 )
 
 
