@@ -437,25 +437,29 @@ df_plot = df_filtered.nlargest(n_to_show, "Quadrant_Dist_3D").reset_index(drop=T
 # Criar gráfico 3D interativo com MT (Momentum Time)
 fig_3d = go.Figure()
 
+# ---------------------- NOVO BLOCO 3D SEGURO ----------------------
 for _, row in df_plot.iterrows():
-    # Coordenadas Home (X, Y, Z)
-    xh = row.get("Aggression_Home", 0)
-    yh = row.get("M_H", 0)      # Momentum por liga
-    zh = row.get("MT_H", 0)     # Momentum individual (time)
+    # Garantir valores válidos (fallback = 0)
+    xh = row.get("Aggression_Home", 0) or 0
+    yh = row.get("M_H", 0) if not pd.isna(row.get("M_H")) else 0
+    zh = row.get("MT_H", 0) if not pd.isna(row.get("MT_H")) else 0
 
-    # Coordenadas Away
-    xa = row.get("Aggression_Away", 0)
-    ya = row.get("M_A", 0)
-    za = row.get("MT_A", 0)
+    xa = row.get("Aggression_Away", 0) or 0
+    ya = row.get("M_A", 0) if not pd.isna(row.get("M_A")) else 0
+    za = row.get("MT_A", 0) if not pd.isna(row.get("MT_A")) else 0
 
-    # Vetor Home → Away
+    # Verificar se há dados válidos para traçar
+    if all(v == 0 for v in [xh, yh, zh, xa, ya, za]):
+        continue  # ignora linhas totalmente vazias
+
+    # Plotar linha de conexão (Home → Away)
     fig_3d.add_trace(go.Scatter3d(
         x=[xh, xa],
         y=[yh, ya],
         z=[zh, za],
         mode='lines+markers',
         line=dict(color='gray', width=3),
-        marker=dict(size=3),
+        marker=dict(size=4),
         hoverinfo='text',
         hovertext=(
             f"<b>{row.get('Home','N/A')} vs {row.get('Away','N/A')}</b><br>"
@@ -470,6 +474,7 @@ for _, row in df_plot.iterrows():
         ),
         showlegend=False
     ))
+
 
 # Adicionar pontos Home (azul)
 fig_3d.add_trace(go.Scatter3d(
