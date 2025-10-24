@@ -541,7 +541,7 @@ def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D', 
         'Quadrant_Angle_XY', 'Quadrant_Angle_XZ', 'Quadrant_Angle_YZ',
         'Momentum_Diff', 'Magnitude_3D',
-        'M_H', 'M_A'  # Momentums individuais
+        'M_H', 'M_A', 'MT_H', 'MT_A' # Momentums individuais
     ]].fillna(0)
 
     # Combinar todas as features
