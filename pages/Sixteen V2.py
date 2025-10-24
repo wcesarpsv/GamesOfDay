@@ -1259,6 +1259,7 @@ try:
         df_plot,
         x='Quadrant_Cos',
         y='Quadrant_Sin',
+        custom_data=custom_cols,
         color='Color',
         color_discrete_map={'green': 'green', 'red': 'red'},
         size='Size',
