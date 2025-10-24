@@ -570,7 +570,7 @@ def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
         'Quadrant_Angle_XY', 'Quadrant_Angle_XZ', 'Quadrant_Angle_YZ', 
         'Momentum_Diff', 'Magnitude_3D',
-        'M_H', 'M_A'
+        'M_H', 'M_A', 'MT_H', 'MT_A'
     ]].fillna(0)
 
     X_today = pd.concat([qh_today, qa_today, ligas_today, extras_today], axis=1)
