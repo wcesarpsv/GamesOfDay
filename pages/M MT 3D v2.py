@@ -556,6 +556,8 @@ fig_3d = go.Figure()
 # =====================================================
 # 🎨 BLOCO – Escala Adaptativa 3D (Aspecto Realista)
 # =====================================================
+title=locals().get("titulo_3d", "🎯 Análise 3D – Aggression × Momentum (Liga & Time)"),
+
 
 # Cálculo automático de ranges com folga
 xmax = df_plot[["Aggression_Home", "Aggression_Away"]].abs().max().max()
