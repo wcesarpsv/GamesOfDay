@@ -311,7 +311,7 @@ show_medium_var = st.sidebar.checkbox("Medium Variation Leagues", value=True)
 show_low_var = st.sidebar.checkbox("Low Variation Leagues", value=False)
 
 ########################################
-####### Bloco 5 – Load & Prep Data #####
+#######  5 – Load & Prep Data #####
 ########################################
 @st.cache_data
 def load_training_data():
@@ -377,7 +377,7 @@ if league_filters and 'League_Classification' in games_today.columns:
 
 
 ########################################
-### Bloco 6 – Train Main ML Model ######
+###  6 – Train Main ML Model ######
 ########################################
 @st.cache_resource
 def train_main_model(_history, target_date):
@@ -474,6 +474,11 @@ except Exception as e:
 ########################################
 st.header(f"📊 Market Error Analysis - {selected_date}")
 
+# Verificar se temos dados para análise
+if games_today.empty:
+    st.error("No games data available for analysis!")
+    st.stop()
+
 # Verificar se temos as colunas necessárias de odds
 required_odds_cols = ['Odd_H', 'Odd_D', 'Odd_A']
 if not all(col in games_today.columns for col in required_odds_cols):
@@ -492,42 +497,145 @@ try:
     games_today['Imp_Prob_D'] = probs['p_D']
     games_today['Imp_Prob_A'] = probs['p_A']
 
-    # Aplicar modelo principal para obter probabilidades ML
-    X_today = games_today[[f for f in features_raw if f in games_today.columns]].copy()
+    # 🔥 CORREÇÃO: Preparar X_today com verificação robusta
+    X_today = games_today.copy()
+    
+    # Garantir que temos as features básicas
+    basic_features = ['M_H', 'M_A', 'Diff_Power', 'M_Diff']
+    missing_basic = [f for f in basic_features if f not in X_today.columns]
+    if missing_basic:
+        st.error(f"Missing basic features: {missing_basic}")
+        st.stop()
+    
+    # 🔥 CORREÇÃO CRÍTICA: Criar features que podem estar faltando
+    # Calcular M_Diff se não existir
+    if 'M_Diff' not in X_today.columns and all(f in X_today.columns for f in ['M_H', 'M_A']):
+        X_today['M_Diff'] = X_today['M_H'] - X_today['M_A']
+    
+    # Adicionar odds se disponíveis
+    odds_features = ['Odd_H', 'Odd_D', 'Odd_A', 'Odd_1X', 'Odd_X2']
+    for odds_feat in odds_features:
+        if odds_feat in games_today.columns and odds_feat not in X_today.columns:
+            X_today[odds_feat] = games_today[odds_feat]
+    
+    # 🔥 CORREÇÃO: Criar features derivadas que podem estar faltando
+    # Bandas Home
+    if 'Home_Band' not in X_today.columns and 'M_H' in X_today.columns:
+        if 'Home_P20' in X_today.columns and 'Home_P80' in X_today.columns:
+            X_today['Home_Band'] = np.where(
+                X_today['M_H'] <= X_today['Home_P20'], 'Bottom 20%',
+                np.where(X_today['M_H'] >= X_today['Home_P80'], 'Top 20%', 'Balanced')
+            )
+        else:
+            # Fallback simples se não temos os percentis
+            X_today['Home_Band'] = np.where(
+                X_today['M_H'] > 0.5, 'Top 20%',
+                np.where(X_today['M_H'] < -0.5, 'Bottom 20%', 'Balanced')
+            )
+    
+    # Bandas Away
+    if 'Away_Band' not in X_today.columns and 'M_A' in X_today.columns:
+        if 'Away_P20' in X_today.columns and 'Away_P80' in X_today.columns:
+            X_today['Away_Band'] = np.where(
+                X_today['M_A'] <= X_today['Away_P20'], 'Bottom 20%',
+                np.where(X_today['M_A'] >= X_today['Away_P80'], 'Top 20%', 'Balanced')
+            )
+        else:
+            # Fallback simples
+            X_today['Away_Band'] = np.where(
+                X_today['M_A'] > 0.5, 'Top 20%',
+                np.where(X_today['M_A'] < -0.5, 'Bottom 20%', 'Balanced')
+            )
+    
+    # Dominant side
+    if 'Dominant' not in X_today.columns:
+        X_today['Dominant'] = X_today.apply(dominant_side, axis=1)
+    
+    # League Classification (fallback)
+    if 'League_Classification' not in X_today.columns and 'League' in X_today.columns:
+        # Classificação simples baseada na liga
+        X_today['League_Classification'] = 'Medium Variation'  # Default
+    
+    # 🔥 SELEÇÃO FINAL DAS FEATURES para o modelo
+    available_features = [f for f in features_raw if f in X_today.columns]
+    st.info(f"🔄 Using {len(available_features)} features: {available_features}")
+    
+    if len(available_features) == 0:
+        st.error("No features available for prediction!")
+        st.stop()
+    
+    # Preparar dados finais para predição
+    X_pred = X_today[available_features].copy()
+    
+    # 🔥 VERIFICAÇÃO CRÍTICA: garantir que temos dados
+    if X_pred.empty:
+        st.error("No data available for prediction after feature preparation!")
+        st.stop()
+    
+    st.info(f"📊 Preparing {len(X_pred)} games for prediction with {len(available_features)} features")
     
     # Mapear bandas numéricas
-    BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
-    if 'Home_Band' in X_today: 
-        X_today['Home_Band_Num'] = X_today['Home_Band'].map(BAND_MAP)
-    if 'Away_Band' in X_today: 
-        X_today['Away_Band_Num'] = X_today['Away_Band'].map(BAND_MAP)
+    BAND_MAP = {"Bottom 20%": 1, "Balanced": 2, "Top 20%": 3}
+    if 'Home_Band' in X_pred:
+        X_pred['Home_Band_Num'] = X_pred['Home_Band'].map(BAND_MAP).fillna(2)  # Default para Balanced
+    if 'Away_Band' in X_pred:
+        X_pred['Away_Band_Num'] = X_pred['Away_Band'].map(BAND_MAP).fillna(2)
 
-    cat_cols = [c for c in ['Dominant','League_Classification'] if c in X_today]
+    # One-hot encoding para variáveis categóricas
+    cat_cols = [c for c in ['Dominant', 'League_Classification'] if c in X_pred]
     
     if cat_cols and encoder is not None:
-        encoded_today = encoder.transform(X_today[cat_cols])
-        encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(cat_cols))
-        X_today = pd.concat([X_today.drop(columns=cat_cols).reset_index(drop=True),
-                             encoded_today_df.reset_index(drop=True)], axis=1)
+        try:
+            # Garantir que as categorias existem
+            for col in cat_cols:
+                X_pred[col] = X_pred[col].fillna('Unknown')
+            
+            encoded_today = encoder.transform(X_pred[cat_cols])
+            encoded_today_df = pd.DataFrame(
+                encoded_today, 
+                columns=encoder.get_feature_names_out(cat_cols),
+                index=X_pred.index
+            )
+            X_pred = pd.concat([
+                X_pred.drop(columns=cat_cols).reset_index(drop=True),
+                encoded_today_df.reset_index(drop=True)
+            ], axis=1)
+        except Exception as e:
+            st.warning(f"Encoding failed: {e}. Using original features.")
+            # Remover colunas categóricas problemáticas
+            X_pred = X_pred.drop(columns=cat_cols, errors='ignore')
 
-    # Preencher NaN com 0 para evitar erros
-    X_today = X_today.fillna(0)
+    # 🔥 CORREÇÃO FINAL: Preencher NaN e garantir dados válidos
+    X_pred = X_pred.fillna(0)
     
-    ml_proba = main_model.predict_proba(X_today)
-    games_today["ML_Proba_Home"] = ml_proba[:, list(main_model.classes_).index("Home")]
-    games_today["ML_Proba_Draw"] = ml_proba[:, list(main_model.classes_).index("Draw")]
-    games_today["ML_Proba_Away"] = ml_proba[:, list(main_model.classes_).index("Away")]
+    # Remover colunas que possam ter ficado com todos NaN
+    X_pred = X_pred.loc[:, X_pred.notna().any(axis=0)]
+    
+    # Verificação final antes da predição
+    if X_pred.empty:
+        st.error("Final feature matrix is empty after preprocessing!")
+        st.stop()
+        
+    st.success(f"✅ Final prediction matrix: {X_pred.shape[0]} samples, {X_pred.shape[1]} features")
 
-    # Calcular Market Error
-    games_today['Market_Error_Home'] = games_today['ML_Proba_Home'] - games_today['Imp_Prob_H']
-    games_today['Market_Error_Away'] = games_today['ML_Proba_Away'] - games_today['Imp_Prob_A']
-    games_today['Market_Error_Draw'] = games_today['ML_Proba_Draw'] - games_today['Imp_Prob_D']
+    # 🔥 FAZER PREDIÇÃO
+    try:
+        ml_proba = main_model.predict_proba(X_pred)
+        games_today["ML_Proba_Home"] = ml_proba[:, list(main_model.classes_).index("Home")]
+        games_today["ML_Proba_Draw"] = ml_proba[:, list(main_model.classes_).index("Draw")] 
+        games_today["ML_Proba_Away"] = ml_proba[:, list(main_model.classes_).index("Away")]
 
-    # Calcular Expected Value
-    games_today['EV_Home'] = (games_today['ML_Proba_Home'] * games_today['Odd_H']) - 1
-    games_today['EV_Away'] = (games_today['ML_Proba_Away'] * games_today['Odd_A']) - 1
-    games_today['EV_Draw'] = (games_today['ML_Proba_Draw'] * games_today['Odd_D']) - 1
+        st.success(f"✅ Successfully generated ML probabilities for {len(games_today)} games!")
 
+    except Exception as pred_error:
+        st.error(f"Prediction failed: {pred_error}")
+        # Fallback: usar probabilidades do mercado como fallback
+        games_today["ML_Proba_Home"] = games_today['Imp_Prob_H']
+        games_today["ML_Proba_Draw"] = games_today['Imp_Prob_D']
+        games_today["ML_Proba_Away"] = games_today['Imp_Prob_A']
+        st.warning("Using market probabilities as fallback")
+
+    # ... o resto do código continua igual a partir daqui ...
     ########################################
     ##### Bloco 8 – Value Scatter Plot ####
     ########################################
