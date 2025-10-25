@@ -956,12 +956,8 @@ games_today = aplicar_clusterizacao_3d(games_today, n_clusters=5)
 #     st.success("✅ Modelo 3D treinado sem quadrantes fixos – apenas features vetoriais + clusters.")
 #     return model_home, model_away, games_today
 
-from sklearn.ensemble import RandomForestClassifier
-import numpy as np
-import streamlit as st
-import pandas as pd
 
-def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
+def treinar_modelo_3d_clusters_single(history, games_today):
     """
     Treina um único modelo ML 3D (lado Home) e deriva o lado Away por complemento.
     Remove redundância do modelo dual, mantendo consistência probabilística.
@@ -1114,7 +1110,7 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
 # ---------------- EXECUÇÃO PRINCIPAL 3D ----------------
 # Executar treinamento 3D
 if not history.empty:
-    modelo_home, modelo_away, games_today = treinar_modelo_3d_quadrantes_16_dual(history, games_today)
+    modelo_home, modelo_away, games_today = treinar_modelo_3d_clusters_single(history, games_today)
     st.success("✅ Modelo 3D dual com 16 quadrantes treinado com sucesso!")
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D")
