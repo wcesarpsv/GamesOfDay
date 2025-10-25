@@ -305,6 +305,49 @@ required_features = [
     'Odd_H', 'Odd_D', 'Odd_A'
 ]
 
+
+
+    # ============================================================
+# 🧩 BLOCO DE GARANTIA DE FEATURES (ADAPTADO AO SEU DATASET)
+# ============================================================
+
+# Criar M_Diff se não existir
+if 'M_Diff' not in games_today.columns:
+    if 'M_H' in games_today.columns and 'M_A' in games_today.columns:
+        games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
+    else:
+        games_today['M_Diff'] = 0
+
+# Criar bandas simples (sem precisar de quantis por liga)
+if 'Home_Band' not in games_today.columns or games_today['Home_Band'].isna().all():
+    games_today['Home_Band'] = np.where(
+        games_today['M_H'] > 0.5, 'Top 20%',
+        np.where(games_today['M_H'] < -0.5, 'Bottom 20%', 'Balanced')
+    )
+
+if 'Away_Band' not in games_today.columns or games_today['Away_Band'].isna().all():
+    games_today['Away_Band'] = np.where(
+        games_today['M_A'] > 0.5, 'Top 20%',
+        np.where(games_today['M_A'] < -0.5, 'Bottom 20%', 'Balanced')
+    )
+
+# Criar classificação padrão para liga
+if 'League_Classification' not in games_today.columns or games_today['League_Classification'].isna().all():
+    games_today['League_Classification'] = 'Medium Variation'
+
+# Calcular odds de dupla chance (usadas em várias partes do código)
+if not all(col in games_today.columns for col in ['Odd_1X', 'Odd_X2']):
+    probs = pd.DataFrame()
+    probs['p_H'] = 1 / games_today['Odd_H']
+    probs['p_D'] = 1 / games_today['Odd_D']
+    probs['p_A'] = 1 / games_today['Odd_A']
+    probs = probs.div(probs.sum(axis=1), axis=0)
+    games_today['Odd_1X'] = 1 / (probs['p_H'] + probs['p_D'])
+    games_today['Odd_X2'] = 1 / (probs['p_A'] + probs['p_D'])
+
+
+
+
 X_today = games_today[features_raw].copy()
 
 # 🔥 NOVO: Aplicar validação de dados faltantes
