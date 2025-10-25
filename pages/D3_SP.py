@@ -355,8 +355,7 @@ games_today = calcular_momentum_time(games_today)
 def calcular_distancias_3d(df):
     """
     Calcula distância 3D e ângulos usando Aggression, Momentum (liga) e Momentum (time)
-    Novo vetor 3D: [Aggression, M, MT]
-    Versão neutra — sem pesos artificiais.
+    Versão neutra + features compostas (sin/cos combinados e sinal vetorial).
     """
     df = df.copy()
 
@@ -371,6 +370,7 @@ def calcular_distancias_3d(df):
             'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
             'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
             'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
+            'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo', 'Vector_Sign',
             'Momentum_Diff', 'Momentum_Diff_MT', 'Magnitude_3D'
         ]:
             df[col] = np.nan
@@ -381,19 +381,19 @@ def calcular_distancias_3d(df):
     dy = df['M_H'] - df['M_A']
     dz = df['MT_H'] - df['MT_A']
 
-    # --- Distância Euclidiana pura (sem pesos / normalização) ---
+    # --- Distância Euclidiana pura ---
     df['Quadrant_Dist_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
 
-    # --- Ângulos entre planos (em graus, apenas para visualização) ---
-    df['Quadrant_Angle_XY'] = np.degrees(np.arctan2(dy, dx))
-    df['Quadrant_Angle_XZ'] = np.degrees(np.arctan2(dz, dx))
-    df['Quadrant_Angle_YZ'] = np.degrees(np.arctan2(dz, dy))
-
-    # --- Projeções trigonométricas (sin/cos) para ML ---
+    # --- Ângulos entre planos ---
     angle_xy = np.arctan2(dy, dx)
     angle_xz = np.arctan2(dz, dx)
     angle_yz = np.arctan2(dz, dy)
 
+    df['Quadrant_Angle_XY'] = np.degrees(angle_xy)
+    df['Quadrant_Angle_XZ'] = np.degrees(angle_xz)
+    df['Quadrant_Angle_YZ'] = np.degrees(angle_yz)
+
+    # --- Projeções trigonométricas básicas ---
     df['Quadrant_Sin_XY'] = np.sin(angle_xy)
     df['Quadrant_Cos_XY'] = np.cos(angle_xy)
     df['Quadrant_Sin_XZ'] = np.sin(angle_xz)
@@ -401,17 +401,25 @@ def calcular_distancias_3d(df):
     df['Quadrant_Sin_YZ'] = np.sin(angle_yz)
     df['Quadrant_Cos_YZ'] = np.cos(angle_yz)
 
-    # --- Separação neutra 3D (sem ponderação) ---
+    # --- 🧩 1) Combinações trigonométricas compostas ---
+    df['Quadrant_Sin_Combo'] = np.sin(angle_xy + angle_xz + angle_yz)
+    df['Quadrant_Cos_Combo'] = np.cos(angle_xy + angle_xz + angle_yz)
+
+    # --- 🧭 2) Sinal vetorial (direção espacial total) ---
+    df['Vector_Sign'] = np.sign(dx * dy * dz)
+
+    # --- Separação neutra 3D ---
     df['Quadrant_Separation_3D'] = (dx + dy + dz) / 3
 
     # --- Diferenças individuais ---
     df['Momentum_Diff'] = dy
     df['Momentum_Diff_MT'] = dz
 
-    # --- Magnitude vetorial total (sem pesos) ---
+    # --- Magnitude total ---
     df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
 
     return df
+
 
 
 
@@ -743,10 +751,12 @@ def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
 
     # Features 3D contínuas (agora com sin/cos)
     extras_3d = history[[
-        'Quadrant_Dist_3D', 'Quadrant_Separation_3D', 
+        'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
         'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
         'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
         'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
+        'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',  # 🆕 novos vetores compostos
+        'Vector_Sign',                               # 🆕 direção espacial
         'Momentum_Diff', 'Magnitude_3D'
        # 'M_H', 'M_A', 'MT_H', 'MT_A'
     ]].fillna(0)
@@ -780,6 +790,8 @@ def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
         'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
         'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
         'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
+        'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',  # 🆕 novos vetores compostos
+        'Vector_Sign',                               # 🆕 direção espacial
         'Momentum_Diff', 'Magnitude_3D'
         #'M_H', 'M_A', 'MT_H', 'MT_A'
     ]].fillna(0)
