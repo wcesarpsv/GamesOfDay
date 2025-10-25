@@ -1110,7 +1110,7 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
 # ---------------- EXECUÇÃO PRINCIPAL 3D ----------------
 # Executar treinamento 3D
 if not history.empty:
-    modelo_home, modelo_away, games_today = treinar_modelo_3d_clusters_single(history, games_today)
+    modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today)
     st.success("✅ Modelo 3D dual com 16 quadrantes treinado com sucesso!")
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D")
