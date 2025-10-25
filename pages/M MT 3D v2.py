@@ -754,8 +754,8 @@ def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
         'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
         'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
         'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
-        'Momentum_Diff', 'Magnitude_3D',
-        'M_H', 'M_A', 'MT_H', 'MT_A'
+        'Momentum_Diff', 'Magnitude_3D'
+       # 'M_H', 'M_A', 'MT_H', 'MT_A'
     ]].fillna(0)
 
     # Combinar todas as features
@@ -787,8 +787,8 @@ def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
         'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
         'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
         'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
-        'Momentum_Diff', 'Magnitude_3D',
-        'M_H', 'M_A', 'MT_H', 'MT_A'
+        'Momentum_Diff', 'Magnitude_3D'
+        #'M_H', 'M_A', 'MT_H', 'MT_A'
     ]].fillna(0)
 
     X_today = pd.concat([qh_today, qa_today, ligas_today, extras_today], axis=1)
