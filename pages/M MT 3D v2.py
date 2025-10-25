@@ -298,53 +298,53 @@ history['Quadrante_Away'] = history.apply(
 )
 
 
-# ########################################
-# #### 🧠 BLOCO – Cálculo de MT_H e MT_A (Momentum do Time)
-# ########################################
-# def calcular_momentum_time(df, window=6):
-#     """
-#     Calcula o Momentum do Time (MT_H / MT_A) com base no HandScore,
-#     usando média móvel e normalização z-score por time.
+########################################
+#### 🧠 BLOCO – Cálculo de MT_H e MT_A (Momentum do Time)
+########################################
+def calcular_momentum_time(df, window=6):
+    """
+    Calcula o Momentum do Time (MT_H / MT_A) com base no HandScore,
+    usando média móvel e normalização z-score por time.
     
-#     - MT_H: momentum do time em casa (últimos jogos como mandante)
-#     - MT_A: momentum do time fora (últimos jogos como visitante)
-#     - Valores típicos: [-3.5, +3.5]
-#     """
-#     df = df.copy()
+    - MT_H: momentum do time em casa (últimos jogos como mandante)
+    - MT_A: momentum do time fora (últimos jogos como visitante)
+    - Valores típicos: [-3.5, +3.5]
+    """
+    df = df.copy()
 
-#     # Garante existência das colunas
-#     if 'MT_H' not in df.columns:
-#         df['MT_H'] = np.nan
-#     if 'MT_A' not in df.columns:
-#         df['MT_A'] = np.nan
+    # Garante existência das colunas
+    if 'MT_H' not in df.columns:
+        df['MT_H'] = np.nan
+    if 'MT_A' not in df.columns:
+        df['MT_A'] = np.nan
 
-#     # Lista de todos os times (Home + Away)
-#     all_teams = pd.unique(df[['Home', 'Away']].values.ravel())
+    # Lista de todos os times (Home + Away)
+    all_teams = pd.unique(df[['Home', 'Away']].values.ravel())
 
-#     for team in all_teams:
-#         # ---------------- HOME ----------------
-#         mask_home = df['Home'] == team
-#         if mask_home.sum() > 2:  # precisa de histórico mínimo
-#             series = df.loc[mask_home, 'HandScore_Home'].astype(float).rolling(window, min_periods=2).mean()
-#             zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
-#             df.loc[mask_home, 'MT_H'] = zscore
+    for team in all_teams:
+        # ---------------- HOME ----------------
+        mask_home = df['Home'] == team
+        if mask_home.sum() > 2:  # precisa de histórico mínimo
+            series = df.loc[mask_home, 'HandScore_Home'].astype(float).rolling(window, min_periods=2).mean()
+            zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
+            df.loc[mask_home, 'MT_H'] = zscore
 
-#         # ---------------- AWAY ----------------
-#         mask_away = df['Away'] == team
-#         if mask_away.sum() > 2:
-#             series = df.loc[mask_away, 'HandScore_Away'].astype(float).rolling(window, min_periods=2).mean()
-#             zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
-#             df.loc[mask_away, 'MT_A'] = zscore
+        # ---------------- AWAY ----------------
+        mask_away = df['Away'] == team
+        if mask_away.sum() > 2:
+            series = df.loc[mask_away, 'HandScore_Away'].astype(float).rolling(window, min_periods=2).mean()
+            zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
+            df.loc[mask_away, 'MT_A'] = zscore
 
-#     # Preenche eventuais NaN com 0 (neutro)
-#     df['MT_H'] = df['MT_H'].fillna(0)
-#     df['MT_A'] = df['MT_A'].fillna(0)
+    # Preenche eventuais NaN com 0 (neutro)
+    df['MT_H'] = df['MT_H'].fillna(0)
+    df['MT_A'] = df['MT_A'].fillna(0)
 
-#     return df
+    return df
 
-# # ✅ Aplicar antes do cálculo 3D
-# history = calcular_momentum_time(history)
-# games_today = calcular_momentum_time(games_today)
+# ✅ Aplicar antes do cálculo 3D
+history = calcular_momentum_time(history)
+games_today = calcular_momentum_time(games_today)
 
 
 
