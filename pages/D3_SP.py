@@ -114,6 +114,66 @@ def convert_asian_line_to_decimal(line_str):
     except (ValueError, TypeError):
         return None
 
+
+from sklearn.cluster import KMeans
+
+# ==============================================================
+# 🧩 BLOCO – CLUSTERIZAÇÃO 3D (KMEANS)
+# ==============================================================
+
+def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
+    """
+    Cria clusters espaciais com base em Aggression, Momentum Liga e Momentum Time.
+    Retorna o DataFrame com a nova coluna 'Cluster3D_Label'.
+    """
+
+    df = df.copy()
+
+    # Garante as colunas necessárias
+    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        st.warning(f"⚠️ Colunas ausentes para clusterização 3D: {missing}")
+        df['Cluster3D_Label'] = -1
+        return df
+
+    # Diferenças espaciais (vetor 3D)
+    df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
+    df['dy'] = df['M_H'] - df['M_A']
+    df['dz'] = df['MT_H'] - df['MT_A']
+
+    X_cluster = df[['dx', 'dy', 'dz']].fillna(0).to_numpy()
+
+    # KMeans 3D
+    kmeans = KMeans(
+        n_clusters=n_clusters,
+        random_state=random_state,
+        n_init='auto' if hasattr(KMeans, 'n_init') else 10
+    )
+    df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
+
+    # 🧠 Calcular centroide de cada cluster para diagnóstico
+    centroids = pd.DataFrame(kmeans.cluster_centers_, columns=['dx', 'dy', 'dz'])
+    centroids['Cluster'] = range(n_clusters)
+
+    st.markdown("### 🧭 Clusters 3D Criados (KMeans)")
+    st.dataframe(centroids.style.format({'dx': '{:.2f}', 'dy': '{:.2f}', 'dz': '{:.2f}'}))
+
+    # Adicionar também uma descrição textual leve (para visualização)
+    df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
+        0: '⚡ Agressivos + Momentum Positivo',
+        1: '💤 Reativos + Momentum Negativo',
+        2: '⚖️ Equilibrados',
+        3: '🔥 Alta Variância',
+        4: '🌪️ Caóticos / Transição'
+    }).fillna('🌀 Outro')
+
+    return df
+
+
+
+
+
 # ---------------- Carregar Dados ----------------
 st.info("📂 Carregando dados para análise 3D de 16 quadrantes...")
 
@@ -732,6 +792,10 @@ st.markdown("""
 - ⚫ **Linhas Cinzas**: Conexões entre confrontos
 """)
 
+# Aplicar clusterização 3D antes do treino
+history = aplicar_clusterizacao_3d(history, n_clusters=5)
+games_today = aplicar_clusterizacao_3d(games_today, n_clusters=5)
+
 
 
 # ---------------- MODELO ML 3D PARA 16 QUADRANTES ----------------
@@ -748,6 +812,7 @@ def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
     quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
     quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
+    clusters_dummies = pd.get_dummies(history['Cluster3D_Label'], prefix='C3D')  # 🆕 NOVO
 
     # Features 3D contínuas (agora com sin/cos)
     extras_3d = history[[
@@ -762,7 +827,7 @@ def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
     ]].fillna(0)
 
     # Combinar todas as features
-    X = pd.concat([quadrantes_home, quadrantes_away, ligas_dummies, extras_3d], axis=1)
+    X = pd.concat([quadrantes_home, quadrantes_away, ligas_dummies,clusters_dummies, extras_3d], axis=1)
 
     # Targets
     y_home = history['Target_AH_Home']
@@ -785,6 +850,7 @@ def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
     qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
     qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
+    clusters_today = pd.get_dummies(games_today['Cluster3D_Label'], prefix='C3D').reindex(columns=clusters_dummies.columns, fill_value=0)
     extras_today = games_today[[
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
         'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
@@ -796,7 +862,7 @@ def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
         #'M_H', 'M_A', 'MT_H', 'MT_A'
     ]].fillna(0)
 
-    X_today = pd.concat([qh_today, qa_today, ligas_today, extras_today], axis=1)
+    X_today = pd.concat([qh_today, qa_today, ligas_today, clusters_today, extras_today], axis=1)
 
     # Previsões
     probas_home = model_home.predict_proba(X_today)[:, 1]
