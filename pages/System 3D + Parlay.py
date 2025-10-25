@@ -199,24 +199,47 @@ def ensure_3d_features(df):
     df = aplicar_clusterizacao_3d(df, n_clusters=5)
     return df
 
-# Aplicação às bases
+# =====================================================
+# 🧩 Aplicação às bases
+# =====================================================
 history = ensure_3d_features(history)
 games_today = ensure_3d_features(games_today)
 
-# Garantia de odds 1X2 e Double Chance no histórico
+# =====================================================
+# 🧮 CORREÇÃO: Garantia de odds 1X2 e Double Chance no histórico
+# =====================================================
+
 if all(c in history.columns for c in ['Odd_H','Odd_D','Odd_A']):
-    history['p_H'] = 1 / history['Odd_H']
-    history['p_D'] = 1 / history['Odd_D']
-    history['p_A'] = 1 / history['Odd_A']
-    history = history.div(history[['p_H','p_D','p_A']].sum(axis=1), axis=0)
+    # CORREÇÃO: Criar DataFrame temporário para as probabilidades
+    probs = pd.DataFrame()
+    probs['p_H'] = 1 / history['Odd_H']
+    probs['p_D'] = 1 / history['Odd_D'] 
+    probs['p_A'] = 1 / history['Odd_A']
+    
+    # CORREÇÃO: Normalizar apenas as colunas de probabilidade
+    sum_probs = probs.sum(axis=1)
+    probs_normalized = probs.div(sum_probs, axis=0)
+    
+    # Atribuir de volta ao history
+    history['p_H'] = probs_normalized['p_H']
+    history['p_D'] = probs_normalized['p_D']
+    history['p_A'] = probs_normalized['p_A']
+    
+    # Calcular odds double chance
     history['Odd_1X'] = 1 / (history['p_H'] + history['p_D'])
     history['Odd_X2'] = 1 / (history['p_A'] + history['p_D'])
 else:
-    # fallback: odds fictícias
+    # fallback: odds fictícias (para não quebrar)
+    st.warning("⚠️ Colunas de odds não encontradas no histórico. Usando valores padrão.")
     history['Odd_1X'] = 2.0
     history['Odd_X2'] = 2.0
+    history['p_H'] = 0.33
+    history['p_D'] = 0.33  
+    history['p_A'] = 0.34
 
-# Garantia de features 3D (fallback)
+# =====================================================
+# 🧩 Garantia de features 3D (fallback)
+# =====================================================
 expected_cols = [
     'Quadrant_Dist_3D','Quadrant_Separation_3D','Magnitude_3D',
     'Quadrant_Sin_XY','Quadrant_Cos_XY',
@@ -231,6 +254,8 @@ for c in expected_cols:
     if c not in games_today.columns:
         games_today[c] = 0.0
 
+# Odds continuam sendo usadas em partes do sistema (Kelly/Parlay),
+# então mantemos as colunas necessárias
 games_today = compute_double_chance_odds(games_today)
 
 ########################################
