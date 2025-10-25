@@ -218,8 +218,7 @@ def setup_feature_blocks(use_odds: bool) -> dict:
     """Configura os blocos de features baseado na escolha de usar odds"""
     base_blocks = {
         "strength": [
-            "Diff_Power", "M_H", "M_A", "M_Diff",
-            "Diff_HT_P", "M_HT_H", "M_HT_A", "OU_Total"
+           
         ],
         "quadrantes": [
             "Quadrante_Home", "Quadrante_Away", 
@@ -228,7 +227,7 @@ def setup_feature_blocks(use_odds: bool) -> dict:
             "HandScore_Home", "HandScore_Away"
         ],
         "categorical": [
-            "Home_Band_Num", "Away_Band_Num", "Dominant", "League_Classification"
+            
         ]
     }
     
