@@ -1020,6 +1020,10 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     games_today['Prob_Away'] = proba_away
     games_today['ML_Side'] = np.where(proba_home > proba_away, 'HOME', 'AWAY')
     games_today['ML_Confidence'] = np.maximum(proba_home, proba_away)
+    games_today['Quadrante_ML_Score_Home'] = games_today['Prob_Home']
+    games_today['Quadrante_ML_Score_Away'] = games_today['Prob_Away']
+    games_today['Quadrante_ML_Score_Main'] = games_today['ML_Confidence']
+
 
     # ----------------------------
     # 📊 Importância de Features
