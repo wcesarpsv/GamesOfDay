@@ -344,65 +344,93 @@ def load_analysis_data(target_date, _history):
     return games_processed
 
 def ensure_features_exist(games_today):
-    """Garante que todas as features necessárias existam"""
+    """Garante que todas as features necessárias existam - VERSÃO CORRIGIDA"""
+    
+    st.header("🔧 Correção de Features - Debug Detalhado")
+    
+    # 1. Primeiro: Verificar e limpar dados críticos
+    st.subheader("1. Limpeza de Dados Críticos")
+    
+    # Remover linhas onde M_H ou M_A são NaN (CRÍTICO!)
+    initial_count = len(games_today)
+    games_today = games_today.dropna(subset=['M_H', 'M_A']).copy()
+    final_count = len(games_today)
+    removed_count = initial_count - final_count
+    
+    st.write(f"✅ Removidas {removed_count} linhas com M_H ou M_A faltantes")
+    st.write(f"✅ Restaram {final_count} jogos válidos")
+    
+    if final_count == 0:
+        st.error("❌ Nenhum jogo válido após limpeza! Verifique os dados de M_H e M_A.")
+        return None
+    
+    # 2. Criar features derivadas ESSENCIAIS
+    st.subheader("2. Criação de Features Derivadas")
+    
+    # M_Diff (CRÍTICA)
+    games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
+    st.success("✅ M_Diff criada")
+    
+    # Odds de Dupla Chance (CRÍTICA)
+    if all(col in games_today.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
+        probs_dc = pd.DataFrame()
+        probs_dc['p_H'] = 1 / games_today['Odd_H']
+        probs_dc['p_D'] = 1 / games_today['Odd_D']
+        probs_dc['p_A'] = 1 / games_today['Odd_A']
+        probs_dc = probs_dc.div(probs_dc.sum(axis=1), axis=0)
+        games_today['Odd_1X'] = 1 / (probs_dc['p_H'] + probs_dc['p_D'])
+        games_today['Odd_X2'] = 1 / (probs_dc['p_A'] + probs_dc['p_D'])
+        st.success("✅ Odd_1X e Odd_X2 criadas")
+    
+    # 3. Criar features com fallback simples
+    st.subheader("3. Features com Fallback")
+    
+    # Bandas Home (simplificado)
+    games_today['Home_Band'] = np.where(
+        games_today['M_H'] > 0.5, 'Top 20%',
+        np.where(games_today['M_H'] < -0.5, 'Bottom 20%', 'Balanced')
+    )
+    st.success("✅ Home_Band criada")
+    
+    # Bandas Away (simplificado)  
+    games_today['Away_Band'] = np.where(
+        games_today['M_A'] > 0.5, 'Top 20%', 
+        np.where(games_today['M_A'] < -0.5, 'Bottom 20%', 'Balanced')
+    )
+    st.success("✅ Away_Band criada")
+    
+    # Dominant side
+    try:
+        games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
+        st.success("✅ Dominant criada")
+    except Exception as e:
+        st.error(f"❌ Erro em dominant_side: {e}")
+        games_today['Dominant'] = "Mixed / Neutral"
+        st.success("✅ Dominant criada com fallback")
+    
+    # League classification (fallback)
+    games_today['League_Classification'] = 'Medium Variation'
+    st.success("✅ League_Classification criada")
+    
+    # 4. Verificação final
+    st.subheader("4. Verificação Final")
     expected_features = ['M_Diff', 'Home_Band', 'Away_Band', 'Dominant', 'League_Classification', 'Odd_1X', 'Odd_X2']
-    missing_features = [f for f in expected_features if f not in games_today.columns]
+    missing_final = [f for f in expected_features if f not in games_today.columns]
     
-    if missing_features:
-        st.warning(f"⚠️ Features faltantes: {missing_features}")
-        st.info("Aplicando correção manual...")
-        
-        # 1. Calcular M_Diff
-        if 'M_Diff' not in games_today.columns:
-            games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
-            st.success("✅ M_Diff criada")
-
-        # 2. Calcular odds dupla chance
-        if all(col in games_today.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
-            if 'Odd_1X' not in games_today.columns or 'Odd_X2' not in games_today.columns:
-                probs_dc = pd.DataFrame()
-                probs_dc['p_H'] = 1 / games_today['Odd_H']
-                probs_dc['p_D'] = 1 / games_today['Odd_D']
-                probs_dc['p_A'] = 1 / games_today['Odd_A']
-                probs_dc = probs_dc.div(probs_dc.sum(axis=1), axis=0)
-                games_today['Odd_1X'] = 1 / (probs_dc['p_H'] + probs_dc['p_D'])
-                games_today['Odd_X2'] = 1 / (probs_dc['p_A'] + probs_dc['p_D'])
-                st.success("✅ Odd_1X e Odd_X2 criadas")
-
-        # 3. Criar bandas simples
-        if 'Home_Band' not in games_today.columns:
-            games_today['Home_Band'] = np.where(
-                games_today['M_H'] > 0.5, 'Top 20%',
-                np.where(games_today['M_H'] < -0.5, 'Bottom 20%', 'Balanced')
-            )
-            st.success("✅ Home_Band criada")
-
-        if 'Away_Band' not in games_today.columns:
-            games_today['Away_Band'] = np.where(
-                games_today['M_A'] > 0.5, 'Top 20%', 
-                np.where(games_today['M_A'] < -0.5, 'Bottom 20%', 'Balanced')
-            )
-            st.success("✅ Away_Band criada")
-
-        # 4. Criar dominant side
-        if 'Dominant' not in games_today.columns:
-            try:
-                games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
-                st.success("✅ Dominant criada")
-            except Exception as e:
-                st.error(f"Erro ao criar Dominant: {e}")
-                games_today['Dominant'] = "Mixed / Neutral"
-
-        # 5. League classification fallback
-        if 'League_Classification' not in games_today.columns:
-            games_today['League_Classification'] = 'Medium Variation'
-            st.success("✅ League_Classification criada")
-
-        st.success("🎉 Todas as features recriadas manualmente!")
+    if missing_final:
+        st.error(f"❌ Features ainda faltando: {missing_final}")
+        return None
     else:
-        st.success("✅ Todas as features já existem!")
-    
-    return games_today
+        st.success(f"🎉 Todas as {len(expected_features)} features criadas com sucesso!")
+        st.write(f"📊 Shape final: {games_today.shape}")
+        
+        # Mostrar estatísticas das novas features
+        st.write("**Estatísticas das Novas Features:**")
+        st.write(f"- M_Diff: min={games_today['M_Diff'].min():.2f}, max={games_today['M_Diff'].max():.2f}")
+        st.write(f"- Home_Band: {games_today['Home_Band'].value_counts().to_dict()}")
+        st.write(f"- Away_Band: {games_today['Away_Band'].value_counts().to_dict()}")
+        
+        return games_today
 
 ########################################
 ### Bloco 6 – ML Model Training #######
@@ -440,13 +468,16 @@ def train_main_model(_history, target_date):
 
     training_data['Result'] = training_data.apply(map_result, axis=1)
 
-    # Features do modelo principal
+    # No train_main_model, substitua a lista de features por:
     features_raw = [
-        'M_H','M_A','Diff_Power','M_Diff',
-        'Home_Band','Away_Band','Dominant','League_Classification',
-        'Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2'
+        'M_H', 'M_A', 'Diff_Power', 'M_Diff',
+        'Home_Band', 'Away_Band', 'Dominant', 'League_Classification',
+        'Odd_H', 'Odd_D', 'Odd_A', 'Odd_1X', 'Odd_X2'
     ]
+    # Manter apenas colunas que existem
     features_raw = [f for f in features_raw if f in training_data.columns]
+    
+    st.info(f"🔧 Usando {len(features_raw)} features: {features_raw}")
 
     X = training_data[features_raw].copy()
     y = training_data['Result']
