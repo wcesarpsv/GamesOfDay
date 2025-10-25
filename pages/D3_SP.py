@@ -1621,42 +1621,6 @@ if not games_today.empty and 'Classificacao_Potencial_3D' in games_today.columns
     resumo_3d_16_quadrantes_hoje(games_today)
 
 
-########################################
-#### 🧭 BLOCO DE VALIDAÇÃO DE ÂNGULOS E EIXOS
-########################################
-def diagnostico_vetorial(df, home_team, away_team):
-    jogo = df[(df['Home'] == home_team) & (df['Away'] == away_team)]
-    if jogo.empty:
-        st.warning("⚠️ Jogo não encontrado.")
-        return
-
-    dx = jogo['Aggression_Home'].values[0] - jogo['Aggression_Away'].values[0]
-    dy = jogo['M_H'].values[0] - jogo['M_A'].values[0]
-    dz = jogo['MT_H'].values[0] - jogo['MT_A'].values[0]
-
-    angle_XY = np.degrees(np.arctan2(dy, dx))
-    angle_XZ = np.degrees(np.arctan2(dz, dx))
-    angle_YZ = np.degrees(np.arctan2(dz, dy))
-
-    st.markdown("### 🧮 Diagnóstico do Vetor 3D")
-    st.write(f"**Home:** {home_team} | **Away:** {away_team}")
-    st.write(f"dx (Aggression): {dx:.4f}")
-    st.write(f"dy (M - Liga): {dy:.4f}")
-    st.write(f"dz (MT - Time): {dz:.4f}")
-    st.write(f"angle_XY (Agg × M): {angle_XY:.2f}°")
-    st.write(f"angle_XZ (Agg × MT): {angle_XZ:.2f}°")
-    st.write(f"angle_YZ (M × MT): {angle_YZ:.2f}°")
-
-    # Quick check visual
-    if abs(dz) < 1e-6:
-        st.info("📉 MT_ ≈ 0 → vetor achatado no plano XY (sem componente vertical).")
-    else:
-        st.success("📈 MT_ ≠ 0 → componente vertical detectada (ângulo 3D ativo).")
-
-# exemplo de uso:
-diagnostico_vetorial(games_today, "Bahia", "Internacional RS")
-
-
 
 st.markdown("---")
 st.success("🎯 **Sistema 3D de 16 Quadrantes ML** implementado com sucesso!")
