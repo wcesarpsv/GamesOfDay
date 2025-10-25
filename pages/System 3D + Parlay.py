@@ -221,6 +221,27 @@ def ensure_3d_features(df):
 history = ensure_3d_features(history)
 games_today = ensure_3d_features(games_today)
 
+
+# =====================================================
+# 🧩 Garantia de features 3D (fallback)
+# =====================================================
+expected_cols = [
+    'Quadrant_Dist_3D','Quadrant_Separation_3D','Magnitude_3D',
+    'Quadrant_Sin_XY','Quadrant_Cos_XY',
+    'Quadrant_Sin_XZ','Quadrant_Cos_XZ',
+    'Quadrant_Sin_YZ','Quadrant_Cos_YZ',
+    'Quadrant_Sin_Combo','Quadrant_Cos_Combo',
+    'Vector_Sign','Cluster3D_Label'
+]
+for c in expected_cols:
+    if c not in history.columns:
+        history[c] = 0.0
+    if c not in games_today.columns:
+        games_today[c] = 0.0
+
+
+
+
 # Odds continuam sendo usadas em partes do sistema (Kelly/Parlay),
 # então mantemos as colunas necessárias
 games_today = compute_double_chance_odds(games_today)
