@@ -280,6 +280,21 @@ features_odds = ['Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2']
 # Combinação final de features
 features_raw = features_3d + (features_odds if use_odds_features else [])
 
+
+# =====================================================
+# 🔍 Diagnóstico de colunas ausentes
+# =====================================================
+missing_cols = [c for c in features_raw if c not in history.columns]
+if missing_cols:
+    st.error(f"🚨 As seguintes colunas não existem no history: {missing_cols}")
+    st.stop()
+else:
+    st.success("✅ Todas as colunas de features estão presentes no histórico.")
+
+
+
+
+
 # =============================
 # 🧱 Preparo do dataset
 # =============================
