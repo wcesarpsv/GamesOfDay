@@ -223,6 +223,25 @@ games_today = ensure_3d_features(games_today)
 
 
 # =====================================================
+# 🧮 Garantia de odds 1X2 e Double Chance no histórico
+# =====================================================
+
+if all(c in history.columns for c in ['Odd_H','Odd_D','Odd_A']):
+    history['p_H'] = 1 / history['Odd_H']
+    history['p_D'] = 1 / history['Odd_D']
+    history['p_A'] = 1 / history['Odd_A']
+    history = history.div(history[['p_H','p_D','p_A']].sum(axis=1), axis=0)
+    history['Odd_1X'] = 1 / (history['p_H'] + history['p_D'])
+    history['Odd_X2'] = 1 / (history['p_A'] + history['p_D'])
+else:
+    # fallback: odds fictícias (para não quebrar)
+    history['Odd_1X'] = 2.0
+    history['Odd_X2'] = 2.0
+
+
+
+
+# =====================================================
 # 🧩 Garantia de features 3D (fallback)
 # =====================================================
 expected_cols = [
