@@ -227,16 +227,24 @@ games_today = ensure_3d_features(games_today)
 # =====================================================
 
 if all(c in history.columns for c in ['Odd_H','Odd_D','Odd_A']):
+    # probabilidades implícitas brutas
     history['p_H'] = 1 / history['Odd_H']
     history['p_D'] = 1 / history['Odd_D']
     history['p_A'] = 1 / history['Odd_A']
-    history = history.div(history[['p_H','p_D','p_A']].sum(axis=1), axis=0)
-    history['Odd_1X'] = 1 / (history['p_H'] + history['p_D'])
-    history['Odd_X2'] = 1 / (history['p_A'] + history['p_D'])
+
+    total = history['p_H'] + history['p_D'] + history['p_A']
+    history['p_H_f'] = history['p_H'] / total
+    history['p_D_f'] = history['p_D'] / total
+    history['p_A_f'] = history['p_A'] / total
+
+    # odds justas (sem juice)
+    history['Odd_1X'] = 1 / (history['p_H_f'] + history['p_D_f'])
+    history['Odd_X2'] = 1 / (history['p_A_f'] + history['p_D_f'])
 else:
-    # fallback: odds fictícias (para não quebrar)
+    st.warning("⚠️ Odds 1X2 ausentes no histórico – usando fallback 2.0")
     history['Odd_1X'] = 2.0
     history['Odd_X2'] = 2.0
+
 
 
 
