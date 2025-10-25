@@ -258,6 +258,7 @@ for c in expected_cols:
 # então mantemos as colunas necessárias
 games_today = compute_double_chance_odds(games_today)
 
+
 ########################################
 ####### Bloco 6 – Train ML Model 3D ####
 ########################################
@@ -273,7 +274,9 @@ def map_result(row):
     else: return "Draw"
 history['Result'] = history.apply(map_result, axis=1)
 
-# Seleção de features
+# =============================
+# 🎯 Seleção de features - APENAS 3D + OPCIONALMENTE ODDS
+# =============================
 features_3d = [
     'Quadrant_Dist_3D','Quadrant_Separation_3D','Magnitude_3D',
     'Quadrant_Sin_XY','Quadrant_Cos_XY',
@@ -285,16 +288,20 @@ features_3d = [
 
 features_odds = ['Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2']
 
-# Combinação final de features
+# 🔥 CORREÇÃO: Combinação final de features - APENAS 3D + OPCIONALMENTE ODDS
 features_raw = features_3d + (features_odds if use_odds_features else [])
+
+st.info(f"🎯 Features usadas no modelo: {len(features_raw)} features (3D {'+ Odds' if use_odds_features else 'apenas'})")
 
 # 🔍 Diagnóstico de colunas ausentes
 missing_cols = [c for c in features_raw if c not in history.columns]
 if missing_cols:
-    st.error(f"🚨 As seguintes colunas não existem no history: {missing_cols}")
+    st.error(f"🚨 As seguintes colunas 3D não existem no history: {missing_cols}")
     st.stop()
 else:
-    st.success("✅ Todas as colunas de features estão presentes no histórico.")
+    st.success("✅ Todas as colunas de features 3D estão presentes no histórico.")
+
+# ... [restante do código igual] ...
 
 # Preparo do dataset
 X = history[features_raw].copy()
@@ -339,9 +346,9 @@ def ml_recommendation_from_proba(p_home, p_draw, p_away, threshold=0.65):
         elif sum_away_draw > sum_home_draw: return "🟪 X2 (Away/Draw)"
         else: return "❌ Avoid"
 
-# Função para verificar dados faltantes
+# Função para verificar dados faltantes - APENAS FEATURES 3D
 def check_missing_features(row, features_required):
-    """Verifica se há dados faltantes nas features essenciais"""
+    """Verifica se há dados faltantes nas features 3D essenciais"""
     missing_features = []
     
     for feature in features_required:
@@ -353,28 +360,33 @@ def check_missing_features(row, features_required):
     
     return missing_features
 
-# Lista de features obrigatórias
-required_features = [
-    'M_H', 'M_A', 'Diff_Power', 'M_Diff',
-    'Home_Band', 'Away_Band', 'League_Classification',
-    'Odd_H', 'Odd_D', 'Odd_A'
+# 🔥 CORREÇÃO: Lista de features 3D obrigatórias (APENAS 3D)
+required_features_3d = [
+    'Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Magnitude_3D',
+    'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
+    'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ', 
+    'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
+    'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',
+    'Vector_Sign', 'Cluster3D_Label'
 ]
 
 X_today = games_today[features_raw].copy()
 
-# Aplicar validação de dados faltantes
+# Aplicar validação de dados faltantes - APENAS FEATURES 3D
 games_today["ML_Data_Valid"] = True
 games_today["Missing_Features"] = ""
 
 for idx, row in games_today.iterrows():
-    missing = check_missing_features(row, required_features)
+    missing = check_missing_features(row, required_features_3d)  # 🔥 Usando apenas 3D
     if missing:
         games_today.at[idx, "ML_Data_Valid"] = False
         games_today.at[idx, "Missing_Features"] = ", ".join(missing)
 
-# Aplicar o modelo apenas aos jogos com dados completos
+# Aplicar o modelo apenas aos jogos com dados completos NAS FEATURES 3D
 valid_games_mask = games_today["ML_Data_Valid"] == True
 X_today_valid = X_today[valid_games_mask].copy()
+
+st.info(f"🎯 Jogos com features 3D completas: {valid_games_mask.sum()} de {len(games_today)}")
 
 # 🔥 CORREÇÃO: Preencher valores NaN antes do encoding
 if not X_today_valid.empty:
@@ -382,22 +394,15 @@ if not X_today_valid.empty:
     numeric_cols = X_today_valid.select_dtypes(include=[np.number]).columns
     X_today_valid[numeric_cols] = X_today_valid[numeric_cols].fillna(0)
     
-    # Preencher NaN nas colunas categóricas
-    categorical_cols = X_today_valid.select_dtypes(include=['object']).columns
-    X_today_valid[categorical_cols] = X_today_valid[categorical_cols].fillna('missing')
-    
-    # 🔥 CORREÇÃO: Verificar se as colunas de band existem e mapear
-    if 'Home_Band' in X_today_valid.columns: 
-        X_today_valid['Home_Band_Num'] = X_today_valid['Home_Band'].map(BAND_MAP).fillna(0)
-    if 'Away_Band' in X_today_valid.columns: 
-        X_today_valid['Away_Band_Num'] = X_today_valid['Away_Band'].map(BAND_MAP).fillna(0)
+    # 🔥 CORREÇÃO: NÃO MAPEAR MAIS Home_Band e Away_Band (não usamos mais)
+    # Removemos completamente o mapeamento de bands
     
     # 🔥 CORREÇÃO: Garantir que cat_cols exista e tenha dados válidos
     if cat_cols:
         # Preencher NaN nas colunas categóricas do encoder
         for col in cat_cols:
             if col in X_today_valid.columns:
-                X_today_valid[col] = X_today_valid[col].fillna(-1)  # ou outro valor padrão
+                X_today_valid[col] = X_today_valid[col].fillna(-1)
         
         try:
             # Verificar se há dados para transformar
@@ -464,23 +469,23 @@ if not X_today_valid.empty:
                 p_home, p_draw, p_away, threshold
             )
             
-        st.success(f"✅ Previsões ML aplicadas em {len(valid_indices)} jogos válidos")
+        st.success(f"✅ Previsões ML 3D aplicadas em {len(valid_indices)} jogos válidos")
         
     except Exception as e:
-        st.error(f"❌ Erro ao aplicar modelo ML: {e}")
-        st.error("Verifique se as features do dia atual correspondem às do treino")
+        st.error(f"❌ Erro ao aplicar modelo ML 3D: {e}")
+        st.error("Verifique se as features 3D do dia atual correspondem às do treino")
 else:
-    st.warning("⚠️ Nenhum jogo com dados válidos para previsão ML")
+    st.warning("⚠️ Nenhum jogo com features 3D válidas para previsão")
 
 # Mostrar estatísticas de validação
 invalid_count = len(games_today) - valid_games_mask.sum()
 if invalid_count > 0:
-    st.warning(f"⚠️ {invalid_count} jogos excluídos por dados insuficientes")
+    st.warning(f"⚠️ {invalid_count} jogos excluídos por features 3D incompletas")
     
     # Mostrar detalhes dos jogos com problemas
     invalid_games = games_today[~valid_games_mask]
     if not invalid_games.empty:
-        with st.expander("📋 Ver jogos com dados insuficientes"):
+        with st.expander("📋 Ver jogos com features 3D incompletas"):
             st.dataframe(invalid_games[['Home', 'Away', 'League', 'Missing_Features']])
 
 ########################################
