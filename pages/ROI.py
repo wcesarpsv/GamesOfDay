@@ -88,26 +88,30 @@ def get_odd(row: pd.Series, side: str):
 
 def profit_from_line(margin: float, line_component: float, odd: float, side: str):
     """
-    Calcula o lucro em UMA componente de linha (sem média ainda).
-    - margin = Goals_H - Goals_A
-    - line_component = componente da linha em relação ao HOME
-    - side = "HOME" ou "AWAY"
+    Calcula o lucro da aposta com suporte a odds líquidas (ex: 0.90)
+    ou odds decimais (ex: 1.90). Se odd <= 1.0, assume que já é líquida.
     """
-    # Resultado em relação ao HOME
+    if pd.isna(odd):
+        return np.nan
+
+    # Corrige caso odd já seja líquida
+    effective_profit = odd if odd <= 1.0 else (odd - 1.0)
+
     if side == "HOME":
-        if margin > line_component:   # HOME cobriu
-            return odd - 1
-        elif math.isclose(margin, line_component, abs_tol=1e-9):  # PUSH
+        if margin > line_component:
+            return effective_profit
+        elif math.isclose(margin, line_component, abs_tol=1e-9):
             return 0
         else:
             return -1
     else:  # AWAY
-        if margin < line_component:   # AWAY cobriu (HOME não cobriu)
-            return odd - 1
-        elif math.isclose(margin, line_component, abs_tol=1e-9):  # PUSH
+        if margin < line_component:
+            return effective_profit
+        elif math.isclose(margin, line_component, abs_tol=1e-9):
             return 0
         else:
             return -1
+
 
 def calc_ev_side(margin: float, asian_line_decimal: float, odd: float, side: str):
     """
