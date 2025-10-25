@@ -909,8 +909,7 @@ def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
         'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
         'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
         'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',
-        'Vector_Sign', 'Momentum_Diff', 'Momentum_Diff_MT', 'Magnitude_3D',
-        'M_H', 'M_A', 'MT_H', 'MT_A'
+        'Vector_Sign', 'Momentum_Diff', 'Momentum_Diff_MT', 'Magnitude_3D'
     ]].fillna(0)
 
     # Combinar todas as features
