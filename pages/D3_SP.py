@@ -887,78 +887,155 @@ games_today = aplicar_clusterizacao_3d(games_today, n_clusters=5)
 #     return model_home, model_away, games_today
 
 
+# def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
+#     """
+#     Treina modelo ML 3D (Home/Away) sem usar Quadrantes fixos.
+#     Mantém clusters + features vetoriais (sin/cos, momentum, magnitude, etc).
+#     """
+#     # Recalcular features 3D
+#     history = calcular_distancias_3d(history)
+#     games_today = calcular_distancias_3d(games_today)
+#     history = aplicar_clusterizacao_3d(history)
+#     games_today = aplicar_clusterizacao_3d(games_today)
+
+#     # Features categóricas (liga + cluster)
+#     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
+#     clusters_dummies = pd.get_dummies(history['Cluster3D_Label'], prefix='C3D')
+
+#     # Features contínuas vetoriais
+#     extras_3d = history[[
+#         'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
+#         'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
+#         'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
+#         'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
+#         'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',
+#         'Vector_Sign', 'Magnitude_3D'
+#     ]].fillna(0)
+
+#     # Combinar todas as features
+#     X = pd.concat([ligas_dummies, clusters_dummies, extras_3d], axis=1)
+
+#     # Target
+#     y_home = history['Target_AH_Home']
+
+
+#     # Modelos RF dual
+#     model_home = RandomForestClassifier(
+#         n_estimators=500, max_depth=12, random_state=42,
+#         class_weight='balanced_subsample', n_jobs=-1
+#     )
+   
+
+#     model_home.fit(X, y_home)
+
+#     # Prepara dados de hoje
+#     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
+#     clusters_today = pd.get_dummies(games_today['Cluster3D_Label'], prefix='C3D').reindex(columns=clusters_dummies.columns, fill_value=0)
+#     extras_today = games_today[extras_3d.columns].fillna(0)
+
+#     X_today = pd.concat([ligas_today, clusters_today, extras_today], axis=1)
+
+#     # Previsões
+#     probas_home = model_home.predict_proba(X_today)[:, 1]
+
+
+#     games_today['Quadrante_ML_Score_Home'] = probas_home
+
+#     games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home)
+#     games_today['ML_Side'] = np.where(probas_home > 0.55, 'HOME', 'AWAY')
+
+#     # Importância das features
+#     importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
+#     top_feats = importances.head(20)
+
+#     st.markdown("### 🔍 Top Features (sem quadrantes)")
+#     st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
+
+#     st.info(f"📊 Features vetoriais e clusters no Top 20: {len([f for f in top_feats.index if 'Sin' in f or 'Cos' in f or 'Cluster' in f])}")
+
+#     st.success("✅ Modelo 3D treinado sem quadrantes fixos – apenas features vetoriais + clusters.")
+#     return model_home, model_away, games_today
+
+from sklearn.ensemble import RandomForestClassifier
+import numpy as np
+import streamlit as st
+import pandas as pd
+
 def treinar_modelo_3d_quadrantes_16_dual(history, games_today):
     """
-    Treina modelo ML 3D (Home/Away) sem usar Quadrantes fixos.
-    Mantém clusters + features vetoriais (sin/cos, momentum, magnitude, etc).
+    Treina um único modelo ML 3D (lado Home) e deriva o lado Away por complemento.
+    Remove redundância do modelo dual, mantendo consistência probabilística.
     """
-    # Recalcular features 3D
+
+    # ----------------------------
+    # 🧩 Garantir features 3D e clusters
+    # ----------------------------
     history = calcular_distancias_3d(history)
     games_today = calcular_distancias_3d(games_today)
     history = aplicar_clusterizacao_3d(history)
     games_today = aplicar_clusterizacao_3d(games_today)
 
-    # Features categóricas (liga + cluster)
+    # ----------------------------
+    # 🧠 Feature Engineering
+    # ----------------------------
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
     clusters_dummies = pd.get_dummies(history['Cluster3D_Label'], prefix='C3D')
 
-    # Features contínuas vetoriais
-    extras_3d = history[[
+    features_3d = [
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
         'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
         'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
         'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
         'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',
         'Vector_Sign', 'Magnitude_3D'
-    ]].fillna(0)
+    ]
 
-    # Combinar todas as features
+    extras_3d = history[features_3d].fillna(0)
     X = pd.concat([ligas_dummies, clusters_dummies, extras_3d], axis=1)
 
-    # Target
-    y_home = history['Target_AH_Home']
-    y_away = 1 - y_home
+    # ----------------------------
+    # 🎯 Target e Treinamento
+    # ----------------------------
+    y_home = history['Target_AH_Home'].astype(int)
 
-    # Modelos RF dual
     model_home = RandomForestClassifier(
-        n_estimators=500, max_depth=12, random_state=42,
-        class_weight='balanced_subsample', n_jobs=-1
-    )
-    model_away = RandomForestClassifier(
-        n_estimators=500, max_depth=12, random_state=42,
-        class_weight='balanced_subsample', n_jobs=-1
+        n_estimators=500,
+        max_depth=12,
+        random_state=42,
+        class_weight='balanced_subsample',
+        n_jobs=-1
     )
 
     model_home.fit(X, y_home)
-    model_away.fit(X, y_away)
 
-    # Prepara dados de hoje
+    # ----------------------------
+    # 🔮 Previsões (complemento lógico)
+    # ----------------------------
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
     clusters_today = pd.get_dummies(games_today['Cluster3D_Label'], prefix='C3D').reindex(columns=clusters_dummies.columns, fill_value=0)
-    extras_today = games_today[extras_3d.columns].fillna(0)
+    extras_today = games_today[features_3d].fillna(0)
 
     X_today = pd.concat([ligas_today, clusters_today, extras_today], axis=1)
 
-    # Previsões
-    probas_home = model_home.predict_proba(X_today)[:, 1]
-    probas_away = model_away.predict_proba(X_today)[:, 1]
+    proba_home = model_home.predict_proba(X_today)[:, 1]
+    proba_away = 1 - proba_home
 
-    games_today['Quadrante_ML_Score_Home'] = probas_home
-    games_today['Quadrante_ML_Score_Away'] = probas_away
-    games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
-    games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
+    games_today['Prob_Home'] = proba_home
+    games_today['Prob_Away'] = proba_away
+    games_today['ML_Side'] = np.where(proba_home > proba_away, 'HOME', 'AWAY')
+    games_today['ML_Confidence'] = np.maximum(proba_home, proba_away)
 
-    # Importância das features
+    # ----------------------------
+    # 📊 Importância de Features
+    # ----------------------------
     importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
-    top_feats = importances.head(20)
 
-    st.markdown("### 🔍 Top Features (sem quadrantes)")
-    st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
+    st.markdown("### 🔍 Top Features (Modelo Único – Home)")
+    st.dataframe(importances.head(20).to_frame("Importância"), use_container_width=True)
 
-    st.info(f"📊 Features vetoriais e clusters no Top 20: {len([f for f in top_feats.index if 'Sin' in f or 'Cos' in f or 'Cluster' in f])}")
+    st.success("✅ Modelo 3D treinado apenas com lado HOME (sem redundância).")
+    return model_home, games_today
 
-    st.success("✅ Modelo 3D treinado sem quadrantes fixos – apenas features vetoriais + clusters.")
-    return model_home, model_away, games_today
 
 
 
