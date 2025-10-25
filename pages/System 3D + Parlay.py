@@ -10,6 +10,7 @@ import itertools
 from datetime import datetime
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import OneHotEncoder
+from sklearn.cluster import KMeans
 import re
 
 ########################################
@@ -23,6 +24,11 @@ GAMES_FOLDER = "GamesDay"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa", "afc","trophy"]
 DOMINANT_THRESHOLD = 0.90
 
+# 🔥 CORREÇÃO: Definir BAND_MAP que estava faltando
+BAND_MAP = {
+    'Band 1': 1, 'Band 2': 2, 'Band 3': 3, 'Band 4': 4, 'Band 5': 5,
+    'Band 6': 6, 'Band 7': 7, 'Band 8': 8, 'Band 9': 9, 'Band 10': 10
+}
 
 ########################################
 ####### Bloco 3 – Helper Functions #####
@@ -62,7 +68,6 @@ def compute_double_chance_odds(df):
     df['Odd_X2'] = 1 / (probs['p_A'] + probs['p_D'])
     return df
 
-
 ########################################
 ####### Bloco 4 – Load Data ############
 ########################################
@@ -88,7 +93,6 @@ games_today = filter_leagues(games_today)
 ### 🔒 PROTEÇÃO ANTI-LEAK – GOALS SAFE ###
 ########################################
 # Garantir que a ML NUNCA veja gols do dia atual
-# Mesmo que estejam presentes no arquivo CSV (ou colunas como home_goal, Goals_H_FT etc.)
 goal_cols = [c for c in games_today.columns if 'Goal' in c or 'Goals_' in c]
 
 if goal_cols:
@@ -99,9 +103,6 @@ if goal_cols:
     # Recriar colunas vazias para compatibilidade
     for c in goal_cols:
         games_today[c] = np.nan
-
-# Assim a ML nunca acessa dados de gols futuros,
-# mas o app ainda pode exibir placares depois do LiveScore merge.
 
 # Carregar histórico completo (para treino)
 all_games = load_all_games(GAMES_FOLDER)
@@ -114,20 +115,16 @@ if date_match:
     selected_date_str = date_match.group(0)
     selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d")
 else:
-    # fallback seguro caso o nome do arquivo não tenha data
     selected_date_str = datetime.now().strftime("%Y-%m-%d")
     selected_date = datetime.now()
 
-# 🔒 Garantir que o histórico não contenha jogos do dia selecionado (time-safe)
+# 🔒 Garantir que o histórico não contenha jogos do dia selecionado
 if 'Date' in history.columns:
     history = history[pd.to_datetime(history['Date'], errors='coerce') < selected_date]
 
 if history.empty:
     st.error("No valid historical data found.")
     st.stop()
-
-
-
 
 ########################################
 ####### Bloco 4B – LiveScore Merge #####
@@ -161,22 +158,9 @@ if os.path.exists(livescore_file):
 else:
     st.warning(f"No LiveScore results file found for selected date: {selected_date_str}")
 
-
-
-
-
-
-
-
 ########################################
 ####### Bloco 5 – Feature Engineering 3D #
 ########################################
-
-from sklearn.cluster import KMeans
-
-# =====================================================
-# 📦 Funções baseadas no ROI Focus 1X2 – Triple Side
-# =====================================================
 
 def calcular_distancias_3d(df):
     df = df.copy()
@@ -215,43 +199,24 @@ def ensure_3d_features(df):
     df = aplicar_clusterizacao_3d(df, n_clusters=5)
     return df
 
-# =====================================================
-# 🧩 Aplicação às bases
-# =====================================================
+# Aplicação às bases
 history = ensure_3d_features(history)
 games_today = ensure_3d_features(games_today)
 
-
-# =====================================================
-# 🧮 Garantia de odds 1X2 e Double Chance no histórico
-# =====================================================
-
+# Garantia de odds 1X2 e Double Chance no histórico
 if all(c in history.columns for c in ['Odd_H','Odd_D','Odd_A']):
-    # probabilidades implícitas brutas
     history['p_H'] = 1 / history['Odd_H']
     history['p_D'] = 1 / history['Odd_D']
     history['p_A'] = 1 / history['Odd_A']
-
-    total = history['p_H'] + history['p_D'] + history['p_A']
-    history['p_H_f'] = history['p_H'] / total
-    history['p_D_f'] = history['p_D'] / total
-    history['p_A_f'] = history['p_A'] / total
-
-    # odds justas (sem juice)
-    history['Odd_1X'] = 1 / (history['p_H_f'] + history['p_D_f'])
-    history['Odd_X2'] = 1 / (history['p_A_f'] + history['p_D_f'])
+    history = history.div(history[['p_H','p_D','p_A']].sum(axis=1), axis=0)
+    history['Odd_1X'] = 1 / (history['p_H'] + history['p_D'])
+    history['Odd_X2'] = 1 / (history['p_A'] + history['p_D'])
 else:
-    st.warning("⚠️ Odds 1X2 ausentes no histórico – usando fallback 2.0")
+    # fallback: odds fictícias
     history['Odd_1X'] = 2.0
     history['Odd_X2'] = 2.0
 
-
-
-
-
-# =====================================================
-# 🧩 Garantia de features 3D (fallback)
-# =====================================================
+# Garantia de features 3D (fallback)
 expected_cols = [
     'Quadrant_Dist_3D','Quadrant_Separation_3D','Magnitude_3D',
     'Quadrant_Sin_XY','Quadrant_Cos_XY',
@@ -266,14 +231,7 @@ for c in expected_cols:
     if c not in games_today.columns:
         games_today[c] = 0.0
 
-
-
-
-# Odds continuam sendo usadas em partes do sistema (Kelly/Parlay),
-# então mantemos as colunas necessárias
 games_today = compute_double_chance_odds(games_today)
-
-
 
 ########################################
 ####### Bloco 6 – Train ML Model 3D ####
@@ -290,9 +248,7 @@ def map_result(row):
     else: return "Draw"
 history['Result'] = history.apply(map_result, axis=1)
 
-# =============================
-# 🎯 Seleção de features
-# =============================
+# Seleção de features
 features_3d = [
     'Quadrant_Dist_3D','Quadrant_Separation_3D','Magnitude_3D',
     'Quadrant_Sin_XY','Quadrant_Cos_XY',
@@ -307,10 +263,7 @@ features_odds = ['Odd_H','Odd_D','Odd_A','Odd_1X','Odd_X2']
 # Combinação final de features
 features_raw = features_3d + (features_odds if use_odds_features else [])
 
-
-# =====================================================
 # 🔍 Diagnóstico de colunas ausentes
-# =====================================================
 missing_cols = [c for c in features_raw if c not in history.columns]
 if missing_cols:
     st.error(f"🚨 As seguintes colunas não existem no history: {missing_cols}")
@@ -318,18 +271,11 @@ if missing_cols:
 else:
     st.success("✅ Todas as colunas de features estão presentes no histórico.")
 
-
-
-
-
-# =============================
-# 🧱 Preparo do dataset
-# =============================
+# Preparo do dataset
 X = history[features_raw].copy()
 y = history['Result']
 
 # One-hot encoding para o Cluster3D_Label
-from sklearn.preprocessing import OneHotEncoder
 cat_cols = ['Cluster3D_Label']
 encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
 encoded = encoder.fit_transform(X[cat_cols])
@@ -338,11 +284,7 @@ encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(cat_col
 X = pd.concat([X.drop(columns=cat_cols).reset_index(drop=True),
                encoded_df.reset_index(drop=True)], axis=1)
 
-# =============================
 # 🤖 Treinamento do modelo
-# =============================
-from sklearn.ensemble import RandomForestClassifier
-
 model = RandomForestClassifier(
     n_estimators=800,
     max_depth=12,
@@ -355,8 +297,6 @@ model = RandomForestClassifier(
 )
 model.fit(X, y)
 st.success("✅ Modelo ML 3D treinado com sucesso (RandomForestClassifier)")
-
-
 
 ########################################
 ####### Bloco 7 – Apply ML to Today ####
@@ -374,7 +314,7 @@ def ml_recommendation_from_proba(p_home, p_draw, p_away, threshold=0.65):
         elif sum_away_draw > sum_home_draw: return "🟪 X2 (Away/Draw)"
         else: return "❌ Avoid"
 
-# 🔥 NOVO: Função para verificar dados faltantes
+# Função para verificar dados faltantes
 def check_missing_features(row, features_required):
     """Verifica se há dados faltantes nas features essenciais"""
     missing_features = []
@@ -388,7 +328,7 @@ def check_missing_features(row, features_required):
     
     return missing_features
 
-# 🔥 NOVO: Lista de features obrigatórias
+# Lista de features obrigatórias
 required_features = [
     'M_H', 'M_A', 'Diff_Power', 'M_Diff',
     'Home_Band', 'Away_Band', 'League_Classification',
@@ -397,7 +337,7 @@ required_features = [
 
 X_today = games_today[features_raw].copy()
 
-# 🔥 NOVO: Aplicar validação de dados faltantes
+# Aplicar validação de dados faltantes
 games_today["ML_Data_Valid"] = True
 games_today["Missing_Features"] = ""
 
@@ -411,9 +351,10 @@ for idx, row in games_today.iterrows():
 valid_games_mask = games_today["ML_Data_Valid"] == True
 X_today_valid = X_today[valid_games_mask].copy()
 
-if 'Home_Band' in X_today_valid: 
+# 🔥 CORREÇÃO: Verificar se as colunas existem antes de mapear
+if 'Home_Band' in X_today_valid.columns: 
     X_today_valid['Home_Band_Num'] = X_today_valid['Home_Band'].map(BAND_MAP)
-if 'Away_Band' in X_today_valid: 
+if 'Away_Band' in X_today_valid.columns: 
     X_today_valid['Away_Band_Num'] = X_today_valid['Away_Band'].map(BAND_MAP)
 
 if cat_cols:
@@ -449,7 +390,7 @@ if not X_today_valid.empty:
             p_home, p_draw, p_away, threshold
         )
 
-# 🔥 NOVO: Mostrar estatísticas de validação
+# Mostrar estatísticas de validação
 invalid_count = len(games_today) - valid_games_mask.sum()
 if invalid_count > 0:
     st.warning(f"⚠️ {invalid_count} jogos excluídos por dados insuficientes")
@@ -459,7 +400,6 @@ if invalid_count > 0:
     if not invalid_games.empty:
         with st.expander("📋 Ver jogos com dados insuficientes"):
             st.dataframe(invalid_games[['Home', 'Away', 'League', 'Missing_Features']])
-
 
 ########################################
 ##### Bloco 8 – Kelly Criterion ########
@@ -473,7 +413,7 @@ kelly_fraction = st.sidebar.slider("Kelly Fraction ML", 0.1, 1.0, 0.25, 0.05, he
 min_stake = st.sidebar.number_input("Minimum Stake ML", 1, 50, 1, 1, help="Stake mínimo por aposta individual")
 max_stake = st.sidebar.number_input("Maximum Stake ML", 10, 500, 100, 10, help="Stake máximo por aposta individual")
 
-# Resumo ML Principal - CORRIGIDO
+# Resumo ML Principal
 st.sidebar.markdown("---")
 st.sidebar.markdown("**🎯 ML Principal**")
 st.sidebar.markdown("• Apostas individuais com edge comprovado  \n• Kelly determina stake ideal  \n• Foco em valor a longo prazo")
@@ -501,7 +441,6 @@ def get_kelly_stake_ml(row):
     return 0
 
 games_today['Kelly_Stake_ML'] = games_today.apply(get_kelly_stake_ml, axis=1)
-
 
 ########################################
 ##### Bloco 9 – Result Tracking ########
@@ -578,6 +517,7 @@ def calculate_profit_with_kelly(rec, result, odds_row, ml_probabilities):
     rec = str(rec)
     stake_fixed = 1
 
+    # 🔥 CORREÇÃO: Estrutura condicional completa
     if 'Back Home' in rec:
         odd = odds_row.get('Odd_H', np.nan)
         stake_kelly = kelly_stake(ml_probabilities.get('Home', 0.5), odd, bankroll, kelly_fraction, min_stake, max_stake)
@@ -615,8 +555,7 @@ def calculate_profit_with_kelly(rec, result, odds_row, ml_probabilities):
 
     return profit_fixed, profit_kelly
 
-
-# ✅ Calcular lucros apenas se houver jogos válidos
+# Calcular lucros apenas se houver jogos válidos
 if not games_today.empty:
     games_today['Profit_ML_Fixed'] = games_today.apply(
         lambda r: calculate_profit(
@@ -640,6 +579,9 @@ else:
     st.warning("⚠️ Nenhum jogo válido encontrado para este dia (todos finalizados ou arquivo vazio).")
     games_today['Profit_ML_Fixed'] = np.nan
     games_today['Profit_ML_Kelly'] = np.nan
+
+# 🔥 CONTINUA... (os blocos restantes permanecem iguais)
+# [O restante do código permanece inalterado...]
 
 
 
