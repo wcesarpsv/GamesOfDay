@@ -376,17 +376,50 @@ for idx, row in games_today.iterrows():
 valid_games_mask = games_today["ML_Data_Valid"] == True
 X_today_valid = X_today[valid_games_mask].copy()
 
-# 🔥 CORREÇÃO: Verificar se as colunas existem antes de mapear
-if 'Home_Band' in X_today_valid.columns: 
-    X_today_valid['Home_Band_Num'] = X_today_valid['Home_Band'].map(BAND_MAP)
-if 'Away_Band' in X_today_valid.columns: 
-    X_today_valid['Away_Band_Num'] = X_today_valid['Away_Band'].map(BAND_MAP)
-
-if cat_cols:
-    encoded_today = encoder.transform(X_today_valid[cat_cols])
-    encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(cat_cols))
-    X_today_valid = pd.concat([X_today_valid.drop(columns=cat_cols).reset_index(drop=True),
-                             encoded_today_df.reset_index(drop=True)], axis=1)
+# 🔥 CORREÇÃO: Preencher valores NaN antes do encoding
+if not X_today_valid.empty:
+    # Preencher NaN nas colunas numéricas
+    numeric_cols = X_today_valid.select_dtypes(include=[np.number]).columns
+    X_today_valid[numeric_cols] = X_today_valid[numeric_cols].fillna(0)
+    
+    # Preencher NaN nas colunas categóricas
+    categorical_cols = X_today_valid.select_dtypes(include=['object']).columns
+    X_today_valid[categorical_cols] = X_today_valid[categorical_cols].fillna('missing')
+    
+    # 🔥 CORREÇÃO: Verificar se as colunas de band existem e mapear
+    if 'Home_Band' in X_today_valid.columns: 
+        X_today_valid['Home_Band_Num'] = X_today_valid['Home_Band'].map(BAND_MAP).fillna(0)
+    if 'Away_Band' in X_today_valid.columns: 
+        X_today_valid['Away_Band_Num'] = X_today_valid['Away_Band'].map(BAND_MAP).fillna(0)
+    
+    # 🔥 CORREÇÃO: Garantir que cat_cols exista e tenha dados válidos
+    if cat_cols:
+        # Preencher NaN nas colunas categóricas do encoder
+        for col in cat_cols:
+            if col in X_today_valid.columns:
+                X_today_valid[col] = X_today_valid[col].fillna(-1)  # ou outro valor padrão
+        
+        try:
+            # Verificar se há dados para transformar
+            if not X_today_valid[cat_cols].empty:
+                encoded_today = encoder.transform(X_today_valid[cat_cols])
+                encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(cat_cols))
+                X_today_valid = pd.concat([X_today_valid.drop(columns=cat_cols).reset_index(drop=True),
+                                         encoded_today_df.reset_index(drop=True)], axis=1)
+            else:
+                st.warning("⚠️ Nenhum dado válido para encoding categórico")
+                # Criar colunas vazias para manter a estrutura
+                encoded_cols = encoder.get_feature_names_out(cat_cols)
+                for col in encoded_cols:
+                    X_today_valid[col] = 0
+        except Exception as e:
+            st.error(f"❌ Erro no encoding categórico: {e}")
+            # Fallback: criar colunas vazias
+            encoded_cols = encoder.get_feature_names_out(cat_cols)
+            for col in encoded_cols:
+                X_today_valid[col] = 0
+    else:
+        st.warning("⚠️ Nenhuma coluna categórica definida para encoding")
 
 # Inicializar colunas de probabilidade com NaN
 games_today["ML_Proba_Home"] = np.nan
@@ -396,24 +429,48 @@ games_today["ML_Recommendation"] = "❌ Avoid"
 
 # Aplicar modelo apenas nos jogos válidos
 if not X_today_valid.empty:
-    ml_proba = model.predict_proba(X_today_valid)
-    
-    # Preencher apenas os jogos válidos
-    valid_indices = games_today[valid_games_mask].index
-    
-    games_today.loc[valid_indices, "ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
-    games_today.loc[valid_indices, "ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
-    games_today.loc[valid_indices, "ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
-    
-    # Gerar recomendações apenas para jogos válidos
-    for idx in valid_indices:
-        p_home = games_today.at[idx, "ML_Proba_Home"]
-        p_draw = games_today.at[idx, "ML_Proba_Draw"] 
-        p_away = games_today.at[idx, "ML_Proba_Away"]
+    try:
+        # 🔥 CORREÇÃO: Garantir que as features estejam na mesma ordem do treino
+        # Obter as features do modelo treinado
+        expected_features = model.feature_names_in_ if hasattr(model, 'feature_names_in_') else X.columns
         
-        games_today.at[idx, "ML_Recommendation"] = ml_recommendation_from_proba(
-            p_home, p_draw, p_away, threshold
-        )
+        # Reordenar e preencher features faltantes
+        for feature in expected_features:
+            if feature not in X_today_valid.columns:
+                X_today_valid[feature] = 0
+        
+        # Manter apenas as features esperadas pelo modelo
+        X_today_valid = X_today_valid[expected_features]
+        
+        # Preencher quaisquer valores NaN restantes
+        X_today_valid = X_today_valid.fillna(0)
+        
+        ml_proba = model.predict_proba(X_today_valid)
+        
+        # Preencher apenas os jogos válidos
+        valid_indices = games_today[valid_games_mask].index
+        
+        games_today.loc[valid_indices, "ML_Proba_Home"] = ml_proba[:, list(model.classes_).index("Home")]
+        games_today.loc[valid_indices, "ML_Proba_Draw"] = ml_proba[:, list(model.classes_).index("Draw")]
+        games_today.loc[valid_indices, "ML_Proba_Away"] = ml_proba[:, list(model.classes_).index("Away")]
+        
+        # Gerar recomendações apenas para jogos válidos
+        for idx in valid_indices:
+            p_home = games_today.at[idx, "ML_Proba_Home"]
+            p_draw = games_today.at[idx, "ML_Proba_Draw"] 
+            p_away = games_today.at[idx, "ML_Proba_Away"]
+            
+            games_today.at[idx, "ML_Recommendation"] = ml_recommendation_from_proba(
+                p_home, p_draw, p_away, threshold
+            )
+            
+        st.success(f"✅ Previsões ML aplicadas em {len(valid_indices)} jogos válidos")
+        
+    except Exception as e:
+        st.error(f"❌ Erro ao aplicar modelo ML: {e}")
+        st.error("Verifique se as features do dia atual correspondem às do treino")
+else:
+    st.warning("⚠️ Nenhum jogo com dados válidos para previsão ML")
 
 # Mostrar estatísticas de validação
 invalid_count = len(games_today) - valid_games_mask.sum()
