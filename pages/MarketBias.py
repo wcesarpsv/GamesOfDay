@@ -1276,6 +1276,48 @@ else:
 # ---------------- TABELA PRINCIPAL COM CLUSTERS ----------------
 st.markdown("## 🏆 Melhores Oportunidades - Sistema Clusters 3D")
 
+
+############ Bloco Analítico – Viés da Bookie (Abertura) ################
+def analisar_bias_abertura(df):
+    """Mostra estatísticas e tendências de viés da bookie com base nas odds de abertura"""
+    st.markdown("## 🧭 Análise de Viés da Bookie – Odds de Abertura")
+
+    if 'Bias_Open_H' not in df.columns:
+        st.warning("⚠️ Dados de bias de abertura não disponíveis.")
+        return
+
+    # Resumo numérico
+    mean_bias_home = df['Bias_Open_H'].mean()
+    mean_bias_away = df['Bias_Open_A'].mean()
+    st.metric("📊 Média de Viés (Home)", f"{mean_bias_home:+.2f}%")
+    st.metric("📊 Média de Viés (Away)", f"{mean_bias_away:+.2f}%")
+
+    # Tabela por liga
+    if 'League' in df.columns:
+        league_bias = (
+            df.groupby('League')[['Bias_Open_H', 'Bias_Open_A']]
+            .mean()
+            .sort_values('Bias_Open_H', ascending=False)
+        )
+        st.markdown("### ⚽ Viés Médio por Liga")
+        st.dataframe(league_bias.style.format('{:+.2f}'), use_container_width=True)
+
+    # Top 5 divergências (abertura vs modelo)
+    top_bias = df[['League', 'Home', 'Away', 'Bias_Open_H', 'Bias_Open_A', 'Prob_Home', 'Impl_H_Open']].copy()
+    top_bias['Abs_Bias'] = top_bias['Bias_Open_H'].abs()
+    top5 = top_bias.nlargest(5, 'Abs_Bias')
+    st.markdown("### 🔍 Top 5 Divergências de Abertura (Bookie vs Modelo)")
+    st.dataframe(
+        top5.style.format({
+            'Bias_Open_H': '{:+.2f}',
+            'Prob_Home': '{:.2%}',
+            'Impl_H_Open': '{:.2%}'
+        }),
+        use_container_width=True
+    )
+
+
+# ---------------- LÓGICA PRINCIPAL ----------------
 if not games_today.empty and 'Cluster_ML_Score_Home' in games_today.columns:
     # Preparar dados para exibição
     ranking_clusters = games_today.copy()
@@ -1337,7 +1379,8 @@ if not games_today.empty and 'Cluster_ML_Score_Home' in games_today.columns:
     # ---------------- ANÁLISES ESPECÍFICAS ----------------
     gerar_estrategias_por_cluster(ranking_clusters)
     analisar_padroes_clusters(ranking_clusters)
-    
+    analisar_bias_abertura(ranking_clusters)
+
 else:
     st.error("""
     ❌ **Não foi possível gerar a tabela de confrontos**
@@ -1352,6 +1395,7 @@ else:
     2. Se o histórico tem dados suficientes
     3. Se todas as colunas necessárias existem
     """)
+
 
 
 ############ Bloco Q - Resumo Executivo e Filtros Avançados ################
