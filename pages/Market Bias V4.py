@@ -279,7 +279,6 @@ def calcular_regressao_media(df):
 
 
 
-
 ############ Bloco F - Visualização 3D com Clusters ################
 
 # ---------------- VISUALIZAÇÃO 3D COM CLUSTERS ----------------
@@ -529,8 +528,6 @@ def load_and_merge_livescore(games_today, selected_date_str):
 
 
 
-
-
 ############ Bloco H - Cálculo de Distâncias 3D ################
 # ---------------- CÁLCULO DE DISTÂNCIAS 3D ----------------
 def calcular_distancias_3d(df):
@@ -597,6 +594,59 @@ def calcular_distancias_3d(df):
 
     # --- Magnitude total ---
     df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+
+    return df
+
+
+
+############ Bloco H2 - Valor Angular de Mercado ################
+def calcular_valor_angular_mercado(df):
+    """
+    Calcula o valor esperado baseado no ângulo 3D e odds de abertura (market inefficiency).
+    """
+    df = df.copy()
+
+    required_cols = [
+        'Quadrant_Dist_3D', 'Quadrant_Angle_XY',
+        'Prob_Home', 'Prob_Away',
+        'Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP'
+    ]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        st.warning(f"⚠️ Colunas ausentes para cálculo de valor angular: {missing}")
+        for col in ['Market_Error_Home', 'Market_Error_Away',
+                    'Value_Score_Home', 'Value_Score_Away', 'Market_Classification']:
+            df[col] = np.nan
+        return df
+
+    # Probabilidade implícita do mercado (normalizada)
+    inv_sum = 1 / (1/df['Odd_H_OP'] + 1/df['Odd_D_OP'] + 1/df['Odd_A_OP'])
+    df['p_market_home'] = inv_sum / df['Odd_H_OP']
+    df['p_market_away'] = inv_sum / df['Odd_A_OP']
+
+    # Erro de mercado (modelo - mercado)
+    df['Market_Error_Home'] = df['Prob_Home'] - df['p_market_home']
+    df['Market_Error_Away'] = df['Prob_Away'] - df['p_market_away']
+
+    # Intensidade angular (baseada na distância e ângulo XY)
+    df['Angular_Intensity'] = np.abs(np.sin(np.radians(df['Quadrant_Angle_XY']))) * df['Quadrant_Dist_3D']
+
+    # Value Score ajustado pelo ângulo e intensidade
+    df['Value_Score_Home'] = df['Market_Error_Home'] * df['Angular_Intensity']
+    df['Value_Score_Away'] = df['Market_Error_Away'] * df['Angular_Intensity']
+
+    # Classificação de valor
+    def classify_value(v):
+        if pd.isna(v):
+            return '⚖️ Neutro'
+        if v > 0.05:
+            return '🎯 VALUE BET'
+        elif v < -0.05:
+            return '🔴 Overpriced'
+        else:
+            return '⚖️ Neutro'
+
+    df['Market_Classification'] = df['Value_Score_Home'].apply(classify_value)
 
     return df
 
@@ -694,472 +744,6 @@ def treinar_modelo_com_clusters(history, games_today):
 
     st.success("✅ Modelo 3D com Clusters treinado com sucesso!")
     return model_home, games_today
-
-
-
-############ Bloco N - Execução Principal: Carregamento de Dados ################
-# ---------------- EXECUÇÃO PRINCIPAL ----------------
-st.info("📂 Carregando dados para análise 3D com clusters...")
-
-# Seleção de arquivo do dia
-files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
-if not files:
-    st.warning("No CSV files found in GamesDay folder.")
-    st.stop()
-
-options = files[-7:] if len(files) >= 7 else files
-selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
-
-date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
-selected_date_str = date_match.group(0) if date_match else datetime.now().strftime("%Y-%m-%d")
-
-# Carregar dados com cache
-games_today, history = load_cached_data(selected_file)
-
-# Aplicar Live Score
-games_today = load_and_merge_livescore(games_today, selected_date_str)
-
-# Converter Asian Line
-history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
-games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
-
-# Filtrar histórico com linha válida
-history = history.dropna(subset=['Asian_Line_Decimal'])
-st.info(f"📊 Histórico com Asian Line válida: {len(history)} jogos")
-
-# Filtro anti-leakage temporal
-if "Date" in history.columns:
-    try:
-        selected_date = pd.to_datetime(selected_date_str)
-        history["Date"] = pd.to_datetime(history["Date"], errors="coerce")
-        history = history[history["Date"] < selected_date].copy()
-        st.info(f"📊 Treinando com {len(history)} jogos anteriores a {selected_date_str}")
-    except Exception as e:
-        st.error(f"Erro ao aplicar filtro temporal: {e}")
-
-# Aplicar momentum e regressão
-history = calcular_momentum_time(history)
-games_today = calcular_momentum_time(games_today)
-history = calcular_regressao_media(history)
-games_today = calcular_regressao_media(games_today)
-
-
-
-############ Bloco R - Dinâmica de Mercado (Open vs Close) ################
-# ==============================================================
-# 💹 BLOCO R – DINÂMICA DE MERCADO (Open vs Close)
-# ==============================================================
-
-def calcular_dinamica_mercado(df):
-    """Calcula métricas de mercado com base nas odds de abertura e fechamento."""
-    df = df.copy()
-    required_cols = ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP', 'Odd_H', 'Odd_D', 'Odd_A']
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        st.warning(f"⚠️ Colunas ausentes para análise de mercado: {missing}")
-        return df
-
-    # Probabilidades implícitas
-    for side in ['H', 'D', 'A']:
-        df[f'Implied_{side}_OP'] = 1 / df[f'Odd_{side}_OP']
-        df[f'Implied_{side}_Close'] = 1 / df[f'Odd_{side}']
-
-    # Normalizar (remover overround)
-    for prefix in ['Implied_H', 'Implied_D', 'Implied_A']:
-        total_op = df[['Implied_H_OP', 'Implied_D_OP', 'Implied_A_OP']].sum(axis=1)
-        total_close = df[['Implied_H_Close', 'Implied_D_Close', 'Implied_A_Close']].sum(axis=1)
-        df[[f'Implied_H_OP', f'Implied_D_OP', f'Implied_A_OP']] = (
-            df[[f'Implied_H_OP', f'Implied_D_OP', f'Implied_A_OP']].div(total_op, axis=0)
-        )
-        df[[f'Implied_H_Close', f'Implied_D_Close', f'Implied_A_Close']] = (
-            df[[f'Implied_H_Close', f'Implied_D_Close', f'Implied_A_Close']].div(total_close, axis=0)
-        )
-
-    # Market Shift (mudança de percepção)
-    for side in ['H', 'D', 'A']:
-        df[f'Market_Shift_{side}'] = df[f'Implied_{side}_OP'] - df[f'Implied_{side}_Close']
-
-    # Market Bias e diferença entre lados
-    df['Market_Bias_Score'] = (
-        np.sign(df['Market_Shift_H'] - df['Market_Shift_A']) *
-        (np.abs(df['Market_Shift_H']) + np.abs(df['Market_Shift_A']))
-    )
-    df['Market_Diff_Implied'] = df['Implied_H_OP'] - df['Implied_A_OP']
-
-    # Placeholder do erro inicial (preenchido depois pelo ML)
-    df['Market_Error_Open_H'] = np.nan
-    df['Market_Error_Open_A'] = np.nan
-
-    return df
-
-
-# ------------------ EXECUÇÃO SEGURA ------------------
-if 'history' in locals() and 'games_today' in locals():
-    try:
-        st.markdown("## 💹 Análise de Dinâmica de Mercado (Open vs Close)")
-        history = calcular_dinamica_mercado(history)
-        games_today = calcular_dinamica_mercado(games_today)
-
-        st.success("✅ Dinâmica de mercado calculada com sucesso!")
-
-        if "League" in history.columns:
-            market_summary = (
-                history.groupby("League")[['Market_Shift_H', 'Market_Shift_A']]
-                .mean()
-                .sort_values("Market_Shift_H", ascending=False)
-                .head(15)
-            )
-            st.markdown("### 📊 Market Bias Summary (Top 15 ligas)")
-            st.dataframe(
-                market_summary.style.format({'Market_Shift_H': '{:.4f}', 'Market_Shift_A': '{:.4f}'}),
-                use_container_width=True
-            )
-            st.info("🧭 Valores positivos = mercado valorizou mais o Home (queda na odd).")
-        else:
-            st.warning("⚠️ Nenhuma coluna 'League' encontrada para resumo de viés.")
-    except Exception as e:
-        st.error(f"❌ Erro ao calcular dinâmica de mercado: {e}")
-else:
-    st.warning("⚠️ Variáveis 'history' e 'games_today' ainda não foram definidas.")
-
-
-
-
-
-############ Bloco O - Execução Principal: Treinamento e Visualização ################
-# ---------------- TREINAMENTO DO MODELO ----------------
-st.markdown("## 🧠 Sistema 3D com Clusters - ML")
-
-if not history.empty:
-    try:
-        modelo_home, games_today = treinar_modelo_com_clusters(history, games_today)
-        st.success("✅ Modelo 3D com Clusters treinado com sucesso!")
-    except Exception as e:
-        st.error(f"❌ Erro no treinamento do modelo: {e}")
-        st.info("⚠️ Continuando sem modelo treinado...")
-else:
-    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
-
-# ---------------- VISUALIZAÇÃO 3D INTERATIVA ----------------
-st.markdown("## 🎯 Visualização 3D com Clusters")
-
-# Filtros interativos
-col1, col2 = st.columns([2, 1])
-with col1:
-    if "League" in games_today.columns and not games_today["League"].isna().all():
-        leagues = sorted(games_today["League"].dropna().unique())
-        selected_league = st.selectbox(
-            "Selecione a liga para análise:",
-            options=["⚽ Todas as ligas"] + leagues,
-            index=0
-        )
-    else:
-        selected_league = "⚽ Todas as ligas"
-        st.warning("⚠️ Nenhuma coluna de 'League' encontrada")
-
-with col2:
-    max_n = len(games_today)
-    n_to_show = st.slider("Jogos para exibir:", 10, min(max_n, 100), 30, step=5)
-
-# Filtrar por liga
-if selected_league != "⚽ Todas as ligas":
-    df_filtered = games_today[games_today["League"] == selected_league].copy()
-else:
-    df_filtered = games_today.copy()
-
-# Filtro por cluster
-st.markdown("### 🔍 Filtro por Cluster")
-clusters_disponiveis = df_filtered['Cluster3D_Desc'].unique() if 'Cluster3D_Desc' in df_filtered.columns else []
-if len(clusters_disponiveis) > 0:
-    cluster_selecionado = st.selectbox(
-        "Filtrar por tipo de confronto:",
-        options=["🎯 Todos os clusters"] + list(clusters_disponiveis),
-        index=0
-    )
-
-    if cluster_selecionado != "🎯 Todos os clusters":
-        df_plot = df_filtered[df_filtered['Cluster3D_Desc'] == cluster_selecionado].copy()
-    else:
-        df_plot = df_filtered.copy()
-else:
-    st.warning("⚠️ Nenhum cluster disponível - aplicando clusterização...")
-    try:
-        df_filtered = aplicar_clusterizacao_3d(df_filtered)
-        clusters_disponiveis = df_filtered['Cluster3D_Desc'].unique()
-        df_plot = df_filtered.copy()
-    except Exception as e:
-        st.error(f"❌ Erro na clusterização: {e}")
-        df_plot = df_filtered.copy()
-
-# Aplicar limite de jogos
-df_plot = df_plot.head(n_to_show)
-
-# Verificar se há dados válidos para o gráfico 3D
-required_cols_3d = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A', 'Cluster3D_Desc']
-missing_3d_cols = [col for col in required_cols_3d if col not in df_plot.columns]
-
-if missing_3d_cols:
-    st.warning(f"⚠️ Colunas necessárias para gráfico 3D não encontradas: {missing_3d_cols}")
-    st.info("📊 O gráfico 3D será pulado devido a dados insuficientes")
-    
-    # Mostrar estatísticas dos dados disponíveis
-    st.markdown("### 📈 Dados Disponíveis para Análise")
-    available_cols = [col for col in required_cols_3d if col in df_plot.columns]
-    if available_cols:
-        st.write(f"Colunas disponíveis: {available_cols}")
-        st.write(f"Total de jogos: {len(df_plot)}")
-        
-else:
-    # Verificar se há dados numéricos válidos
-    numeric_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
-    df_numeric_check = df_plot[numeric_cols].fillna(0)
-    
-    if df_numeric_check.select_dtypes(include=[np.number]).empty:
-        st.warning("⚠️ Não há dados numéricos válidos para o gráfico 3D")
-    else:
-        # Verificar se temos pelo menos alguns dados não-zero
-        has_valid_data = False
-        for col in numeric_cols:
-            if col in df_plot.columns and df_plot[col].notna().any():
-                non_zero_values = df_plot[col].fillna(0) != 0
-                if non_zero_values.any():
-                    has_valid_data = True
-                    break
-        
-        if not has_valid_data:
-            st.warning("⚠️ Todos os valores numéricos são zero ou NaN")
-        else:
-            try:
-                # Criar e exibir gráfico 3D
-                fig_3d_clusters = create_3d_plot_with_clusters(df_plot, n_to_show, selected_league)
-                st.plotly_chart(fig_3d_clusters, use_container_width=True)
-                
-                # Legenda dos clusters
-                st.markdown("""
-                ### 🎨 Legenda dos Clusters 3D:
-                - **🔵 Home Domina Confronto**: Home superior nas 3 dimensões
-                - **🔴 Away Domina Confronto**: Away superior nas 3 dimensões  
-                - **🟢 Confronto Equilibrado**: Times muito parecidos
-                - **🟠 Home Imprevisível**: Sinais mistos e conflitantes
-                - **🟣 Home Instável**: Alta volatilidade e inconsistência
-                """)
-                
-                # Estatísticas dos clusters exibidos
-                st.markdown("### 📊 Estatísticas dos Clusters no Gráfico")
-                cluster_counts = df_plot['Cluster3D_Desc'].value_counts()
-                st.dataframe(cluster_counts, use_container_width=True)
-                
-            except Exception as e:
-                st.error(f"❌ Erro ao criar gráfico 3D: {e}")
-                st.info("📋 Mostrando dados em formato de tabela...")
-                
-                # Mostrar dados em tabela como fallback
-                display_cols = ['Home', 'Away', 'League', 'Cluster3D_Desc', 'Aggression_Home', 'Aggression_Away', 'M_H', 'M_A']
-                display_cols = [col for col in display_cols if col in df_plot.columns]
-                
-                if display_cols:
-                    st.dataframe(
-                        df_plot[display_cols].style.format({
-                            'Aggression_Home': '{:.2f}',
-                            'Aggression_Away': '{:.2f}',
-                            'M_H': '{:.2f}',
-                            'M_A': '{:.2f}'
-                        }),
-                        use_container_width=True
-                    )
-
-
-############ Bloco R2 - Erro de Mercado Pós-ML (Corrigido) ################
-# ==============================================================
-# 🧠 BLOCO R2 – ERRO DE MERCADO PÓS-ML
-# ==============================================================
-# Calcula a diferença entre as probabilidades previstas pelo modelo
-# e as probabilidades implícitas das odds de abertura.
-# ==============================================================
-
-def calcular_erro_mercado(df):
-    df = df.copy()
-
-    # Verificação de colunas essenciais
-    required_cols = ['Prob_Home', 'Prob_Away', 'Implied_H_OP', 'Implied_A_OP']
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        st.warning(f"⚠️ Colunas ausentes para cálculo de Market Error: {missing}")
-        for col in missing:
-            df[col] = np.nan  # cria placeholder se estiver faltando
-
-    # Erro de mercado: previsão ML – bookie (abertura)
-    df['Market_Error_Open_H'] = df['Prob_Home'] - df['Implied_H_OP']
-    df['Market_Error_Open_A'] = df['Prob_Away'] - df['Implied_A_OP']
-
-    # Magnitude média do erro
-    df['Market_Error_Magnitude'] = (
-        np.abs(df['Market_Error_Open_H']) + np.abs(df['Market_Error_Open_A'])
-    ) / 2
-
-    return df
-
-
-############ Bloco R3 - Análise de Correlação e Viés (Corrigido) ################
-# ==============================================================
-# 📊 BLOCO R3 – CORRELAÇÃO ENTRE ERRO DE MERCADO E RESULTADOS
-# ==============================================================
-# Mede se o erro do modelo em relação à bookie tem relação com ROI
-# e identifica ligas onde o modelo está "mais certo" que o mercado.
-# ==============================================================
-
-def analisar_correlacao_mercado(df):
-    """Cria tabela com correlação entre Market_Error_Open e resultados reais."""
-    df = df.copy()
-
-    # Verificação de colunas
-    required = ['Market_Error_Open_H', 'Market_Error_Open_A', 'Goals_H_FT', 'Goals_A_FT']
-    missing = [c for c in required if c not in df.columns]
-    if missing:
-        st.warning(f"⚠️ Colunas ausentes para análise de correlação: {missing}")
-        return None
-
-    # Resultados reais
-    df['Home_Win'] = (df['Goals_H_FT'] > df['Goals_A_FT']).astype(int)
-    df['Away_Win'] = (df['Goals_A_FT'] > df['Goals_H_FT']).astype(int)
-
-    try:
-        corr_matrix = (
-            df.groupby('League')[['Market_Error_Open_H', 'Market_Error_Open_A', 'Home_Win', 'Away_Win']]
-            .corr()
-            .reset_index()
-        )
-
-        if 'level_1' in corr_matrix.columns:
-            corr_table = corr_matrix[
-                (corr_matrix['level_1'].isin(['Home_Win', 'Away_Win']))
-            ][['League', 'level_1', 'Market_Error_Open_H', 'Market_Error_Open_A']]
-        else:
-            # fallback para estrutura sem MultiIndex
-            st.warning("⚠️ Estrutura inesperada de correlação — aplicando fallback")
-            corr_table = corr_matrix[['League', 'Market_Error_Open_H', 'Market_Error_Open_A']].copy()
-
-        return corr_table
-
-    except Exception as e:
-        st.error(f"❌ Falha ao gerar correlação: {e}")
-        return None
-
-
-# ------------------ EXECUÇÃO SEGURA ------------------
-st.markdown("## 📊 Correlação do Erro de Mercado por Liga")
-
-if 'history' in locals() and not history.empty:
-    try:
-        corr_table = analisar_correlacao_mercado(history)
-        if corr_table is not None and not corr_table.empty:
-            # Exibição formatada
-            st.dataframe(
-                corr_table.style.background_gradient(cmap="RdYlGn", axis=None),
-                use_container_width=True,
-            )
-            st.info("""
-            🧭 Interpretação:
-            - Valores **positivos** → quando o modelo discorda da bookie, ele tende a estar certo.
-            - Valores **negativos** → o mercado corrige o modelo corretamente.
-            """)
-        else:
-            st.warning("⚠️ Nenhum dado suficiente para análise de correlação.")
-    except Exception as e:
-        st.error(f"❌ Erro ao gerar tabela de correlação: {e}")
-else:
-    st.warning("⚠️ Variável 'history' não carregada — bloco R3 ignorado.")
-
-
-
-############ Bloco R4 - ROI por Erro de Mercado (Corrigido) ################
-# ==============================================================
-# 💰 BLOCO R4 – ROI POR ERRO DE MERCADO
-# ==============================================================
-# Simula apostas em jogos onde o modelo discorda fortemente da bookie
-# e mede se essas discordâncias são lucrativas.
-# ==============================================================
-
-def calcular_roi_por_erro(df, threshold=0.05):
-    """Simula apostas em jogos onde o erro de mercado é alto."""
-    required = [
-        'Market_Error_Open_H', 'Market_Error_Open_A',
-        'Implied_H_OP', 'Implied_A_OP',
-        'Goals_H_FT', 'Goals_A_FT',
-        'Odd_H_OP', 'Odd_A_OP'
-    ]
-    missing = [c for c in required if c not in df.columns]
-    if missing:
-        st.warning(f"⚠️ Colunas ausentes para ROI por erro de mercado: {missing}")
-        return None, None, 0, 0
-
-    df = df.copy()
-    df['Result_H'] = (df['Goals_H_FT'] > df['Goals_A_FT']).astype(int)
-    df['Result_A'] = (df['Goals_A_FT'] > df['Goals_H_FT']).astype(int)
-
-    # Filtrar apostas onde o modelo discorda fortemente
-    bets_home = df[df['Market_Error_Open_H'] > threshold]
-    bets_away = df[df['Market_Error_Open_A'] > threshold]
-
-    # Diagnóstico
-    st.write("📊 Estatísticas de divergência:")
-    st.dataframe(df[['Market_Error_Open_H', 'Market_Error_Open_A']].describe())
-
-    # ROI simulado
-    def calc_roi(sub, col_res, col_odd):
-        if sub.empty:
-            return np.nan
-        profit = np.where(sub[col_res] == 1, sub[col_odd] - 1, -1)
-        return np.mean(profit) * 100
-
-    roi_home = calc_roi(bets_home, 'Result_H', 'Odd_H_OP')
-    roi_away = calc_roi(bets_away, 'Result_A', 'Odd_A_OP')
-
-    return roi_home, roi_away, len(bets_home), len(bets_away)
-
-
-# ------------------ EXECUÇÃO SEGURA ------------------
-st.markdown("## 💰 ROI por Divergência Modelo vs Bookie (Open Odds)")
-
-if 'history' in locals() and not history.empty:
-    try:
-        roi_home, roi_away, n_home, n_away = calcular_roi_por_erro(history, threshold=0.02)
-
-        if not np.isnan(roi_home):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.markdown(f"📈 **ROI Home:** <span style='color:{'lime' if roi_home>0 else 'red'}'>{roi_home:.2f}%</span>", unsafe_allow_html=True)
-            with col2:
-                st.markdown(f"📉 **ROI Away:** <span style='color:{'lime' if roi_away>0 else 'red'}'>{roi_away:.2f}%</span>", unsafe_allow_html=True)
-            with col3:
-                st.write(f"📊 Apostas simuladas: {n_home + n_away} ({n_home} Home / {n_away} Away)")
-            st.info("💡 Valores positivos indicam que o modelo identifica valor antes do mercado ajustar as odds.")
-        else:
-            st.warning("⚠️ Sem jogos suficientes para análise de ROI.")
-    except Exception as e:
-        st.error(f"❌ Erro ao calcular ROI por erro de mercado: {e}")
-else:
-    st.warning("⚠️ Variável 'history' não carregada — bloco R4 ignorado.")
-
-
-
-
-# ------------------ EXECUÇÃO SEGURA ------------------
-st.markdown("## 🧩 Erro de Mercado Pós-ML (Open vs Modelo)")
-
-if 'history' in locals() and not history.empty:
-    try:
-        history = calcular_erro_mercado(history)
-        games_today = calcular_erro_mercado(games_today)
-        st.success("✅ Market Error calculado e integrado ao dataset!")
-    except Exception as e:
-        st.error(f"❌ Erro ao calcular Market Error: {e}")
-else:
-    st.warning("⚠️ Variável 'history' não carregada — bloco R2 ignorado.")
-
-
-
-
 
 
 ############ Bloco J - Sistema de Recomendações com Clusters ################
@@ -1499,8 +1083,205 @@ def estilo_tabela_clusters(df):
 
 
 
+############ Bloco N - Execução Principal: Carregamento de Dados ################
+# ---------------- EXECUÇÃO PRINCIPAL ----------------
+st.info("📂 Carregando dados para análise 3D com clusters...")
+
+# Seleção de arquivo do dia
+files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
+if not files:
+    st.warning("No CSV files found in GamesDay folder.")
+    st.stop()
+
+options = files[-7:] if len(files) >= 7 else files
+selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
+
+date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
+selected_date_str = date_match.group(0) if date_match else datetime.now().strftime("%Y-%m-%d")
+
+# Carregar dados com cache
+games_today, history = load_cached_data(selected_file)
+
+# Aplicar Live Score
+games_today = load_and_merge_livescore(games_today, selected_date_str)
+
+# Converter Asian Line
+history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
+games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
+
+# Filtrar histórico com linha válida
+history = history.dropna(subset=['Asian_Line_Decimal'])
+st.info(f"📊 Histórico com Asian Line válida: {len(history)} jogos")
+
+# Filtro anti-leakage temporal
+if "Date" in history.columns:
+    try:
+        selected_date = pd.to_datetime(selected_date_str)
+        history["Date"] = pd.to_datetime(history["Date"], errors="coerce")
+        history = history[history["Date"] < selected_date].copy()
+        st.info(f"📊 Treinando com {len(history)} jogos anteriores a {selected_date_str}")
+    except Exception as e:
+        st.error(f"Erro ao aplicar filtro temporal: {e}")
+
+# Aplicar momentum e regressão
+history = calcular_momentum_time(history)
+games_today = calcular_momentum_time(games_today)
+history = calcular_regressao_media(history)
+games_today = calcular_regressao_media(games_today)
 
 
+
+############ Bloco O - Execução Principal: Treinamento e Visualização ################
+# ---------------- TREINAMENTO DO MODELO ----------------
+st.markdown("## 🧠 Sistema 3D com Clusters - ML")
+
+if not history.empty:
+    try:
+        modelo_home, games_today = treinar_modelo_com_clusters(history, games_today)
+        st.success("✅ Modelo 3D com Clusters treinado com sucesso!")
+    except Exception as e:
+        st.error(f"❌ Erro no treinamento do modelo: {e}")
+        st.info("⚠️ Continuando sem modelo treinado...")
+else:
+    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
+
+# ---------------- CÁLCULO DE VALOR ANGULAR ----------------
+if {'Odd_H_OP', 'Odd_A_OP', 'Quadrant_Dist_3D'}.issubset(games_today.columns):
+    games_today = calcular_valor_angular_mercado(games_today)
+    st.success("💰 Valor Angular de Mercado calculado com sucesso!")
+else:
+    st.warning("⚠️ Dados insuficientes para cálculo de Valor Angular (faltam odds de abertura ou colunas 3D)")
+
+
+
+
+# ---------------- VISUALIZAÇÃO 3D INTERATIVA ----------------
+st.markdown("## 🎯 Visualização 3D com Clusters")
+
+# Filtros interativos
+col1, col2 = st.columns([2, 1])
+with col1:
+    if "League" in games_today.columns and not games_today["League"].isna().all():
+        leagues = sorted(games_today["League"].dropna().unique())
+        selected_league = st.selectbox(
+            "Selecione a liga para análise:",
+            options=["⚽ Todas as ligas"] + leagues,
+            index=0
+        )
+    else:
+        selected_league = "⚽ Todas as ligas"
+        st.warning("⚠️ Nenhuma coluna de 'League' encontrada")
+
+with col2:
+    max_n = len(games_today)
+    n_to_show = st.slider("Jogos para exibir:", 10, min(max_n, 100), 30, step=5)
+
+# Filtrar por liga
+if selected_league != "⚽ Todas as ligas":
+    df_filtered = games_today[games_today["League"] == selected_league].copy()
+else:
+    df_filtered = games_today.copy()
+
+# Filtro por cluster
+st.markdown("### 🔍 Filtro por Cluster")
+clusters_disponiveis = df_filtered['Cluster3D_Desc'].unique() if 'Cluster3D_Desc' in df_filtered.columns else []
+if len(clusters_disponiveis) > 0:
+    cluster_selecionado = st.selectbox(
+        "Filtrar por tipo de confronto:",
+        options=["🎯 Todos os clusters"] + list(clusters_disponiveis),
+        index=0
+    )
+
+    if cluster_selecionado != "🎯 Todos os clusters":
+        df_plot = df_filtered[df_filtered['Cluster3D_Desc'] == cluster_selecionado].copy()
+    else:
+        df_plot = df_filtered.copy()
+else:
+    st.warning("⚠️ Nenhum cluster disponível - aplicando clusterização...")
+    try:
+        df_filtered = aplicar_clusterizacao_3d(df_filtered)
+        clusters_disponiveis = df_filtered['Cluster3D_Desc'].unique()
+        df_plot = df_filtered.copy()
+    except Exception as e:
+        st.error(f"❌ Erro na clusterização: {e}")
+        df_plot = df_filtered.copy()
+
+# Aplicar limite de jogos
+df_plot = df_plot.head(n_to_show)
+
+# Verificar se há dados válidos para o gráfico 3D
+required_cols_3d = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A', 'Cluster3D_Desc']
+missing_3d_cols = [col for col in required_cols_3d if col not in df_plot.columns]
+
+if missing_3d_cols:
+    st.warning(f"⚠️ Colunas necessárias para gráfico 3D não encontradas: {missing_3d_cols}")
+    st.info("📊 O gráfico 3D será pulado devido a dados insuficientes")
+    
+    # Mostrar estatísticas dos dados disponíveis
+    st.markdown("### 📈 Dados Disponíveis para Análise")
+    available_cols = [col for col in required_cols_3d if col in df_plot.columns]
+    if available_cols:
+        st.write(f"Colunas disponíveis: {available_cols}")
+        st.write(f"Total de jogos: {len(df_plot)}")
+        
+else:
+    # Verificar se há dados numéricos válidos
+    numeric_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+    df_numeric_check = df_plot[numeric_cols].fillna(0)
+    
+    if df_numeric_check.select_dtypes(include=[np.number]).empty:
+        st.warning("⚠️ Não há dados numéricos válidos para o gráfico 3D")
+    else:
+        # Verificar se temos pelo menos alguns dados não-zero
+        has_valid_data = False
+        for col in numeric_cols:
+            if col in df_plot.columns and df_plot[col].notna().any():
+                non_zero_values = df_plot[col].fillna(0) != 0
+                if non_zero_values.any():
+                    has_valid_data = True
+                    break
+        
+        if not has_valid_data:
+            st.warning("⚠️ Todos os valores numéricos são zero ou NaN")
+        else:
+            try:
+                # Criar e exibir gráfico 3D
+                fig_3d_clusters = create_3d_plot_with_clusters(df_plot, n_to_show, selected_league)
+                st.plotly_chart(fig_3d_clusters, use_container_width=True)
+                
+                # Legenda dos clusters
+                st.markdown("""
+                ### 🎨 Legenda dos Clusters 3D:
+                - **🔵 Home Domina Confronto**: Home superior nas 3 dimensões
+                - **🔴 Away Domina Confronto**: Away superior nas 3 dimensões  
+                - **🟢 Confronto Equilibrado**: Times muito parecidos
+                - **🟠 Home Imprevisível**: Sinais mistos e conflitantes
+                - **🟣 Home Instável**: Alta volatilidade e inconsistência
+                """)
+                
+                # Estatísticas dos clusters exibidos
+                st.markdown("### 📊 Estatísticas dos Clusters no Gráfico")
+                cluster_counts = df_plot['Cluster3D_Desc'].value_counts()
+                st.dataframe(cluster_counts, use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"❌ Erro ao criar gráfico 3D: {e}")
+                st.info("📋 Mostrando dados em formato de tabela...")
+                
+                # Mostrar dados em tabela como fallback
+                display_cols = ['Home', 'Away', 'League', 'Cluster3D_Desc', 'Aggression_Home', 'Aggression_Away', 'M_H', 'M_A']
+                display_cols = [col for col in display_cols if col in df_plot.columns]
+                
+                if display_cols:
+                    st.dataframe(
+                        df_plot[display_cols].style.format({
+                            'Aggression_Home': '{:.2f}',
+                            'Aggression_Away': '{:.2f}',
+                            'M_H': '{:.2f}',
+                            'M_A': '{:.2f}'
+                        }),
+                        use_container_width=True
+                    )
 
 
 ############ Bloco P - Execução Principal: Tabela Principal ################
@@ -1519,11 +1300,11 @@ if not games_today.empty and 'Cluster_ML_Score_Home' in games_today.columns:
     # Ordenar por score final
     ranking_clusters = ranking_clusters.sort_values('Score_Final_Clusters', ascending=False)
     
-    # Colunas para exibição
+    # ---------------- COLUNAS PRINCIPAIS ----------------
     colunas_principais = [
-        'Ranking', 'League', 'Time', 'Home', 'Away', 
+        'Ranking', 'League', 'Time', 'Home', 'Away',
         'Goals_H_Today', 'Goals_A_Today', 'ML_Side',
-        'Cluster3D_Desc', 
+        'Cluster3D_Desc',
         'Cluster_ML_Score_Home', 'Cluster_ML_Score_Away',
         'Score_Final_Clusters', 'Classificacao_Potencial',
         'Classificacao_Valor_Home', 'Classificacao_Valor_Away', 'Recomendacao',
@@ -1532,6 +1313,10 @@ if not games_today.empty and 'Cluster_ML_Score_Home' in games_today.columns:
         # Regressão
         'Tendencia_Home', 'Tendencia_Away',
         'Media_Score_Home', 'Media_Score_Away',
+        # Valor Angular de Mercado
+        'Market_Error_Home', 'Market_Error_Away',
+        'Value_Score_Home', 'Value_Score_Away',
+        'Market_Classification',
         # Live Score
         'Asian_Line_Decimal', 'Handicap_Result', 'Cluster_Correct'
     ]
@@ -1547,9 +1332,22 @@ if not games_today.empty and 'Cluster_ML_Score_Home' in games_today.columns:
     # Exibir tabela principal
     st.write(f"🎯 Exibindo {len(ranking_clusters)} jogos ordenados por Score Clusters")
     
+    # ---------------- ESTILO E FORMATAÇÃO ----------------
+    styler = estilo_tabela_clusters(ranking_clusters[cols_finais])
+    
+    # Gradientes adicionais para Valor Angular
+    if 'Value_Score_Home' in ranking_clusters.columns:
+        styler = styler.background_gradient(subset=['Value_Score_Home'], cmap='RdYlGn')
+    if 'Value_Score_Away' in ranking_clusters.columns:
+        styler = styler.background_gradient(subset=['Value_Score_Away'], cmap='RdYlGn')
+    if 'Market_Error_Home' in ranking_clusters.columns:
+        styler = styler.background_gradient(subset=['Market_Error_Home'], cmap='RdYlGn')
+    if 'Market_Error_Away' in ranking_clusters.columns:
+        styler = styler.background_gradient(subset=['Market_Error_Away'], cmap='RdYlGn')
+
+    # Exibição final
     st.dataframe(
-        estilo_tabela_clusters(ranking_clusters[cols_finais])
-        .format({
+        styler.format({
             'Goals_H_Today': '{:.0f}',
             'Goals_A_Today': '{:.0f}',
             'Asian_Line_Decimal': '{:.2f}',
@@ -1560,7 +1358,11 @@ if not games_today.empty and 'Cluster_ML_Score_Home' in games_today.columns:
             'M_A': '{:.2f}',
             'Quadrant_Dist_3D': '{:.2f}',
             'Media_Score_Home': '{:.2f}',
-            'Media_Score_Away': '{:.2f}'
+            'Media_Score_Away': '{:.2f}',
+            'Market_Error_Home': '{:.2%}',
+            'Market_Error_Away': '{:.2%}',
+            'Value_Score_Home': '{:.3f}',
+            'Value_Score_Away': '{:.3f}'
         }, na_rep="-"),
         use_container_width=True,
         height=600
@@ -1643,15 +1445,9 @@ def resumo_executivo_clusters(df):
         st.markdown("### 📊 Distribuição por Cluster")
         st.dataframe(cluster_dist, use_container_width=True)
 
-# ---------------- APLICAÇÃO DO RESUMO EXECUTIVO ----------------
+# Aplicar resumo
 if not games_today.empty and 'Cluster3D_Desc' in games_today.columns:
-    # Verifica se os indicadores de potencial já foram aplicados
-    if 'Classificacao_Potencial' not in games_today.columns:
-        st.warning("⚠️ 'Classificacao_Potencial' ausente — aplicando função de indicadores primeiro.")
-        games_today = adicionar_indicadores_explicativos_clusters(games_today)
-
     resumo_executivo_clusters(games_today)
-
 
 # ---------------- FILTROS AVANÇADOS ----------------
 st.sidebar.markdown("## 🔧 Filtros Avançados")
