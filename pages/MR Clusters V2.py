@@ -302,7 +302,10 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
                         y=[yh, ya],
                         z=[zh, za],
                         mode='lines',
-                        line=dict(color=color, width=4, opacity=0.3),
+                        line=dict(
+                            color=color, 
+                            width=4
+                        ),  # REMOVIDO: opacity=0.3 - não é suportado em linhas 3D
                         showlegend=False,
                         hoverinfo='skip'
                     ))
@@ -329,10 +332,10 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
                     name=f'{cluster_name} - Home',
                     marker=dict(
                         color=color,
-                        size=10,
+                        size=8,  # Reduzido para melhor visualização
                         symbol='circle',
-                        opacity=0.9,
-                        line=dict(color='white', width=2)
+                        opacity=0.8,  # Apenas para markers, não para lines
+                        line=dict(color='white', width=1)
                     ),
                     text=valid_home.apply(
                         lambda r: f"<b>{r['Home']}</b><br>"
@@ -356,10 +359,10 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
                     name=f'{cluster_name} - Away',
                     marker=dict(
                         color=color,
-                        size=10,
+                        size=8,  # Reduzido para melhor visualização
                         symbol='diamond',
-                        opacity=0.9,
-                        line=dict(color='white', width=2)
+                        opacity=0.8,  # Apenas para markers, não para lines
+                        line=dict(color='white', width=1)
                     ),
                     text=valid_away.apply(
                         lambda r: f"<b>{r['Away']}</b><br>"
