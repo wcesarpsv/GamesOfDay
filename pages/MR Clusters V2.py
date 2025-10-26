@@ -285,69 +285,93 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
         cluster_data = df_plot[df_plot['Cluster3D_Desc'] == cluster_name]
         
         if not cluster_data.empty:
-            # Linhas de conexão (Home → Away)
+            # Linhas de conexão (Home → Away) - COM VERIFICAÇÃO DE DADOS VÁLIDOS
             for _, row in cluster_data.iterrows():
+                # Verificar se todos os dados são válidos
+                xh = row.get('Aggression_Home', 0) or 0
+                xa = row.get('Aggression_Away', 0) or 0
+                yh = row.get('M_H', 0) if not pd.isna(row.get('M_H')) else 0
+                ya = row.get('M_A', 0) if not pd.isna(row.get('M_A')) else 0
+                zh = row.get('MT_H', 0) if not pd.isna(row.get('MT_H')) else 0
+                za = row.get('MT_A', 0) if not pd.isna(row.get('MT_A')) else 0
+                
+                # Só plotar se tiver dados válidos
+                if any(v != 0 for v in [xh, xa, yh, ya, zh, za]):
+                    fig_3d.add_trace(go.Scatter3d(
+                        x=[xh, xa],
+                        y=[yh, ya],
+                        z=[zh, za],
+                        mode='lines',
+                        line=dict(color=color, width=4, opacity=0.3),
+                        showlegend=False,
+                        hoverinfo='skip'
+                    ))
+            
+            # Filtrar dados válidos para os pontos
+            valid_home = cluster_data[
+                (cluster_data['Aggression_Home'].notna()) & 
+                (cluster_data['M_H'].notna()) & 
+                (cluster_data['MT_H'].notna())
+            ]
+            valid_away = cluster_data[
+                (cluster_data['Aggression_Away'].notna()) & 
+                (cluster_data['M_A'].notna()) & 
+                (cluster_data['MT_A'].notna())
+            ]
+            
+            # Pontos HOME - apenas dados válidos
+            if not valid_home.empty:
                 fig_3d.add_trace(go.Scatter3d(
-                    x=[row['Aggression_Home'], row['Aggression_Away']],
-                    y=[row['M_H'], row['M_A']],
-                    z=[row['MT_H'], row['MT_A']],
-                    mode='lines',
-                    line=dict(color=color, width=4, opacity=0.3),
-                    showlegend=False,
-                    hoverinfo='skip'
+                    x=valid_home['Aggression_Home'],
+                    y=valid_home['M_H'],
+                    z=valid_home['MT_H'],
+                    mode='markers',
+                    name=f'{cluster_name} - Home',
+                    marker=dict(
+                        color=color,
+                        size=10,
+                        symbol='circle',
+                        opacity=0.9,
+                        line=dict(color='white', width=2)
+                    ),
+                    text=valid_home.apply(
+                        lambda r: f"<b>{r['Home']}</b><br>"
+                                 f"Cluster: {cluster_name}<br>"
+                                 f"vs {r['Away']}<br>"
+                                 f"Agg: {r['Aggression_Home']:.2f}<br>"
+                                 f"M_Liga: {r['M_H']:.2f}<br>"
+                                 f"M_Time: {r['MT_H']:.2f}", 
+                        axis=1
+                    ),
+                    hovertemplate='%{text}<extra></extra>'
                 ))
             
-            # Pontos HOME
-            fig_3d.add_trace(go.Scatter3d(
-                x=cluster_data['Aggression_Home'],
-                y=cluster_data['M_H'],
-                z=cluster_data['MT_H'],
-                mode='markers',
-                name=f'{cluster_name} - Home',
-                marker=dict(
-                    color=color,
-                    size=10,
-                    symbol='circle',
-                    opacity=0.9,
-                    line=dict(color='white', width=2)
-                ),
-                text=cluster_data.apply(
-                    lambda r: f"<b>{r['Home']}</b><br>"
-                             f"Cluster: {cluster_name}<br>"
-                             f"vs {r['Away']}<br>"
-                             f"Agg: {r['Aggression_Home']:.2f}<br>"
-                             f"M_Liga: {r['M_H']:.2f}<br>"
-                             f"M_Time: {r['MT_H']:.2f}", 
-                    axis=1
-                ),
-                hovertemplate='%{text}<extra></extra>'
-            ))
-            
-            # Pontos AWAY  
-            fig_3d.add_trace(go.Scatter3d(
-                x=cluster_data['Aggression_Away'],
-                y=cluster_data['M_A'],
-                z=cluster_data['MT_A'],
-                mode='markers',
-                name=f'{cluster_name} - Away',
-                marker=dict(
-                    color=color,
-                    size=10,
-                    symbol='diamond',
-                    opacity=0.9,
-                    line=dict(color='white', width=2)
-                ),
-                text=cluster_data.apply(
-                    lambda r: f"<b>{r['Away']}</b><br>"
-                             f"Cluster: {cluster_name}<br>" 
-                             f"vs {r['Home']}<br>"
-                             f"Agg: {r['Aggression_Away']:.2f}<br>"
-                             f"M_Liga: {r['M_A']:.2f}<br>"
-                             f"M_Time: {r['MT_A']:.2f}",
-                    axis=1
-                ),
-                hovertemplate='%{text}<extra></extra>'
-            ))
+            # Pontos AWAY - apenas dados válidos
+            if not valid_away.empty:
+                fig_3d.add_trace(go.Scatter3d(
+                    x=valid_away['Aggression_Away'],
+                    y=valid_away['M_A'],
+                    z=valid_away['MT_A'],
+                    mode='markers',
+                    name=f'{cluster_name} - Away',
+                    marker=dict(
+                        color=color,
+                        size=10,
+                        symbol='diamond',
+                        opacity=0.9,
+                        line=dict(color='white', width=2)
+                    ),
+                    text=valid_away.apply(
+                        lambda r: f"<b>{r['Away']}</b><br>"
+                                 f"Cluster: {cluster_name}<br>" 
+                                 f"vs {r['Home']}<br>"
+                                 f"Agg: {r['Aggression_Away']:.2f}<br>"
+                                 f"M_Liga: {r['M_A']:.2f}<br>"
+                                 f"M_Time: {r['MT_A']:.2f}",
+                        axis=1
+                    ),
+                    hovertemplate='%{text}<extra></extra>'
+                ))
 
     # ---------------------- LAYOUT FIXO ----------------------
     X_RANGE = [-1.2, 1.2]
@@ -1035,8 +1059,12 @@ games_today = calcular_regressao_media(games_today)
 st.markdown("## 🧠 Sistema 3D com Clusters - ML")
 
 if not history.empty:
-    modelo_home, games_today = treinar_modelo_com_clusters(history, games_today)
-    st.success("✅ Modelo 3D com Clusters treinado com sucesso!")
+    try:
+        modelo_home, games_today = treinar_modelo_com_clusters(history, games_today)
+        st.success("✅ Modelo 3D com Clusters treinado com sucesso!")
+    except Exception as e:
+        st.error(f"❌ Erro no treinamento do modelo: {e}")
+        st.info("⚠️ Continuando sem modelo treinado...")
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
 
@@ -1070,36 +1098,103 @@ else:
 # Filtro por cluster
 st.markdown("### 🔍 Filtro por Cluster")
 clusters_disponiveis = df_filtered['Cluster3D_Desc'].unique() if 'Cluster3D_Desc' in df_filtered.columns else []
-cluster_selecionado = st.selectbox(
-    "Filtrar por tipo de confronto:",
-    options=["🎯 Todos os clusters"] + list(clusters_disponiveis),
-    index=0
-)
+if len(clusters_disponiveis) > 0:
+    cluster_selecionado = st.selectbox(
+        "Filtrar por tipo de confronto:",
+        options=["🎯 Todos os clusters"] + list(clusters_disponiveis),
+        index=0
+    )
 
-if cluster_selecionado != "🎯 Todos os clusters":
-    df_plot = df_filtered[df_filtered['Cluster3D_Desc'] == cluster_selecionado].copy()
+    if cluster_selecionado != "🎯 Todos os clusters":
+        df_plot = df_filtered[df_filtered['Cluster3D_Desc'] == cluster_selecionado].copy()
+    else:
+        df_plot = df_filtered.copy()
 else:
-    df_plot = df_filtered.copy()
+    st.warning("⚠️ Nenhum cluster disponível - aplicando clusterização...")
+    try:
+        df_filtered = aplicar_clusterizacao_3d(df_filtered)
+        clusters_disponiveis = df_filtered['Cluster3D_Desc'].unique()
+        df_plot = df_filtered.copy()
+    except Exception as e:
+        st.error(f"❌ Erro na clusterização: {e}")
+        df_plot = df_filtered.copy()
 
 # Aplicar limite de jogos
 df_plot = df_plot.head(n_to_show)
 
-# Criar e exibir gráfico 3D
-if not df_plot.empty:
-    fig_3d_clusters = create_3d_plot_with_clusters(df_plot, n_to_show, selected_league)
-    st.plotly_chart(fig_3d_clusters, use_container_width=True)
+# Verificar se há dados válidos para o gráfico 3D
+required_cols_3d = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A', 'Cluster3D_Desc']
+missing_3d_cols = [col for col in required_cols_3d if col not in df_plot.columns]
+
+if missing_3d_cols:
+    st.warning(f"⚠️ Colunas necessárias para gráfico 3D não encontradas: {missing_3d_cols}")
+    st.info("📊 O gráfico 3D será pulado devido a dados insuficientes")
     
-    # Legenda dos clusters
-    st.markdown("""
-    ### 🎨 Legenda dos Clusters 3D:
-    - **🔵 Home Domina Confronto**: Home superior nas 3 dimensões
-    - **🔴 Away Domina Confronto**: Away superior nas 3 dimensões  
-    - **🟢 Confronto Equilibrado**: Times muito parecidos
-    - **🟠 Home Imprevisível**: Sinais mistos e conflitantes
-    - **🟣 Home Instável**: Alta volatilidade e inconsistência
-    """)
+    # Mostrar estatísticas dos dados disponíveis
+    st.markdown("### 📈 Dados Disponíveis para Análise")
+    available_cols = [col for col in required_cols_3d if col in df_plot.columns]
+    if available_cols:
+        st.write(f"Colunas disponíveis: {available_cols}")
+        st.write(f"Total de jogos: {len(df_plot)}")
+        
 else:
-    st.warning("⚠️ Nenhum jogo encontrado com os filtros selecionados")
+    # Verificar se há dados numéricos válidos
+    numeric_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+    df_numeric_check = df_plot[numeric_cols].fillna(0)
+    
+    if df_numeric_check.select_dtypes(include=[np.number]).empty:
+        st.warning("⚠️ Não há dados numéricos válidos para o gráfico 3D")
+    else:
+        # Verificar se temos pelo menos alguns dados não-zero
+        has_valid_data = False
+        for col in numeric_cols:
+            if col in df_plot.columns and df_plot[col].notna().any():
+                non_zero_values = df_plot[col].fillna(0) != 0
+                if non_zero_values.any():
+                    has_valid_data = True
+                    break
+        
+        if not has_valid_data:
+            st.warning("⚠️ Todos os valores numéricos são zero ou NaN")
+        else:
+            try:
+                # Criar e exibir gráfico 3D
+                fig_3d_clusters = create_3d_plot_with_clusters(df_plot, n_to_show, selected_league)
+                st.plotly_chart(fig_3d_clusters, use_container_width=True)
+                
+                # Legenda dos clusters
+                st.markdown("""
+                ### 🎨 Legenda dos Clusters 3D:
+                - **🔵 Home Domina Confronto**: Home superior nas 3 dimensões
+                - **🔴 Away Domina Confronto**: Away superior nas 3 dimensões  
+                - **🟢 Confronto Equilibrado**: Times muito parecidos
+                - **🟠 Home Imprevisível**: Sinais mistos e conflitantes
+                - **🟣 Home Instável**: Alta volatilidade e inconsistência
+                """)
+                
+                # Estatísticas dos clusters exibidos
+                st.markdown("### 📊 Estatísticas dos Clusters no Gráfico")
+                cluster_counts = df_plot['Cluster3D_Desc'].value_counts()
+                st.dataframe(cluster_counts, use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"❌ Erro ao criar gráfico 3D: {e}")
+                st.info("📋 Mostrando dados em formato de tabela...")
+                
+                # Mostrar dados em tabela como fallback
+                display_cols = ['Home', 'Away', 'League', 'Cluster3D_Desc', 'Aggression_Home', 'Aggression_Away', 'M_H', 'M_A']
+                display_cols = [col for col in display_cols if col in df_plot.columns]
+                
+                if display_cols:
+                    st.dataframe(
+                        df_plot[display_cols].style.format({
+                            'Aggression_Home': '{:.2f}',
+                            'Aggression_Away': '{:.2f}',
+                            'M_H': '{:.2f}',
+                            'M_A': '{:.2f}'
+                        }),
+                        use_container_width=True
+                    )
 
 
 ############ Bloco P - Execução Principal: Tabela Principal ################
