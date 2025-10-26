@@ -1417,21 +1417,21 @@ else:
 # ... (funções analisar_padroes_3d_quadrantes_16_dual, gerar_estrategias_3d_16_quadrantes, 
 # calcular_pontuacao_3d_quadrante_16, gerar_score_combinado_3d_16, etc.)
 
-# ---------------- EXIBIÇÃO DOS RESULTADOS 3D ----------------
-st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes ML")
+# # ---------------- EXIBIÇÃO DOS RESULTADOS 3D ----------------
+# st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes ML")
 
-if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
-    # Preparar dados para exibição 3D
-    ranking_3d = games_today.copy()
+# if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
+#     # Preparar dados para exibição 3D
+#     ranking_3d = games_today.copy()
 
-    # Aplicar indicadores explicativos 3D
-    ranking_3d = adicionar_indicadores_explicativos_3d_16_dual(ranking_3d)
+#     # Aplicar indicadores explicativos 3D
+#     ranking_3d = adicionar_indicadores_explicativos_3d_16_dual(ranking_3d)
 
-    # Aplicar scoring combinado 3D
-    ranking_3d = gerar_score_combinado_3d_16(ranking_3d)
+#     # Aplicar scoring combinado 3D
+#     ranking_3d = gerar_score_combinado_3d_16(ranking_3d)
 
-    # [RESTANTE DO CÓDIGO DE EXIBIÇÃO PERMANECE IGUAL...]
-    # ... (funções de atualização em tempo real, tabelas, resumos, etc.)
+#     # [RESTANTE DO CÓDIGO DE EXIBIÇÃO PERMANECE IGUAL...]
+#     # ... (funções de atualização em tempo real, tabelas, resumos, etc.)
 
 # ---------------- EXIBIÇÃO DOS RESULTADOS 3D ----------------
 st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes ML")
