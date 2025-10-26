@@ -414,7 +414,7 @@ else:
     st.dataframe(
         finished_bets.sort_values('Predicted_EV', ascending=False)[show_cols]
         .style.background_gradient(subset=['Real_Profit','Predicted_EV'], cmap='RdYlGn')
-        .format({'Predicted_EV':'{:.2f}','Real_Profit':'{:.2f}','Goals_H_Today':'{:.0f}','Goals_A_Today':'{:.0f}'})
+        .format({'Predicted_EV':'{:.2f}','Real_Profit':'{:.2f}','Goals_H_Today':'{:.0f}','Goals_A_Today':'{:.0f}','Odd_H':'{:.2f}','Odd_D':'{:.2f}','Odd_A':'{:.2f}'})
     )
 
     st.markdown("#### 📊 Quebra por lado (H/D/A)")
