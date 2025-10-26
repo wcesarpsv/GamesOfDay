@@ -1068,13 +1068,19 @@ if "Date" in history.columns:
         st.error(f"Erro ao aplicar filtro temporal: {e}")
 
 # Aplicar momentum e regressão
+# Aplicar momentum e regressão
 history = calcular_momentum_time(history)
 games_today = calcular_momentum_time(games_today)
 history = calcular_regressao_media(history)
 games_today = calcular_regressao_media(games_today)
 
+# Treinar modelo principal (gera Prob_Home / Prob_Away)
+modelo_home, games_today = treinar_modelo_com_clusters(history, games_today)
 
-############ Bloco M.1 #######################
+# Agora sim aplicar o cálculo do bias (pois já existem as probabilidades)
+history = calcular_market_opening_bias(history)
+games_today = calcular_market_opening_bias(games_today)
+
 
 ############ Bloco Extra – Market Opening Bias ################
 def calcular_market_opening_bias(df):
