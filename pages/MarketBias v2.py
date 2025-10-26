@@ -213,6 +213,23 @@ def calcular_market_opening_bias(df):
     df['Bias_Open_A'] = df['Market_Error_Open_A'] * 100
     return df
 
+
+# ---------------- CARREGAMENTO DE DADOS ----------------
+files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
+if not files:
+    st.warning("Nenhum arquivo CSV encontrado em GamesDay.")
+    st.stop()
+
+selected_file = st.selectbox("Selecione o arquivo de jogos:", files, index=len(files) - 1)
+
+# 🔹 Carregar dados do dia e histórico
+games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
+history = load_all_games(GAMES_FOLDER)
+
+
+
+
+
 # =====================================================
 # 📈 TREINAMENTO + APLICAÇÃO
 # =====================================================
