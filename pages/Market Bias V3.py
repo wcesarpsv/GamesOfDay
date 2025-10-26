@@ -696,6 +696,164 @@ def treinar_modelo_com_clusters(history, games_today):
     return model_home, games_today
 
 
+
+############ Bloco R2 - Erro de Mercado Pós-ML ################
+# ==============================================================
+# 🧠 BLOCO R2 – ERRO DE MERCADO PÓS-ML
+# ==============================================================
+# Calcula a diferença entre as probabilidades previstas pelo modelo
+# e as probabilidades implícitas das odds de abertura.
+# Isso indica se o modelo está antecipando ou divergindo do mercado.
+# ==============================================================
+
+def calcular_erro_mercado(df):
+    df = df.copy()
+    if not all(col in df.columns for col in ['Prob_Home', 'Prob_Away', 'Implied_H_OP', 'Implied_A_OP']):
+        st.warning("⚠️ Colunas necessárias ausentes para cálculo de Market Error Open.")
+        return df
+
+    # Erro de mercado: previsão - bookie
+    df['Market_Error_Open_H'] = df['Prob_Home'] - df['Implied_H_OP']
+    df['Market_Error_Open_A'] = df['Prob_Away'] - df['Implied_A_OP']
+
+    # Magnitude média do erro
+    df['Market_Error_Magnitude'] = (np.abs(df['Market_Error_Open_H']) + np.abs(df['Market_Error_Open_A'])) / 2
+
+    return df
+
+
+# Aplicar ao histórico e aos jogos de hoje
+st.markdown("## 🧩 Erro de Mercado Pós-ML (Open vs Modelo)")
+
+try:
+    history = calcular_erro_mercado(history)
+    games_today = calcular_erro_mercado(games_today)
+    st.success("✅ Market Error calculado e integrado ao dataset!")
+except Exception as e:
+    st.error(f"❌ Erro ao calcular Market Error: {e}")
+
+
+############ Bloco R3 - Análise de Correlação e Viés ################
+# ==============================================================
+# 📊 BLOCO R3 – CORRELAÇÃO ENTRE ERRO DE MERCADO E RESULTADOS
+# ==============================================================
+# Mede se o erro do modelo em relação à bookie tem relação com ROI
+# e identifica ligas onde o modelo está "mais certo" que o mercado.
+# ==============================================================
+
+def analisar_correlacao_mercado(df):
+    """Cria tabela com correlação entre Market_Error_Open e resultado real (Win)."""
+    if not all(col in df.columns for col in ['Market_Error_Open_H', 'Market_Error_Open_A', 'Goals_H_FT', 'Goals_A_FT']):
+        st.warning("⚠️ Colunas ausentes para análise de correlação de mercado.")
+        return None
+
+    # Resultado real (1 se vitória Home, 0 se derrota)
+    df = df.copy()
+    df['Home_Win'] = (df['Goals_H_FT'] > df['Goals_A_FT']).astype(int)
+    df['Away_Win'] = (df['Goals_A_FT'] > df['Goals_H_FT']).astype(int)
+
+    # Correlações por liga
+    corr_table = (
+        df.groupby('League')[['Market_Error_Open_H', 'Market_Error_Open_A', 'Home_Win', 'Away_Win']]
+        .corr()
+        .unstack()
+        .iloc[:, 3:5]  # pegar correlação das duas últimas cols
+        .reset_index()
+    )
+
+    # Filtrar apenas correlação direta de erro vs resultado
+    corr_table = corr_table[(corr_table['level_1'] == 'Home_Win') | (corr_table['level_1'] == 'Away_Win')]
+    corr_table = corr_table.rename(columns={0: 'Correlation_Value'})
+    corr_table = corr_table[['League', 'level_1', 'Correlation_Value']]
+
+    return corr_table
+
+
+# ------------------ EXECUÇÃO ------------------
+st.markdown("## 📊 Correlação do Erro de Mercado por Liga")
+
+try:
+    corr_table = analisar_correlacao_mercado(history)
+    if corr_table is not None and not corr_table.empty:
+        corr_display = corr_table.pivot(index='League', columns='level_1', values='Correlation_Value')
+        corr_display = corr_display.sort_values('Home_Win', ascending=False).head(20)
+
+        st.dataframe(
+            corr_display.style.background_gradient(cmap="RdYlGn", axis=None),
+            use_container_width=True
+        )
+
+        st.info("""
+        🧭 Interpretação:
+        - Valores positivos → quando o modelo discorda da bookie, ele tende a estar certo.
+        - Valores negativos → o mercado corrige o modelo corretamente.
+        """)
+    else:
+        st.warning("⚠️ Nenhum dado suficiente para análise de correlação.")
+except Exception as e:
+    st.error(f"❌ Erro ao gerar tabela de correlação: {e}")
+
+
+
+############ Bloco R4 - ROI por Erro de Mercado ################
+# ==============================================================
+# 💰 BLOCO R4 – ROI POR ERRO DE MERCADO
+# ==============================================================
+# Simula apostas em jogos onde o modelo discorda fortemente da bookie
+# e mede se essas discordâncias são lucrativas.
+# ==============================================================
+
+def calcular_roi_por_erro(df, threshold=0.05):
+    """Simula apostas em jogos onde o erro de mercado é alto."""
+    if not all(col in df.columns for col in ['Market_Error_Open_H', 'Market_Error_Open_A',
+                                             'Implied_H_OP', 'Implied_A_OP', 'Goals_H_FT', 'Goals_A_FT']):
+        st.warning("⚠️ Colunas ausentes para análise de ROI por erro de mercado.")
+        return None
+
+    df = df.copy()
+    df['Result_H'] = (df['Goals_H_FT'] > df['Goals_A_FT']).astype(int)
+    df['Result_A'] = (df['Goals_A_FT'] > df['Goals_H_FT']).astype(int)
+
+    # Selecionar apostas com maior divergência
+    bets_home = df[df['Market_Error_Open_H'] > threshold]
+    bets_away = df[df['Market_Error_Open_A'] > threshold]
+
+    # ROI simulado
+    def calc_roi(sub, col_err, col_res, col_odd):
+        if sub.empty:
+            return np.nan
+        profit = np.where(sub[col_res] == 1, sub[col_odd] - 1, -1)
+        return np.mean(profit) * 100
+
+    roi_home = calc_roi(bets_home, 'Market_Error_Open_H', 'Result_H', 'Odd_H_OP')
+    roi_away = calc_roi(bets_away, 'Market_Error_Open_A', 'Result_A', 'Odd_A_OP')
+
+    return roi_home, roi_away, len(bets_home), len(bets_away)
+
+
+# ------------------ EXECUÇÃO ------------------
+st.markdown("## 💰 ROI por Divergência Modelo vs Bookie (Open Odds)")
+
+try:
+    roi_home, roi_away, n_home, n_away = calcular_roi_por_erro(history, threshold=0.05)
+    if not np.isnan(roi_home):
+        st.metric("📈 ROI Home", f"{roi_home:.2f}%")
+        st.metric("📉 ROI Away", f"{roi_away:.2f}%")
+        st.write(f"Total de apostas simuladas: {n_home + n_away} ({n_home} Home / {n_away} Away)")
+        st.info("💡 Valores positivos indicam que o modelo identifica valor antes do mercado ajustar as odds.")
+    else:
+        st.warning("⚠️ Sem jogos suficientes para análise de ROI.")
+except Exception as e:
+    st.error(f"❌ Erro ao calcular ROI por erro de mercado: {e}")
+
+
+
+
+
+
+
+
+
 ############ Bloco J - Sistema de Recomendações com Clusters ################
 # ---------------- SISTEMA DE INDICAÇÕES COM CLUSTERS ----------------
 def adicionar_indicadores_explicativos_clusters(df):
