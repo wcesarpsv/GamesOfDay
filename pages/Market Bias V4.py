@@ -1397,6 +1397,10 @@ def resumo_executivo_clusters(df):
     if df.empty:
         st.info("Nenhum dado disponível para resumo")
         return
+
+    # ✅ Garante que existam colunas de classificação
+    if 'Classificacao_Potencial' not in df.columns:
+        df = adicionar_indicadores_explicativos_clusters(df)
     
     total_jogos = len(df)
     
