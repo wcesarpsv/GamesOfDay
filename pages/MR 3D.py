@@ -1605,7 +1605,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
     # Exibir tabela principal
     st.dataframe(
-        estilo_tabela_3d_quadrantes(ranking_3d[cols_finais_3d].head(25))
+        estilo_tabela_3d_quadrantes(ranking_3d[cols_finais_3d])
         .format({
             'Goals_H_Today': '{:.0f}',
             'Goals_A_Today': '{:.0f}',
