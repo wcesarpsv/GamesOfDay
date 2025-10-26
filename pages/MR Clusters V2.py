@@ -981,7 +981,7 @@ def estilo_tabela_clusters(df):
     """Aplica estilo à tabela principal com clusters"""
     def cor_classificacao(valor):
         if '🌟🌟🌟' in str(valor): return 'font-weight: bold'
-        elif '🌟🌟' in str(valor): return 'font-weight: bold'
+        elif '🌟🌟' in str(valor): return 'font-weight: bold' 
         elif '🌟' in str(valor): return 'font-weight: bold'
         elif '🔴' in str(valor): return 'font-weight: bold'
         elif '🏆' in str(valor): return 'font-weight: bold'
