@@ -1,4 +1,4 @@
-f############ Bloco A - Imports e Configurações Base ################
+############ Bloco A - Imports e Configurações Base ################
 from __future__ import annotations
 import streamlit as st
 import pandas as pd
