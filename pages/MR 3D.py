@@ -1406,6 +1406,138 @@ def gerar_estrategias_3d_16_quadrantes(df):
 ###############################################
 
 
+# ---------------- ATUALIZAR COM DADOS LIVE 3D ----------------
+def determine_handicap_result(row):
+    """Determina se o HOME cobriu o handicap"""
+    try:
+        gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
+        ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
+        asian_line_decimal = row.get('Asian_Line_Decimal')
+    except (ValueError, TypeError):
+        return None
+
+    if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line_decimal):
+        return None
+
+    margin = gh - ga
+    handicap_result = calc_handicap_result(margin, asian_line_decimal, invert=False)
+
+    if handicap_result > 0.5:
+        return "HOME_COVERED"
+    elif handicap_result == 0.5:
+        return "PUSH"
+    else:
+        return "HOME_NOT_COVERED"
+
+def check_handicap_recommendation_correct(rec, handicap_result):
+    """Verifica se a recomendação estava correta"""
+    if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid':
+        return None
+
+    rec = str(rec)
+
+    if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME']):
+        return handicap_result == "HOME_COVERED"
+    elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY', 'MODELO CONFIA AWAY']):
+        return handicap_result in ["HOME_NOT_COVERED", "PUSH"]
+
+    return None
+
+def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal):
+    """Calcula profit para handicap asiático"""
+    if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid' or pd.isna(asian_line_decimal):
+        return 0
+
+    rec = str(rec).upper()
+    is_home_bet = any(k in rec for k in ['HOME', 'FAVORITO HOME', 'VALUE NO HOME'])
+    is_away_bet = any(k in rec for k in ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+
+    if not (is_home_bet or is_away_bet):
+        return 0
+
+    odd = odds_row.get('Odd_H_Asi', np.nan) if is_home_bet else odds_row.get('Odd_A_Asi', np.nan)
+    if pd.isna(odd):
+        return 0
+
+    def split_line(line):
+        frac = abs(line) % 1
+        if frac == 0.25:
+            base = math.floor(abs(line))
+            base = base if line > 0 else -base
+            return [base, base + (0.5 if line > 0 else -0.5)]
+        elif frac == 0.75:
+            base = math.floor(abs(line))
+            base = base if line > 0 else -base
+            return [base + (0.5 if line > 0 else -0.5), base + (1.0 if line > 0 else -1.0)]
+        else:
+            return [line]
+
+    asian_line_for_eval = -asian_line_decimal if is_home_bet else asian_line_decimal
+    lines = split_line(asian_line_for_eval)
+
+    def single_profit(result):
+        if result == "PUSH":
+            return 0
+        elif (is_home_bet and result == "HOME_COVERED") or (is_away_bet and result == "HOME_NOT_COVERED"):
+            return odd
+        elif (is_home_bet and result == "HOME_NOT_COVERED") or (is_away_bet and result == "HOME_COVERED"):
+            return -1
+        return 0
+
+    if len(lines) == 2:
+        p1 = single_profit(handicap_result)
+        p2 = single_profit(handicap_result)
+        return (p1 + p2) / 2
+    else:
+        return single_profit(handicap_result)
+
+def update_real_time_data_3d(df):
+    """Atualiza todos os dados em tempo real para sistema 3D"""
+    df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
+    df['Quadrante_Correct'] = df.apply(
+        lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
+    )
+    df['Profit_Quadrante'] = df.apply(
+        lambda r: calculate_handicap_profit(r['Recomendacao'], r['Handicap_Result'], r, r['Asian_Line_Decimal']), axis=1
+    )
+    return df
+
+# ---------------- RESUMO LIVE 3D ----------------
+def generate_live_summary_3d(df):
+    """Gera resumo em tempo real para sistema 3D"""
+    finished_games = df.dropna(subset=['Handicap_Result'])
+
+    if finished_games.empty:
+        return {
+            "Total Jogos": len(df),
+            "Jogos Finalizados": 0,
+            "Apostas Quadrante 3D": 0,
+            "Acertos Quadrante 3D": 0,
+            "Winrate Quadrante 3D": "0%",
+            "Profit Quadrante 3D": 0,
+            "ROI Quadrante 3D": "0%"
+        }
+
+    quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
+    total_bets = len(quadrante_bets)
+    correct_bets = quadrante_bets['Quadrante_Correct'].sum()
+    winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
+    total_profit = quadrante_bets['Profit_Quadrante'].sum()
+    roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
+
+    return {
+        "Total Jogos": len(df),
+        "Jogos Finalizados": len(finished_games),
+        "Apostas Quadrante 3D": total_bets,
+        "Acertos Quadrante 3D": int(correct_bets),
+        "Winrate Quadrante 3D": f"{winrate:.1f}%",
+        "Profit Quadrante 3D": f"{total_profit:.2f}u",
+        "ROI Quadrante 3D": f"{roi:.1f}%"
+    }
+
+#########################################
+
+
 # ---------------- EXECUÇÃO PRINCIPAL 3D ----------------
 # Executar treinamento 3D com regressão
 if not history.empty:
