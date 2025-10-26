@@ -634,6 +634,103 @@ else:
 max_n = len(df_filtered)
 n_to_show = st.slider("Quantos confrontos exibir (Top por distância 3D):", 10, min(max_n, 200), 40, step=5)
 
+
+
+###############################
+
+# ---------------- CONTROLE ANGULAR 3D ----------------
+st.markdown("### 🎯 Filtro Angular 3D")
+
+col_ang1, col_ang2, col_ang3 = st.columns(3)
+
+with col_ang1:
+    angulo_xy_range = st.slider(
+        "Ângulo XY - Aggression × Momentum Liga:",
+        -180, 180, (-45, 45),
+        step=5,
+        help="Filtra jogos por inclinação entre Aggression (X) e Momentum Liga (Y)"
+    )
+
+with col_ang2:
+    angulo_xz_range = st.slider(
+        "Ângulo XZ - Aggression × Momentum Time:",
+        -180, 180, (-45, 45), 
+        step=5,
+        help="Filtra jogos por inclinação entre Aggression (X) e Momentum Time (Z)"
+    )
+
+with col_ang3:
+    magnitude_min = st.slider(
+        "Magnitude Mínima 3D:",
+        0.0, 5.0, 0.5, 0.1,
+        help="Filtra por distância mínima da origem (intensidade do sinal 3D)"
+    )
+
+# Botão para aplicar filtros
+aplicar_filtro = st.button("🎯 Aplicar Filtros Angulares", type="primary")
+
+# ---------------- FUNÇÃO DE FILTRAGEM ANGULAR ----------------
+def filtrar_por_angulo(df, angulo_xy_range, angulo_xz_range, magnitude_min):
+    """Filtra jogos por ângulos e magnitude no espaço 3D"""
+    df_filtrado = df.copy()
+    
+    # Garantir que as colunas necessárias existem
+    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+    missing_cols = [col for col in required_cols if col not in df_filtrado.columns]
+    
+    if missing_cols:
+        st.warning(f"⚠️ Colunas ausentes para filtro angular: {missing_cols}")
+        return df_filtrado
+    
+    # Calcular diferenças
+    dx = df_filtrado['Aggression_Home'] - df_filtrado['Aggression_Away']
+    dy = df_filtrado['M_H'] - df_filtrado['M_A']  # Momentum Liga
+    dz = df_filtrado['MT_H'] - df_filtrado['MT_A']  # Momentum Time
+    
+    # Ângulo XY (Aggression × Momentum Liga)
+    angulo_xy = np.degrees(np.arctan2(dy, dx))
+    
+    # Ângulo XZ (Aggression × Momentum Time)  
+    angulo_xz = np.degrees(np.arctan2(dz, dx))
+    
+    # Magnitude 3D
+    magnitude = np.sqrt(dx**2 + dy**2 + dz**2)
+    
+    # Aplicar filtros
+    mask_xy = (angulo_xy >= angulo_xy_range[0]) & (angulo_xy <= angulo_xy_range[1])
+    mask_xz = (angulo_xz >= angulo_xz_range[0]) & (angulo_xz <= angulo_xz_range[1]) 
+    mask_mag = magnitude >= magnitude_min
+    
+    df_filtrado = df_filtrado[mask_xy & mask_xz & mask_mag]
+    
+    # Adicionar colunas de ângulo para análise
+    df_filtrado['Angulo_XY'] = angulo_xy[mask_xy & mask_xz & mask_mag]
+    df_filtrado['Angulo_XZ'] = angulo_xz[mask_xy & mask_xz & mask_mag]
+    df_filtrado['Magnitude_3D_Filtro'] = magnitude[mask_xy & mask_xz & mask_mag]
+    
+    return df_filtrado
+
+# Aplicar filtro se solicitado
+if aplicar_filtro:
+    df_plot = filtrar_por_angulo(df_plot, angulo_xy_range, angulo_xz_range, magnitude_min)
+    st.success(f"✅ Filtro aplicado! {len(df_plot)} jogos encontrados com os critérios angulares.")
+    
+    # Mostrar estatísticas dos ângulos
+    if not df_plot.empty:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Ângulo XY Médio", f"{df_plot['Angulo_XY'].mean():.1f}°")
+        with col2:
+            st.metric("Ângulo XZ Médio", f"{df_plot['Angulo_XZ'].mean():.1f}°")
+        with col3:
+            st.metric("Magnitude Média", f"{df_plot['Magnitude_3D_Filtro'].mean():.2f}")
+else:
+    # Sem filtro, usar os top por distância como antes
+    df_plot = df_plot.nlargest(n_to_show, "Quadrant_Dist_3D")
+
+
+##########################################
+
 # Preparar dados para visualização 3D
 df_plot = df_filtered.nlargest(n_to_show, "Quadrant_Dist_3D").reset_index(drop=True)
 
