@@ -1552,9 +1552,9 @@ st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes ML")
 # DEBUG: Verificar se as colunas necessárias existem
 st.write(f"📊 Total de jogos hoje: {len(games_today)}")
 if not games_today.empty:
-    st.write(f"🔍 Colunas disponíveis: {list(games_today.columns)}")
+    # st.write(f"🔍 Colunas disponíveis: {list(games_today.columns)}")
     if 'Quadrante_ML_Score_Home' in games_today.columns:
-        st.success("✅ Coluna Quadrante_ML_Score_Home encontrada!")
+        # st.success("✅ Coluna Quadrante_ML_Score_Home encontrada!")
     else:
         st.warning("⚠️ Coluna Quadrante_ML_Score_Home NÃO encontrada")
 
