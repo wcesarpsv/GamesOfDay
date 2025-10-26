@@ -691,12 +691,11 @@ def treinar_modelo_com_clusters(history, games_today):
 
 
 ############ Bloco J - Sistema de Recomendações com Clusters ################
-# ---------------- SISTEMA DE INDICAÇÕES COM CLUSTERS ----------------
 def adicionar_indicadores_explicativos_clusters(df):
     """Adiciona classificações e recomendações baseadas nos clusters 3D"""
     df = df.copy()
 
-    # 1. CLASSIFICAÇÃO DE VALOR PARA HOME (CLUSTERS)
+    # --- 1. CLASSIFICAÇÃO DE VALOR PARA HOME (CLUSTERS) ---
     conditions_home = [
         df['Cluster_ML_Score_Home'] >= 0.65,
         df['Cluster_ML_Score_Home'] >= 0.58,
@@ -707,7 +706,7 @@ def adicionar_indicadores_explicativos_clusters(df):
     choices_home = ['🏆 ALTO VALOR', '✅ BOM VALOR', '⚖️ NEUTRO', '⚠️ CAUTELA', '🔴 ALTO RISCO']
     df['Classificacao_Valor_Home'] = np.select(conditions_home, choices_home, default='⚖️ NEUTRO')
 
-    # 2. CLASSIFICAÇÃO DE VALOR PARA AWAY (CLUSTERS)
+    # --- 2. CLASSIFICAÇÃO DE VALOR PARA AWAY (CLUSTERS) ---
     conditions_away = [
         df['Cluster_ML_Score_Away'] >= 0.65,
         df['Cluster_ML_Score_Away'] >= 0.58,
@@ -715,21 +714,19 @@ def adicionar_indicadores_explicativos_clusters(df):
         df['Cluster_ML_Score_Away'] >= 0.48,
         df['Cluster_ML_Score_Away'] < 0.48
     ]
-    choices_away = ['🏆 ALTO VALOR', '✅ BOM VALOR', '⚖️ NEUTRO', '⚠️ CAUTELA', '🔴 ALTO RISCO']
-    df['Classificacao_Valor_Away'] = np.select(conditions_away, choices_away, default='⚖️ NEUTRO')
+    df['Classificacao_Valor_Away'] = np.select(conditions_away, choices_home, default='⚖️ NEUTRO')
 
-    # 3. RECOMENDAÇÃO BASEADA EM CLUSTERS + REGRESSÃO
+    # --- 3. RECOMENDAÇÃO PRINCIPAL ---
     def gerar_recomendacao_clusters(row):
-        cluster = row['Cluster3D_Desc']
-        score_home = row['Cluster_ML_Score_Home']
-        score_away = row['Cluster_ML_Score_Away']
-        ml_side = row['ML_Side']
-        tendencia_h = row.get('Tendencia_Home', '⚖️ ESTÁVEL')
-        tendencia_a = row.get('Tendencia_Away', '⚖️ ESTÁVEL')
+        cluster = row.get('Cluster3D_Desc', '')
+        side = row.get('ML_Side', 'HOME')
+        score_home = row.get('Cluster_ML_Score_Home', 0)
+        score_away = row.get('Cluster_ML_Score_Away', 0)
+        tend_h = row.get('Tendencia_Home', '⚖️ ESTÁVEL')
+        tend_a = row.get('Tendencia_Away', '⚖️ ESTÁVEL')
 
-        # Estratégias por tipo de cluster
         if cluster == '🏠 Home Domina Confronto':
-            if score_home >= 0.65 and '📈' in tendencia_h:
+            if score_home >= 0.65 and '📈' in tend_h:
                 return f'💪 HOME DOMINANTE + Regressão Positiva ({score_home:.1%})'
             elif score_home >= 0.58:
                 return f'🎯 HOME DOMINANTE ({score_home:.1%})'
@@ -737,7 +734,7 @@ def adicionar_indicadores_explicativos_clusters(df):
                 return f'⚖️ HOME DOMINA mas cuidado ({score_home:.1%})'
 
         elif cluster == '🚗 Away Domina Confronto':
-            if score_away >= 0.65 and '📈' in tendencia_a:
+            if score_away >= 0.65 and '📈' in tend_a:
                 return f'💪 AWAY DOMINANTE + Regressão Positiva ({score_away:.1%})'
             elif score_away >= 0.58:
                 return f'🎯 AWAY DOMINANTE ({score_away:.1%})'
@@ -745,17 +742,17 @@ def adicionar_indicadores_explicativos_clusters(df):
                 return f'⚖️ AWAY DOMINA mas cuidado ({score_away:.1%})'
 
         elif cluster == '⚖️ Confronto Equilibrado':
-            if ml_side == 'HOME' and score_home >= 0.55:
+            if side == 'HOME' and score_home >= 0.55:
                 return f'📈 VALUE NO HOME (Equilibrado) ({score_home:.1%})'
-            elif ml_side == 'AWAY' and score_away >= 0.55:
+            elif side == 'AWAY' and score_away >= 0.55:
                 return f'📈 VALUE NO AWAY (Equilibrado) ({score_away:.1%})'
             else:
                 return f'⚖️ CONFRONTO EQUILIBRADO (H:{score_home:.1%} A:{score_away:.1%})'
 
         elif cluster == '🎭 Home Imprevisível':
-            if '📈 FORTE MELHORA' in tendencia_h and score_home >= 0.55:
+            if '📈 FORTE MELHORA' in tend_h and score_home >= 0.55:
                 return f'🎲 IMPREVISÍVEL mas Home Melhorando ({score_home:.1%})'
-            elif '📈 FORTE MELHORA' in tendencia_a and score_away >= 0.55:
+            elif '📈 FORTE MELHORA' in tend_a and score_away >= 0.55:
                 return f'🎲 IMPREVISÍVEL mas Away Melhorando ({score_away:.1%})'
             else:
                 return f'🎲 JOGO IMPREVISÍVEL - Cautela (H:{score_home:.1%} A:{score_away:.1%})'
@@ -768,14 +765,14 @@ def adicionar_indicadores_explicativos_clusters(df):
 
     df['Recomendacao'] = df.apply(gerar_recomendacao_clusters, axis=1)
 
-    # 4. SCORE FINAL COMBINADO (Clusters + ML + Regressão)
+    # --- 4. SCORE FINAL COMBINADO ---
     df['Score_Final_Clusters'] = (
-        df['Cluster_ML_Score_Main'] * 0.6 + 
-        df['Media_Score_Home'] * 0.2 + 
+        df['Cluster_ML_Score_Main'] * 0.6 +
+        df['Media_Score_Home'] * 0.2 +
         df['Media_Score_Away'] * 0.2
     ) * 100
 
-    # 5. CLASSIFICAÇÃO DE POTENCIAL
+    # --- 5. CLASSIFICAÇÃO DE POTENCIAL ---
     conditions_potencial = [
         df['Score_Final_Clusters'] >= 70,
         df['Score_Final_Clusters'] >= 60,
@@ -783,247 +780,100 @@ def adicionar_indicadores_explicativos_clusters(df):
         df['Score_Final_Clusters'] >= 40,
         df['Score_Final_Clusters'] < 40
     ]
-    choices_potencial = ['🌟🌟🌟 POTENCIAL MÁXIMO', '🌟🌟 ALTO POTENCIAL', '🌟 POTENCIAL MODERADO', '⚖️ POTENCIAL BAIXO', '🔴 RISCO ALTO']
+    choices_potencial = [
+        '🌟🌟🌟 POTENCIAL MÁXIMO',
+        '🌟🌟 ALTO POTENCIAL',
+        '🌟 POTENCIAL MODERADO',
+        '⚖️ POTENCIAL BAIXO',
+        '🔴 RISCO ALTO'
+    ]
     df['Classificacao_Potencial'] = np.select(conditions_potencial, choices_potencial, default='🌟 POTENCIAL MODERADO')
-
-    # 6. RANKING
     df['Ranking'] = df['Score_Final_Clusters'].rank(ascending=False, method='dense').astype(int)
 
     return df
 
 
+############ Bloco K - Cálculo de Market Opening Bias ################
+def calcular_market_opening_bias(df):
+    """
+    Calcula o viés da bookie (Odds de Abertura vs Modelo).
+    Se as odds de abertura não existirem, usa as de fechamento como fallback.
+    """
+    df = df.copy()
+    open_cols = ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP']
 
-############ Bloco K - Estratégias Baseadas em Clusters ################
-# ---------------- ESTRATÉGIAS COM CLUSTERS ----------------
-def gerar_estrategias_por_cluster(df):
-    """Gera estratégias específicas baseadas nos clusters 3D"""
-    st.markdown("### 🎯 Estratégias por Tipo de Cluster")
+    # Fallback automático
+    if not all(col in df.columns for col in open_cols):
+        st.warning("⚠️ Odds de abertura não encontradas — usando odds de fechamento como base.")
+        df['Odd_H_OP'] = df.get('Odd_H')
+        df['Odd_D_OP'] = df.get('Odd_D')
+        df['Odd_A_OP'] = df.get('Odd_A')
 
-    estrategias_clusters = {
-        '🏠 Home Domina Confronto': {
-            'descricao': '**Home claramente superior** - Aggression, Momentum Liga e Momentum Time favoráveis',
-            'estrategia': 'Apostar Home quando odds > 1.80, buscar value spots',
-            'confianca': 'Alta',
-            'alvo_minimo': 0.58,
-            'filtro_regressao': '📈 MELHORA ou 📈 FORTE MELHORA'
-        },
-        '🚗 Away Domina Confronto': {
-            'descricao': '**Away claramente superior** - Visitante com vantagem nas 3 dimensões',
-            'estrategia': 'Apostar Away quando odds > 2.00, ótimo para handicaps',
-            'confianca': 'Alta', 
-            'alvo_minimo': 0.58,
-            'filtro_regressao': '📈 MELHORA ou 📈 FORTE MELHORA'
-        },
-        '⚖️ Confronto Equilibrado': {
-            'descricao': '**Times muito parecidos** - Diferenças pequenas nas 3 dimensões',
-            'estrategia': 'Buscar underdogs com value, apostas menores',
-            'confianca': 'Média',
-            'alvo_minimo': 0.55,
-            'filtro_regressao': 'QUALQUER (focar no value)'
-        },
-        '🎭 Home Imprevisível': {
-            'descricao': '**Sinais mistos** - Aggression, Momentum e Regressão em conflito',
-            'estrategia': 'Apostas pequenas ou evitar, monitorar live',
-            'confianca': 'Baixa',
-            'alvo_minimo': 0.60,
-            'filtro_regressao': '📈 FORTE MELHORA (apenas)'
-        },
-        '🌪️ Home Instável': {
-            'descricao': '**Alta volatilidade** - Valores extremos ou inconsistentes',
-            'estrategia': 'EVITAR apostas pré-live, considerar live betting',
-            'confianca': 'Muito Baixa',
-            'alvo_minimo': 0.65,
-            'filtro_regressao': 'EVITAR'
-        }
-    }
+    # Probabilidades implícitas de abertura e fechamento
+    for prefix in ['H', 'D', 'A']:
+        df[f'Impl_{prefix}_Open'] = 1 / df[f'Odd_{prefix}_OP']
+        df[f'Impl_{prefix}_Close'] = 1 / df[f'Odd_{prefix}']
 
-    for cluster, info in estrategias_clusters.items():
-        jogos_cluster = df[df['Cluster3D_Desc'] == cluster]
-        
-        if not jogos_cluster.empty:
-            st.write(f"**{cluster}**")
-            st.write(f"📋 {info['descricao']}")
-            st.write(f"🎯 Estratégia: {info['estrategia']}")
-            st.write(f"📊 Confiança: {info['confianca']}")
-            
-            # Métricas do cluster
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Jogos", len(jogos_cluster))
-            with col2:
-                avg_score = jogos_cluster['Cluster_ML_Score_Main'].mean()
-                st.metric("Score Médio", f"{avg_score:.1%}")
-            with col3:
-                high_value = len(jogos_cluster[jogos_cluster['Cluster_ML_Score_Main'] >= info['alvo_minimo']])
-                st.metric("Oportunidades", high_value)
-            
-            # Top 3 oportunidades do cluster
-            oportunidades = jogos_cluster[
-                jogos_cluster['Cluster_ML_Score_Main'] >= info['alvo_minimo']
-            ].head(3)
-            
-            if not oportunidades.empty:
-                st.write("**Top Oportunidades:**")
-                cols = ['Home', 'Away', 'League', 'Cluster_ML_Score_Home', 'Cluster_ML_Score_Away', 'Recomendacao']
-                st.dataframe(oportunidades[cols].style.format({
-                    'Cluster_ML_Score_Home': '{:.1%}',
-                    'Cluster_ML_Score_Away': '{:.1%}'
-                }), use_container_width=True)
-            
-            st.write("---")
+    # Normaliza (remove juice)
+    df['Impl_Sum_Open'] = df[['Impl_H_Open', 'Impl_D_Open', 'Impl_A_Open']].sum(axis=1)
+    df['Impl_Sum_Close'] = df[['Impl_H_Close', 'Impl_D_Close', 'Impl_A_Close']].sum(axis=1)
+    for prefix in ['H', 'D', 'A']:
+        df[f'Impl_{prefix}_Open'] /= df['Impl_Sum_Open']
+        df[f'Impl_{prefix}_Close'] /= df['Impl_Sum_Close']
 
-def analisar_padroes_clusters(df):
-    """Analisa padrões de sucesso por cluster"""
-    st.markdown("### 📊 Análise de Performance por Cluster")
-    
-    # Apenas jogos finalizados
-    finished = df.dropna(subset=['Goals_H_Today', 'Goals_A_Today'])
-    
-    if finished.empty:
-        st.info("⏳ Aguardando jogos finalizados para análise...")
-        return
-    
-    # Calcular acertos por cluster
-    resultados = []
-    for cluster in finished['Cluster3D_Desc'].unique():
-        cluster_data = finished[finished['Cluster3D_Desc'] == cluster]
-        total_jogos = len(cluster_data)
-        
-        if total_jogos > 0:
-            # Jogos com recomendações claras
-            recomendados = cluster_data[cluster_data['Recomendacao'].str.contains('🎯|💪|📈')]
-            acertos = 0
-            total_recomendados = len(recomendados)
-            
-            if total_recomendados > 0:
-                # Lógica simplificada de acerto (pode ser refinada)
-                for _, jogo in recomendados.iterrows():
-                    if ('HOME' in jogo['Recomendacao'] and jogo['Goals_H_Today'] > jogo['Goals_A_Today']) or \
-                       ('AWAY' in jogo['Recomendacao'] and jogo['Goals_A_Today'] > jogo['Goals_H_Today']):
-                        acertos += 1
-                
-                winrate = (acertos / total_recomendados) * 100
-            else:
-                winrate = 0
-            
-            resultados.append({
-                'Cluster': cluster,
-                'Total Jogos': total_jogos,
-                'Recomendados': total_recomendados,
-                'Acertos': acertos,
-                'Winrate': f"{winrate:.1f}%"
-            })
-    
-    if resultados:
-        df_resultados = pd.DataFrame(resultados)
-        st.dataframe(df_resultados, use_container_width=True)
-
-
-############ Bloco L - Sistema Live Score com Clusters ################
-# ---------------- LIVE SCORE COM CLUSTERS ----------------
-def determine_handicap_result(row):
-    """Determina se o HOME cobriu o handicap"""
-    try:
-        gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
-        ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
-        asian_line_decimal = row.get('Asian_Line_Decimal')
-    except (ValueError, TypeError):
-        return None
-
-    if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line_decimal):
-        return None
-
-    margin = gh - ga
-    handicap_result = calc_handicap_result(margin, asian_line_decimal, invert=False)
-
-    if handicap_result > 0.5:
-        return "HOME_COVERED"
-    elif handicap_result == 0.5:
-        return "PUSH"
+    # Market Error (diferença entre modelo e abertura)
+    if 'Prob_Home' in df.columns:
+        df['Market_Error_Open_H'] = df['Prob_Home'] - df['Impl_H_Open']
+        df['Market_Error_Open_A'] = (1 - df['Prob_Home']) - df['Impl_A_Open']
     else:
-        return "HOME_NOT_COVERED"
+        df['Market_Error_Open_H'] = np.nan
+        df['Market_Error_Open_A'] = np.nan
 
-def check_handicap_recommendation_correct(rec, handicap_result):
-    """Verifica se a recomendação estava correta"""
-    if pd.isna(rec) or handicap_result is None or 'EVITAR' in str(rec):
-        return None
+    # Bias (%)
+    df['Bias_Open_H'] = df['Market_Error_Open_H'] * 100
+    df['Bias_Open_A'] = df['Market_Error_Open_A'] * 100
 
-    rec = str(rec)
-
-    if any(keyword in rec for keyword in ['HOME', 'Home', 'DOMINANTE']):
-        return handicap_result == "HOME_COVERED"
-    elif any(keyword in rec for keyword in ['AWAY', 'Away', 'DOMINANTE']):
-        return handicap_result in ["HOME_NOT_COVERED", "PUSH"]
-
-    return None
-
-def update_real_time_data_clusters(df):
-    """Atualiza todos os dados em tempo real para sistema com clusters"""
-    df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
-    df['Cluster_Correct'] = df.apply(
-        lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
-    )
     return df
 
-def generate_live_summary_clusters(df):
-    """Gera resumo em tempo real para sistema com clusters"""
-    finished_games = df.dropna(subset=['Handicap_Result'])
 
-    if finished_games.empty:
-        return {
-            "Total Jogos": len(df),
-            "Jogos Finalizados": 0,
-            "Recomendações Cluster": 0,
-            "Acertos Cluster": 0,
-            "Winrate Cluster": "0%"
-        }
+############ Bloco L - Execução Principal ################
+st.info("📊 Calculando Momentum, Regressão e Viés de Abertura...")
 
-    cluster_recomendados = finished_games[finished_games['Cluster_Correct'].notna()]
-    total_recomendados = len(cluster_recomendados)
-    correct_recomendados = cluster_recomendados['Cluster_Correct'].sum()
-    winrate = (correct_recomendados / total_recomendados) * 100 if total_recomendados > 0 else 0
+# Cálculos base
+history = calcular_momentum_time(history)
+games_today = calcular_momentum_time(games_today)
+history = calcular_regressao_media(history)
+games_today = calcular_regressao_media(games_today)
 
-    return {
-        "Total Jogos": len(df),
-        "Jogos Finalizados": len(finished_games),
-        "Recomendações Cluster": total_recomendados,
-        "Acertos Cluster": int(correct_recomendados),
-        "Winrate Cluster": f"{winrate:.1f}%"
-    }
+# Modelo
+modelo_home, games_today = treinar_modelo_com_clusters(history, games_today)
+
+# Viés da Bookie
+history = calcular_market_opening_bias(history)
+games_today = calcular_market_opening_bias(games_today)
+st.success("✅ Market Opening Bias calculado com sucesso!")
 
 
-############ Bloco M - Estilo da Tabela ################
-# ---------------- ESTILO DA TABELA COM CLUSTERS ----------------
-def estilo_tabela_clusters(df):
-    """Aplica estilo à tabela principal com clusters"""
-    def cor_classificacao(valor):
-        if '🌟🌟🌟' in str(valor): return 'font-weight: bold'
-        elif '🌟🌟' in str(valor): return 'font-weight: bold'
-        elif '🌟' in str(valor): return 'font-weight: bold'
-        elif '🔴' in str(valor): return 'font-weight: bold'
-        elif '🏆' in str(valor): return 'font-weight: bold'
-        else: return ''
+############ Bloco M - Análise e Visualização Principal ################
+if not games_today.empty and 'Cluster_ML_Score_Home' in games_today.columns:
+    ranking_clusters = games_today.copy()
+    ranking_clusters = adicionar_indicadores_explicativos_clusters(ranking_clusters)
+    ranking_clusters = update_real_time_data_clusters(ranking_clusters)
+    ranking_clusters = ranking_clusters.sort_values('Score_Final_Clusters', ascending=False)
 
-    colunas_para_estilo = []
-    for col in ['Classificacao_Potencial', 'Classificacao_Valor_Home', 'Classificacao_Valor_Away', 'Recomendacao']:
-        if col in df.columns:
-            colunas_para_estilo.append(col)
+    st.markdown("## 🏆 Oportunidades - Sistema Clusters 3D")
+    st.dataframe(
+        estilo_tabela_clusters(ranking_clusters),
+        use_container_width=True,
+        height=600
+    )
 
-    styler = df.style
-    if colunas_para_estilo:
-        styler = styler.applymap(cor_classificacao, subset=colunas_para_estilo)
+    gerar_estrategias_por_cluster(ranking_clusters)
+    analisar_padroes_clusters(ranking_clusters)
+    analisar_bias_abertura(ranking_clusters)
 
-    # Gradientes para colunas numéricas
-    if 'Cluster_ML_Score_Home' in df.columns:
-        styler = styler.background_gradient(subset=['Cluster_ML_Score_Home'], cmap='RdYlGn')
-    if 'Cluster_ML_Score_Away' in df.columns:
-        styler = styler.background_gradient(subset=['Cluster_ML_Score_Away'], cmap='RdYlGn')
-    if 'Score_Final_Clusters' in df.columns:
-        styler = styler.background_gradient(subset=['Score_Final_Clusters'], cmap='RdYlGn')
-    if 'M_H' in df.columns:
-        styler = styler.background_gradient(subset=['M_H', 'M_A'], cmap='coolwarm')
-
-    return styler
+else:
+    st.error("❌ Não foi possível gerar a tabela de confrontos - verifique se o modelo foi treinado e há dados válidos.")
 
 
 
