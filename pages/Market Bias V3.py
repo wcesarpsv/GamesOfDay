@@ -602,97 +602,6 @@ def calcular_distancias_3d(df):
 
 
 
-############ Bloco R - Dinâmica de Mercado (Open vs Close) ################
-# ==============================================================
-# 💹 BLOCO R – DINÂMICA DE MERCADO (Open vs Close)
-# ==============================================================
-# Cria métricas de viés, movimento e erro de mercado baseadas nas odds de abertura e fechamento.
-# Integra automaticamente ao pipeline ML e gera painel de análise visual no Streamlit.
-# ==============================================================
-
-def calcular_dinamica_mercado(df):
-    """
-    Calcula métricas de mercado:
-    - Probabilidades implícitas de abertura e fechamento
-    - Market Shift (mudança da casa → mercado)
-    - Market Error Open (erro inicial vs modelo)
-    - Market Bias Score (direção e intensidade)
-    """
-    df = df.copy()
-
-    # Verifica se as colunas de abertura existem
-    required_cols = ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP', 'Odd_H', 'Odd_D', 'Odd_A']
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        st.warning(f"⚠️ Colunas ausentes para análise de mercado: {missing}")
-        return df
-
-    # Probabilidades implícitas (abertura e fechamento)
-    for side in ['H', 'D', 'A']:
-        df[f'Implied_{side}_OP'] = 1 / df[f'Odd_{side}_OP']
-        df[f'Implied_{side}_Close'] = 1 / df[f'Odd_{side}']
-
-    # Normalizar as probabilidades (remove overround)
-    for pref in ['Implied_H_OP', 'Implied_D_OP', 'Implied_A_OP',
-                 'Implied_H_Close', 'Implied_D_Close', 'Implied_A_Close']:
-        total = df[[c for c in df.columns if c.startswith(pref[:10])]].sum(axis=1)
-        df[pref] = df[pref] / total
-
-    # Market Shift (diferença entre abertura e fechamento)
-    for side in ['H', 'D', 'A']:
-        df[f'Market_Shift_{side}'] = df[f'Implied_{side}_OP'] - df[f'Implied_{side}_Close']
-
-    # Market Bias Score – sinal do movimento do mercado
-    df['Market_Bias_Score'] = (
-        np.sign(df['Market_Shift_H'] - df['Market_Shift_A']) *
-        (np.abs(df['Market_Shift_H']) + np.abs(df['Market_Shift_A']))
-    )
-
-    # Market Differential entre lados
-    df['Market_Diff_Implied'] = df['Implied_H_OP'] - df['Implied_A_OP']
-
-    # Placeholder para Market Error Open (preenchido após modelo ML)
-    df['Market_Error_Open_H'] = np.nan
-    df['Market_Error_Open_A'] = np.nan
-
-    return df
-
-
-# ----------------- Aplicar no histórico e jogos do dia -----------------
-st.markdown("## 💹 Análise de Dinâmica de Mercado (Open vs Close)")
-
-try:
-    history = calcular_dinamica_mercado(history)
-    games_today = calcular_dinamica_mercado(games_today)
-
-    st.success("✅ Dinâmica de mercado calculada com sucesso!")
-
-    # Exibir resumo estatístico de viés por liga
-    if "League" in history.columns:
-        market_summary = (
-            history.groupby("League")[['Market_Shift_H', 'Market_Shift_A']]
-            .mean()
-            .sort_values("Market_Shift_H", ascending=False)
-            .head(15)
-        )
-
-        st.markdown("### 📊 Market Bias Summary (Top 15 ligas)")
-        st.dataframe(
-            market_summary.style.format({
-                'Market_Shift_H': '{:.4f}',
-                'Market_Shift_A': '{:.4f}'
-            }),
-            use_container_width=True
-        )
-
-        st.info("🧭 Valores positivos = mercado valorizou mais o Home (queda na odd).")
-    else:
-        st.warning("⚠️ Nenhuma coluna 'League' encontrada para resumo de viés.")
-except Exception as e:
-    st.error(f"❌ Erro ao calcular dinâmica de mercado: {e}")
-
-
-
 
 
 ############ Bloco I - Sistema ML com Clusters ################
@@ -1169,6 +1078,87 @@ history = calcular_momentum_time(history)
 games_today = calcular_momentum_time(games_today)
 history = calcular_regressao_media(history)
 games_today = calcular_regressao_media(games_today)
+
+
+
+############ Bloco R - Dinâmica de Mercado (Open vs Close) ################
+# ==============================================================
+# 💹 BLOCO R – DINÂMICA DE MERCADO (Open vs Close)
+# ==============================================================
+
+def calcular_dinamica_mercado(df):
+    """Calcula métricas de mercado com base nas odds de abertura e fechamento."""
+    df = df.copy()
+    required_cols = ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP', 'Odd_H', 'Odd_D', 'Odd_A']
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        st.warning(f"⚠️ Colunas ausentes para análise de mercado: {missing}")
+        return df
+
+    # Probabilidades implícitas
+    for side in ['H', 'D', 'A']:
+        df[f'Implied_{side}_OP'] = 1 / df[f'Odd_{side}_OP']
+        df[f'Implied_{side}_Close'] = 1 / df[f'Odd_{side}']
+
+    # Normalizar (remover overround)
+    for prefix in ['Implied_H', 'Implied_D', 'Implied_A']:
+        total_op = df[['Implied_H_OP', 'Implied_D_OP', 'Implied_A_OP']].sum(axis=1)
+        total_close = df[['Implied_H_Close', 'Implied_D_Close', 'Implied_A_Close']].sum(axis=1)
+        df[[f'Implied_H_OP', f'Implied_D_OP', f'Implied_A_OP']] = (
+            df[[f'Implied_H_OP', f'Implied_D_OP', f'Implied_A_OP']].div(total_op, axis=0)
+        )
+        df[[f'Implied_H_Close', f'Implied_D_Close', f'Implied_A_Close']] = (
+            df[[f'Implied_H_Close', f'Implied_D_Close', f'Implied_A_Close']].div(total_close, axis=0)
+        )
+
+    # Market Shift (mudança de percepção)
+    for side in ['H', 'D', 'A']:
+        df[f'Market_Shift_{side}'] = df[f'Implied_{side}_OP'] - df[f'Implied_{side}_Close']
+
+    # Market Bias e diferença entre lados
+    df['Market_Bias_Score'] = (
+        np.sign(df['Market_Shift_H'] - df['Market_Shift_A']) *
+        (np.abs(df['Market_Shift_H']) + np.abs(df['Market_Shift_A']))
+    )
+    df['Market_Diff_Implied'] = df['Implied_H_OP'] - df['Implied_A_OP']
+
+    # Placeholder do erro inicial (preenchido depois pelo ML)
+    df['Market_Error_Open_H'] = np.nan
+    df['Market_Error_Open_A'] = np.nan
+
+    return df
+
+
+# ------------------ EXECUÇÃO SEGURA ------------------
+if 'history' in locals() and 'games_today' in locals():
+    try:
+        st.markdown("## 💹 Análise de Dinâmica de Mercado (Open vs Close)")
+        history = calcular_dinamica_mercado(history)
+        games_today = calcular_dinamica_mercado(games_today)
+
+        st.success("✅ Dinâmica de mercado calculada com sucesso!")
+
+        if "League" in history.columns:
+            market_summary = (
+                history.groupby("League")[['Market_Shift_H', 'Market_Shift_A']]
+                .mean()
+                .sort_values("Market_Shift_H", ascending=False)
+                .head(15)
+            )
+            st.markdown("### 📊 Market Bias Summary (Top 15 ligas)")
+            st.dataframe(
+                market_summary.style.format({'Market_Shift_H': '{:.4f}', 'Market_Shift_A': '{:.4f}'}),
+                use_container_width=True
+            )
+            st.info("🧭 Valores positivos = mercado valorizou mais o Home (queda na odd).")
+        else:
+            st.warning("⚠️ Nenhuma coluna 'League' encontrada para resumo de viés.")
+    except Exception as e:
+        st.error(f"❌ Erro ao calcular dinâmica de mercado: {e}")
+else:
+    st.warning("⚠️ Variáveis 'history' e 'games_today' ainda não foram definidas.")
+
+
 
 
 
