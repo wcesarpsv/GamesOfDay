@@ -1141,6 +1141,41 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
 
 
 
+# Função de estilo para tabela 3D
+def estilo_tabela_3d_quadrantes(df):
+    def cor_classificacao_3d(valor):
+        if '🌟 ALTO POTENCIAL 3D' in str(valor): return 'font-weight: bold'
+        elif '💼 VALOR SOLIDO 3D' in str(valor): return 'font-weight: bold'
+        elif '🔴 BAIXO POTENCIAL 3D' in str(valor): return 'font-weight: bold'
+        elif '🏆 ALTO VALOR' in str(valor): return 'font-weight: bold'
+        elif '🔴 ALTO RISCO' in str(valor): return 'font-weight: bold'
+        elif 'VALUE' in str(valor): return 'font-weight: bold'
+        elif 'EVITAR' in str(valor): return 'font-weight: bold'
+        else: return ''
+
+    colunas_para_estilo = []
+    for col in ['Classificacao_Potencial_3D', 'Classificacao_Valor_Home', 'Classificacao_Valor_Away', 'Recomendacao']:
+        if col in df.columns:
+            colunas_para_estilo.append(col)
+
+    styler = df.style
+    if colunas_para_estilo:
+        styler = styler.applymap(cor_classificacao_3d, subset=colunas_para_estilo)
+
+    # Aplicar gradientes para colunas numéricas
+    if 'Quadrante_ML_Score_Home' in df.columns:
+        styler = styler.background_gradient(subset=['Quadrante_ML_Score_Home'], cmap='RdYlGn')
+    if 'Quadrante_ML_Score_Away' in df.columns:
+        styler = styler.background_gradient(subset=['Quadrante_ML_Score_Away'], cmap='RdYlGn')
+    if 'Score_Final_3D' in df.columns:
+        styler = styler.background_gradient(subset=['Score_Final_3D'], cmap='RdYlGn')
+    if 'M_H' in df.columns:
+        styler = styler.background_gradient(subset=['M_H', 'M_A'], cmap='coolwarm')
+
+    return styler
+
+
+#####################################
 #######################################
 
 # ---------------- SISTEMA DE SCORING 3D PARA 16 QUADRANTES ----------------
@@ -1398,12 +1433,42 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # [RESTANTE DO CÓDIGO DE EXIBIÇÃO PERMANECE IGUAL...]
     # ... (funções de atualização em tempo real, tabelas, resumos, etc.)
 
-# ADICIONAR COLUNAS DE REGRESSÃO NA EXIBIÇÃO FINAL
-colunas_3d.extend([
-    'Tendencia_Home', 'Tendencia_Away',
-    'Media_Score_Home', 'Media_Score_Away', 
-    'Regressao_Force_Home', 'Regressao_Force_Away'
-])
+# ---------------- EXIBIÇÃO DOS RESULTADOS 3D ----------------
+st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes ML")
+
+if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
+    # Preparar dados para exibição 3D
+    ranking_3d = games_today.copy()
+
+    # Aplicar indicadores explicativos 3D
+    ranking_3d = adicionar_indicadores_explicativos_3d_16_dual(ranking_3d)
+
+    # Aplicar scoring combinado 3D
+    ranking_3d = gerar_score_combinado_3d_16(ranking_3d)
+
+    # Colunas para exibição 3D (AGORA DEFINIDA AQUI)
+    colunas_3d = [
+        'League', 'Time',
+        'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today','ML_Side',
+        'Quadrante_Home_Label', 'Quadrante_Away_Label',
+        'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
+        'Score_Final_3D', 'Classificacao_Potencial_3D',
+        'Classificacao_Valor_Home', 'Classificacao_Valor_Away', 'Recomendacao',
+        # Colunas 3D
+        'M_H', 'M_A', 'Quadrant_Dist_3D', 'Momentum_Diff',
+        # Colunas de Regressão à Média
+        'Tendencia_Home', 'Tendencia_Away',
+        'Media_Score_Home', 'Media_Score_Away', 
+        'Regressao_Force_Home', 'Regressao_Force_Away',
+        # Colunas Live Score
+        'Asian_Line_Decimal', 'Handicap_Result',
+        'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
+    ]
+
+    # Filtrar colunas existentes
+    cols_finais_3d = [c for c in colunas_3d if c in ranking_3d.columns]
+
+    # [CONTINUE COM O RESTO DO CÓDIGO DE ATUALIZAÇÃO EM TEMPO REAL...]
 
 st.markdown("---")
 st.success("🎯 **Sistema 3D de 16 Quadrantes ML com Regressão à Média** implementado com sucesso!")
