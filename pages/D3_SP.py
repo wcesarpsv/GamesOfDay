@@ -555,6 +555,40 @@ with col1:
     st.pyplot(plot_quadrantes_16(games_today, "Home"))
 with col2:
     st.pyplot(plot_quadrantes_16(games_today, "Away"))
+########################################
+
+# ---------------- CONTROLE INTERATIVO DA CÂMERA 3D ----------------
+st.sidebar.markdown("### 🎮 Controle da Câmera 3D")
+
+# Sliders para posição da câmera
+cam_x = st.sidebar.slider("Câmera X", -3.0, 3.0, 1.8, 0.1, help="Posição X do observador")
+cam_y = st.sidebar.slider("Câmera Y", -3.0, 3.0, 1.8, 0.1, help="Posição Y do observador") 
+cam_z = st.sidebar.slider("Câmera Z", 0.1, 3.0, 1.2, 0.1, help="Posição Z do observador")
+
+# Controle de rotação
+up_x = st.sidebar.slider("UP Vector X", -1.0, 1.0, 0.0, 0.1, help="Direção 'para cima' X")
+up_y = st.sidebar.slider("UP Vector Y", -1.0, 1.0, 0.0, 0.1, help="Direção 'para cima' Y")
+up_z = st.sidebar.slider("UP Vector Z", -1.0, 1.0, 1.0, 0.1, help="Direção 'para cima' Z")
+
+# Presets rápidos
+st.sidebar.markdown("**Presets Rápidos:**")
+col1, col2, col3 = st.sidebar.columns(3)
+
+with col1:
+    if st.button("Vista 45°"):
+        cam_x, cam_y, cam_z = 1.5, 1.5, 1.0
+        up_x, up_y, up_z = 0.0, 0.0, 1.0
+
+with col2:
+    if st.button("Vista Superior"):
+        cam_x, cam_y, cam_z = 0.0, 0.0, 2.5
+        up_x, up_y, up_z = 0.0, 1.0, 0.0
+
+with col3:
+    if st.button("Vista Frontal"):
+        cam_x, cam_y, cam_z = 0.0, 2.0, 0.5
+        up_x, up_y, up_z = 0.0, 0.0, 1.0
+########################################
 
 
 # ---------------- VISUALIZAÇÃO INTERATIVA 3D COM TAMANHO FIXO ----------------
@@ -752,14 +786,22 @@ def create_fixed_3d_plot(df_plot, n_to_show, selected_league):
                 zerolinecolor="blue",
                 zerolinewidth=4
             ),
-            
-            # CONFIGURAÇÃO DE CÂMERA FIXA
-            aspectmode="cube",  # FORÇA PROPORÇÕES IGUAIS
+###############
+            # CONFIGURAÇÃO DA CÂMERA (AGORA INTERATIVA)
             camera=dict(
-                eye=dict(x=1.8, y=1.8, z=1.2),  # POSIÇÃO FIXA DA CÂMERA
-                up=dict(x=0, y=0, z=1),
+                eye=dict(x=cam_x, y=cam_y, z=cam_z),
+                up=dict(x=up_x, y=up_y, z=up_z),
                 center=dict(x=0, y=0, z=0)
             )
+            
+###############
+            # # CONFIGURAÇÃO DE CÂMERA FIXA
+            # aspectmode="cube",  # FORÇA PROPORÇÕES IGUAIS
+            # camera=dict(
+            #     eye=dict(x=1.8, y=1.8, z=1.2),  # POSIÇÃO FIXA DA CÂMERA
+            #     up=dict(x=0, y=0, z=1),
+            #     center=dict(x=0, y=0, z=0)
+            # )
         ),
         template="plotly_dark",
         height=800,  # ALTURA FIXA
