@@ -12,6 +12,23 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import math
 import plotly.graph_objects as go
+import sys
+
+#######################################
+# Hotfix para limpar cache problematico
+if hasattr(st, 'cache_data'):
+    st.cache_data.clear()
+if hasattr(st, 'cache_resource'):
+    st.cache_resource.clear()
+    
+
+# Limpar módulos carregados se necessário
+module_suffix = '_page'
+for module_name in list(sys.modules.keys()):
+    if module_name.endswith(module_suffix):
+        del sys.modules[module_name]
+
+#######################################
 
 # Configuração da página
 st.set_page_config(page_title="Sistema 3D Clusters - Bet Indicator", layout="wide")
