@@ -1449,6 +1449,35 @@ def resumo_executivo_clusters(df):
         st.markdown("### 📊 Distribuição por Cluster")
         st.dataframe(cluster_dist, use_container_width=True)
 
+    # ---------------- EXIBIR JOGOS DE ALTO VALOR ----------------
+    if 'Market_Classification' in df.columns:
+        top_value = df[df['Market_Classification'] == '🎯 VALUE BET'].copy()
+        if not top_value.empty:
+            st.markdown("### 💰 Top 10 Jogos com Valor Angular de Mercado")
+            
+            cols = [
+                'League', 'Home', 'Away', 'Cluster3D_Desc',
+                'Market_Error_Home', 'Market_Error_Away',
+                'Value_Score_Home', 'Value_Score_Away',
+                'Score_Final_Clusters', 'Recomendacao'
+            ]
+            cols = [c for c in cols if c in top_value.columns]
+            
+            top_value_sorted = top_value.sort_values('Value_Score_Home', ascending=False).head(10)
+            
+            st.dataframe(
+                top_value_sorted[cols].style.format({
+                    'Market_Error_Home': '{:.2%}',
+                    'Market_Error_Away': '{:.2%}',
+                    'Value_Score_Home': '{:.3f}',
+                    'Value_Score_Away': '{:.3f}',
+                    'Score_Final_Clusters': '{:.1f}'
+                }).background_gradient(subset=['Value_Score_Home'], cmap='RdYlGn'),
+                use_container_width=True
+            )
+        else:
+            st.info("⚖️ Nenhum jogo classificado como '🎯 VALUE BET' no momento.")
+
 # Aplicar resumo
 if not games_today.empty and 'Cluster3D_Desc' in games_today.columns:
     resumo_executivo_clusters(games_today)
@@ -1482,6 +1511,7 @@ if st.sidebar.button("🔄 Aplicar Filtros"):
 
 st.markdown("---")
 st.success("🎯 **Sistema 3D com Clusters ML** implementado com sucesso!")
+
 
 st.info("""
 **✅ Sistema Simplificado:**
