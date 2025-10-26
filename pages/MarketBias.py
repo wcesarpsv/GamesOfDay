@@ -1457,7 +1457,7 @@ def resumo_executivo_clusters(df):
 
 # Aplicar resumo
 if not games_today.empty and 'Cluster3D_Desc' in games_today.columns:
-    resumo_executivo_clusters(games_today)
+    resumo_executivo_clusters(ranking_clusters)
 
 # ---------------- FILTROS AVANÇADOS ----------------
 st.sidebar.markdown("## 🔧 Filtros Avançados")
