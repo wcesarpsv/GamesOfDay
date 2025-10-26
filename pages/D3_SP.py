@@ -121,7 +121,7 @@ from sklearn.cluster import KMeans
 # 🧩 BLOCO – CLUSTERIZAÇÃO 3D (KMEANS)
 # ==============================================================
 
-def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
+def aplicar_clusterizacao_3d(df, n_clusters=2, random_state=42):
     """
     Cria clusters espaciais com base em Aggression, Momentum Liga e Momentum Time.
     Retorna o DataFrame com a nova coluna 'Cluster3D_Label'.
@@ -149,7 +149,7 @@ def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
         n_clusters=n_clusters,
         random_state=random_state,
         init='k-means++',   # garante convergência estável
-        n_init=20           # mais robusto
+        n_init=10           # mais robusto
     )
     df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
 
