@@ -570,6 +570,20 @@ up_x = st.sidebar.slider("UP Vector X", -1.0, 1.0, 0.0, 0.1, help="Direção 'pa
 up_y = st.sidebar.slider("UP Vector Y", -1.0, 1.0, 0.0, 0.1, help="Direção 'para cima' Y")
 up_z = st.sidebar.slider("UP Vector Z", -1.0, 1.0, 1.0, 0.1, help="Direção 'para cima' Z")
 
+# 🆕 DISPLAY DAS COORDENADAS EM TEMPO REAL
+st.sidebar.markdown("### 📍 Coordenadas Atuais")
+st.sidebar.code(f"""
+Câmera Position:
+x: {cam_x:.1f}
+y: {cam_y:.1f} 
+z: {cam_z:.1f}
+
+UP Vector:
+x: {up_x:.1f}
+y: {up_y:.1f}
+z: {up_z:.1f}
+""")
+
 # Presets rápidos
 st.sidebar.markdown("**Presets Rápidos:**")
 col1, col2, col3 = st.sidebar.columns(3)
@@ -578,16 +592,19 @@ with col1:
     if st.button("Vista 45°"):
         cam_x, cam_y, cam_z = 1.5, 1.5, 1.0
         up_x, up_y, up_z = 0.0, 0.0, 1.0
+        st.rerun()
 
 with col2:
     if st.button("Vista Superior"):
         cam_x, cam_y, cam_z = 0.0, 0.0, 2.5
         up_x, up_y, up_z = 0.0, 1.0, 0.0
+        st.rerun()
 
 with col3:
     if st.button("Vista Frontal"):
         cam_x, cam_y, cam_z = 0.0, 2.0, 0.5
         up_x, up_y, up_z = 0.0, 0.0, 1.0
+        st.rerun()
 ########################################
 
 
