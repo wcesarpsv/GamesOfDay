@@ -1139,6 +1139,237 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
 
     return df
 
+
+
+#######################################
+
+# ---------------- SISTEMA DE SCORING 3D PARA 16 QUADRANTES ----------------
+def calcular_pontuacao_3d_quadrante_16(quadrante_id, momentum=0):
+    """Calcula pontuação base 3D para cada quadrante (0-100) considerando momentum"""
+    scores_base = {
+        # Fav Forte: alta pontuação
+        1: 85, 2: 80, 3: 75, 4: 70,
+        # Fav Moderado: média-alta
+        5: 70, 6: 65, 7: 60, 8: 55,
+        # Under Moderado: média-baixa  
+        9: 50, 10: 45, 11: 40, 12: 35,
+        # Under Forte: baixa pontuação
+        13: 35, 14: 30, 15: 25, 16: 20
+    }
+    
+    base_score = scores_base.get(quadrante_id, 50)
+    
+    # Ajustar score base pelo momentum
+    momentum_boost = momentum * 10  # +10 pontos por unidade de momentum
+    adjusted_score = base_score + momentum_boost
+    
+    # Limitar entre 0-100
+    return max(0, min(100, adjusted_score))
+
+def gerar_score_combinado_3d_16(df):
+    """Gera score combinado 3D considerando quadrantes e momentum"""
+    df = df.copy()
+
+    # Score base dos quadrantes ajustado pelo momentum
+    df['Score_Base_Home'] = df.apply(
+        lambda x: calcular_pontuacao_3d_quadrante_16(x['Quadrante_Home'], x.get('M_H', 0)), axis=1
+    )
+    df['Score_Base_Away'] = df.apply(
+        lambda x: calcular_pontuacao_3d_quadrante_16(x['Quadrante_Away'], x.get('M_A', 0)), axis=1
+    )
+
+    # Score combinado (média ponderada)
+    df['Score_Combinado_3D'] = (df['Score_Base_Home'] * 0.5 + df['Score_Base_Away'] * 0.3 + 
+                               df['Quadrant_Dist_3D'] * 0.2)
+
+    # Ajustar pelo ML Score 3D
+    df['Score_Final_3D'] = df['Score_Combinado_3D'] * df['Quadrante_ML_Score_Main']
+
+    # Classificar por potencial 3D
+    conditions = [
+        df['Score_Final_3D'] >= 60,
+        df['Score_Final_3D'] >= 45, 
+        df['Score_Final_3D'] >= 30,
+        df['Score_Final_3D'] < 30
+    ]
+    choices = ['🌟 ALTO POTENCIAL 3D', '💼 VALOR SOLIDO 3D', '⚖️ NEUTRO 3D', '🔴 BAIXO POTENCIAL 3D']
+    df['Classificacao_Potencial_3D'] = np.select(conditions, choices, default='⚖️ NEUTRO 3D')
+
+    return df
+
+# ---------------- ANÁLISE DE PADRÕES 3D PARA 16 QUADRANTES ----------------
+def analisar_padroes_3d_quadrantes_16_dual(df):
+    """Analisa padrões recorrentes nas combinações 3D de 16 quadrantes"""
+    st.markdown("### 🔍 Análise de Padrões 3D por Combinação")
+
+    # Padrões prioritários 3D para 16 quadrantes
+    padroes_3d = {
+        'Fav Forte Forte (+Momentum) vs Under Forte Muito Forte (-Momentum)': {
+            'descricao': '🎯 **MELHOR PADRÃO 3D HOME** - Favorito forte com momentum vs underdog muito fraco sem momentum',
+            'lado_recomendado': 'HOME',
+            'prioridade': 1,
+            'score_min': 0.65,
+            'momentum_min_home': 0.5,
+            'momentum_max_away': -0.5
+        },
+        'Under Forte Muito Forte (-Momentum) vs Fav Forte Forte (+Momentum)': {
+            'descricao': '🎯 **MELHOR PADRÃO 3D AWAY** - Underdog muito fraco sem momentum vs favorito forte com momentum',
+            'lado_recomendado': 'AWAY', 
+            'prioridade': 1,
+            'score_min': 0.65,
+            'momentum_max_home': -0.5,
+            'momentum_min_away': 0.5
+        },
+        'Fav Moderado Forte (+Momentum) vs Under Moderado Forte (-Momentum)': {
+            'descricao': '💪 **PADRÃO 3D VALUE HOME** - Favorito moderado com momentum vs underdog moderado fraco sem momentum',
+            'lado_recomendado': 'HOME',
+            'prioridade': 2,
+            'score_min': 0.58,
+            'momentum_min_home': 0.3,
+            'momentum_max_away': -0.3
+        }
+    }
+
+    # Ordenar padrões por prioridade
+    padroes_ordenados = sorted(padroes_3d.items(), key=lambda x: x[1]['prioridade'])
+
+    for padrao, info in padroes_ordenados:
+        # Buscar jogos que correspondem ao padrão 3D
+        home_q, away_q = padrao.split(' vs ')[0], padrao.split(' vs ')[1]
+        
+        # Simplificar busca por quadrantes (remover condições de momentum do texto)
+        home_q_base = home_q.split(' (')[0] if ' (' in home_q else home_q
+        away_q_base = away_q.split(' (')[0] if ' (' in away_q else away_q
+
+        jogos = df[
+            (df['Quadrante_Home_Label'] == home_q_base) & 
+            (df['Quadrante_Away_Label'] == away_q_base)
+        ]
+
+        # Aplicar filtros de momentum
+        if 'momentum_min_home' in info:
+            jogos = jogos[jogos['M_H'] >= info['momentum_min_home']]
+        if 'momentum_max_home' in info:
+            jogos = jogos[jogos['M_H'] <= info['momentum_max_home']]
+        if 'momentum_min_away' in info:
+            jogos = jogos[jogos['M_A'] >= info['momentum_min_away']]
+        if 'momentum_max_away' in info:
+            jogos = jogos[jogos['M_A'] <= info['momentum_max_away']]
+
+        # Filtrar por score mínimo
+        if info['lado_recomendado'] == 'HOME':
+            score_col = 'Quadrante_ML_Score_Home'
+        else:
+            score_col = 'Quadrante_ML_Score_Away'
+
+        if 'score_min' in info:
+            jogos = jogos[jogos[score_col] >= info['score_min']]
+
+        if not jogos.empty:
+            st.write(f"**{padrao}**")
+            st.write(f"{info['descricao']}")
+            st.write(f"📈 **Score mínimo**: {info.get('score_min', 0.50):.1%}")
+            st.write(f"🎯 **Jogos encontrados**: {len(jogos)}")
+
+            # Colunas para exibir
+            cols_padrao = ['Ranking', 'Home', 'Away', 'League', score_col, 'M_H', 'M_A', 'Recomendacao', 'Quadrant_Dist_3D']
+            cols_padrao = [c for c in cols_padrao if c in jogos.columns]
+
+            # Ordenar por score
+            jogos_ordenados = jogos.sort_values(score_col, ascending=False)
+
+            st.dataframe(
+                jogos_ordenados[cols_padrao]
+                .head(10)
+                .style.format({
+                    score_col: '{:.1%}',
+                    'M_H': '{:.2f}',
+                    'M_A': '{:.2f}',
+                    'Quadrant_Dist_3D': '{:.2f}'
+                })
+                .background_gradient(subset=[score_col], cmap='RdYlGn')
+                .background_gradient(subset=['M_H', 'M_A'], cmap='coolwarm'),
+                use_container_width=True
+            )
+            st.write("---")
+
+# ---------------- ESTRATÉGIAS AVANÇADAS 3D PARA 16 QUADRANTES ----------------
+def gerar_estrategias_3d_16_quadrantes(df):
+    """Gera estratégias específicas baseadas nos 16 quadrantes 3D"""
+    st.markdown("### 🎯 Estratégias 3D por Categoria")
+
+    estrategias_3d = {
+        'Fav Forte + Momentum': {
+            'descricao': '**Favoritos Fortes com Momentum Positivo** - Alta aggression + handscore + momentum',
+            'quadrantes': [1, 2, 3, 4],
+            'momentum_min': 0.5,
+            'estrategia': 'Apostar fortemente, especialmente contra underdogs com momentum negativo',
+            'confianca': 'Muito Alta'
+        },
+        'Fav Moderado + Momentum': {
+            'descricao': '**Favoritos Moderados em Ascensão** - Aggression positiva + momentum positivo', 
+            'quadrantes': [5, 6, 7, 8],
+            'momentum_min': 0.3,
+            'estrategia': 'Buscar value, ótimos quando momentum confirma a tendência',
+            'confianca': 'Alta'
+        },
+        'Under Moderado - Momentum': {
+            'descricao': '**Underdogs Moderados em Decadência** - Aggression negativa + momentum negativo',
+            'quadrantes': [9, 10, 11, 12],
+            'momentum_max': -0.3,
+            'estrategia': 'Apostar contra, risco elevado de não cobrir handicap',
+            'confianca': 'Média-Alta'
+        },
+        'Under Forte - Momentum': {
+            'descricao': '**Underdogs Fortes em Crise** - Aggression muito negativa + momentum negativo',
+            'quadrantes': [13, 14, 15, 16], 
+            'momentum_max': -0.5,
+            'estrategia': 'Evitar completamente ou apostar contra em situações específicas',
+            'confianca': 'Média'
+        }
+    }
+
+    for categoria, info in estrategias_3d.items():
+        st.write(f"**{categoria}**")
+        st.write(f"📋 {info['descricao']}")
+        st.write(f"🎯 Estratégia: {info['estrategia']}")
+        st.write(f"📊 Confiança: {info['confianca']}")
+
+        # Filtrar jogos da categoria
+        if 'momentum_min' in info:
+            jogos_categoria = df[
+                (df['Quadrante_Home'].isin(info['quadrantes']) | 
+                 df['Quadrante_Away'].isin(info['quadrantes'])) &
+                ((df['M_H'] >= info['momentum_min']) | (df['M_A'] >= info['momentum_min']))
+            ]
+        elif 'momentum_max' in info:
+            jogos_categoria = df[
+                (df['Quadrante_Home'].isin(info['quadrantes']) | 
+                 df['Quadrante_Away'].isin(info['quadrantes'])) &
+                ((df['M_H'] <= info['momentum_max']) | (df['M_A'] <= info['momentum_max']))
+            ]
+        else:
+            jogos_categoria = df[
+                df['Quadrante_Home'].isin(info['quadrantes']) | 
+                df['Quadrante_Away'].isin(info['quadrantes'])
+            ]
+
+        if not jogos_categoria.empty:
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Jogos Encontrados", len(jogos_categoria))
+            with col2:
+                avg_score = jogos_categoria['Quadrante_ML_Score_Main'].mean()
+                st.metric("Score Médio", f"{avg_score:.1%}")
+            with col3:
+                high_value = len(jogos_categoria[jogos_categoria['Quadrante_ML_Score_Main'] >= 0.60])
+                st.metric("Alto Valor", high_value)
+
+        st.write("---")
+
+
+###############################################
+
 # ---------------- EXECUÇÃO PRINCIPAL 3D ----------------
 # Executar treinamento 3D com regressão
 if not history.empty:
