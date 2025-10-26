@@ -355,7 +355,7 @@ top_n = st.slider("Quantos confrontos exibir:", 10, min(200, len(df_rank)), 40, 
 rank = df_rank.sort_values('Predicted_EV', ascending=False).head(top_n)
 
 st.dataframe(
-    rank[['League','Home','Away','Odd_H','Odd_D','Odd_A','Predicted_EV_H','Predicted_EV_D','Predicted_EV_A','Chosen_Side','Predicted_EV','Quadrant_Dist_3D']]
+    rank[['League','Time','Home','Away','Odd_H','Odd_D','Odd_A','Predicted_EV_H','Predicted_EV_D','Predicted_EV_A','Chosen_Side','Predicted_EV','Quadrant_Dist_3D']]
     .style.background_gradient(subset=['Predicted_EV','Predicted_EV_H','Predicted_EV_D','Predicted_EV_A'], cmap='RdYlGn')
     .format({'Predicted_EV':'{:.2f}','Predicted_EV_H':'{:.2f}','Predicted_EV_D':'{:.2f}','Predicted_EV_A':'{:.2f}','Quadrant_Dist_3D':'{:.2f}','Odd_H':'{:.2f}','Odd_D':'{:.2f}','Odd_A':'{:.2f}'}),
     use_container_width=True
