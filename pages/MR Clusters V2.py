@@ -1009,6 +1009,7 @@ def estilo_tabela_clusters(df):
     return styler
 
 
+
 ############ Bloco N - Execução Principal: Carregamento de Dados ################
 # ---------------- EXECUÇÃO PRINCIPAL ----------------
 st.info("📂 Carregando dados para análise 3D com clusters...")
