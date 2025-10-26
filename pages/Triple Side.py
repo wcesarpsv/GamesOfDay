@@ -355,9 +355,9 @@ top_n = st.slider("Quantos confrontos exibir:", 10, min(200, len(df_rank)), 40, 
 rank = df_rank.sort_values('Predicted_EV', ascending=False).head(top_n)
 
 st.dataframe(
-    rank[['League','Home','Away','Predicted_EV_H','Predicted_EV_D','Predicted_EV_A','Chosen_Side','Predicted_EV','Quadrant_Dist_3D']]
+    rank[['League','Home','Away','Odd_H','Odd_D','Odd_A','Predicted_EV_H','Predicted_EV_D','Predicted_EV_A','Chosen_Side','Predicted_EV','Quadrant_Dist_3D']]
     .style.background_gradient(subset=['Predicted_EV','Predicted_EV_H','Predicted_EV_D','Predicted_EV_A'], cmap='RdYlGn')
-    .format({'Predicted_EV':'{:.2f}','Predicted_EV_H':'{:.2f}','Predicted_EV_D':'{:.2f}','Predicted_EV_A':'{:.2f}','Quadrant_Dist_3D':'{:.2f}'}),
+    .format({'Predicted_EV':'{:.2f}','Predicted_EV_H':'{:.2f}','Predicted_EV_D':'{:.2f}','Predicted_EV_A':'{:.2f}','Quadrant_Dist_3D':'{:.2f}','Odd_H':'{:.2f}','Odd_D':'{:.2f}','Odd_A':'{:.2f}'}),
     use_container_width=True
 )
 
@@ -409,7 +409,7 @@ else:
     c3.metric("ROI Médio Real", f"{real_roi*100:.2f}%")
 
     st.markdown("### 🔍 Comparativo Previsto vs Real (jogos finalizados)")
-    comp_cols = ['League','Home','Away','Chosen_Side','Predicted_EV','Goals_H_Today','Goals_A_Today','Real_Profit']
+    comp_cols = ['League','Home','Away','Odd_H','Odd_D','Odd_A','Chosen_Side','Predicted_EV','Goals_H_Today','Goals_A_Today','Real_Profit']
     show_cols = [c for c in comp_cols if c in finished_bets.columns]
     st.dataframe(
         finished_bets.sort_values('Predicted_EV', ascending=False)[show_cols]
