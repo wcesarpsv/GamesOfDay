@@ -589,7 +589,7 @@ n_to_show = st.slider("Quantos confrontos exibir (Top por distância 3D):", 10, 
 
 ###############################
 
-# ---------------- CONTROLE ANGULAR 3D ----------------
+# ---------------- FILTRO ANGULAR 3D ----------------
 st.markdown("### 🎯 Filtro Angular 3D")
 
 col_ang1, col_ang2, col_ang3 = st.columns(3)
@@ -661,7 +661,11 @@ def filtrar_por_angulo(df, angulo_xy_range, angulo_xz_range, magnitude_min):
     
     return df_filtrado
 
-# Aplicar filtro se solicitado
+# ---------------- PREPARAR DADOS PARA VISUALIZAÇÃO ----------------
+# Primeiro criar df_plot como antes
+df_plot = df_filtered.copy()
+
+# DEPOIS aplicar filtro angular se solicitado
 if aplicar_filtro:
     df_plot = filtrar_por_angulo(df_plot, angulo_xy_range, angulo_xz_range, magnitude_min)
     st.success(f"✅ Filtro aplicado! {len(df_plot)} jogos encontrados com os critérios angulares.")
