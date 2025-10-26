@@ -326,15 +326,65 @@ games_today['Real_BTTS'] = games_today.apply(result_btts_from_today, axis=1)
 finished_games = games_today[games_today['Real_Over25'].notna() & games_today['Real_BTTS'].notna()]
 
 if not finished_games.empty:
-    # Estatísticas de acerto
-    over_correct = (finished_games['Real_Over25'] == (finished_games['Prob_Over'] > 0.5)).mean()
-    btts_correct = (finished_games['Real_BTTS'] == (finished_games['Prob_BTTS_Yes'] > 0.5)).mean()
+    # WINRATE INDIVIDUAL PARA CADA OPÇÃO
+    st.markdown("### 🎯 Winrate por Tipo de Aposta")
     
-    col1, col2 = st.columns(2)
-    col1.metric("🎯 Acerto Over/Under 2.5", f"{over_correct:.1%}")
-    col2.metric("🎯 Acerto BTTS", f"{btts_correct:.1%}")
+    # Over/Under
+    over_bets = finished_games[finished_games['Prob_Over'] > 0.5]
+    under_bets = finished_games[finished_games['Prob_Under'] > 0.5]
     
-    # Tabela de resultados
+    over_winrate = (over_bets['Real_Over25'] == 1).mean() if len(over_bets) > 0 else 0
+    under_winrate = (under_bets['Real_Over25'] == 0).mean() if len(under_bets) > 0 else 0
+    
+    # BTTS
+    btts_yes_bets = finished_games[finished_games['Prob_BTTS_Yes'] > 0.5]
+    btts_no_bets = finished_games[finished_games['Prob_BTTS_No'] > 0.5]
+    
+    btts_yes_winrate = (btts_yes_bets['Real_BTTS'] == 1).mean() if len(btts_yes_bets) > 0 else 0
+    btts_no_winrate = (btts_no_bets['Real_BTTS'] == 0).mean() if len(btts_no_bets) > 0 else 0
+    
+    # Métricas
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("🎯 Over 2.5 Winrate", 
+                f"{over_winrate:.1%}", 
+                f"{len(over_bets)} apostas")
+    col2.metric("🎯 Under 2.5 Winrate", 
+                f"{under_winrate:.1%}", 
+                f"{len(under_bets)} apostas")
+    col3.metric("🎯 BTTS Yes Winrate", 
+                f"{btts_yes_winrate:.1%}", 
+                f"{len(btts_yes_bets)} apostas")
+    col4.metric("🎯 BTTS No Winrate", 
+                f"{btts_no_winrate:.1%}", 
+                f"{len(btts_no_bets)} apostas")
+    
+    # Tabela detalhada de performance
+    st.markdown("### 📊 Performance Detalhada por Tipo")
+    
+    performance_data = {
+        'Tipo': ['Over 2.5', 'Under 2.5', 'BTTS Yes', 'BTTS No'],
+        'Apostas': [len(over_bets), len(under_bets), len(btts_yes_bets), len(btts_no_bets)],
+        'Winrate': [over_winrate, under_winrate, btts_yes_winrate, btts_no_winrate],
+        'Acertos': [
+            (over_bets['Real_Over25'] == 1).sum() if len(over_bets) > 0 else 0,
+            (under_bets['Real_Over25'] == 0).sum() if len(under_bets) > 0 else 0,
+            (btts_yes_bets['Real_BTTS'] == 1).sum() if len(btts_yes_bets) > 0 else 0,
+            (btts_no_bets['Real_BTTS'] == 0).sum() if len(btts_no_bets) > 0 else 0
+        ]
+    }
+    
+    performance_df = pd.DataFrame(performance_data)
+    st.dataframe(
+        performance_df.style.format({
+            'Winrate': '{:.1%}',
+            'Apostas': '{:.0f}',
+            'Acertos': '{:.0f}'
+        }).background_gradient(subset=['Winrate'], cmap='RdYlGn'),
+        use_container_width=True
+    )
+    
+    # Tabela de resultados individuais
+    st.markdown("### 🔍 Resultados Individuais dos Jogos")
     validation_cols = [
         'League', 'Time', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today',
         'Prob_Over', 'Real_Over25', 'Prob_BTTS_Yes', 'Real_BTTS'
