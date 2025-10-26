@@ -1643,9 +1643,15 @@ def resumo_executivo_clusters(df):
         st.markdown("### 📊 Distribuição por Cluster")
         st.dataframe(cluster_dist, use_container_width=True)
 
-# Aplicar resumo
+# ---------------- APLICAÇÃO DO RESUMO EXECUTIVO ----------------
 if not games_today.empty and 'Cluster3D_Desc' in games_today.columns:
+    # Verifica se os indicadores de potencial já foram aplicados
+    if 'Classificacao_Potencial' not in games_today.columns:
+        st.warning("⚠️ 'Classificacao_Potencial' ausente — aplicando função de indicadores primeiro.")
+        games_today = adicionar_indicadores_explicativos_clusters(games_today)
+
     resumo_executivo_clusters(games_today)
+
 
 # ---------------- FILTROS AVANÇADOS ----------------
 st.sidebar.markdown("## 🔧 Filtros Avançados")
