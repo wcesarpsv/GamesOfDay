@@ -997,11 +997,11 @@ def generate_live_summary_clusters(df):
 def estilo_tabela_clusters(df):
     """Aplica estilo à tabela principal com clusters"""
     def cor_classificacao(valor):
-        if '🌟🌟🌟' in str(valor): return 'background-color: #00ff00; font-weight: bold'
-        elif '🌟🌟' in str(valor): return 'background-color: #90ee90; font-weight: bold'
-        elif '🌟' in str(valor): return 'background-color: #ffff00; font-weight: bold'
-        elif '🔴' in str(valor): return 'background-color: #ffcccc; font-weight: bold'
-        elif '🏆' in str(valor): return 'background-color: #ffeb3b; font-weight: bold'
+        if '🌟🌟🌟' in str(valor): return 'font-weight: bold'
+        elif '🌟🌟' in str(valor): return 'font-weight: bold'
+        elif '🌟' in str(valor): return 'font-weight: bold'
+        elif '🔴' in str(valor): return 'font-weight: bold'
+        elif '🏆' in str(valor): return 'font-weight: bold'
         else: return ''
 
     colunas_para_estilo = []
