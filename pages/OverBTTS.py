@@ -127,7 +127,7 @@ def load_and_merge_livescore(games_today, selected_date_str):
         raw = raw[~raw['status'].isin(['Cancel', 'Postp.'])]
 
     left_key = 'Id' if 'Id' in games_today.columns else None
-    right_key = '' if '' in raw.columns else None
+    right_key = 'Id' if 'Id' in raw.columns else None
     if left_key and right_key:
         games_today = games_today.merge(raw, left_on=left_key, right_on=right_key, how='left', suffixes=('', '_RAW'))
 
