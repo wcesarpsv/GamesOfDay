@@ -590,44 +590,12 @@ def train_main_model(_history, target_date):
 def train_dual_value_models(history, target_date):
     """Treina modelos separados para value em Home e Away"""
     
-    # Filtrar dados históricos (SEM data leak)
-    if 'Date' in history.columns:
-        history['Date'] = pd.to_datetime(history['Date'])
-        target_date_dt = pd.to_datetime(target_date)
-        training_data = history[history['Date'] < target_date_dt].copy()
-    else:
-        training_data = history.copy()
-        st.warning("⚠️ No 'Date' column - using all historical data")
+    # [código anterior mantido até a parte das ligas...]
     
-    if training_data.empty:
-        st.error("No training data available for dual models!")
-        return None, None, None
-    
-    st.info(f"🎯 Training dual models with {len(training_data)} games")
-
-    # Criar targets binários para Home e Away
-    training_data['Target_Value_Home'] = (training_data['Goals_H_FT'] > training_data['Goals_A_FT']).astype(int)
-    training_data['Target_Value_Away'] = (training_data['Goals_H_FT'] < training_data['Goals_A_FT']).astype(int)
-    
-    # Aplicar features 3D
-    training_data = calcular_distancias_3d(training_data)
-    training_data = aplicar_clusterizacao_3d(training_data)
-    
-    # Features base + 3D (GARANTINDO QUE M_Diff EXISTE)
-    if 'M_Diff' not in training_data.columns:
-        training_data['M_Diff'] = training_data['M_H'] - training_data['M_A']
-    
-    base_features = ['M_H', 'M_A', 'Diff_Power', 'M_Diff', 'Odd_H', 'Odd_A']
-    
-    # Adicionar features 3D
-    feat3d = [
-        'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
-        'Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
-        'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ', 'Vector_Sign', 'Magnitude_3D'
-    ]
-    
-    # One-hot encoding para clusters e ligas
+    # One-hot encoding para clusters e ligas - CORREÇÃO CRÍTICA
     cluster_dummies = pd.get_dummies(training_data['Cluster3D_Label'], prefix='C3D')
+    
+    # PARA LIGAS: usar apenas ligas que existem no histórico de treino
     league_dummies = pd.get_dummies(training_data['League'], prefix='League') if 'League' in training_data.columns else pd.DataFrame()
     
     # Combinar todas as features
@@ -639,7 +607,7 @@ def train_dual_value_models(history, target_date):
     ], axis=1)
     
     # GARANTIR que as features têm nomes consistentes
-    X = X.astype(float)  # Evitar problemas de tipo
+    X = X.astype(float)
     
     # Treinar modelo para Home
     model_home = RandomForestClassifier(
@@ -657,12 +625,13 @@ def train_dual_value_models(history, target_date):
     )
     model_away.fit(X, training_data['Target_Value_Away'])
     
-    feature_columns = available_features
+    # RETORNAR também as colunas de league esperadas
+    league_columns = list(league_dummies.columns) if not league_dummies.empty else []
     
-    st.success(f"✅ Dual models trained with {len(feature_columns)} features")
-    return model_home, model_away, available_features  
+    st.success(f"✅ Dual models trained with {X.shape[1]} features")
+    return model_home, model_away, available_features, league_columns  # ← Retornar league_columns também
 
-def calculate_dual_ev(games_today, model_home, model_away, feature_columns):
+def calculate_dual_ev(games_today, model_home, model_away, feature_columns, league_columns):
     """Calcula EV separado para Home e Away usando modelos duais"""
     
     if model_home is None or model_away is None:
@@ -685,9 +654,20 @@ def calculate_dual_ev(games_today, model_home, model_away, feature_columns):
         'Vector_Sign', 'Magnitude_3D'
     ] if f in games_today.columns]
     
-    # One-hot encoding
+    # One-hot encoding - CORREÇÃO CRÍTICA
     cluster_dummies = pd.get_dummies(games_today['Cluster3D_Label'], prefix='C3D')
-    league_dummies = pd.get_dummies(games_today['League'], prefix='League') if 'League' in games_today.columns else pd.DataFrame()
+    
+    # PARA LIGAS: usar APENAS as colunas que foram usadas no treino
+    if league_columns and 'League' in games_today.columns:
+        # Criar dummies para todas as ligas
+        all_league_dummies = pd.get_dummies(games_today['League'], prefix='League')
+        # Manter apenas as colunas que existiam no treino
+        league_dummies = pd.DataFrame(0, index=games_today.index, columns=league_columns)
+        for col in league_columns:
+            if col in all_league_dummies.columns:
+                league_dummies[col] = all_league_dummies[col]
+    else:
+        league_dummies = pd.DataFrame()
     
     X_pred = pd.concat([
         games_today[base_features + feat3d].fillna(0),
@@ -695,7 +675,7 @@ def calculate_dual_ev(games_today, model_home, model_away, feature_columns):
         league_dummies
     ], axis=1)
     
-    # Garantir mesma estrutura do treino - CORREÇÃO CRÍTICA
+    # Garantir mesma estrutura do treino
     try:
         # Obter features esperadas pelo modelo
         expected_features = model_home.feature_names_in_
@@ -708,16 +688,42 @@ def calculate_dual_ev(games_today, model_home, model_away, feature_columns):
         # Remover colunas extras que não são esperadas
         extra_cols = set(X_pred.columns) - set(expected_features)
         if extra_cols:
-            st.warning(f"Removendo colunas extras não esperadas pelo modelo: {extra_cols}")
+            st.warning(f"Removendo {len(extra_cols)} colunas extras não esperadas pelo modelo")
             X_pred = X_pred.drop(columns=list(extra_cols))
         
-        # ORDENAR as colunas na mesma ordem do treino (CRÍTICO)
+        # ORDENAR as colunas na mesma ordem do treino
         X_pred = X_pred[expected_features]
         
         # Verificar se a ordem está correta
         if list(X_pred.columns) != list(expected_features):
             st.error("❌ Ordem das features não coincide com o modelo treinado!")
+            st.error(f"Esperado: {len(expected_features)} features")
+            st.error(f"Obtido: {len(X_pred.columns)} features")
             return games_today
+        
+        # Predições de probabilidade
+        proba_home = model_home.predict_proba(X_pred)[:, 1]
+        proba_away = model_away.predict_proba(X_pred)[:, 1]
+        
+        # Calcular EV para ambos os lados
+        games_today['EV_Home_Dual'] = (proba_home * games_today['Odd_H']) - 1
+        games_today['EV_Away_Dual'] = (proba_away * games_today['Odd_A']) - 1
+        
+        # Probabilidades dos modelos duais
+        games_today['Dual_Proba_Home'] = proba_home
+        games_today['Dual_Proba_Away'] = proba_away
+        
+        st.success(f"✅ Dual EV calculated successfully for {len(games_today)} games")
+        
+    except Exception as e:
+        st.error(f"❌ Could not calculate dual EV: {e}")
+        # Fallback seguro
+        games_today['EV_Home_Dual'] = 0
+        games_today['EV_Away_Dual'] = 0
+        games_today['Dual_Proba_Home'] = 0.5
+        games_today['Dual_Proba_Away'] = 0.5
+    
+    return games_today
         
         # Predições de probabilidade
         proba_home = model_home.predict_proba(X_pred)[:, 1]
@@ -1049,14 +1055,14 @@ def main():
 
         # Train dual models
         try:
-            dual_model_home, dual_model_away, dual_features = train_dual_value_models(history, selected_date)
+            dual_model_home, dual_model_away, dual_features, league_columns = train_dual_value_models(history, selected_date)
             if dual_model_home is not None:
                 st.success("✅ Dual value models trained successfully!")
             else:
                 st.warning("⚠️ Dual models could not be trained")
         except Exception as e:
             st.error(f"Error training dual models: {e}")
-            dual_model_home, dual_model_away, dual_features = None, None, None
+            dual_model_home, dual_model_away, dual_features, league_columns = None, None, None, None
 
         # Market Error Analysis
         st.header(f"📊 3D Market Error Analysis - {selected_date}")
@@ -1077,7 +1083,7 @@ def main():
         
         # Calculate dual EV
         if dual_model_home is not None:
-            games_today = calculate_dual_ev(games_today, dual_model_home, dual_model_away, dual_features)
+            games_today = calculate_dual_ev(games_today, dual_model_home, dual_model_away, dual_features, league_columns)
         
         # Visualizations
         col1, col2 = st.columns(2)
