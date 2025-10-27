@@ -645,6 +645,9 @@ def train_dual_value_models(history, target_date):
     
     # GARANTIR que as features têm nomes consistentes
     X = X.astype(float)  # Evitar problemas de tipo
+
+    st.info(f"🔍 Estrutura final do treino: {X.shape[1]} features")
+    st.info(f"🔍 Clusters: {cluster_dummies.shape[1]}, Ligas: {league_dummies.shape[1]}")
     
     # Treinar modelo para Home
     model_home = RandomForestClassifier(
@@ -680,60 +683,83 @@ def calculate_dual_ev(games_today, model_home, model_away, feature_columns, leag
     if 'M_Diff' not in games_today.columns:
         games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
     
-    # Preparar features para predição
-    base_features = [f for f in feature_columns if f in games_today.columns]
-    feat3d = [f for f in [
-        'Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
-        'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ', 'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
-        'Vector_Sign', 'Magnitude_3D'
-    ] if f in games_today.columns]
+    # DEBUG: Mostrar features disponíveis
+    st.info(f"🔍 Features disponíveis: {len(games_today.columns)}")
     
-    # One-hot encoding - CORREÇÃO CRÍTICA
+    # Preparar features para predição - MÉTODO MAIS SEGURO
+    # Usar APENAS as features que sabemos que existem
+    available_features = []
+    for f in feature_columns:
+        if f in games_today.columns:
+            available_features.append(f)
+    
+    # One-hot encoding - MÉTODO MAIS CONTROLADO
     cluster_dummies = pd.get_dummies(games_today['Cluster3D_Label'], prefix='C3D')
     
-    # PARA LIGAS: usar APENAS as colunas que foram usadas no treino
-    if league_columns and 'League' in games_today.columns:
-        # Criar dummies para todas as ligas
-        all_league_dummies = pd.get_dummies(games_today['League'], prefix='League')
-        # Manter apenas as colunas que existiam no treino
-        league_dummies = pd.DataFrame(0, index=games_today.index, columns=league_columns)
+    # PARA LIGAS: criar DataFrame vazio e preencher apenas as colunas esperadas
+    league_dummies = pd.DataFrame(0, index=games_today.index, columns=league_columns)
+    if 'League' in games_today.columns:
+        # Mapear ligas atuais para as colunas esperadas
+        league_mapping = {}
         for col in league_columns:
-            if col in all_league_dummies.columns:
-                league_dummies[col] = all_league_dummies[col]
-    else:
-        league_dummies = pd.DataFrame()
+            # Extrair o nome da liga do prefixo 'League_'
+            league_name = col.replace('League_', '')
+            league_mapping[league_name] = col
+        
+        # Preencher as dummies
+        for idx, league in games_today['League'].items():
+            if league in league_mapping:
+                col_name = league_mapping[league]
+                league_dummies.loc[idx, col_name] = 1
     
-    X_pred = pd.concat([
-        games_today[base_features + feat3d].fillna(0),
-        cluster_dummies,
-        league_dummies
-    ], axis=1)
+    # Construir X_pred de forma mais controlada
+    X_pred = pd.DataFrame(index=games_today.index)
     
-    # Garantir mesma estrutura do treino
+    # Adicionar features numéricas
+    for feature in available_features:
+        if feature in games_today.columns:
+            X_pred[feature] = games_today[feature].fillna(0)
+    
+    # Adicionar clusters
+    for col in cluster_dummies.columns:
+        X_pred[col] = cluster_dummies[col]
+    
+    # Adicionar ligas (apenas as esperadas)
+    for col in league_columns:
+        X_pred[col] = league_dummies[col]
+    
+    # GARANTIR ESTRUTURA IDÊNTICA AO TREINO
     try:
         # Obter features esperadas pelo modelo
         expected_features = model_home.feature_names_in_
         
-        # Adicionar colunas faltantes com valor 0
-        missing_cols = set(expected_features) - set(X_pred.columns)
-        for col in missing_cols:
-            X_pred[col] = 0
+        st.info(f"🔍 Modelo espera: {len(expected_features)} features")
+        st.info(f"🔍 Nós temos: {len(X_pred.columns)} features")
         
-        # Remover colunas extras que não são esperadas
+        # VERIFICAR DIFERENÇAS
+        missing_cols = set(expected_features) - set(X_pred.columns)
         extra_cols = set(X_pred.columns) - set(expected_features)
+        
+        if missing_cols:
+            st.warning(f"❌ Faltando {len(missing_cols)} colunas: {list(missing_cols)[:5]}...")
+            for col in missing_cols:
+                X_pred[col] = 0
+        
         if extra_cols:
-            st.warning(f"Removendo {len(extra_cols)} colunas extras não esperadas pelo modelo")
+            st.warning(f"❌ {len(extra_cols)} colunas extras serão removidas: {list(extra_cols)[:5]}...")
             X_pred = X_pred.drop(columns=list(extra_cols))
         
-        # ORDENAR as colunas na mesma ordem do treino
+        # ORDENAR EXATAMENTE como no treino
         X_pred = X_pred[expected_features]
         
-        # Verificar se a ordem está correta
+        # VERIFICAÇÃO FINAL
         if list(X_pred.columns) != list(expected_features):
-            st.error("❌ Ordem das features não coincide com o modelo treinado!")
-            st.error(f"Esperado: {len(expected_features)} features")
-            st.error(f"Obtido: {len(X_pred.columns)} features")
+            st.error("❌ CRÍTICO: Ordem ainda não coincide!")
+            st.error(f"Esperado: {expected_features[:3]}...")
+            st.error(f"Obtido: {list(X_pred.columns)[:3]}...")
             return games_today
+        
+        st.success("✅ Estrutura de features VERIFICADA - fazendo predições...")
         
         # Predições de probabilidade
         proba_home = model_home.predict_proba(X_pred)[:, 1]
@@ -747,10 +773,15 @@ def calculate_dual_ev(games_today, model_home, model_away, feature_columns, leag
         games_today['Dual_Proba_Home'] = proba_home
         games_today['Dual_Proba_Away'] = proba_away
         
-        st.success(f"✅ Dual EV calculated successfully for {len(games_today)} games")
+        st.success(f"✅ Dual EV calculado para {len(games_today)} jogos!")
+        
+        # Estatísticas
+        positive_ev_home = (games_today['EV_Home_Dual'] > 0).sum()
+        positive_ev_away = (games_today['EV_Away_Dual'] > 0).sum()
+        st.info(f"📊 EV positivo: Home={positive_ev_home}, Away={positive_ev_away}")
         
     except Exception as e:
-        st.error(f"❌ Could not calculate dual EV: {e}")
+        st.error(f"❌ Erro crítico no dual EV: {e}")
         # Fallback seguro
         games_today['EV_Home_Dual'] = 0
         games_today['EV_Away_Dual'] = 0
@@ -758,7 +789,6 @@ def calculate_dual_ev(games_today, model_home, model_away, feature_columns, leag
         games_today['Dual_Proba_Away'] = 0.5
     
     return games_today
-
 
 
 ########################################
