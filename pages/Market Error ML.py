@@ -500,7 +500,7 @@ def train_main_model(_history, target_date):
 
     # Treinar modelo
     model = RandomForestClassifier(
-        n_estimators=200,
+        n_estimators=500,
         max_depth=10,
         min_samples_split=10,
         min_samples_leaf=4,
