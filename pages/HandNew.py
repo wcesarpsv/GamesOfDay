@@ -152,7 +152,7 @@ def load_and_merge_livescore(games_today, selected_date_str):
         results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
         
         required_cols = [
-            'game_id', 'status', 'home_goal', 'away_goal',
+            'Id', 'status', 'home_goal', 'away_goal',
             'home_ht_goal', 'away_ht_goal',
             'home_corners', 'away_corners', 
             'home_yellow', 'away_yellow',
@@ -169,7 +169,7 @@ def load_and_merge_livescore(games_today, selected_date_str):
             games_today = games_today.merge(
                 results_df,
                 left_on='Id',
-                right_on='game_id',
+                right_on='Id',
                 how='left',
                 suffixes=('', '_RAW')
             )
