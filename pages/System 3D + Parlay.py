@@ -140,14 +140,14 @@ if os.path.exists(livescore_file):
     st.info(f"LiveScore file found: {livescore_file}")
     results_df = pd.read_csv(livescore_file)
     
-    required_cols = ['game_id', 'status', 'home_goal', 'away_goal']
+    required_cols = ['Id', 'status', 'home_goal', 'away_goal']
     missing_cols = [col for col in required_cols if col not in results_df.columns]
     
     if not missing_cols:
         games_today = games_today.merge(
             results_df,
             left_on='Id',
-            right_on='game_id',
+            right_on='Id',
             how='left',
             suffixes=('', '_RAW')
         )
@@ -704,8 +704,8 @@ def calculate_parlay_odds(games_list, games_df):
     total_odds = 1.0
     game_details = []
     
-    for game_idx, bet_type in games_list:
-        game = games_df.loc[game_idx]
+    for Idx, bet_type in games_list:
+        game = games_df.loc[Idx]
         if bet_type == 'Home':
             prob = game['ML_Proba_Home']
             odds = game['Odd_H']
@@ -1102,7 +1102,7 @@ def generate_super_parlay(games_df, target_odds=50, max_games=8):
             continue
         
         all_bets.append({
-            'game_idx': idx,
+            'Idx': idx,
             'bet_type': bet_type,
             'probability': prob,
             'odds': odds,
@@ -1135,7 +1135,7 @@ def generate_super_parlay(games_df, target_odds=50, max_games=8):
         
         return {
             'type': f'SUPER PARLAY ({len(best_combination)} legs)',
-            'games': [(bet['game_idx'], bet['bet_type']) for bet in best_combination],
+            'games': [(bet['Idx'], bet['bet_type']) for bet in best_combination],
             'probability': current_prob,
             'odds': round(current_odds, 2),
             'ev': expected_value,
