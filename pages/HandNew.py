@@ -345,6 +345,13 @@ angle_min, angle_max = st.slider(
     help="Ângulos positivos → Home acima | Ângulos negativos → Away acima"
 )
 
+# 🔘 Checkbox de modo combinado
+use_combined_filter = st.checkbox(
+    "Usar filtro combinado (Distância + Ângulo)",
+    value=True,
+    help="Se desmarcado, exibirá apenas confrontos dentro do intervalo de ângulo, ignorando o filtro de distância."
+)
+
 # ==========================
 # 📊 Preparar dados
 # ==========================
@@ -352,13 +359,18 @@ if "Quadrant_Dist" not in df_filtered.columns:
     df_filtered = calcular_distancias_quadrantes(df_filtered)
 
 # Aplicar filtro de ângulo
-df_plot = df_filtered[
+df_angle = df_filtered[
     (df_filtered["Quadrant_Angle"] >= angle_min) &
     (df_filtered["Quadrant_Angle"] <= angle_max)
 ]
 
-# Limitar por top distância
-df_plot = df_plot.nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
+# Aplicar lógica conforme modo selecionado
+if use_combined_filter:
+    # Filtro combinado: aplicar ângulo + top por distância
+    df_plot = df_angle.nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
+else:
+    # Filtro somente por ângulo
+    df_plot = df_angle.reset_index(drop=True)
 
 # ==========================
 # 🎨 Criar gráfico Plotly
@@ -420,7 +432,9 @@ fig.add_trace(go.Scatter(
 ))
 
 # Layout final
-titulo = f"Top {n_to_show} Distâncias – Aggression × HandScore"
+titulo = f"Confrontos – Aggression × HandScore"
+if use_combined_filter:
+    titulo += f" | Top {n_to_show} Distâncias"
 if selected_league != "⚽ Todas as ligas":
     titulo += f" | {selected_league}"
 
