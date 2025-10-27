@@ -779,7 +779,8 @@ def treinar_modelo_quadrantes_dual(history, games_today):
                             'Quadrant_Angle_Geometric', 
                             'Quadrant_Angle_Normalized']].fillna(0)
 
-    X_today = pd.concat([qh_today, qa_today, ligas_today, extras_today], axis=1)
+    X_today = pd.concat([ligas_today, extras_today], axis=1)
+    # qh_today, qa_today,
 
     # -------------------------------
     # 🔹 Fazer previsões
