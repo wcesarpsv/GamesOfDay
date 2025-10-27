@@ -343,109 +343,114 @@ model_H, model_D, model_A, games_today = train_triple_ev_models(history, games_t
 # ===================== Filtros e Ranking =====================
 st.markdown("## 🏆 Ranking por Expected Value (1X2) - COM PROBABILIDADES")
 
-# Filtros (mantidos do código original)
+# Filtros
 col_f1, col_f2 = st.columns(2)
 leagues = sorted(games_today['League'].dropna().unique()) if 'League' in games_today.columns else []
 sel_league = col_f1.selectbox("Filtrar por liga", options=["Todas"] + leagues, index=0)
 ev_threshold = col_f2.slider("EV mínimo para apostar (unid.)", -0.50, 0.50, 0.00, 0.01)
 
 df_rank = games_today.copy()
+
+# Aplicar filtro de liga
 if sel_league != "Todas" and 'League' in df_rank.columns:
     df_rank = df_rank[df_rank['League'] == sel_league]
 
-top_n = st.slider("Quantos confrontos exibir:", 10, min(200, len(df_rank)), 40, step=5)
-rank = df_rank.sort_values('Predicted_EV', ascending=False).head(top_n)
+# ⬇️⬇️⬇️ MUDANÇA AQUI: Filtrar por EV mínimo ANTES do ranking ⬇️⬇️⬇️
+df_rank = df_rank[df_rank['Predicted_EV'] >= ev_threshold]
 
-# Calcular probabilidades implícitas das odds
-def implied_probability(odd):
-    """Calcula probabilidade implícita a partir da odd"""
-    if pd.isna(odd) or odd <= 0:
-        return np.nan
-    return 1 / odd
+top_n = st.slider("Quantos confrontos exibir:", 10, min(200, len(df_rank)), min(40, len(df_rank)), step=5)
 
-# Adicionar colunas de probabilidades ao dataframe de ranking
-rank_with_probs = rank.copy()
+# Verificar se há dados após o filtro
+if len(df_rank) == 0:
+    st.warning(f"⚠️ Nenhum jogo encontrado com EV ≥ {ev_threshold}")
+    rank = pd.DataFrame()
+else:
+    rank = df_rank.sort_values('Predicted_EV', ascending=False).head(top_n)
 
-# Probabilidades implícitas das odds atuais
-rank_with_probs['Prob_H'] = rank_with_probs['Odd_H'].apply(implied_probability)
-rank_with_probs['Prob_D'] = rank_with_probs['Odd_D'].apply(implied_probability)  
-rank_with_probs['Prob_A'] = rank_with_probs['Odd_A'].apply(implied_probability)
+# ... o resto do código permanece igual, mas com verificação ...
+if not rank.empty:
+    # Calcular probabilidades implícitas das odds
+    def implied_probability(odd):
+        if pd.isna(odd) or odd <= 0:
+            return np.nan
+        return 1 / odd
 
-# Probabilidades previstas pelo modelo (convertendo EV para prob)
-def ev_to_prob(ev, odd):
-    """Converte EV de volta para probabilidade prevista com limites"""
-    if pd.isna(ev) or pd.isna(odd) or odd <= 1.0:
-        return np.nan
-    prob = (ev + 1) / odd
-    # Limitar entre 0% e 100% - valores matematicamente possíveis
-    return max(0.0, min(1.0, prob))
+    rank_with_probs = rank.copy()
+    
+    # Probabilidades implícitas
+    rank_with_probs['Prob_H'] = rank_with_probs['Odd_H'].apply(implied_probability)
+    rank_with_probs['Prob_D'] = rank_with_probs['Odd_D'].apply(implied_probability)  
+    rank_with_probs['Prob_A'] = rank_with_probs['Odd_A'].apply(implied_probability)
 
-rank_with_probs['Prob_Pred_H'] = [ev_to_prob(ev, odd) for ev, odd in zip(rank_with_probs['Predicted_EV_H'], rank_with_probs['Odd_H'])]
-rank_with_probs['Prob_Pred_D'] = [ev_to_prob(ev, odd) for ev, odd in zip(rank_with_probs['Predicted_EV_D'], rank_with_probs['Odd_D'])]
-rank_with_probs['Prob_Pred_A'] = [ev_to_prob(ev, odd) for ev, odd in zip(rank_with_probs['Predicted_EV_A'], rank_with_probs['Odd_A'])]
+    # Probabilidades previstas
+    def ev_to_prob(ev, odd):
+        if pd.isna(ev) or pd.isna(odd) or odd <= 1.0:
+            return np.nan
+        prob = (ev + 1) / odd
+        return max(0.0, min(1.0, prob))
 
-# CALCULAR EDGE (ESTA PARTE ESTAVA FALTANDO)
-rank_with_probs['Edge_H'] = rank_with_probs['Prob_Pred_H'] - rank_with_probs['Prob_H']
-rank_with_probs['Edge_D'] = rank_with_probs['Prob_Pred_D'] - rank_with_probs['Prob_D']
-rank_with_probs['Edge_A'] = rank_with_probs['Prob_Pred_A'] - rank_with_probs['Prob_A']
+    rank_with_probs['Prob_Pred_H'] = [ev_to_prob(ev, odd) for ev, odd in zip(rank_with_probs['Predicted_EV_H'], rank_with_probs['Odd_H'])]
+    rank_with_probs['Prob_Pred_D'] = [ev_to_prob(ev, odd) for ev, odd in zip(rank_with_probs['Predicted_EV_D'], rank_with_probs['Odd_D'])]
+    rank_with_probs['Prob_Pred_A'] = [ev_to_prob(ev, odd) for ev, odd in zip(rank_with_probs['Predicted_EV_A'], rank_with_probs['Odd_A'])]
 
-# Edge do lado escolhido
-def get_chosen_edge(row):
-    side = row['Chosen_Side']
-    if side == 'H':
-        return row['Edge_H']
-    elif side == 'D':
-        return row['Edge_D']
-    else:
-        return row['Edge_A']
+    # Calcular Edge
+    rank_with_probs['Edge_H'] = rank_with_probs['Prob_Pred_H'] - rank_with_probs['Prob_H']
+    rank_with_probs['Edge_D'] = rank_with_probs['Prob_Pred_D'] - rank_with_probs['Prob_D']
+    rank_with_probs['Edge_A'] = rank_with_probs['Prob_Pred_A'] - rank_with_probs['Prob_A']
 
-rank_with_probs['Edge_Chosen'] = rank_with_probs.apply(get_chosen_edge, axis=1)
+    def get_chosen_edge(row):
+        side = row['Chosen_Side']
+        if side == 'H': return row['Edge_H']
+        elif side == 'D': return row['Edge_D']
+        else: return row['Edge_A']
 
-# ... o resto do código permanece igual
+    rank_with_probs['Edge_Chosen'] = rank_with_probs.apply(get_chosen_edge, axis=1)
 
-# Selecionar colunas para exibir no ranking
-display_columns = [
-    'League', 'Home', 'Away', 'Chosen_Side', 'Predicted_EV',
-    'Odd_H', 'Odd_D', 'Odd_A',
-    'Prob_H', 'Prob_D', 'Prob_A',
-    'Prob_Pred_H', 'Prob_Pred_D', 'Prob_Pred_A', 
-    'Edge_H', 'Edge_D', 'Edge_A', 'Edge_Chosen'
-]
+    # Exibir tabela
+    display_columns = [
+        'League', 'Home', 'Away', 'Chosen_Side', 'Predicted_EV',
+        'Odd_H', 'Odd_D', 'Odd_A',
+        'Prob_H', 'Prob_D', 'Prob_A',
+        'Prob_Pred_H', 'Prob_Pred_D', 'Prob_Pred_A', 
+        'Edge_H', 'Edge_D', 'Edge_A', 'Edge_Chosen'
+    ]
 
-# Filtrar apenas colunas que existem no dataframe
-available_columns = [col for col in display_columns if col in rank_with_probs.columns]
+    available_columns = [col for col in display_columns if col in rank_with_probs.columns]
 
-st.dataframe(
-    rank_with_probs[available_columns]
-    .style
-    .background_gradient(subset=['Predicted_EV', 'Edge_Chosen', 'Edge_H', 'Edge_D', 'Edge_A'], cmap='RdYlGn', vmin=-0.1, vmax=0.1)
-    .background_gradient(subset=['Prob_Pred_H', 'Prob_Pred_D', 'Prob_Pred_A'], cmap='Blues', vmin=0, vmax=1)
-    .format({
-        'Predicted_EV': '{:.3f}',
-        'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
-        'Prob_H': '{:.1%}', 'Prob_D': '{:.1%}', 'Prob_A': '{:.1%}',
-        'Prob_Pred_H': '{:.1%}', 'Prob_Pred_D': '{:.1%}', 'Prob_Pred_A': '{:.1%}',
-        'Edge_H': '{:.2%}', 'Edge_D': '{:.2%}', 'Edge_A': '{:.2%}', 'Edge_Chosen': '{:.2%}'
-    }),
-    use_container_width=True
-)
+    st.dataframe(
+        rank_with_probs[available_columns]
+        .style
+        .background_gradient(subset=['Predicted_EV', 'Edge_Chosen', 'Edge_H', 'Edge_D', 'Edge_A'], cmap='RdYlGn', vmin=-0.1, vmax=0.1)
+        .background_gradient(subset=['Prob_Pred_H', 'Prob_Pred_D', 'Prob_Pred_A'], cmap='Blues', vmin=0, vmax=1)
+        .format({
+            'Predicted_EV': '{:.3f}',
+            'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
+            'Prob_H': '{:.1%}', 'Prob_D': '{:.1%}', 'Prob_A': '{:.1%}',
+            'Prob_Pred_H': '{:.1%}', 'Prob_Pred_D': '{:.1%}', 'Prob_Pred_A': '{:.1%}',
+            'Edge_H': '{:.2%}', 'Edge_D': '{:.2%}', 'Edge_A': '{:.2%}', 'Edge_Chosen': '{:.2%}'
+        }),
+        use_container_width=True
+    )
 
-# Estatísticas resumidas das probabilidades
-st.markdown("### 📈 Estatísticas das Probabilidades")
-col1, col2, col3 = st.columns(3)
+    # Estatísticas (apenas se houver dados)
+    st.markdown("### 📈 Estatísticas das Probabilidades")
+    col1, col2, col3 = st.columns(3)
 
-with col1:
-    avg_edge = rank_with_probs['Edge_Chosen'].mean() * 100
-    st.metric("Edge Médio do Lado Escolhido", f"{avg_edge:.2f}%")
+    with col1:
+        avg_edge = rank_with_probs['Edge_Chosen'].mean() * 100
+        st.metric("Edge Médio do Lado Escolhido", f"{avg_edge:.2f}%")
 
-with col2:
-    positive_edges = (rank_with_probs['Edge_Chosen'] > 0).sum()
-    total_games = len(rank_with_probs)
-    st.metric("Jogos com Edge Positivo", f"{positive_edges}/{total_games}")
+    with col2:
+        positive_edges = (rank_with_probs['Edge_Chosen'] > 0).sum()
+        total_games = len(rank_with_probs)
+        st.metric("Jogos com Edge Positivo", f"{positive_edges}/{total_games}")
 
-with col3:
-    max_edge = rank_with_probs['Edge_Chosen'].max() * 100
-    st.metric("Maior Edge Encontrado", f"{max_edge:.2f}%")
+    with col3:
+        max_edge = rank_with_probs['Edge_Chosen'].max() * 100
+        st.metric("Maior Edge Encontrado", f"{max_edge:.2f}%")
+
+else:
+    st.info("ℹ️ Ajuste o filtro de EV mínimo para ver jogos recomendados")
 
 # Explicação das colunas
 st.markdown("""
