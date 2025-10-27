@@ -469,7 +469,7 @@ for _, row in df_plot.iterrows():
             f"<b>{row['Home']} vs {row['Away']}</b><br>"
             f"🏆 {row.get('League','N/A')}<br>"
             f"📏 Distância: {row['Quadrant_Dist']:.2f}<br>"
-            f"📐 Ângulo: {row['Quadrant_Angle_Geometric']:.1f}°<br>"
+            f"📐 Ângulo: {row['Quadrant_Angle_Normalized']:.1f}°<br>"
             f"↕️ {'Home acima' if row['Quadrant_Angle_Normalized'] > 0 else 'Away acima'}"
         ),
         showlegend=False
