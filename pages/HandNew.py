@@ -291,7 +291,8 @@ def calcular_distancias_quadrantes(df):
         dy = df['HandScore_Home'] - df['HandScore_Away']
         df['Quadrant_Dist'] = np.sqrt(dx**2 + (dy/60)**2 * 2.5) * 10  # escala visual ajustada
         df['Quadrant_Separation'] = 0.5 * (dy + 60 * dx)
-        df['Quadrant_Angle'] = np.degrees(np.arctan2(dy, dx))
+        # df['Quadrant_Angle'] = np.degrees(np.arctan2(dy, dx))
+        df['Quadrant_Angle'] = np.degrees(np.arctan2((dy / 60), dx))
     else:
         st.warning("⚠️ Colunas Aggression/HandScore não encontradas para calcular as distâncias.")
         df['Quadrant_Dist'] = np.nan
@@ -447,7 +448,6 @@ fig.update_layout(
     hovermode="closest",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
 )
-fig.update_yaxes(scaleanchor="x", scaleratio=1)
 st.plotly_chart(fig, use_container_width=True)
 
 
