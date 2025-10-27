@@ -748,7 +748,8 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized']].fillna(0)
 
     # Combinar todas as features
-    X = pd.concat([quadrantes_home, quadrantes_away, ligas_dummies, extras], axis=1)
+    X = pd.concat([ligas_dummies, extras], axis=1)
+    # quadrantes_home, quadrantes_away, 
 
     # Targets
     y_home = history['Target_AH_Home']
