@@ -218,79 +218,79 @@ if "Date" in history.columns:
     except Exception as e:
         st.error(f"Erro ao aplicar filtro temporal: {e}")
 
-############################################
-### 🧭 COMPARATIVO: Ângulo Original vs Ângulo Normalizado
-############################################
-import matplotlib.pyplot as plt
-import seaborn as sns
+# ############################################
+# ### 🧭 COMPARATIVO: Ângulo Original vs Ângulo Normalizado
+# ############################################
+# import matplotlib.pyplot as plt
+# import seaborn as sns
 
-# Garantir que history tenha os dados necessários
-df_test = history.copy().dropna(subset=['Aggression_Home','Aggression_Away','HandScore_Home','HandScore_Away'])
+# # Garantir que history tenha os dados necessários
+# df_test = history.copy().dropna(subset=['Aggression_Home','Aggression_Away','HandScore_Home','HandScore_Away'])
 
-# Recalcular ângulos (antes e depois)
-dx = df_test['Aggression_Home'] - df_test['Aggression_Away']
-dy = df_test['HandScore_Home'] - df_test['HandScore_Away']
+# # Recalcular ângulos (antes e depois)
+# dx = df_test['Aggression_Home'] - df_test['Aggression_Away']
+# dy = df_test['HandScore_Home'] - df_test['HandScore_Away']
 
-# Ângulo original (geométrico puro)
-df_test['Angle_Original'] = np.degrees(np.arctan2(dy, dx))
+# # Ângulo original (geométrico puro)
+# df_test['Angle_Original'] = np.degrees(np.arctan2(dy, dx))
 
-# Ângulo normalizado (ajustado visualmente)
-df_test['Angle_Normalized'] = np.degrees(np.arctan2((dy / 60), dx))
+# # Ângulo normalizado (ajustado visualmente)
+# df_test['Angle_Normalized'] = np.degrees(np.arctan2((dy / 60), dx))
 
-# Correlação com resultado (Target_AH_Home)
-if 'Target_AH_Home' not in df_test.columns:
-    st.warning("⚠️ history não contém Target_AH_Home — será criado temporariamente.")
-    df_test['Margin'] = df_test['Goals_H_FT'] - df_test['Goals_A_FT']
-    df_test['Target_AH_Home'] = df_test.apply(
-        lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line"], invert=False) > 0.5 else 0, axis=1
-    )
+# # Correlação com resultado (Target_AH_Home)
+# if 'Target_AH_Home' not in df_test.columns:
+#     st.warning("⚠️ history não contém Target_AH_Home — será criado temporariamente.")
+#     df_test['Margin'] = df_test['Goals_H_FT'] - df_test['Goals_A_FT']
+#     df_test['Target_AH_Home'] = df_test.apply(
+#         lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line"], invert=False) > 0.5 else 0, axis=1
+#     )
 
-corr_original = df_test['Angle_Original'].corr(df_test['Target_AH_Home'])
-corr_normalized = df_test['Angle_Normalized'].corr(df_test['Target_AH_Home'])
+# corr_original = df_test['Angle_Original'].corr(df_test['Target_AH_Home'])
+# corr_normalized = df_test['Angle_Normalized'].corr(df_test['Target_AH_Home'])
 
-st.markdown("### 📊 Correlação com resultado (Target_AH_Home)")
-st.table(pd.DataFrame({
-    'Versão': ['Original (geométrica)', 'Normalizada (visual)'],
-    'Correlação': [corr_original, corr_normalized]
-}).round(4))
+# st.markdown("### 📊 Correlação com resultado (Target_AH_Home)")
+# st.table(pd.DataFrame({
+#     'Versão': ['Original (geométrica)', 'Normalizada (visual)'],
+#     'Correlação': [corr_original, corr_normalized]
+# }).round(4))
 
-# ==========================
-# 📈 Histogramas comparativos
-# ==========================
-fig, ax = plt.subplots(figsize=(10,5))
-sns.histplot(df_test['Angle_Original'], bins=60, color='gray', label='Original', kde=True, alpha=0.4)
-sns.histplot(df_test['Angle_Normalized'], bins=60, color='green', label='Normalizado', kde=True, alpha=0.4)
-ax.set_title("Distribuição dos Ângulos – Original vs Normalizado")
-ax.set_xlabel("Ângulo (graus)")
-ax.legend()
-st.pyplot(fig)
+# # ==========================
+# # 📈 Histogramas comparativos
+# # ==========================
+# fig, ax = plt.subplots(figsize=(10,5))
+# sns.histplot(df_test['Angle_Original'], bins=60, color='gray', label='Original', kde=True, alpha=0.4)
+# sns.histplot(df_test['Angle_Normalized'], bins=60, color='green', label='Normalizado', kde=True, alpha=0.4)
+# ax.set_title("Distribuição dos Ângulos – Original vs Normalizado")
+# ax.set_xlabel("Ângulo (graus)")
+# ax.legend()
+# st.pyplot(fig)
 
-# ==========================
-# ⚖️ Dispersão entre versões
-# ==========================
-fig2, ax2 = plt.subplots(figsize=(6,6))
-ax2.scatter(df_test['Angle_Original'], df_test['Angle_Normalized'], s=10, alpha=0.5)
-ax2.set_title("Comparativo dos Ângulos (Original × Normalizado)")
-ax2.set_xlabel("Ângulo Original (°)")
-ax2.set_ylabel("Ângulo Normalizado (°)")
-ax2.axline((0,0),(1,1),color='red',linestyle='--')
-st.pyplot(fig2)
+# # ==========================
+# # ⚖️ Dispersão entre versões
+# # ==========================
+# fig2, ax2 = plt.subplots(figsize=(6,6))
+# ax2.scatter(df_test['Angle_Original'], df_test['Angle_Normalized'], s=10, alpha=0.5)
+# ax2.set_title("Comparativo dos Ângulos (Original × Normalizado)")
+# ax2.set_xlabel("Ângulo Original (°)")
+# ax2.set_ylabel("Ângulo Normalizado (°)")
+# ax2.axline((0,0),(1,1),color='red',linestyle='--')
+# st.pyplot(fig2)
 
-# ==========================
-# 📉 Interpretação
-# ==========================
-st.markdown(f"""
-### 🧠 Interpretação rápida
+# # ==========================
+# # 📉 Interpretação
+# # ==========================
+# st.markdown(f"""
+# ### 🧠 Interpretação rápida
 
-- **Distribuição**: o ângulo *normalizado* tende a se concentrar mais em torno de 0°, pois o eixo Y foi comprimido na conta.
-- **Correlação com Target**:
-  - Original: `{corr_original:.4f}`
-  - Normalizado: `{corr_normalized:.4f}`  
-  *(valores positivos → quanto maior o ângulo, maior a chance do Home cobrir o AH)*
+# - **Distribuição**: o ângulo *normalizado* tende a se concentrar mais em torno de 0°, pois o eixo Y foi comprimido na conta.
+# - **Correlação com Target**:
+#   - Original: `{corr_original:.4f}`
+#   - Normalizado: `{corr_normalized:.4f}`  
+#   *(valores positivos → quanto maior o ângulo, maior a chance do Home cobrir o AH)*
 
-Se a correlação aumentou, isso indica que a **normalização trouxe coerência visual real** para o modelo — 
-ou seja, times “por cima” no plano (ângulo > 0) realmente têm mais chance de cobrir.
-""")
+# Se a correlação aumentou, isso indica que a **normalização trouxe coerência visual real** para o modelo — 
+# ou seja, times “por cima” no plano (ângulo > 0) realmente têm mais chance de cobrir.
+# """)
 
 #############################
 
