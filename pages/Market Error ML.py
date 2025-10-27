@@ -468,20 +468,6 @@ def ensure_features_exist(games_today):
     # 4. Criar features com fallback simples
     st.subheader("4. Features com Fallback")
     
-    # Bandas Home (simplificado)
-    games_today['Home_Band'] = np.where(
-        games_today['M_H'] > 0.5, 'Top 20%',
-        np.where(games_today['M_H'] < -0.5, 'Bottom 20%', 'Balanced')
-    )
-    st.success("✅ Home_Band criada")
-    
-    # Bandas Away (simplificado)  
-    games_today['Away_Band'] = np.where(
-        games_today['M_A'] > 0.5, 'Top 20%', 
-        np.where(games_today['M_A'] < -0.5, 'Bottom 20%', 'Balanced')
-    )
-    st.success("✅ Away_Band criada")
-    
     # Dominant side
     try:
         games_today['Dominant'] = games_today.apply(dominant_side, axis=1)
@@ -497,7 +483,7 @@ def ensure_features_exist(games_today):
     
     # 5. Verificação final
     st.subheader("5. Verificação Final")
-    expected_features = ['M_Diff', 'Home_Band', 'Away_Band', 'Dominant', 'League_Classification', 
+    expected_features = ['M_Diff', 'Dominant', 'League_Classification', 
                         'Odd_1X', 'Odd_X2', 'Cluster3D_Label', 'Quadrant_Dist_3D', 'Vector_Sign']
     missing_final = [f for f in expected_features if f not in games_today.columns]
     
@@ -556,10 +542,10 @@ def train_main_model(_history, target_date):
     training_data = calcular_distancias_3d(training_data)
     training_data = aplicar_clusterizacao_3d(training_data)
 
-    # Features incluindo as 3D
+    # Features incluindo as 3D (REMOVENDO AS ANTIGAS)
     features_raw = [
         'M_H', 'M_A', 'Diff_Power', 'M_Diff',
-        'Home_Band', 'Away_Band', 'Dominant', 'League_Classification',
+        'Dominant', 'League_Classification',
         'Odd_H', 'Odd_D', 'Odd_A', 'Odd_1X', 'Odd_X2',
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Vector_Sign', 'Magnitude_3D',
         'Cluster3D_Label'
@@ -573,12 +559,6 @@ def train_main_model(_history, target_date):
     y = training_data['Result']
 
     # Codificar variáveis categóricas
-    BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
-    if 'Home_Band' in X: 
-        X['Home_Band_Num'] = X['Home_Band'].map(BAND_MAP)
-    if 'Away_Band' in X: 
-        X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
-
     cat_cols = [c for c in ['Dominant','League_Classification','Cluster3D_Label'] if c in X]
     encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
     
@@ -633,7 +613,10 @@ def train_dual_value_models(history, target_date):
     training_data = calcular_distancias_3d(training_data)
     training_data = aplicar_clusterizacao_3d(training_data)
     
-    # Features base + 3D
+    # Features base + 3D (GARANTINDO QUE M_Diff EXISTE)
+    if 'M_Diff' not in training_data.columns:
+        training_data['M_Diff'] = training_data['M_H'] - training_data['M_A']
+    
     base_features = ['M_H', 'M_A', 'Diff_Power', 'M_Diff', 'Odd_H', 'Odd_A']
     
     # Adicionar features 3D
@@ -648,8 +631,9 @@ def train_dual_value_models(history, target_date):
     league_dummies = pd.get_dummies(training_data['League'], prefix='League') if 'League' in training_data.columns else pd.DataFrame()
     
     # Combinar todas as features
+    available_features = base_features + [f for f in feat3d if f in training_data.columns]
     X = pd.concat([
-        training_data[base_features + [f for f in feat3d if f in training_data.columns]].fillna(0),
+        training_data[available_features].fillna(0),
         cluster_dummies,
         league_dummies
     ], axis=1)
@@ -670,7 +654,7 @@ def train_dual_value_models(history, target_date):
     )
     model_away.fit(X, training_data['Target_Value_Away'])
     
-    feature_columns = base_features + [f for f in feat3d if f in training_data.columns]
+    feature_columns = available_features
     
     st.success(f"✅ Dual models trained with {len(feature_columns)} features")
     return model_home, model_away, feature_columns
@@ -685,6 +669,10 @@ def calculate_dual_ev(games_today, model_home, model_away, feature_columns):
     # Aplicar features 3D nos dados atuais
     games_today = calcular_distancias_3d(games_today)
     games_today = aplicar_clusterizacao_3d(games_today)
+    
+    # Garantir que M_Diff existe
+    if 'M_Diff' not in games_today.columns:
+        games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
     
     # Preparar features para predição
     base_features = [f for f in feature_columns if f in games_today.columns]
@@ -762,13 +750,6 @@ def prepare_prediction_data(games_today, features_raw, encoder):
     
     X_pred = games_today[available_features].copy()
     
-    # Mapear bandas numéricas
-    BAND_MAP = {"Bottom 20%": 1, "Balanced": 2, "Top 20%": 3}
-    if 'Home_Band' in X_pred:
-        X_pred['Home_Band_Num'] = X_pred['Home_Band'].map(BAND_MAP).fillna(2)
-    if 'Away_Band' in X_pred:
-        X_pred['Away_Band_Num'] = X_pred['Away_Band'].map(BAND_MAP).fillna(2)
-
     # One-hot encoding
     cat_cols = [c for c in ['Dominant', 'League_Classification', 'Cluster3D_Label'] if c in X_pred]
     
@@ -887,13 +868,21 @@ def create_error_distribution(games_today, selected_date, min_value_gap):
 def create_3d_cluster_visualization(games_today, selected_date):
     """Cria visualização dos clusters 3D"""
     if 'Cluster3D_Label' in games_today.columns and 'Quadrant_Dist_3D' in games_today.columns:
+        # Garantir que as colunas para hover existem
+        hover_columns = ['Home', 'Away', 'League']
+        available_hover = [col for col in hover_columns if col in games_today.columns]
+        
+        # Adicionar EV_Home_Dual apenas se existir
+        if 'EV_Home_Dual' in games_today.columns:
+            available_hover.append('EV_Home_Dual')
+        
         fig = px.scatter_3d(
             games_today,
             x='M_H',
             y='M_A', 
             z='Quadrant_Dist_3D',
             color='Cluster3D_Label',
-            hover_data=['Home', 'Away', 'League', 'EV_Home_Dual'],
+            hover_data=available_hover,
             title=f'3D Cluster Visualization - {selected_date}',
             color_continuous_scale='viridis'
         )
@@ -1009,6 +998,8 @@ def main():
 
         # Ensure features exist (agora com 3D)
         games_today = ensure_features_exist(games_today)
+        if games_today is None:
+            st.stop()
         
         # Apply league filters
         if league_filters and 'League_Classification' in games_today.columns:
@@ -1029,7 +1020,10 @@ def main():
         # Train dual models
         try:
             dual_model_home, dual_model_away, dual_features = train_dual_value_models(history, selected_date)
-            st.success("✅ Dual value models trained successfully!")
+            if dual_model_home is not None:
+                st.success("✅ Dual value models trained successfully!")
+            else:
+                st.warning("⚠️ Dual models could not be trained")
         except Exception as e:
             st.error(f"Error training dual models: {e}")
             dual_model_home, dual_model_away, dual_features = None, None, None
@@ -1071,13 +1065,6 @@ def main():
         
         dual_value_bets = games_today[games_today['Dual_Value_Pick'] != "❌ No Value"].copy()
         display_dual_value_bets(dual_value_bets, selected_date)
-        
-        # Comparação entre sistemas
-        st.header("📈 System Comparison")
-        if 'Value_ML_Pick' in games_today.columns and 'Dual_Value_Pick' in games_today.columns:
-            comp_data = games_today[['League', 'Home', 'Away', 'Value_ML_Pick', 'Dual_Value_Pick']].copy()
-            comp_data['Agreement'] = comp_data['Value_ML_Pick'].str.contains('Value') & comp_data['Dual_Value_Pick'].str.contains('Value')
-            st.dataframe(comp_data.style.background_gradient(subset=['Agreement'], cmap='RdYlGn'))
         
         # Footer
         st.markdown("---")
