@@ -443,7 +443,7 @@ st.markdown("""
 
 # ===================== Simulação – carteira prevista =====================
 st.markdown("### 💼 Simulação de carteira prevista (aposta quando EV ≥ threshold)")
-sim = df_rank.copy()
+sim = rank.copy()
 sim['Place_Bet'] = sim['Predicted_EV'] >= ev_threshold
 sim['Profit_Predicted'] = np.where(sim['Place_Bet'], sim['Predicted_EV'], 0.0)
 
