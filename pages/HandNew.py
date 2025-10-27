@@ -373,14 +373,14 @@ def calcular_distancias_quadrantes(df):
         st.warning("⚠️ Colunas Aggression/HandScore não encontradas para calcular as distâncias.")
         df['Quadrant_Dist'] = np.nan
         df['Quadrant_Separation'] = np.nan
-        df['Quadrant_Angle'] = np.nan
+        df['Quadrant_Angle_Geometric'] = np.nan
     return df
 
 # Aplicar ao games_today
 games_today = calcular_distancias_quadrantes(games_today)
 
 
-st.dataframe(games_today[['Home','Away','Quadrant_Dist','Quadrant_Separation','Quadrant_Angle']].head(10))
+st.dataframe(games_today[['Home','Away','Quadrant_Dist','Quadrant_Separation','Quadrant_Angle_Geometric']].head(10))
 
 
 ########################################
@@ -469,8 +469,8 @@ for _, row in df_plot.iterrows():
             f"<b>{row['Home']} vs {row['Away']}</b><br>"
             f"🏆 {row.get('League','N/A')}<br>"
             f"📏 Distância: {row['Quadrant_Dist']:.2f}<br>"
-            f"📐 Ângulo: {row['Quadrant_Angle']:.1f}°<br>"
-            f"↕️ {'Home acima' if row['Quadrant_Angle'] > 0 else 'Away acima'}"
+            f"📐 Ângulo: {row['Quadrant_Angle_Geometric']:.1f}°<br>"
+            f"↕️ {'Home acima' if row['Quadrant_Angle_Geometric'] > 0 else 'Away acima'}"
         ),
         showlegend=False
     ))
