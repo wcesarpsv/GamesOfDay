@@ -437,8 +437,8 @@ if "Quadrant_Dist" not in df_filtered.columns:
 
 # Aplicar filtro de ângulo
 df_angle = df_filtered[
-    (df_filtered['Quadrant_Angle_Geometric'] >= angle_min) &
-    (df_filtered['Quadrant_Angle_Geometric'] <= angle_max)
+    (df_filtered['Quadrant_Angle_Normalized'] >= angle_min) &
+    (df_filtered['Quadrant_Angle_Normalized'] <= angle_max)
 ]
 
 # Aplicar lógica conforme modo selecionado
@@ -470,7 +470,7 @@ for _, row in df_plot.iterrows():
             f"🏆 {row.get('League','N/A')}<br>"
             f"📏 Distância: {row['Quadrant_Dist']:.2f}<br>"
             f"📐 Ângulo: {row['Quadrant_Angle_Geometric']:.1f}°<br>"
-            f"↕️ {'Home acima' if row['Quadrant_Angle_Geometric'] > 0 else 'Away acima'}"
+            f"↕️ {'Home acima' if row['Quadrant_Angle_Normalized'] > 0 else 'Away acima'}"
         ),
         showlegend=False
     ))
