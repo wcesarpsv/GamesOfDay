@@ -1,4 +1,4 @@
-# market_error_ml.py
+# market_error_ml_3d_dual.py
 ########################################
 ########## Bloco 1 – Imports ############
 ########################################
@@ -8,8 +8,9 @@ import numpy as np
 import os
 import re
 from datetime import datetime, timedelta
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.preprocessing import OneHotEncoder
+from sklearn.cluster import KMeans
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -18,13 +19,13 @@ from plotly.subplots import make_subplots
 ########## Bloco 2 – Configs ############
 ########################################
 st.set_page_config(
-    page_title="Value Bet Detector - Market Error ML", 
+    page_title="Value Bet Detector - 3D Dual ML", 
     layout="wide",
     page_icon="🎯"
 )
 
-st.title("🎯 Market Error ML – Value Bet Intelligence")
-st.markdown("### Meta-Modelo Avançado para Detecção de Apostas com Valor")
+st.title("🎯 3D Dual ML – Value Bet Intelligence")
+st.markdown("### Meta-Modelo 3D com Detecção Dual (Home & Away)")
 
 # Configurações principais
 GAMES_FOLDER = "GamesDay"
@@ -73,6 +74,79 @@ def compute_double_chance_odds(df):
         df['Odd_X2'] = 1 / (probs['p_A'] + probs['p_D'])
     return df
 
+########################################
+### Bloco 3.1 – Features 3D Avançadas ##
+########################################
+def calcular_distancias_3d(df):
+    """Features 3D avançadas - adaptação do conceito original"""
+    df = df.copy()
+    
+    # Usar Aggression, M e MT como dimensões (fallback se não existirem)
+    aggression_h = df.get('Aggression_Home', df.get('M_H', 0))
+    aggression_a = df.get('Aggression_Away', df.get('M_A', 0))
+    m_h = df.get('M_H', 0)
+    m_a = df.get('M_A', 0) 
+    mt_h = df.get('MT_H', df.get('M_H', 0))
+    mt_a = df.get('MT_A', df.get('M_A', 0))
+    
+    # Vetor de diferenças 3D
+    dx = aggression_h - aggression_a
+    dy = m_h - m_a
+    dz = mt_h - mt_a
+    
+    # Features de magnitude e direção
+    df['Quadrant_Dist_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+    df['Quadrant_Separation_3D'] = (dx + dy + dz) / 3
+    
+    # Features trigonométricas
+    a_xy = np.arctan2(dy, dx.replace(0, 1e-9))
+    a_xz = np.arctan2(dz, dx.replace(0, 1e-9)) 
+    a_yz = np.arctan2(dz, dy.replace(0, 1e-9))
+    
+    df['Quadrant_Sin_XY'] = np.sin(a_xy)
+    df['Quadrant_Cos_XY'] = np.cos(a_xy)
+    df['Quadrant_Sin_XZ'] = np.sin(a_xz)
+    df['Quadrant_Cos_XZ'] = np.cos(a_xz)
+    df['Quadrant_Sin_YZ'] = np.sin(a_yz)
+    df['Quadrant_Cos_YZ'] = np.cos(a_yz)
+    
+    # Combinações
+    combo = a_xy + a_xz + a_yz
+    df['Quadrant_Sin_Combo'] = np.sin(combo)
+    df['Quadrant_Cos_Combo'] = np.cos(combo)
+    
+    # Sinal do vetor (concordância de direção)
+    df['Vector_Sign'] = np.sign(dx * dy * dz)
+    df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+    
+    return df
+
+def aplicar_clusterizacao_3d(df, n_clusters=5):
+    """Agrupa jogos por padrões 3D similares"""
+    df = df.copy()
+    
+    # Criar diferenças para clustering
+    aggression_h = df.get('Aggression_Home', df.get('M_H', 0))
+    aggression_a = df.get('Aggression_Away', df.get('M_A', 0))
+    
+    df['dx'] = aggression_h - aggression_a
+    df['dy'] = df.get('M_H', 0) - df.get('M_A', 0)
+    df['dz'] = df.get('MT_H', df.get('M_H', 0)) - df.get('MT_A', df.get('M_A', 0))
+    
+    Xc = df[['dx', 'dy', 'dz']].fillna(0)
+    
+    # Aplicar KMeans apenas se temos dados suficientes
+    if len(Xc) >= n_clusters:
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+        df['Cluster3D_Label'] = kmeans.fit_predict(Xc)
+    else:
+        df['Cluster3D_Label'] = 0
+    
+    return df
+
+########################################
+### Bloco 3.2 – Classificações Liga ####
+########################################
 def classify_leagues_variation(history_df):
     """Classifica ligas por variação de momentum"""
     agg = (
@@ -133,6 +207,9 @@ def dominant_side(row, threshold=0.90):
         return "Away weak"
     return "Mixed / Neutral"
 
+########################################
+### Bloco 3.3 – Data Loading Helpers ###
+########################################
 def get_available_dates():
     """Obtém todas as datas disponíveis nos arquivos"""
     files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]
@@ -253,7 +330,7 @@ def determine_result(row):
 ########################################
 def setup_sidebar():
     """Configura a barra lateral"""
-    st.sidebar.header("🔧 Meta-Model Configuration")
+    st.sidebar.header("🔧 3D Dual ML Configuration")
     
     # Seletor de Data
     st.sidebar.subheader("📅 Date Selection")
@@ -344,9 +421,9 @@ def load_analysis_data(target_date, _history):
     return games_processed
 
 def ensure_features_exist(games_today):
-    """Garante que todas as features necessárias existam - VERSÃO CORRIGIDA"""
+    """Garante que todas as features necessárias existam - VERSÃO 3D"""
     
-    st.header("🔧 Correção de Features - Debug Detalhado")
+    st.header("🔧 3D Feature Engineering - Debug")
     
     # 1. Primeiro: Verificar e limpar dados críticos
     st.subheader("1. Limpeza de Dados Críticos")
@@ -364,8 +441,14 @@ def ensure_features_exist(games_today):
         st.error("❌ Nenhum jogo válido após limpeza! Verifique os dados de M_H e M_A.")
         return None
     
-    # 2. Criar features derivadas ESSENCIAIS
-    st.subheader("2. Criação de Features Derivadas")
+    # 2. Aplicar features 3D
+    st.subheader("2. Aplicando Features 3D")
+    games_today = calcular_distancias_3d(games_today)
+    games_today = aplicar_clusterizacao_3d(games_today)
+    st.success("✅ Features 3D aplicadas")
+    
+    # 3. Criar features derivadas ESSENCIAIS
+    st.subheader("3. Criação de Features Derivadas")
     
     # M_Diff (CRÍTICA)
     games_today['M_Diff'] = games_today['M_H'] - games_today['M_A']
@@ -382,8 +465,8 @@ def ensure_features_exist(games_today):
         games_today['Odd_X2'] = 1 / (probs_dc['p_A'] + probs_dc['p_D'])
         st.success("✅ Odd_1X e Odd_X2 criadas")
     
-    # 3. Criar features com fallback simples
-    st.subheader("3. Features com Fallback")
+    # 4. Criar features com fallback simples
+    st.subheader("4. Features com Fallback")
     
     # Bandas Home (simplificado)
     games_today['Home_Band'] = np.where(
@@ -412,9 +495,10 @@ def ensure_features_exist(games_today):
     games_today['League_Classification'] = 'Medium Variation'
     st.success("✅ League_Classification criada")
     
-    # 4. Verificação final
-    st.subheader("4. Verificação Final")
-    expected_features = ['M_Diff', 'Home_Band', 'Away_Band', 'Dominant', 'League_Classification', 'Odd_1X', 'Odd_X2']
+    # 5. Verificação final
+    st.subheader("5. Verificação Final")
+    expected_features = ['M_Diff', 'Home_Band', 'Away_Band', 'Dominant', 'League_Classification', 
+                        'Odd_1X', 'Odd_X2', 'Cluster3D_Label', 'Quadrant_Dist_3D', 'Vector_Sign']
     missing_final = [f for f in expected_features if f not in games_today.columns]
     
     if missing_final:
@@ -425,10 +509,10 @@ def ensure_features_exist(games_today):
         st.write(f"📊 Shape final: {games_today.shape}")
         
         # Mostrar estatísticas das novas features
-        st.write("**Estatísticas das Novas Features:**")
-        st.write(f"- M_Diff: min={games_today['M_Diff'].min():.2f}, max={games_today['M_Diff'].max():.2f}")
-        st.write(f"- Home_Band: {games_today['Home_Band'].value_counts().to_dict()}")
-        st.write(f"- Away_Band: {games_today['Away_Band'].value_counts().to_dict()}")
+        st.write("**Estatísticas das Features 3D:**")
+        st.write(f"- Cluster3D_Label: {games_today['Cluster3D_Label'].value_counts().to_dict()}")
+        st.write(f"- Quadrant_Dist_3D: min={games_today['Quadrant_Dist_3D'].min():.2f}, max={games_today['Quadrant_Dist_3D'].max():.2f}")
+        st.write(f"- Vector_Sign: {games_today['Vector_Sign'].value_counts().to_dict()}")
         
         return games_today
 
@@ -468,16 +552,22 @@ def train_main_model(_history, target_date):
 
     training_data['Result'] = training_data.apply(map_result, axis=1)
 
-    # No train_main_model, substitua a lista de features por:
+    # Aplicar features 3D ao histórico
+    training_data = calcular_distancias_3d(training_data)
+    training_data = aplicar_clusterizacao_3d(training_data)
+
+    # Features incluindo as 3D
     features_raw = [
         'M_H', 'M_A', 'Diff_Power', 'M_Diff',
         'Home_Band', 'Away_Band', 'Dominant', 'League_Classification',
-        'Odd_H', 'Odd_D', 'Odd_A', 'Odd_1X', 'Odd_X2'
+        'Odd_H', 'Odd_D', 'Odd_A', 'Odd_1X', 'Odd_X2',
+        'Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Vector_Sign', 'Magnitude_3D',
+        'Cluster3D_Label'
     ]
     # Manter apenas colunas que existem
     features_raw = [f for f in features_raw if f in training_data.columns]
     
-    st.info(f"🔧 Usando {len(features_raw)} features: {features_raw}")
+    st.info(f"🔧 Usando {len(features_raw)} features (incluindo 3D): {features_raw}")
 
     X = training_data[features_raw].copy()
     y = training_data['Result']
@@ -489,7 +579,7 @@ def train_main_model(_history, target_date):
     if 'Away_Band' in X: 
         X['Away_Band_Num'] = X['Away_Band'].map(BAND_MAP)
 
-    cat_cols = [c for c in ['Dominant','League_Classification'] if c in X]
+    cat_cols = [c for c in ['Dominant','League_Classification','Cluster3D_Label'] if c in X]
     encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
     
     if cat_cols:
@@ -512,6 +602,137 @@ def train_main_model(_history, target_date):
     model.fit(X, y)
     
     return model, encoder, features_raw
+
+########################################
+### Bloco 6.1 – Dual Value Models #####
+########################################
+@st.cache_resource
+def train_dual_value_models(history, target_date):
+    """Treina modelos separados para value em Home e Away"""
+    
+    # Filtrar dados históricos (SEM data leak)
+    if 'Date' in history.columns:
+        history['Date'] = pd.to_datetime(history['Date'])
+        target_date_dt = pd.to_datetime(target_date)
+        training_data = history[history['Date'] < target_date_dt].copy()
+    else:
+        training_data = history.copy()
+        st.warning("⚠️ No 'Date' column - using all historical data")
+    
+    if training_data.empty:
+        st.error("No training data available for dual models!")
+        return None, None, None
+    
+    st.info(f"🎯 Training dual models with {len(training_data)} games")
+
+    # Criar targets binários para Home e Away
+    training_data['Target_Value_Home'] = (training_data['Goals_H_FT'] > training_data['Goals_A_FT']).astype(int)
+    training_data['Target_Value_Away'] = (training_data['Goals_H_FT'] < training_data['Goals_A_FT']).astype(int)
+    
+    # Aplicar features 3D
+    training_data = calcular_distancias_3d(training_data)
+    training_data = aplicar_clusterizacao_3d(training_data)
+    
+    # Features base + 3D
+    base_features = ['M_H', 'M_A', 'Diff_Power', 'M_Diff', 'Odd_H', 'Odd_A']
+    
+    # Adicionar features 3D
+    feat3d = [
+        'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
+        'Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
+        'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ', 'Vector_Sign', 'Magnitude_3D'
+    ]
+    
+    # One-hot encoding para clusters e ligas
+    cluster_dummies = pd.get_dummies(training_data['Cluster3D_Label'], prefix='C3D')
+    league_dummies = pd.get_dummies(training_data['League'], prefix='League') if 'League' in training_data.columns else pd.DataFrame()
+    
+    # Combinar todas as features
+    X = pd.concat([
+        training_data[base_features + [f for f in feat3d if f in training_data.columns]].fillna(0),
+        cluster_dummies,
+        league_dummies
+    ], axis=1)
+    
+    # Treinar modelo para Home
+    model_home = RandomForestClassifier(
+        n_estimators=200, max_depth=12, 
+        min_samples_split=15, min_samples_leaf=5,
+        class_weight='balanced', random_state=42, n_jobs=-1
+    )
+    model_home.fit(X, training_data['Target_Value_Home'])
+    
+    # Treinar modelo para Away  
+    model_away = RandomForestClassifier(
+        n_estimators=200, max_depth=12,
+        min_samples_split=15, min_samples_leaf=5, 
+        class_weight='balanced', random_state=24, n_jobs=-1
+    )
+    model_away.fit(X, training_data['Target_Value_Away'])
+    
+    feature_columns = base_features + [f for f in feat3d if f in training_data.columns]
+    
+    st.success(f"✅ Dual models trained with {len(feature_columns)} features")
+    return model_home, model_away, feature_columns
+
+def calculate_dual_ev(games_today, model_home, model_away, feature_columns):
+    """Calcula EV separado para Home e Away usando modelos duais"""
+    
+    if model_home is None or model_away is None:
+        st.warning("Dual models not available - skipping dual EV calculation")
+        return games_today
+    
+    # Aplicar features 3D nos dados atuais
+    games_today = calcular_distancias_3d(games_today)
+    games_today = aplicar_clusterizacao_3d(games_today)
+    
+    # Preparar features para predição
+    base_features = [f for f in feature_columns if f in games_today.columns]
+    feat3d = [f for f in [
+        'Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
+        'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ', 'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
+        'Vector_Sign', 'Magnitude_3D'
+    ] if f in games_today.columns]
+    
+    # One-hot encoding
+    cluster_dummies = pd.get_dummies(games_today['Cluster3D_Label'], prefix='C3D')
+    league_dummies = pd.get_dummies(games_today['League'], prefix='League') if 'League' in games_today.columns else pd.DataFrame()
+    
+    X_pred = pd.concat([
+        games_today[base_features + feat3d].fillna(0),
+        cluster_dummies,
+        league_dummies
+    ], axis=1)
+    
+    # Garantir mesma estrutura do treino
+    try:
+        missing_cols = set(model_home.feature_names_in_) - set(X_pred.columns)
+        for col in missing_cols:
+            X_pred[col] = 0
+        X_pred = X_pred[model_home.feature_names_in_]
+        
+        # Predições de probabilidade
+        proba_home = model_home.predict_proba(X_pred)[:, 1]
+        proba_away = model_away.predict_proba(X_pred)[:, 1]
+        
+        # Calcular EV para ambos os lados
+        games_today['EV_Home_Dual'] = (proba_home * games_today['Odd_H']) - 1
+        games_today['EV_Away_Dual'] = (proba_away * games_today['Odd_A']) - 1
+        
+        # Probabilidades dos modelos duais
+        games_today['Dual_Proba_Home'] = proba_home
+        games_today['Dual_Proba_Away'] = proba_away
+        
+        st.success("✅ Dual EV calculated successfully")
+        
+    except Exception as e:
+        st.warning(f"Could not calculate dual EV: {e}")
+        games_today['EV_Home_Dual'] = 0
+        games_today['EV_Away_Dual'] = 0
+        games_today['Dual_Proba_Home'] = 0.5
+        games_today['Dual_Proba_Away'] = 0.5
+    
+    return games_today
 
 ########################################
 ### Bloco 7 – Market Error Analysis ####
@@ -549,7 +770,7 @@ def prepare_prediction_data(games_today, features_raw, encoder):
         X_pred['Away_Band_Num'] = X_pred['Away_Band'].map(BAND_MAP).fillna(2)
 
     # One-hot encoding
-    cat_cols = [c for c in ['Dominant', 'League_Classification'] if c in X_pred]
+    cat_cols = [c for c in ['Dominant', 'League_Classification', 'Cluster3D_Label'] if c in X_pred]
     
     if cat_cols and encoder is not None:
         try:
@@ -663,149 +884,74 @@ def create_error_distribution(games_today, selected_date, min_value_gap):
     else:
         st.warning("No data available for error distribution")
 
-########################################
-### Bloco 9 – Meta-Models #############
-########################################
-def train_meta_models(history, games_today, features_raw, main_model, encoder, selected_date):
-    """Treina meta-modelos para detecção de value bets"""
-    value_history = history.copy()
-    
-    # Aplicar filtro de data
-    if 'Date' in value_history.columns:
-        try:
-            value_history['Date'] = pd.to_datetime(value_history['Date'])
-            target_date_dt = pd.to_datetime(selected_date)
-            value_history = value_history[value_history['Date'] < target_date_dt].copy()
-        except:
-            pass
-
-    # Aplicar modelo principal ao histórico
-    try:
-        X_hist = value_history[[c for c in features_raw if c in value_history.columns]].copy()
-        
-        BAND_MAP = {"Bottom 20%":1, "Balanced":2, "Top 20%":3}
-        if 'Home_Band' in X_hist: 
-            X_hist['Home_Band_Num'] = X_hist['Home_Band'].map(BAND_MAP)
-        if 'Away_Band' in X_hist: 
-            X_hist['Away_Band_Num'] = X_hist['Away_Band'].map(BAND_MAP)
-
-        cat_cols = [c for c in ['Dominant','League_Classification'] if c in X_hist]
-        if cat_cols and encoder is not None:
-            encoded_hist = encoder.transform(X_hist[cat_cols])
-            encoded_hist_df = pd.DataFrame(encoded_hist, columns=encoder.get_feature_names_out(cat_cols))
-            X_hist = pd.concat([X_hist.drop(columns=cat_cols).reset_index(drop=True),
-                                encoded_hist_df.reset_index(drop=True)], axis=1)
-
-        X_hist = X_hist.fillna(0)
-        
-        ml_proba_hist = main_model.predict_proba(X_hist)
-        value_history["ML_Proba_Home"] = ml_proba_hist[:, list(main_model.classes_).index("Home")]
-        value_history["ML_Proba_Away"] = ml_proba_hist[:, list(main_model.classes_).index("Away")]
-        
-    except Exception as e:
-        st.warning(f"Could not generate ML probabilities for history: {e}")
-        value_history["ML_Proba_Home"] = 0.5
-        value_history["ML_Proba_Away"] = 0.5
-
-    # Calcular probabilidades implícitas históricas
-    if all(col in value_history.columns for col in ['Odd_H', 'Odd_D', 'Odd_A']):
-        probs_hist = pd.DataFrame()
-        probs_hist['p_H'] = 1 / value_history['Odd_H']
-        probs_hist['p_D'] = 1 / value_history['Odd_D'] 
-        probs_hist['p_A'] = 1 / value_history['Odd_A']
-        probs_hist = probs_hist.div(probs_hist.sum(axis=1), axis=0)
-        
-        value_history['Imp_Prob_H'] = probs_hist['p_H']
-        value_history['Imp_Prob_A'] = probs_hist['p_A']
-
-    # Mapear resultado
-    def map_result_hist(row):
-        if row['Goals_H_FT'] > row['Goals_A_FT']:
-            return "Home"
-        elif row['Goals_H_FT'] < row['Goals_A_FT']:
-            return "Away"
-        return "Draw"
-
-    value_history['Result'] = value_history.apply(map_result_hist, axis=1)
-    value_history['Target_Value_Home'] = (value_history['Result'] == "Home").astype(int)
-    value_history['Target_Value_Away'] = (value_history['Result'] == "Away").astype(int)
-
-    # Treinar meta-modelos
-    features_value = ['M_H', 'M_A', 'Diff_Power', 'M_Diff', 'Odd_H', 'Odd_A']
-    features_value = [f for f in features_value if f in value_history.columns]
-    
-    if features_value and len(value_history) > 0:
-        X_val = value_history[features_value].fillna(0)
-        
-        value_model_home = RandomForestClassifier(
-            n_estimators=100, max_depth=8, min_samples_split=10,
-            min_samples_leaf=5, class_weight='balanced', random_state=42, n_jobs=-1
+def create_3d_cluster_visualization(games_today, selected_date):
+    """Cria visualização dos clusters 3D"""
+    if 'Cluster3D_Label' in games_today.columns and 'Quadrant_Dist_3D' in games_today.columns:
+        fig = px.scatter_3d(
+            games_today,
+            x='M_H',
+            y='M_A', 
+            z='Quadrant_Dist_3D',
+            color='Cluster3D_Label',
+            hover_data=['Home', 'Away', 'League', 'EV_Home_Dual'],
+            title=f'3D Cluster Visualization - {selected_date}',
+            color_continuous_scale='viridis'
         )
-        value_model_home.fit(X_val, value_history['Target_Value_Home'])
-
-        value_model_away = RandomForestClassifier(
-            n_estimators=100, max_depth=8, min_samples_split=10,
-            min_samples_leaf=5, class_weight='balanced', random_state=24, n_jobs=-1
-        )
-        value_model_away.fit(X_val, value_history['Target_Value_Away'])
-
-        # Aplicar meta-modelos
-        X_today_val = games_today[features_value].fillna(0)
-        val_pred_home = value_model_home.predict_proba(X_today_val)[:, 1]
-        val_pred_away = value_model_away.predict_proba(X_today_val)[:, 1]
-
-        games_today['Value_Prob_Home'] = val_pred_home
-        games_today['Value_Prob_Away'] = val_pred_away
-        
-        return games_today
-    else:
-        st.warning("Not enough features available for meta-model training")
-        return games_today
+        st.plotly_chart(fig, use_container_width=True)
 
 ########################################
-### Bloco 10 – Value Bet Detection ####
+### Bloco 9 – Dual Value Detection ####
 ########################################
-def detect_value_bets(games_today, min_value_gap, value_confidence_threshold, min_odds):
-    """Detecta value bets baseado nos meta-modelos"""
-    def pick_value_side(row):
-        if 'Value_Prob_Home' not in row or 'Value_Prob_Away' not in row:
-            return "❌ No Value"
-            
-        v_home, v_away = row['Value_Prob_Home'], row['Value_Prob_Away']
+def detect_dual_value_bets(games_today, min_value_gap, value_confidence_threshold, min_odds):
+    """Detecta value bets usando sistema dual"""
+    
+    def pick_dual_value_side(row):
+        ev_home = row.get('EV_Home_Dual', -1)
+        ev_away = row.get('EV_Away_Dual', -1)
+        proba_home = row.get('Dual_Proba_Home', 0)
+        proba_away = row.get('Dual_Proba_Away', 0)
         odd_h = row.get('Odd_H', 1)
         odd_a = row.get('Odd_A', 1)
-        me_home = row.get('Market_Error_Home', 0)
-        me_away = row.get('Market_Error_Away', 0)
         
-        if (v_home >= value_confidence_threshold and 
-            v_home > v_away and 
-            odd_h >= min_odds and
-            me_home >= min_value_gap):
-            return f"🟢 Value Home ({v_home:.2f})"
-        elif (v_away >= value_confidence_threshold and 
-              v_away > v_home and 
-              odd_a >= min_odds and
-              me_away >= min_value_gap):
-            return f"🟠 Value Away ({v_away:.2f})"
+        # Critérios para value bet
+        home_value = (ev_home >= min_value_gap and 
+                     proba_home >= value_confidence_threshold and 
+                     odd_h >= min_odds)
+        
+        away_value = (ev_away >= min_value_gap and 
+                     proba_away >= value_confidence_threshold and 
+                     odd_a >= min_odds)
+        
+        if home_value and away_value:
+            # Escolher o melhor EV
+            if ev_home >= ev_away:
+                return f"🏠 Value Home (EV: {ev_home:.3f})"
+            else:
+                return f"✈️ Value Away (EV: {ev_away:.3f})"
+        elif home_value:
+            return f"🏠 Value Home (EV: {ev_home:.3f})"
+        elif away_value:
+            return f"✈️ Value Away (EV: {ev_away:.3f})"
         else:
             return "❌ No Value"
-
-    games_today['Value_ML_Pick'] = games_today.apply(pick_value_side, axis=1)
+    
+    games_today['Dual_Value_Pick'] = games_today.apply(pick_dual_value_side, axis=1)
+    
     return games_today
 
-def display_value_bets(value_bets, selected_date):
-    """Exibe oportunidades de value bets"""
+def display_dual_value_bets(value_bets, selected_date):
+    """Exibe oportunidades de value bets do sistema dual"""
     if not value_bets.empty:
-        value_bets = value_bets.sort_values(['Value_Prob_Home', 'Value_Prob_Away'], ascending=False)
+        value_bets = value_bets.sort_values(['EV_Home_Dual', 'EV_Away_Dual'], ascending=False)
         
         cols_to_show = [
-            'League', 'Home', 'Away', 'Value_ML_Pick',
-            'Value_Prob_Home', 'Value_Prob_Away', 
+            'League', 'Home', 'Away', 'Dual_Value_Pick',
+            'Dual_Proba_Home', 'Dual_Proba_Away', 
+            'EV_Home_Dual', 'EV_Away_Dual',
             'ML_Proba_Home', 'ML_Proba_Away',
-            'Imp_Prob_H', 'Imp_Prob_A',
             'Market_Error_Home', 'Market_Error_Away',
-            'EV_Home', 'EV_Away',
-            'Odd_H', 'Odd_A'
+            'Odd_H', 'Odd_A',
+            'Cluster3D_Label', 'Quadrant_Dist_3D'
         ]
         
         available_cols = [c for c in cols_to_show if c in value_bets.columns]
@@ -813,23 +959,34 @@ def display_value_bets(value_bets, selected_date):
         st.dataframe(
             value_bets[available_cols]
             .style.format({
-                'Value_Prob_Home': '{:.3f}', 'Value_Prob_Away': '{:.3f}',
+                'Dual_Proba_Home': '{:.3f}', 'Dual_Proba_Away': '{:.3f}',
+                'EV_Home_Dual': '{:+.3f}', 'EV_Away_Dual': '{:+.3f}',
                 'ML_Proba_Home': '{:.3f}', 'ML_Proba_Away': '{:.3f}',
-                'Imp_Prob_H': '{:.3f}', 'Imp_Prob_A': '{:.3f}',
                 'Market_Error_Home': '{:+.3f}', 'Market_Error_Away': '{:+.3f}',
-                'EV_Home': '{:+.3f}', 'EV_Away': '{:+.3f}',
-                'Odd_H': '{:.2f}', 'Odd_A': '{:.2f}'
-            }),
+                'Odd_H': '{:.2f}', 'Odd_A': '{:.2f}',
+                'Quadrant_Dist_3D': '{:.2f}'
+            })
+            .background_gradient(subset=['EV_Home_Dual', 'EV_Away_Dual'], cmap='RdYlGn'),
             use_container_width=True,
             height=400
         )
         
-        st.success(f"🎉 Found {len(value_bets)} value bet opportunities for {selected_date}!")
+        st.success(f"🎉 Found {len(value_bets)} dual value bet opportunities for {selected_date}!")
+        
+        # Estatísticas por cluster
+        if 'Cluster3D_Label' in value_bets.columns:
+            st.subheader("📊 Value Bets por Cluster 3D")
+            cluster_stats = value_bets.groupby('Cluster3D_Label').agg({
+                'Dual_Value_Pick': 'count',
+                'EV_Home_Dual': 'mean',
+                'EV_Away_Dual': 'mean'
+            }).round(3)
+            st.dataframe(cluster_stats)
     else:
-        st.warning(f"No value bet opportunities found for {selected_date} with current filters.")
+        st.warning(f"No dual value bet opportunities found for {selected_date} with current filters.")
 
 ########################################
-### Bloco 11 – Main Execution #########
+### Bloco 10 – Main Execution #########
 ########################################
 def main():
     """Função principal"""
@@ -850,7 +1007,7 @@ def main():
         if games_today is None:
             st.stop()
 
-        # Ensure features exist
+        # Ensure features exist (agora com 3D)
         games_today = ensure_features_exist(games_today)
         
         # Apply league filters
@@ -865,17 +1022,20 @@ def main():
                 st.stop()
             st.success("✅ Main ML model trained successfully!")
             
-            # Verify features
-            st.subheader("🔍 Verificação das Features do Modelo")
-            st.write(f"Features_raw: {features_raw}")
-            st.write(f"Quantidade: {len(features_raw)}")
-            
         except Exception as e:
             st.error(f"Error training main model: {e}")
             st.stop()
 
+        # Train dual models
+        try:
+            dual_model_home, dual_model_away, dual_features = train_dual_value_models(history, selected_date)
+            st.success("✅ Dual value models trained successfully!")
+        except Exception as e:
+            st.error(f"Error training dual models: {e}")
+            dual_model_home, dual_model_away, dual_features = None, None, None
+
         # Market Error Analysis
-        st.header(f"📊 Market Error Analysis - {selected_date}")
+        st.header(f"📊 3D Market Error Analysis - {selected_date}")
         
         if games_today.empty:
             st.error("No games data available for analysis!")
@@ -891,32 +1051,45 @@ def main():
             
         games_today = make_predictions(main_model, X_pred, games_today)
         
+        # Calculate dual EV
+        if dual_model_home is not None:
+            games_today = calculate_dual_ev(games_today, dual_model_home, dual_model_away, dual_features)
+        
         # Visualizations
         col1, col2 = st.columns(2)
         with col1:
             create_value_scatter_plot(games_today, selected_date)
         with col2:
             create_error_distribution(games_today, selected_date, min_value_gap)
+        
+        # 3D Visualization
+        create_3d_cluster_visualization(games_today, selected_date)
 
-        # Meta-models and Value Bets
-        st.header("🧠 Meta-Model Training - Value Detection")
-        games_today = train_meta_models(history, games_today, features_raw, main_model, encoder, selected_date)
+        # Dual Value Bets Detection
+        st.header("🧠 3D Dual Value Detection")
+        games_today = detect_dual_value_bets(games_today, min_value_gap, value_confidence_threshold, min_odds)
         
-        games_today = detect_value_bets(games_today, min_value_gap, value_confidence_threshold, min_odds)
+        dual_value_bets = games_today[games_today['Dual_Value_Pick'] != "❌ No Value"].copy()
+        display_dual_value_bets(dual_value_bets, selected_date)
         
-        value_bets = games_today[games_today['Value_ML_Pick'] != "❌ No Value"].copy()
-        display_value_bets(value_bets, selected_date)
+        # Comparação entre sistemas
+        st.header("📈 System Comparison")
+        if 'Value_ML_Pick' in games_today.columns and 'Dual_Value_Pick' in games_today.columns:
+            comp_data = games_today[['League', 'Home', 'Away', 'Value_ML_Pick', 'Dual_Value_Pick']].copy()
+            comp_data['Agreement'] = comp_data['Value_ML_Pick'].str.contains('Value') & comp_data['Dual_Value_Pick'].str.contains('Value')
+            st.dataframe(comp_data.style.background_gradient(subset=['Agreement'], cmap='RdYlGn'))
         
         # Footer
         st.markdown("---")
         st.markdown(
             f"""
-            **💡 Value Bet Detection Methodology for {selected_date}:**
-            - **Market Error**: Difference between ML probability and market implied probability  
-            - **Expected Value (EV)**: (ML Probability × Odds) - 1
-            - **Meta-Model**: Machine learning model trained on data BEFORE {selected_date}
-            - **Value Confidence**: Probability that a bet represents genuine value
-            - **⚠️ No Data Leak**: Models trained only on historical data before selected date
+            **💡 3D Dual ML Value Detection Methodology for {selected_date}:**
+            - **3D Features**: Vector distances, trigonometric relationships, cluster patterns
+            - **Dual Models**: Separate ML models for Home and Away value detection  
+            - **Market Error**: Difference between ML probability and market implied probability
+            - **Expected Value (EV)**: (ML Probability × Odds) - 1 (calculated separately for Home/Away)
+            - **Cluster Analysis**: Games grouped by 3D momentum patterns
+            - **⚠️ No Data Leak**: All models trained only on historical data before {selected_date}
             """
         )
         
