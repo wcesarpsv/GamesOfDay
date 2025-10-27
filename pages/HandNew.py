@@ -447,7 +447,7 @@ fig.update_layout(
     hovermode="closest",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
 )
-
+fig.update_yaxes(scaleanchor="x", scaleratio=1)
 st.plotly_chart(fig, use_container_width=True)
 
 
