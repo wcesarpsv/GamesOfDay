@@ -638,6 +638,9 @@ def train_dual_value_models(history, target_date):
         league_dummies
     ], axis=1)
     
+    # GARANTIR que as features têm nomes consistentes
+    X = X.astype(float)  # Evitar problemas de tipo
+    
     # Treinar modelo para Home
     model_home = RandomForestClassifier(
         n_estimators=200, max_depth=12, 
@@ -657,7 +660,7 @@ def train_dual_value_models(history, target_date):
     feature_columns = available_features
     
     st.success(f"✅ Dual models trained with {len(feature_columns)} features")
-    return model_home, model_away, feature_columns
+    return model_home, model_away, available_features  
 
 def calculate_dual_ev(games_today, model_home, model_away, feature_columns):
     """Calcula EV separado para Home e Away usando modelos duais"""
@@ -692,12 +695,29 @@ def calculate_dual_ev(games_today, model_home, model_away, feature_columns):
         league_dummies
     ], axis=1)
     
-    # Garantir mesma estrutura do treino
+    # Garantir mesma estrutura do treino - CORREÇÃO CRÍTICA
     try:
-        missing_cols = set(model_home.feature_names_in_) - set(X_pred.columns)
+        # Obter features esperadas pelo modelo
+        expected_features = model_home.feature_names_in_
+        
+        # Adicionar colunas faltantes com valor 0
+        missing_cols = set(expected_features) - set(X_pred.columns)
         for col in missing_cols:
             X_pred[col] = 0
-        X_pred = X_pred[model_home.feature_names_in_]
+        
+        # Remover colunas extras que não são esperadas
+        extra_cols = set(X_pred.columns) - set(expected_features)
+        if extra_cols:
+            st.warning(f"Removendo colunas extras não esperadas pelo modelo: {extra_cols}")
+            X_pred = X_pred.drop(columns=list(extra_cols))
+        
+        # ORDENAR as colunas na mesma ordem do treino (CRÍTICO)
+        X_pred = X_pred[expected_features]
+        
+        # Verificar se a ordem está correta
+        if list(X_pred.columns) != list(expected_features):
+            st.error("❌ Ordem das features não coincide com o modelo treinado!")
+            return games_today
         
         # Predições de probabilidade
         proba_home = model_home.predict_proba(X_pred)[:, 1]
@@ -711,14 +731,24 @@ def calculate_dual_ev(games_today, model_home, model_away, feature_columns):
         games_today['Dual_Proba_Home'] = proba_home
         games_today['Dual_Proba_Away'] = proba_away
         
-        st.success("✅ Dual EV calculated successfully")
+        st.success(f"✅ Dual EV calculated successfully for {len(games_today)} games")
+        
+        # Debug info
+        st.info(f"🔍 Features usadas: {len(expected_features)} | Ordem verificada: ✅")
         
     except Exception as e:
-        st.warning(f"Could not calculate dual EV: {e}")
+        st.error(f"❌ Could not calculate dual EV: {e}")
+        # Fallback seguro
         games_today['EV_Home_Dual'] = 0
         games_today['EV_Away_Dual'] = 0
         games_today['Dual_Proba_Home'] = 0.5
         games_today['Dual_Proba_Away'] = 0.5
+        
+        # Debug detalhado
+        st.error("🔍 Debug Info:")
+        if 'expected_features' in locals():
+            st.error(f"Expected features: {list(expected_features)}")
+        st.error(f"Actual features: {list(X_pred.columns) if 'X_pred' in locals() else 'N/A'}")
     
     return games_today
 
