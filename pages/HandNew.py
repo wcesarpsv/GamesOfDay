@@ -307,7 +307,7 @@ st.dataframe(games_today[['Home','Away','Quadrant_Dist','Quadrant_Separation','Q
 
 
 ########################################
-#### 🎯 BLOCO – Visualização Interativa com Filtro por Liga
+#### 🎯 BLOCO – Visualização Interativa com Filtro por Liga e Ângulo
 ########################################
 import plotly.graph_objects as go
 
@@ -332,9 +332,18 @@ else:
     st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
     df_filtered = games_today.copy()
 
-# Controle de número de confrontos
+# ==========================
+# 🎚️ Filtros adicionais
+# ==========================
 max_n = len(df_filtered)
 n_to_show = st.slider("Quantos confrontos exibir (Top por distância):", 10, min(max_n, 200), 40, step=5)
+
+# 🔹 Novo filtro de ângulo
+angle_min, angle_max = st.slider(
+    "Filtrar por Ângulo (posição Home vs Away):",
+    min_value=-180, max_value=180, value=(-180, 180), step=5,
+    help="Ângulos positivos → Home acima | Ângulos negativos → Away acima"
+)
 
 # ==========================
 # 📊 Preparar dados
@@ -342,14 +351,20 @@ n_to_show = st.slider("Quantos confrontos exibir (Top por distância):", 10, min
 if "Quadrant_Dist" not in df_filtered.columns:
     df_filtered = calcular_distancias_quadrantes(df_filtered)
 
-df_plot = df_filtered.nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
+# Aplicar filtro de ângulo
+df_plot = df_filtered[
+    (df_filtered["Quadrant_Angle"] >= angle_min) &
+    (df_filtered["Quadrant_Angle"] <= angle_max)
+]
+
+# Limitar por top distância
+df_plot = df_plot.nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
 
 # ==========================
 # 🎨 Criar gráfico Plotly
 # ==========================
 fig = go.Figure()
 
-# Vetores Home → Away
 for _, row in df_plot.iterrows():
     xh, xa = row["Aggression_Home"], row["Aggression_Away"]
     yh, ya = row["HandScore_Home"], row["HandScore_Away"]
@@ -365,8 +380,8 @@ for _, row in df_plot.iterrows():
             f"<b>{row['Home']} vs {row['Away']}</b><br>"
             f"🏆 {row.get('League','N/A')}<br>"
             f"📏 Distância: {row['Quadrant_Dist']:.2f}<br>"
-            f"↔️ Separação: {row['Quadrant_Separation']:.1f}<br>"
-            f"📐 Ângulo: {row['Quadrant_Angle']:.1f}°"
+            f"📐 Ângulo: {row['Quadrant_Angle']:.1f}°<br>"
+            f"↕️ {'Home acima' if row['Quadrant_Angle'] > 0 else 'Away acima'}"
         ),
         showlegend=False
     ))
@@ -394,28 +409,17 @@ fig.add_trace(go.Scatter(
     hoverinfo="skip"
 ))
 
-# Linha diagonal de referência
+# Eixos de referência
 fig.add_trace(go.Scatter(
-    x=[-1, 1],
-    y=[ 0, 0],
-    mode="lines",
-    line=dict(color="limegreen", width=2, dash="dash"),
-    name="Eixo X"
+    x=[-1, 1], y=[0, 0],
+    mode="lines", line=dict(color="limegreen", width=2, dash="dash"), name="Eixo X"
+))
+fig.add_trace(go.Scatter(
+    x=[0, 0], y=[-60, 60],
+    mode="lines", line=dict(color="limegreen", width=2, dash="dash"), name="Eixo Y"
 ))
 
-# Linha diagonal de referência
-fig.add_trace(go.Scatter(
-    x=[ 0, 0],
-    y=[-60, 60],
-    mode="lines",
-    line=dict(color="limegreen", width=2, dash="dash"),
-    name="Eixo Y"
-))
-
-
-
-
-# Layout
+# Layout final
 titulo = f"Top {n_to_show} Distâncias – Aggression × HandScore"
 if selected_league != "⚽ Todas as ligas":
     titulo += f" | {selected_league}"
@@ -431,9 +435,6 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
-
-
-
 
 
 
