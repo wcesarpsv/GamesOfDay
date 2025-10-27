@@ -207,7 +207,7 @@ def merge_livescore_data(games_df, target_date):
         
         results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
         
-        required_cols = ['game_id', 'status', 'home_goal', 'away_goal']
+        required_cols = ['Id', 'status', 'home_goal', 'away_goal']
         missing_cols = [col for col in required_cols if col not in results_df.columns]
         
         if missing_cols:
@@ -216,7 +216,7 @@ def merge_livescore_data(games_df, target_date):
             games_df = games_df.merge(
                 results_df,
                 left_on='Id',
-                right_on='game_id',
+                right_on='Id',
                 how='left',
                 suffixes=('', '_RAW')
             )
