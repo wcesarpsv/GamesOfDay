@@ -384,6 +384,11 @@ rank_with_probs['Prob_Pred_H'] = [ev_to_prob(ev, odd) for ev, odd in zip(rank_wi
 rank_with_probs['Prob_Pred_D'] = [ev_to_prob(ev, odd) for ev, odd in zip(rank_with_probs['Predicted_EV_D'], rank_with_probs['Odd_D'])]
 rank_with_probs['Prob_Pred_A'] = [ev_to_prob(ev, odd) for ev, odd in zip(rank_with_probs['Predicted_EV_A'], rank_with_probs['Odd_A'])]
 
+# CALCULAR EDGE (ESTA PARTE ESTAVA FALTANDO)
+rank_with_probs['Edge_H'] = rank_with_probs['Prob_Pred_H'] - rank_with_probs['Prob_H']
+rank_with_probs['Edge_D'] = rank_with_probs['Prob_Pred_D'] - rank_with_probs['Prob_D']
+rank_with_probs['Edge_A'] = rank_with_probs['Prob_Pred_A'] - rank_with_probs['Prob_A']
+
 # Edge do lado escolhido
 def get_chosen_edge(row):
     side = row['Chosen_Side']
@@ -395,6 +400,8 @@ def get_chosen_edge(row):
         return row['Edge_A']
 
 rank_with_probs['Edge_Chosen'] = rank_with_probs.apply(get_chosen_edge, axis=1)
+
+# ... o resto do código permanece igual
 
 # Selecionar colunas para exibir no ranking
 display_columns = [
