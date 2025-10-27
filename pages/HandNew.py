@@ -437,8 +437,8 @@ if "Quadrant_Dist" not in df_filtered.columns:
 
 # Aplicar filtro de ângulo
 df_angle = df_filtered[
-    (df_filtered["Quadrant_Angle"] >= angle_min) &
-    (df_filtered["Quadrant_Angle"] <= angle_max)
+    (df_filtered['Quadrant_Angle_Geometric'] >= angle_min) &
+    (df_filtered['Quadrant_Angle_Geometric'] <= angle_max)
 ]
 
 # Aplicar lógica conforme modo selecionado
