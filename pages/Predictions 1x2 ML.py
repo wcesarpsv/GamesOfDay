@@ -121,7 +121,7 @@ if os.path.exists(livescore_file):
     results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
 
     required_cols = [
-        'game_id', 'status', 'home_goal', 'away_goal',
+        'Id', 'status', 'home_goal', 'away_goal',
         'home_ht_goal', 'away_ht_goal',
         'home_corners', 'away_corners',
         'home_yellow', 'away_yellow',
@@ -135,7 +135,7 @@ if os.path.exists(livescore_file):
         games_today = games_today.merge(
             results_df,
             left_on='Id',
-            right_on='game_id',
+            right_on='Id',
             how='left',
             suffixes=('', '_RAW')
         )
