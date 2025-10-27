@@ -373,19 +373,16 @@ rank_with_probs['Prob_A'] = rank_with_probs['Odd_A'].apply(implied_probability)
 
 # Probabilidades previstas pelo modelo (convertendo EV para prob)
 def ev_to_prob(ev, odd):
-    """Converte EV de volta para probabilidade prevista"""
+    """Converte EV de volta para probabilidade prevista com limites"""
     if pd.isna(ev) or pd.isna(odd) or odd <= 1.0:
         return np.nan
-    return (ev + 1) / odd
+    prob = (ev + 1) / odd
+    # Limitar entre 0% e 100% - valores matematicamente possíveis
+    return max(0.0, min(1.0, prob))
 
 rank_with_probs['Prob_Pred_H'] = [ev_to_prob(ev, odd) for ev, odd in zip(rank_with_probs['Predicted_EV_H'], rank_with_probs['Odd_H'])]
 rank_with_probs['Prob_Pred_D'] = [ev_to_prob(ev, odd) for ev, odd in zip(rank_with_probs['Predicted_EV_D'], rank_with_probs['Odd_D'])]
 rank_with_probs['Prob_Pred_A'] = [ev_to_prob(ev, odd) for ev, odd in zip(rank_with_probs['Predicted_EV_A'], rank_with_probs['Odd_A'])]
-
-# Calcular Edge (diferença entre probabilidade prevista e implícita)
-rank_with_probs['Edge_H'] = rank_with_probs['Prob_Pred_H'] - rank_with_probs['Prob_H']
-rank_with_probs['Edge_D'] = rank_with_probs['Prob_Pred_D'] - rank_with_probs['Prob_D']
-rank_with_probs['Edge_A'] = rank_with_probs['Prob_Pred_A'] - rank_with_probs['Prob_A']
 
 # Edge do lado escolhido
 def get_chosen_edge(row):
