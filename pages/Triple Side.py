@@ -340,26 +340,106 @@ def train_triple_ev_models(history, games_today):
 
 model_H, model_D, model_A, games_today = train_triple_ev_models(history, games_today)
 
-# ===================== Filtros e Ranking =====================
-st.markdown("## 🏆 Ranking por Expected Value (1X2)")
-col_f1, col_f2 = st.columns(2)
-leagues = sorted(games_today['League'].dropna().unique()) if 'League' in games_today.columns else []
-sel_league = col_f1.selectbox("Filtrar por liga", options=["Todas"] + leagues, index=0)
-ev_threshold = col_f2.slider("EV mínimo para apostar (unid.)", -0.50, 0.50, 0.00, 0.01)
+# ===================== Adicionar Probabilidades ao Ranking =====================
+st.markdown("## 🏆 Ranking por Expected Value (1X2) - COM PROBABILIDADES")
 
-df_rank = games_today.copy()
-if sel_league != "Todas" and 'League' in df_rank.columns:
-    df_rank = df_rank[df_rank['League'] == sel_league]
+# Calcular probabilidades implícitas das odds
+def implied_probability(odd):
+    """Calcula probabilidade implícita a partir da odd"""
+    if pd.isna(odd) or odd <= 0:
+        return np.nan
+    return 1 / odd
 
-top_n = st.slider("Quantos confrontos exibir:", 10, min(200, len(df_rank)), 40, step=5)
-rank = df_rank.sort_values('Predicted_EV', ascending=False).head(top_n)
+# Adicionar colunas de probabilidades ao dataframe de ranking
+rank = rank.copy()
+
+# Probabilidades implícitas das odds atuais
+rank['Prob_H'] = rank['Odd_H'].apply(implied_probability)
+rank['Prob_D'] = rank['Odd_D'].apply(implied_probability)  
+rank['Prob_A'] = rank['Odd_A'].apply(implied_probability)
+
+# Probabilidades previstas pelo modelo (convertendo EV para prob)
+# EV = (Prob_Prevista * (Odd - 1)) - (1 - Prob_Prevista)
+# Resolvendo para Prob_Prevista: Prob_Prevista = (EV + 1) / Odd
+def ev_to_prob(ev, odd):
+    """Converte EV de volta para probabilidade prevista"""
+    if pd.isna(ev) or pd.isna(odd) or odd <= 1.0:
+        return np.nan
+    return (ev + 1) / odd
+
+rank['Prob_Pred_H'] = [ev_to_prob(ev, odd) for ev, odd in zip(rank['Predicted_EV_H'], rank['Odd_H'])]
+rank['Prob_Pred_D'] = [ev_to_prob(ev, odd) for ev, odd in zip(rank['Predicted_EV_D'], rank['Odd_D'])]
+rank['Prob_Pred_A'] = [ev_to_prob(ev, odd) for ev, odd in zip(rank['Predicted_EV_A'], rank['Odd_A'])]
+
+# Calcular Edge (diferença entre probabilidade prevista e implícita)
+rank['Edge_H'] = rank['Prob_Pred_H'] - rank['Prob_H']
+rank['Edge_D'] = rank['Prob_Pred_D'] - rank['Prob_D']
+rank['Edge_A'] = rank['Prob_Pred_A'] - rank['Prob_A']
+
+# Edge do lado escolhido
+def get_chosen_edge(row):
+    side = row['Chosen_Side']
+    if side == 'H':
+        return row['Edge_H']
+    elif side == 'D':
+        return row['Edge_D']
+    else:
+        return row['Edge_A']
+
+rank['Edge_Chosen'] = rank.apply(get_chosen_edge, axis=1)
+
+# Selecionar colunas para exibir no ranking
+display_columns = [
+    'League', 'Home', 'Away', 'Chosen_Side', 'Predicted_EV',
+    'Odd_H', 'Odd_D', 'Odd_A',
+    'Prob_H', 'Prob_D', 'Prob_A',
+    'Prob_Pred_H', 'Prob_Pred_D', 'Prob_Pred_A', 
+    'Edge_H', 'Edge_D', 'Edge_A', 'Edge_Chosen'
+]
+
+# Filtrar apenas colunas que existem no dataframe
+available_columns = [col for col in display_columns if col in rank.columns]
 
 st.dataframe(
-    rank[['League','Time','Home','Away','Odd_H','Odd_D','Odd_A','Predicted_EV_H','Predicted_EV_D','Predicted_EV_A','Chosen_Side','Predicted_EV','Quadrant_Dist_3D']]
-    .style.background_gradient(subset=['Predicted_EV','Predicted_EV_H','Predicted_EV_D','Predicted_EV_A'], cmap='RdYlGn')
-    .format({'Predicted_EV':'{:.2f}','Predicted_EV_H':'{:.2f}','Predicted_EV_D':'{:.2f}','Predicted_EV_A':'{:.2f}','Quadrant_Dist_3D':'{:.2f}','Odd_H':'{:.2f}','Odd_D':'{:.2f}','Odd_A':'{:.2f}'}),
+    rank[available_columns]
+    .style
+    .background_gradient(subset=['Predicted_EV', 'Edge_Chosen', 'Edge_H', 'Edge_D', 'Edge_A'], cmap='RdYlGn', vmin=-0.1, vmax=0.1)
+    .background_gradient(subset=['Prob_Pred_H', 'Prob_Pred_D', 'Prob_Pred_A'], cmap='Blues', vmin=0, vmax=1)
+    .format({
+        'Predicted_EV': '{:.3f}',
+        'Odd_H': '{:.2f}', 'Odd_D': '{:.2f}', 'Odd_A': '{:.2f}',
+        'Prob_H': '{:.1%}', 'Prob_D': '{:.1%}', 'Prob_A': '{:.1%}',
+        'Prob_Pred_H': '{:.1%}', 'Prob_Pred_D': '{:.1%}', 'Prob_Pred_A': '{:.1%}',
+        'Edge_H': '{:.2%}', 'Edge_D': '{:.2%}', 'Edge_A': '{:.2%}', 'Edge_Chosen': '{:.2%}'
+    }),
     use_container_width=True
 )
+
+# Estatísticas resumidas das probabilidades
+st.markdown("### 📈 Estatísticas das Probabilidades")
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    avg_edge = rank['Edge_Chosen'].mean() * 100
+    st.metric("Edge Médio do Lado Escolhido", f"{avg_edge:.2f}%")
+
+with col2:
+    positive_edges = (rank['Edge_Chosen'] > 0).sum()
+    total_games = len(rank)
+    st.metric("Jogos com Edge Positivo", f"{positive_edges}/{total_games}")
+
+with col3:
+    max_edge = rank['Edge_Chosen'].max() * 100
+    st.metric("Maior Edge Encontrado", f"{max_edge:.2f}%")
+
+# Explicação das colunas
+st.markdown("""
+**📖 Legenda das Colunas:**
+- `Prob_H/D/A`: Probabilidade implícita das odds atuais
+- `Prob_Pred_H/D/A`: Probabilidade prevista pelo modelo  
+- `Edge_H/D/A`: Vantagem = Prob_Prevista - Prob_Implícita
+- `Edge_Chosen`: Edge do lado escolhido para aposta
+""")
 
 # ===================== Simulação – carteira prevista =====================
 st.markdown("### 💼 Simulação de carteira prevista (aposta quando EV ≥ threshold)")
