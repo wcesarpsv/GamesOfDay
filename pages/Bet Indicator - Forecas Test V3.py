@@ -22,7 +22,7 @@ st.title("🎯 Forecast V2 + Sistema de 16 Quadrantes")
 
 # Paths
 GAMES_FOLDER = "GamesDay"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copa", "copas", "uefa", "nordeste", "afc", "trophy"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copa", "coppa" ,"copas", "uefa", "nordeste", "afc", "trophy"]
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
