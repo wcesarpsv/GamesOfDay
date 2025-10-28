@@ -32,12 +32,61 @@ def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
         df = df.rename(columns={"Goals_H_FT_y": "Goals_H_FT", "Goals_A_FT_y": "Goals_A_FT"})
     return df
 
+def remove_duplicados_inteligente(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove duplicados de forma inteligente baseado em múltiplas chaves
+    """
+    if df.empty:
+        return df
+    
+    df_clean = df.copy()
+    
+    # Contar duplicados antes
+    total_antes = len(df_clean)
+    
+    # Tentar diferentes combinações de chaves para identificar duplicados
+    chaves_duplicacao = [
+        ['Id'],  # Chave principal
+        ['Home', 'Away', 'League', 'Goals_H_FT','Goals_A_FT],  # Chave mais específica
+        ['Id'] if 'Id' in df_clean.columns else []  # Se tiver ID
+    ]
+    
+    for chaves in chaves_duplicacao:
+        if chaves and all(col in df_clean.columns for col in chaves):
+            duplicados = df_clean.duplicated(subset=chaves, keep='first')
+            if duplicados.any():
+                st.warning(f"⚠️ Removidos {duplicados.sum()} duplicados por: {chaves}")
+                df_clean = df_clean[~duplicados]
+    
+    # Remover linhas com dados essenciais missing
+    colunas_essenciais = ['Home', 'Away', 'Goals_H_FT', 'Goals_A_FT']
+    colunas_presentes = [col for col in colunas_essenciais if col in df_clean.columns]
+    
+    if colunas_presentes:
+        mask_completos = df_clean[colunas_presentes].notna().all(axis=1)
+        if not mask_completos.all():
+            st.warning(f"⚠️ Removidas {(~mask_completos).sum()} linhas com dados essenciais missing")
+            df_clean = df_clean[mask_completos]
+    
+    total_depois = len(df_clean)
+    removidos = total_antes - total_depois
+    
+    if removidos > 0:
+        st.success(f"✅ Limpeza concluída: {removidos} registros removidos | Restantes: {total_depois}")
+    
+    return df_clean
+
 def load_all_games(folder: str) -> pd.DataFrame:
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     if not files:
         return pd.DataFrame()
     dfs = [preprocess_df(pd.read_csv(os.path.join(folder, f))) for f in files]
-    return pd.concat(dfs, ignore_index=True)
+    df_completo = pd.concat(dfs, ignore_index=True)
+    
+    # Aplicar limpeza de duplicados
+    df_completo = remove_duplicados_inteligente(df_completo)
+    
+    return df_completo
 
 def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "League" not in df.columns:
