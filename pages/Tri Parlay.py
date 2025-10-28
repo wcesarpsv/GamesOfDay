@@ -390,6 +390,7 @@ st.success(f"🎯 Todos os 3 modelos especializados treinados com sucesso!")
 
 
 ########################################
+########################################
 ####### Bloco 7 – Apply ML to Today ####
 ########################################
 threshold = st.sidebar.slider("ML Threshold for Direct Win (%)", 50, 80, 65) / 100.0
@@ -506,6 +507,56 @@ def predict_with_specialized_models(models, encoders, games_today, use_odds_feat
     return proba_home_calib, proba_draw_calib, proba_away_calib
 
 # =====================================================
+# 🎯 NOVO: PROBABILIDADES BRUTAS (SEM NORMALIZAÇÃO)
+# =====================================================
+
+def predict_with_specialized_models_raw(models, encoders, games_today, use_odds_features=True):
+    """Faz predições com os 3 modelos especializados SEM normalizar"""
+    
+    predictions_raw = {
+        'home_raw': np.full(len(games_today), np.nan),
+        'draw_raw': np.full(len(games_today), np.nan),
+        'away_raw': np.full(len(games_today), np.nan)
+    }
+    
+    for model_type in ['home', 'draw', 'away']:
+        model_info = models[model_type]
+        features = model_info['features']
+        
+        # Preparar dados para predição
+        X_today = games_today[features].copy()
+        
+        # Preencher NaN
+        X_today = X_today.fillna(0)
+        
+        # Aplicar encoding se necessário
+        if 'Cluster3D_Label' in features and model_type in encoders:
+            encoder = encoders[model_type]
+            encoded = encoder.transform(X_today[['Cluster3D_Label']])
+            encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(['Cluster3D_Label']))
+            
+            X_today = pd.concat([X_today.drop(columns=['Cluster3D_Label']).reset_index(drop=True),
+                               encoded_df.reset_index(drop=True)], axis=1)
+        
+        # Garantir que todas as features esperadas existam
+        expected_features = model_info['feature_names']
+        for feat in expected_features:
+            if feat not in X_today.columns:
+                X_today[feat] = 0
+        
+        X_today = X_today[expected_features]
+        
+        # Fazer predição BRUTA (sem normalizar)
+        try:
+            proba = models[model_type]['model'].predict_proba(X_today)[:, 1]
+            predictions_raw[f'{model_type}_raw'] = proba
+        except Exception as e:
+            st.error(f"❌ Erro na predição do modelo {model_type}: {e}")
+            predictions_raw[f'{model_type}_raw'] = np.zeros(len(games_today))
+    
+    return predictions_raw['home_raw'], predictions_raw['draw_raw'], predictions_raw['away_raw']
+
+# =====================================================
 # 🎯 APLICAR MODELOS APENAS A JOGOS VÁLIDOS
 # =====================================================
 
@@ -517,22 +568,41 @@ games_today["ML_Proba_Draw"] = np.nan
 games_today["ML_Proba_Away"] = np.nan
 games_today["ML_Recommendation"] = "❌ Avoid"
 
+# Inicializar colunas BRUTAS com NaN
+games_today["ML_Proba_Home_Raw"] = np.nan
+games_today["ML_Proba_Draw_Raw"] = np.nan
+games_today["ML_Proba_Away_Raw"] = np.nan
+games_today["ML_Proba_Sum_Raw"] = np.nan
+
 # Aplicar apenas nos jogos válidos
 if valid_games_mask.sum() > 0:
     games_valid = games_today[valid_games_mask].copy()
     
-    # Fazer predições apenas nos válidos
+    # Fazer predições NORMALIZADAS (para decisões)
     proba_home, proba_draw, proba_away = predict_with_specialized_models(
+        specialized_models, model_encoders, games_valid, use_odds_features
+    )
+    
+    # Fazer predições BRUTAS (para análise)
+    proba_home_raw, proba_draw_raw, proba_away_raw = predict_with_specialized_models_raw(
         specialized_models, model_encoders, games_valid, use_odds_features
     )
     
     # Atribuir apenas aos jogos válidos
     valid_indices = games_valid.index
+    
+    # Probabilidades NORMALIZADAS
     games_today.loc[valid_indices, "ML_Proba_Home"] = proba_home
     games_today.loc[valid_indices, "ML_Proba_Draw"] = proba_draw
     games_today.loc[valid_indices, "ML_Proba_Away"] = proba_away
     
-    # Gerar recomendações apenas para válidos
+    # Probabilidades BRUTAS
+    games_today.loc[valid_indices, "ML_Proba_Home_Raw"] = proba_home_raw
+    games_today.loc[valid_indices, "ML_Proba_Draw_Raw"] = proba_draw_raw
+    games_today.loc[valid_indices, "ML_Proba_Away_Raw"] = proba_away_raw
+    games_today.loc[valid_indices, "ML_Proba_Sum_Raw"] = proba_home_raw + proba_draw_raw + proba_away_raw
+    
+    # Gerar recomendações apenas para válidos (usando probabilidades NORMALIZADAS)
     for idx in valid_indices:
         p_home = games_today.at[idx, "ML_Proba_Home"]
         p_draw = games_today.at[idx, "ML_Proba_Draw"]
@@ -547,22 +617,30 @@ else:
     st.error("❌ Nenhum jogo com features completas para predição")
 
 # =====================================================
-# 🎯 VALIDAÇÃO DAS PREDIÇÕES
+# 🎯 VALIDAÇÃO DAS PREDIÇÕES (NORMALIZADAS vs BRUTAS)
 # =====================================================
 
 # Mostrar estatísticas das probabilidades
 if valid_games_mask.sum() > 0:
-    col1, col2, col3 = st.columns(3)
+    st.subheader("📊 Comparação: Probabilidades Normalizadas vs Brutas")
+    
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Avg Prob Home", f"{games_today['ML_Proba_Home'].mean():.1%}")
+        st.metric("Avg Home Raw", f"{games_today['ML_Proba_Home_Raw'].mean():.1%}")
     with col2:
         st.metric("Avg Prob Draw", f"{games_today['ML_Proba_Draw'].mean():.1%}")  
+        st.metric("Avg Draw Raw", f"{games_today['ML_Proba_Draw_Raw'].mean():.1%}")
     with col3:
         st.metric("Avg Prob Away", f"{games_today['ML_Proba_Away'].mean():.1%}")
+        st.metric("Avg Away Raw", f"{games_today['ML_Proba_Away_Raw'].mean():.1%}")
+    with col4:
+        st.metric("Soma Normalizada", f"{games_today['ML_Proba_Home'].mean() + games_today['ML_Proba_Draw'].mean() + games_today['ML_Proba_Away'].mean():.3f}")
+        st.metric("Soma Bruta", f"{games_today['ML_Proba_Sum_Raw'].mean():.3f}")
 
     # Verificar calibragem
-    total_probs = games_today['ML_Proba_Home'] + games_today['ML_Proba_Draw'] + games_today['ML_Proba_Away']
-    st.info(f"📊 Calibragem: Soma média das probabilidades = {total_probs.mean():.3f} (ideal = 1.000)")
+    total_probs_normalized = games_today['ML_Proba_Home'] + games_today['ML_Proba_Draw'] + games_today['ML_Proba_Away']
+    st.info(f"📊 **Calibragem**: Soma NORMALIZADA = {total_probs_normalized.mean():.3f} | Soma BRUTA = {games_today['ML_Proba_Sum_Raw'].mean():.3f}")
 
 # =====================================================
 # 🎯 NOVO: DIAGNÓSTICO DOS MODELOS
@@ -1271,17 +1349,17 @@ st.sidebar.markdown(f"""
 • **Super Parlay Target:** {target_super_odds}  
 """)
 
-st.header("📈 Day's Summary - Machine Learning Performance")
-st.json(summary_ml)
-
 st.header("🎯 Machine Learning Recommendations")
 
-# 🔥 ATUALIZADO: Adicionar coluna de validação
+# 🔥 ATUALIZADO: Adicionar colunas de probabilidades brutas
 cols_to_show = [
     'Date', 'Time', 'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today',
-    'ML_Recommendation', 'ML_Data_Valid', 'ML_Correct', 'Kelly_Stake_ML',  # 🔥 NOVO
+    'ML_Recommendation', 'ML_Data_Valid', 'ML_Correct', 'Kelly_Stake_ML',
     'Profit_ML_Fixed', 'Profit_ML_Kelly',
-    'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away', 
+    # Probabilidades NORMALIZADAS (para decisões)
+    'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away',
+    # 🔥 NOVO: Probabilidades BRUTAS (para análise)
+    'ML_Proba_Home_Raw', 'ML_Proba_Draw_Raw', 'ML_Proba_Away_Raw', 'ML_Proba_Sum_Raw',
     'Odd_H', 'Odd_D', 'Odd_A'
 ]
 
@@ -1294,14 +1372,19 @@ st.dataframe(
         'Kelly_Stake_ML': '{:.2f}',
         'Profit_ML_Fixed': '{:.2f}',
         'Profit_ML_Kelly': '{:.2f}',
+        # Format para probabilidades
         'ML_Proba_Home': '{:.3f}',
         'ML_Proba_Draw': '{:.3f}',
         'ML_Proba_Away': '{:.3f}',
+        'ML_Proba_Home_Raw': '{:.3f}',
+        'ML_Proba_Draw_Raw': '{:.3f}', 
+        'ML_Proba_Away_Raw': '{:.3f}',
+        'ML_Proba_Sum_Raw': '{:.3f}',
         'Odd_H': '{:.2f}',
         'Odd_D': '{:.2f}',
         'Odd_A': '{:.2f}'
     }).apply(lambda x: ['background-color: #ffcccc' if x.name == 'ML_Data_Valid' and x.iloc[0] == False else '' 
-                       for i in range(len(x))], axis=1),  # 🔥 Destaque visual
+                       for i in range(len(x))], axis=1),
     use_container_width=True,
     height=800
 )
