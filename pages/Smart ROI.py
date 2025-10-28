@@ -47,7 +47,7 @@ def remove_duplicados_inteligente(df: pd.DataFrame) -> pd.DataFrame:
     # Tentar diferentes combinações de chaves para identificar duplicados
     chaves_duplicacao = [
         ['Id'],  # Chave principal
-        ['Home', 'Away', 'League', 'Goals_H_FT','Goals_A_FT],  # Chave mais específica
+        ['Home', 'Away', 'League', 'Goals_H_FT','Goals_A_FT'],  # Chave mais específica
         ['Id'] if 'Id' in df_clean.columns else []  # Se tiver ID
     ]
     
