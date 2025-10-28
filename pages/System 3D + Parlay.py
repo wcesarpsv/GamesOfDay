@@ -21,7 +21,7 @@ st.title("🤖 ML Betting System + Auto Parlay Recommendations")
 
 # Configurações principais
 GAMES_FOLDER = "GamesDay"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa", "afc","trophy"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa", "coppa", "afc","trophy"]
 DOMINANT_THRESHOLD = 0.90
 
 # 🔥 CORREÇÃO: Definir BAND_MAP que estava faltando
