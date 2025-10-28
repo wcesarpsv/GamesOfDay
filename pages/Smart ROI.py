@@ -18,11 +18,16 @@ st.title("💸 ROI Focus 1X2 – Triple Side (Home / Draw / Away) + Live Validat
 
 GAMES_FOLDER = "GamesDay"
 LIVESCORE_FOLDER = "LiveScore"
+MODELS_CACHE_FOLDER = "ModelsCache"  # NOVA PASTA PARA CACHE
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "coppa", "uefa", "afc", "sudamericana", "copa", "trophy"]
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.makedirs(GAMES_FOLDER, exist_ok=True)
 os.makedirs(LIVESCORE_FOLDER, exist_ok=True)
+os.makedirs(MODELS_CACHE_FOLDER, exist_ok=True)  # CRIA PASTA DE CACHE
+
+# Versão das features para invalidar cache quando mudar
+FEATURE_VERSION = "v3.1"
 
 # ============================ Helpers ============================
 def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -157,6 +162,47 @@ def calc_profit_1x2(result: str, side: str, odd: float) -> float:
         return np.nan
     eff = effective_profit_from_odd(odd)
     return eff if side == result else -1.0
+
+
+# ===================== SISTEMA DE CACHE =====================
+def calcular_hash_configuracao(use_fair, center_targets, files_list):
+    """Calcula hash único baseado nas configurações e arquivos"""
+    config_str = f"{use_fair}_{center_targets}_{FEATURE_VERSION}_{'_'.join(sorted(files_list))}"
+    return str(hash(config_str))
+
+def salvar_cache(dados, nome_arquivo):
+    """Salva dados em arquivo pickle no cache"""
+    caminho = os.path.join(MODELS_CACHE_FOLDER, nome_arquivo)
+    with open(caminho, 'wb') as f:
+        pickle.dump(dados, f)
+    return caminho
+
+def carregar_cache(nome_arquivo):
+    """Carrega dados do cache se existir"""
+    caminho = os.path.join(MODELS_CACHE_FOLDER, nome_arquivo)
+    if os.path.exists(caminho):
+        with open(caminho, 'rb') as f:
+            return pickle.load(f)
+    return None
+
+def limpar_cache():
+    """Remove todos os arquivos de cache"""
+    cache_files = [f for f in os.listdir(MODELS_CACHE_FOLDER) if f.endswith('.pkl')]
+    for file in cache_files:
+        os.remove(os.path.join(MODELS_CACHE_FOLDER, file))
+    return len(cache_files)
+
+def get_cache_info():
+    """Retorna informações sobre o cache"""
+    cache_files = [f for f in os.listdir(MODELS_CACHE_FOLDER) if f.endswith('.pkl')]
+    total_size = sum(os.path.getsize(os.path.join(MODELS_CACHE_FOLDER, f)) for f in cache_files)
+    return {
+        'total_files': len(cache_files),
+        'total_size_mb': total_size / (1024 * 1024),
+        'files': cache_files
+    }
+
+
 
 # ====================== 3D features (diferenças, trig, magnitude) ======================
 def calcular_distancias_3d(df):
@@ -350,7 +396,41 @@ def encontrar_melhores_thresholds(df_analise, min_apostas=10):
     
     return pd.DataFrame(melhores)
 
-# ============================ Carregamento ============================
+
+
+# ===================== CONTROLES DE CACHE NA SIDEBAR =====================
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🗃️ Controle de Cache")
+
+# Botões de controle
+col_cache1, col_cache2 = st.sidebar.columns(2)
+
+with col_cache1:
+    if st.sidebar.button("🔄 Recalcular Tudo", help="Força recálculo completo e salva novo cache"):
+        limpar_cache()
+        st.sidebar.success("Cache limpo! Recarregue a página.")
+        
+with col_cache2:        
+    if st.sidebar.button("🗑️ Limpar Cache", help="Remove todos os arquivos de cache"):
+        removidos = limpar_cache()
+        st.sidebar.success(f"Removidos {removidos} arquivos de cache!")
+
+# Informações do cache
+cache_info = get_cache_info()
+st.sidebar.markdown(f"**Cache Atual:**")
+st.sidebar.markdown(f"- Arquivos: {cache_info['total_files']}")
+st.sidebar.markdown(f"- Tamanho: {cache_info['total_size_mb']:.1f} MB")
+
+if cache_info['files']:
+    st.sidebar.markdown("**Arquivos em cache:**")
+    for file in cache_info['files'][:3]:  # Mostra apenas os 3 primeiros
+        st.sidebar.text(f"• {file}")
+    if len(cache_info['files']) > 3:
+        st.sidebar.text(f"• ... +{len(cache_info['files']) - 3} mais")
+
+
+
+# ============================ Carregamento com Cache ============================
 st.info("📂 Carregando dados 1X2...")
 
 files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
@@ -364,25 +444,37 @@ selected_file = st.selectbox("Selecione o arquivo do dia:", options, index=len(o
 m = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
 selected_date_str = m.group(0) if m else datetime.now().strftime("%Y-%m-%d")
 
+# Carregar dados do dia (sempre fresh)
 games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
 games_today = filter_leagues(games_today)
 
-# Adicionar análise de qualidade antes do processamento
-st.markdown("### 🔍 Análise de Qualidade dos Dados")
+# Configurações para o hash do cache (mantenha essas checkboxes onde estavam)
+# use_fair e center_targets já estão definidas anteriormente na UI
 
-col_q1, col_q2, col_q3 = st.columns(3)
+config_hash = calcular_hash_configuracao(use_fair, center_targets, files)
 
-with col_q1:
-    st.metric("Jogos Hoje (Raw)", len(games_today))
+# Tentar carregar do cache
+cache_loaded = False
+history_processed = carregar_cache(f"historical_cache_{config_hash}.pkl")
+ev_optimization = carregar_cache(f"ev_optimization_{config_hash}.pkl")
 
-# Carregar histórico com limpeza
-with st.spinner("Limpando e carregando histórico..."):
-    history = filter_leagues(load_all_games(GAMES_FOLDER))
+if history_processed is not None and ev_optimization is not None:
+    st.success("✅ Cache carregado! Dados processados prontos.")
+    history = history_processed
+    df_melhores_cache = ev_optimization
+    cache_loaded = True
+    
+    # Mostrar análise de qualidade mesmo com cache
+    st.markdown("### 🔍 Análise de Qualidade dos Dados (Cache)")
+    col_q1, col_q2, col_q3 = st.columns(3)
+    
+    with col_q1:
+        st.metric("Jogos Hoje (Raw)", len(games_today))
     
     with col_q2:
-        st.metric("Histórico (Limpo)", len(history))
+        st.metric("Histórico (Cache)", len(history))
     
-    # Análise de completude dos dados
+    # Análise de completude dos dados do cache
     colunas_importantes = ['Goals_H_FT', 'Goals_A_FT', 'Odd_H', 'Odd_D', 'Odd_A']
     colunas_presentes = [col for col in colunas_importantes if col in history.columns]
     
@@ -393,32 +485,87 @@ with st.spinner("Limpando e carregando histórico..."):
     with col_q3:
         completude_media = np.mean(list(completude.values())) if completude else 0
         st.metric("Completude Média", f"{completude_media:.1f}%")
+    
+    # Mostrar detalhes da completude
+    if completude:
+        st.markdown("#### 📊 Completude por Coluna")
+        for col, perc in completude.items():
+            st.progress(perc/100, text=f"{col}: {perc:.1f}%")
+            
+else:
+    st.info("🔄 Cache não encontrado. Processando dados...")
+    
+    # Análise de qualidade durante processamento
+    st.markdown("### 🔍 Análise de Qualidade dos Dados")
+    col_q1, col_q2, col_q3 = st.columns(3)
 
-# Mostrar detalhes da completude
-if completude:
-    st.markdown("#### 📊 Completude por Coluna")
-    for col, perc in completude.items():
-        st.progress(perc/100, text=f"{col}: {perc:.1f}%")
+    with col_q1:
+        st.metric("Jogos Hoje (Raw)", len(games_today))
 
-history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT"]).copy()
+    # Carregar histórico com limpeza
+    with st.spinner("Limpando e carregando histórico..."):
+        history_raw = load_all_games(GAMES_FOLDER)
+        history = filter_leagues(history_raw)
+        
+        with col_q2:
+            st.metric("Histórico (Limpo)", len(history))
+        
+        # Análise de completude dos dados
+        colunas_importantes = ['Goals_H_FT', 'Goals_A_FT', 'Odd_H', 'Odd_D', 'Odd_A']
+        colunas_presentes = [col for col in colunas_importantes if col in history.columns]
+        
+        completude = {}
+        for col in colunas_presentes:
+            completude[col] = history[col].notna().sum() / len(history) * 100
+        
+        with col_q3:
+            completude_media = np.mean(list(completude.values())) if completude else 0
+            st.metric("Completude Média", f"{completude_media:.1f}%")
 
-# filtro temporal
-if "Date" in history.columns:
-    try:
-        sel_date = pd.to_datetime(selected_date_str)
-        history["Date"] = pd.to_datetime(history["Date"], errors="coerce")
-        history = history[history["Date"] < sel_date].copy()
-        st.info(f"📅 Histórico filtrado: {len(history)} jogos antes de {selected_date_str}")
-    except Exception as e:
-        st.warning(f"Erro ao aplicar filtro temporal: {e}")
+    # Mostrar detalhes da completude
+    if completude:
+        st.markdown("#### 📊 Completude por Coluna")
+        for col, perc in completude.items():
+            st.progress(perc/100, text=f"{col}: {perc:.1f}%")
 
-# Verifica se odds 1X2 existem
+    history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT"]).copy()
+
+    # Filtro temporal
+    if "Date" in history.columns:
+        try:
+            sel_date = pd.to_datetime(selected_date_str)
+            history["Date"] = pd.to_datetime(history["Date"], errors="coerce")
+            history = history[history["Date"] < sel_date].copy()
+            st.info(f"📅 Histórico filtrado: {len(history)} jogos antes de {selected_date_str}")
+        except Exception as e:
+            st.warning(f"Erro ao aplicar filtro temporal: {e}")
+
+    # Processar targets e features
+    with st.spinner("Processando targets e features..."):
+        history = build_1x2_targets(history)
+        
+        if use_fair:
+            history = remove_juice_1x2(history)
+        
+        if center_targets:
+            for tgt in ['Target_EV_Home','Target_EV_Draw','Target_EV_Away']:
+                if tgt in history.columns:
+                    mean_tgt = pd.to_numeric(history[tgt], errors='coerce').mean()
+                    history[tgt] = history[tgt] - mean_tgt
+        
+        history = ensure_3d_features(history)
+    
+    # Salvar no cache
+    salvar_cache(history, f"historical_cache_{config_hash}.pkl")
+    st.success("✅ Dados processados e salvos no cache!")
+
+# Verifica se odds 1X2 existem (sempre executa)
 for df, name in [(history, "history"), (games_today, "games_today")]:
     missing = [c for c in ['Odd_H','Odd_D','Odd_A'] if c not in df.columns]
     if missing:
         st.warning(f"⚠️ Colunas de odds 1X2 ausentes em {name}: {missing}")
 
-# LiveScore para validação em tempo real
+# LiveScore para validação em tempo real (sempre executa)
 games_today = load_and_merge_livescore(games_today, selected_date_str)
 
 # ===================== Targets EV (Home / Draw / Away) – histórico =====================
@@ -622,7 +769,6 @@ model_H, model_D, model_A, games_today = train_triple_ev_models(history, games_t
 #             ev_threshold = ev_manual
 
 
-
 # ===================== SLIDER INTELIGENTE =====================
 st.markdown("### ⚖️ EV Mínimo - Sistema Inteligente")
 
@@ -641,86 +787,129 @@ ev_threshold = ev_manual
 df_melhores = pd.DataFrame()
 
 if usar_ev_auto:
-    with st.spinner("🔍 Calculando EV ótimo por liga e lado..."):
-        try:
-            df_analise = calcular_ev_otimo_por_liga_lado(history)
+    # Tentar usar cache do EV ótimo
+    if cache_loaded:
+        df_melhores = ev_optimization  # Já carregado do cache
+        st.success("✅ Análise de EV ótimo carregada do cache!")
+        
+        # Encontrar threshold global (média ponderada por apostas)
+        if not df_melhores.empty:
+            total_apostas = df_melhores['apostas'].sum()
+            ev_global = (df_melhores['threshold_otimo'] * df_melhores['apostas']).sum() / total_apostas
+            ev_threshold = ev_global
             
-            if not df_analise.empty:
-                df_melhores = encontrar_melhores_thresholds(df_analise)
-                
-                # Encontrar threshold global (média ponderada por apostas)
-                if not df_melhores.empty:
-                    total_apostas = df_melhores['apostas'].sum()
-                    ev_global = (df_melhores['threshold_otimo'] * df_melhores['apostas']).sum() / total_apostas
-                    ev_threshold = ev_global
-                    
-                    st.success(f"**EV Ótimo Global:** {ev_global:.3f} | **Baseado em {len(df_melhores)} combinações liga/lado**")
-                    
-                    # Mostrar tabela de thresholds por liga/lado
-                    st.markdown("#### 📊 Thresholds por Liga e Lado")
-                    display_cols = ['liga', 'lado', 'threshold_otimo', 'roi_esperado', 'apostas', 'confianca']
-                    st.dataframe(
-                        df_melhores[display_cols]
-                        .round({'threshold_otimo': 3, 'roi_esperado': 3, 'confianca': 3})
-                        .sort_values('roi_esperado', ascending=False)
-                        .style.background_gradient(subset=['roi_esperado'], cmap='RdYlGn')
-                        .format({
-                            'threshold_otimo': '{:.3f}',
-                            'roi_esperado': '{:.1%}',
-                            'confianca': '{:.3f}'
-                        })
-                    )
-                    
-                    # Gráfico de análise (apenas se houver dados suficientes)
-                    ligas_com_dados = df_analise[df_analise['apostas'] >= 10]['liga'].unique()
-                    if len(ligas_com_dados) > 0:
-                        st.markdown("#### 📈 Análise EV vs ROI")
-                        
-                        # Limitar o número de ligas no gráfico para evitar erro
-                        ligas_para_grafico = ligas_com_dados[:6]  # Máximo 6 ligas
-                        
-                        if len(ligas_para_grafico) > 0:
-                            df_grafico = df_analise[
-                                (df_analise['apostas'] >= 10) & 
-                                (df_analise['liga'].isin(ligas_para_grafico))
-                            ]
-                            
-                            if not df_grafico.empty:
-                                try:
-                                    fig = px.line(df_grafico, 
-                                                 x='threshold', y='roi', color='lado',
-                                                 facet_col='liga', facet_col_wrap=3,
-                                                 title='ROI vs EV Threshold (Top Ligas)',
-                                                 facet_col_spacing=0.08)
-                                    st.plotly_chart(fig, use_container_width=True)
-                                except Exception as e:
-                                    st.warning("⚠️ Gráfico simplificado devido a muitas ligas")
-                                    # Fallback: gráfico agregado
-                                    fig = px.line(df_analise[df_analise['apostas'] >= 10], 
-                                                 x='threshold', y='roi', color='lado',
-                                                 title='ROI vs EV Threshold (Todas as Ligas Agregadas)')
-                                    st.plotly_chart(fig, use_container_width=True)
-                        
-                        # Mostrar estatísticas das outras ligas
-                        if len(ligas_com_dados) > len(ligas_para_grafico):
-                            st.info(f"📊 +{len(ligas_com_dados) - len(ligas_para_grafico)} ligas analisadas mas não mostradas no gráfico")
-                    
-                    # Mostrar as top 5 ligas com melhor ROI
-                    st.markdown("#### 🏆 Top 5 Ligas por ROI Máximo")
-                    top_ligas = df_melhores.groupby('liga')['roi_esperado'].max().nlargest(5).round(4)
-                    st.dataframe(top_ligas.rename('ROI Máximo').apply(lambda x: f"{x:.1%}"))
-                    
-                else:
-                    st.warning("⚠️ Não foram encontrados thresholds ótimos com dados suficientes.")
-                    ev_threshold = ev_manual
-            else:
-                st.warning("⚠️ Dados insuficientes para cálculo automático. Verifique se há histórico suficiente.")
-                ev_threshold = ev_manual
-                
-        except Exception as e:
-            st.error(f"❌ Erro no cálculo automático: {e}")
-            st.info("📝 Usando EV manual como fallback")
+            st.success(f"**EV Ótimo Global:** {ev_global:.3f} | **Baseado em {len(df_melhores)} combinações liga/lado**")
+            
+            # Mostrar tabela de thresholds por liga/lado
+            st.markdown("#### 📊 Thresholds por Liga e Lado")
+            display_cols = ['liga', 'lado', 'threshold_otimo', 'roi_esperado', 'apostas', 'confianca']
+            st.dataframe(
+                df_melhores[display_cols]
+                .round({'threshold_otimo': 3, 'roi_esperado': 3, 'confianca': 3})
+                .sort_values('roi_esperado', ascending=False)
+                .style.background_gradient(subset=['roi_esperado'], cmap='RdYlGn')
+                .format({
+                    'threshold_otimo': '{:.3f}',
+                    'roi_esperado': '{:.1%}',
+                    'confianca': '{:.3f}'
+                }),
+                width='stretch'
+            )
+            
+            # Mostrar as top 5 ligas com melhor ROI
+            st.markdown("#### 🏆 Top 5 Ligas por ROI Máximo")
+            top_ligas = df_melhores.groupby('liga')['roi_esperado'].max().nlargest(5).round(4)
+            st.dataframe(top_ligas.rename('ROI Máximo').apply(lambda x: f"{x:.1%}"))
+            
+        else:
+            st.warning("⚠️ Cache de EV ótimo vazio. Usando EV manual.")
             ev_threshold = ev_manual
+    else:
+        # Calcular EV ótimo do zero (sem cache)
+        with st.spinner("🔍 Calculando EV ótimo por liga e lado..."):
+            try:
+                df_analise = calcular_ev_otimo_por_liga_lado(history)
+                
+                if not df_analise.empty:
+                    df_melhores = encontrar_melhores_thresholds(df_analise)
+                    
+                    # Salvar no cache
+                    salvar_cache(df_melhores, f"ev_optimization_{config_hash}.pkl")
+                    
+                    # Encontrar threshold global (média ponderada por apostas)
+                    if not df_melhores.empty:
+                        total_apostas = df_melhores['apostas'].sum()
+                        ev_global = (df_melhores['threshold_otimo'] * df_melhores['apostas']).sum() / total_apostas
+                        ev_threshold = ev_global
+                        
+                        st.success(f"**EV Ótimo Global:** {ev_global:.3f} | **Baseado em {len(df_melhores)} combinações liga/lado**")
+                        
+                        # Mostrar tabela de thresholds por liga/lado
+                        st.markdown("#### 📊 Thresholds por Liga e Lado")
+                        display_cols = ['liga', 'lado', 'threshold_otimo', 'roi_esperado', 'apostas', 'confianca']
+                        st.dataframe(
+                            df_melhores[display_cols]
+                            .round({'threshold_otimo': 3, 'roi_esperado': 3, 'confianca': 3})
+                            .sort_values('roi_esperado', ascending=False)
+                            .style.background_gradient(subset=['roi_esperado'], cmap='RdYlGn')
+                            .format({
+                                'threshold_otimo': '{:.3f}',
+                                'roi_esperado': '{:.1%}',
+                                'confianca': '{:.3f}'
+                            }),
+                            width='stretch'
+                        )
+                        
+                        # Gráfico de análise (apenas se houver dados suficientes)
+                        ligas_com_dados = df_analise[df_analise['apostas'] >= 10]['liga'].unique()
+                        if len(ligas_com_dados) > 0:
+                            st.markdown("#### 📈 Análise EV vs ROI")
+                            
+                            # Limitar o número de ligas no gráfico para evitar erro
+                            ligas_para_grafico = ligas_com_dados[:6]  # Máximo 6 ligas
+                            
+                            if len(ligas_para_grafico) > 0:
+                                df_grafico = df_analise[
+                                    (df_analise['apostas'] >= 10) & 
+                                    (df_analise['liga'].isin(ligas_para_grafico))
+                                ]
+                                
+                                if not df_grafico.empty:
+                                    try:
+                                        fig = px.line(df_grafico, 
+                                                     x='threshold', y='roi', color='lado',
+                                                     facet_col='liga', facet_col_wrap=3,
+                                                     title='ROI vs EV Threshold (Top Ligas)',
+                                                     facet_col_spacing=0.08)
+                                        st.plotly_chart(fig, use_container_width=True)
+                                    except Exception as e:
+                                        st.warning("⚠️ Gráfico simplificado devido a muitas ligas")
+                                        # Fallback: gráfico agregado
+                                        fig = px.line(df_analise[df_analise['apostas'] >= 10], 
+                                                     x='threshold', y='roi', color='lado',
+                                                     title='ROI vs EV Threshold (Todas as Ligas Agregadas)')
+                                        st.plotly_chart(fig, use_container_width=True)
+                            
+                            # Mostrar estatísticas das outras ligas
+                            if len(ligas_com_dados) > len(ligas_para_grafico):
+                                st.info(f"📊 +{len(ligas_com_dados) - len(ligas_para_grafico)} ligas analisadas mas não mostradas no gráfico")
+                        
+                        # Mostrar as top 5 ligas com melhor ROI
+                        st.markdown("#### 🏆 Top 5 Ligas por ROI Máximo")
+                        top_ligas = df_melhores.groupby('liga')['roi_esperado'].max().nlargest(5).round(4)
+                        st.dataframe(top_ligas.rename('ROI Máximo').apply(lambda x: f"{x:.1%}"))
+                        
+                    else:
+                        st.warning("⚠️ Não foram encontrados thresholds ótimos com dados suficientes.")
+                        ev_threshold = ev_manual
+                else:
+                    st.warning("⚠️ Dados insuficientes para cálculo automático.")
+                    ev_threshold = ev_manual
+                    
+            except Exception as e:
+                st.error(f"❌ Erro no cálculo automático: {e}")
+                st.info("📝 Usando EV manual como fallback")
+                ev_threshold = ev_manual
 
 
 
@@ -932,6 +1121,43 @@ else:
 
     st.markdown("#### 📊 Quebra por lado (H/D/A)")
     st.dataframe(by_side.rename(columns={'count':'Apostas','sum':'Profit'}))
+
+
+
+# ===================== BOTÃO DE DOWNLOAD DO CACHE =====================
+st.markdown("---")
+st.markdown("### 💾 Gerenciamento de Cache")
+
+col_dl1, col_dl2 = st.columns(2)
+
+with col_dl1:
+    if st.button("📥 Download Cache Atual", help="Baixa os arquivos de cache atuais"):
+        # Criar zip com os arquivos de cache
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+            for file in get_cache_info()['files']:
+                file_path = os.path.join(MODELS_CACHE_FOLDER, file)
+                zip_file.write(file_path, file)
+        
+        zip_buffer.seek(0)
+        st.download_button(
+            label="⬇️ Baixar Arquivo ZIP",
+            data=zip_buffer,
+            file_name=f"cache_models_{datetime.now().strftime('%Y%m%d_%H%M')}.zip",
+            mime="application/zip"
+        )
+
+with col_dl2:
+    if st.button("🔄 Status do Cache"):
+        cache_info = get_cache_info()
+        st.info(f"""
+        **Status do Cache:**
+        - Arquivos: {cache_info['total_files']}
+        - Tamanho total: {cache_info['total_size_mb']:.1f} MB
+        - Configuração atual: {config_hash[:16]}...
+        """)
+
+
 
 st.markdown("---")
 st.success("💹 Pipeline ROI 1X2 – Triple Side + Live Validation + EV Ótimo Automático pronto!")
