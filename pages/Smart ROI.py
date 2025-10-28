@@ -459,6 +459,78 @@ def train_triple_ev_models(history, games_today):
 
 model_H, model_D, model_A, games_today = train_triple_ev_models(history, games_today)
 
+# # ===================== SLIDER INTELIGENTE =====================
+# st.markdown("### ⚖️ EV Mínimo - Sistema Inteligente")
+
+# col_auto, col_manual = st.columns(2)
+
+# with col_auto:
+#     usar_ev_auto = st.checkbox("🎯 Usar EV Ótimo Automático", value=True, 
+#                               help="Calcula o melhor EV threshold baseado no histórico")
+
+# with col_manual:
+#     ev_manual = st.slider("EV mínimo manual", -0.50, 1.0, 0.00, 0.01, 
+#                          help="Use se preferir controle manual")
+
+# # Calcular EV ótimo se selecionado
+# ev_threshold = ev_manual
+# df_melhores = pd.DataFrame()
+
+# if usar_ev_auto:
+#     with st.spinner("🔍 Calculando EV ótimo por liga e lado..."):
+#         try:
+#             df_analise = calcular_ev_otimo_por_liga_lado(history)
+            
+#             if not df_analise.empty:
+#                 df_melhores = encontrar_melhores_thresholds(df_analise)
+                
+#                 # Encontrar threshold global (média ponderada por apostas)
+#                 if not df_melhores.empty:
+#                     total_apostas = df_melhores['apostas'].sum()
+#                     ev_global = (df_melhores['threshold_otimo'] * df_melhores['apostas']).sum() / total_apostas
+#                     ev_threshold = ev_global
+                    
+#                     st.success(f"**EV Ótimo Global:** {ev_global:.3f} | **Baseado em {len(df_melhores)} combinações liga/lado**")
+                    
+#                     # Mostrar tabela de thresholds por liga/lado
+#                     st.markdown("#### 📊 Thresholds por Liga e Lado")
+#                     display_cols = ['liga', 'lado', 'threshold_otimo', 'roi_esperado', 'apostas', 'confianca']
+#                     st.dataframe(
+#                         df_melhores[display_cols]
+#                         .round({'threshold_otimo': 3, 'roi_esperado': 3, 'confianca': 3})
+#                         .sort_values('roi_esperado', ascending=False)
+#                         .style.background_gradient(subset=['roi_esperado'], cmap='RdYlGn')
+#                         .format({
+#                             'threshold_otimo': '{:.3f}',
+#                             'roi_esperado': '{:.1%}',
+#                             'confianca': '{:.3f}'
+#                         })
+#                     )
+                    
+#                     # Gráfico de análise (apenas se houver dados suficientes)
+#                     ligas_com_dados = df_analise[df_analise['apostas'] >= 10]['liga'].unique()
+#                     if len(ligas_com_dados) > 0:
+#                         st.markdown("#### 📈 Análise EV vs ROI")
+#                         fig = px.line(df_analise[df_analise['apostas'] >= 10], 
+#                                      x='threshold', y='roi', color='lado',
+#                                      facet_col='liga', facet_col_wrap=2,
+#                                      title='ROI vs EV Threshold por Liga e Lado')
+#                         st.plotly_chart(fig, use_container_width=True)
+                    
+#                 else:
+#                     st.warning("⚠️ Não foram encontrados thresholds ótimos com dados suficientes.")
+#                     ev_threshold = ev_manual
+#             else:
+#                 st.warning("⚠️ Dados insuficientes para cálculo automático. Verifique se há histórico suficiente.")
+#                 ev_threshold = ev_manual
+                
+#         except Exception as e:
+#             st.error(f"❌ Erro no cálculo automático: {e}")
+#             st.info("📝 Usando EV manual como fallback")
+#             ev_threshold = ev_manual
+
+
+
 # ===================== SLIDER INTELIGENTE =====================
 st.markdown("### ⚖️ EV Mínimo - Sistema Inteligente")
 
@@ -511,11 +583,40 @@ if usar_ev_auto:
                     ligas_com_dados = df_analise[df_analise['apostas'] >= 10]['liga'].unique()
                     if len(ligas_com_dados) > 0:
                         st.markdown("#### 📈 Análise EV vs ROI")
-                        fig = px.line(df_analise[df_analise['apostas'] >= 10], 
-                                     x='threshold', y='roi', color='lado',
-                                     facet_col='liga', facet_col_wrap=2,
-                                     title='ROI vs EV Threshold por Liga e Lado')
-                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Limitar o número de ligas no gráfico para evitar erro
+                        ligas_para_grafico = ligas_com_dados[:6]  # Máximo 6 ligas
+                        
+                        if len(ligas_para_grafico) > 0:
+                            df_grafico = df_analise[
+                                (df_analise['apostas'] >= 10) & 
+                                (df_analise['liga'].isin(ligas_para_grafico))
+                            ]
+                            
+                            if not df_grafico.empty:
+                                try:
+                                    fig = px.line(df_grafico, 
+                                                 x='threshold', y='roi', color='lado',
+                                                 facet_col='liga', facet_col_wrap=3,
+                                                 title='ROI vs EV Threshold (Top Ligas)',
+                                                 facet_col_spacing=0.08)
+                                    st.plotly_chart(fig, use_container_width=True)
+                                except Exception as e:
+                                    st.warning("⚠️ Gráfico simplificado devido a muitas ligas")
+                                    # Fallback: gráfico agregado
+                                    fig = px.line(df_analise[df_analise['apostas'] >= 10], 
+                                                 x='threshold', y='roi', color='lado',
+                                                 title='ROI vs EV Threshold (Todas as Ligas Agregadas)')
+                                    st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Mostrar estatísticas das outras ligas
+                        if len(ligas_com_dados) > len(ligas_para_grafico):
+                            st.info(f"📊 +{len(ligas_com_dados) - len(ligas_para_grafico)} ligas analisadas mas não mostradas no gráfico")
+                    
+                    # Mostrar as top 5 ligas com melhor ROI
+                    st.markdown("#### 🏆 Top 5 Ligas por ROI Máximo")
+                    top_ligas = df_melhores.groupby('liga')['roi_esperado'].max().nlargest(5).round(4)
+                    st.dataframe(top_ligas.rename('ROI Máximo').apply(lambda x: f"{x:.1%}"))
                     
                 else:
                     st.warning("⚠️ Não foram encontrados thresholds ótimos com dados suficientes.")
@@ -528,6 +629,9 @@ if usar_ev_auto:
             st.error(f"❌ Erro no cálculo automático: {e}")
             st.info("📝 Usando EV manual como fallback")
             ev_threshold = ev_manual
+
+
+
 
 # ===================== Filtros e Ranking =====================
 st.markdown("## 🏆 Ranking por Expected Value (1X2) - COM PROBABILIDADES")
