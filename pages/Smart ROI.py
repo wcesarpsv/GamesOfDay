@@ -636,7 +636,9 @@ if usar_ev_auto:
 # ===================== Filtros e Ranking =====================
 st.markdown("## 🏆 Ranking por Expected Value (1X2) - COM PROBABILIDADES")
 
-# Filtros
+# ===================== SUBSECÇÃO: Filtros =====================
+st.markdown("### 🔧 Filtros")
+
 col_f1, col_f2 = st.columns(2)
 leagues = sorted(games_today['League'].dropna().unique()) if 'League' in games_today.columns else []
 sel_league = col_f1.selectbox("Filtrar por liga", options=["Todas"] + leagues, index=0)
@@ -669,16 +671,24 @@ else:
     # Filtro global tradicional
     df_rank = df_rank[df_rank['Predicted_EV'] >= ev_threshold]
 
-top_n = st.slider("Quantos confrontos exibir:", 1, min(200, len(df_rank)), min(40, len(df_rank)), step=5)
+# ===================== SUBSECÇÃO: Controle de Exibição =====================
+st.markdown("### 📊 Controle de Exibição")
 
-# Verificar se há dados após o filtro
+# CORREÇÃO: Verificar se há dados antes do slider
 if len(df_rank) == 0:
     st.warning(f"⚠️ Nenhum jogo encontrado com os filtros atuais")
     rank = pd.DataFrame()
+    top_n = 0
 else:
+    # Slider seguro - garantir que max seja maior que min
+    max_games = min(200, len(df_rank))
+    default_games = min(40, max_games)
+    top_n = st.slider("Quantos confrontos exibir:", 1, max_games, default_games, step=5)
     rank = df_rank.sort_values('Predicted_EV', ascending=False).head(top_n)
 
-# ... o resto do código permanece igual, mas com verificação ...
+# ===================== SUBSECÇÃO: Tabela de Resultados =====================
+st.markdown("### 📋 Resultados Filtrados")
+
 if not rank.empty:
     # Calcular probabilidades implícitas das odds
     def implied_probability(odd):
@@ -740,10 +750,10 @@ if not rank.empty:
             'Prob_Pred_H': '{:.1%}', 'Prob_Pred_D': '{:.1%}', 'Prob_Pred_A': '{:.1%}',
             'Edge_H': '{:.2%}', 'Edge_D': '{:.2%}', 'Edge_A': '{:.2%}', 'Edge_Chosen': '{:.2%}'
         }),
-        use_container_width=True
+        width='stretch'  # CORREÇÃO: use_container_width -> width='stretch'
     )
 
-    # Estatísticas (apenas se houver dados)
+    # ===================== SUBSECÇÃO: Estatísticas =====================
     st.markdown("### 📈 Estatísticas das Probabilidades")
     col1, col2, col3 = st.columns(3)
 
@@ -763,13 +773,13 @@ if not rank.empty:
 else:
     st.info("ℹ️ Ajuste os filtros para ver jogos recomendados")
 
-# Explicação das colunas
+# ===================== SUBSECÇÃO: Legenda =====================
+st.markdown("### 📖 Legenda das Colunas")
 st.markdown("""
-**📖 Legenda das Colunas:**
-- `Prob_H/D/A`: Probabilidade implícita das odds atuais
-- `Prob_Pred_H/D/A`: Probabilidade prevista pelo modelo  
-- `Edge_H/D/A`: Vantagem = Prob_Prevista - Prob_Implícita
-- `Edge_Chosen`: Edge do lado escolhido para aposta
+- **`Prob_H/D/A`**: Probabilidade implícita das odds atuais
+- **`Prob_Pred_H/D/A`**: Probabilidade prevista pelo modelo  
+- **`Edge_H/D/A`**: Vantagem = Prob_Prevista - Prob_Implícita
+- **`Edge_Chosen`**: Edge do lado escolhido para aposta
 """)
 
 # ===================== Simulação – carteira prevista =====================
