@@ -38,7 +38,7 @@ st.title("🎯 Sistema 3D com Clusters - ML Avançado")
 PAGE_PREFIX = "Clusters3D_ML"
 GAMES_FOLDER = "GamesDay"
 LIVESCORE_FOLDER = "LiveScore"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa", "trophy"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "coppa", "uefa", "afc", "sudamericana", "copa", "trophy"]
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
