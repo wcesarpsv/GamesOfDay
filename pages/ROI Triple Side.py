@@ -358,7 +358,7 @@ if sel_league != "Todas" and 'League' in df_rank.columns:
 # ⬇️⬇️⬇️ MUDANÇA AQUI: Filtrar por EV mínimo ANTES do ranking ⬇️⬇️⬇️
 df_rank = df_rank[df_rank['Predicted_EV'] >= ev_threshold]
 
-top_n = st.slider("Quantos confrontos exibir:", 10, min(200, len(df_rank)), min(40, len(df_rank)), step=5)
+top_n = st.slider("Quantos confrontos exibir:", 1, min(200, len(df_rank)), min(40, len(df_rank)), step=5)
 
 # Verificar se há dados após o filtro
 if len(df_rank) == 0:
