@@ -457,6 +457,15 @@ def build_1x2_targets(df_hist: pd.DataFrame):
     return df
 
 
+# ===================== Feature engineering 3D =====================
+def ensure_3d_features(df):
+    df = calcular_distancias_3d(df)
+    df = aplicar_clusterizacao_3d(df, n_clusters=5)
+    return df
+
+history = ensure_3d_features(history)
+games_today = ensure_3d_features(games_today)
+
 
 # ============================ Carregamento com Cache ============================
 st.info("📂 Carregando dados 1X2...")
@@ -643,14 +652,7 @@ st.info(
     f"EV_Away médio={pd.to_numeric(history.get('Target_EV_Away'), errors='coerce').mean():.3f}"
 )
 
-# ===================== Feature engineering 3D =====================
-def ensure_3d_features(df):
-    df = calcular_distancias_3d(df)
-    df = aplicar_clusterizacao_3d(df, n_clusters=5)
-    return df
 
-history = ensure_3d_features(history)
-games_today = ensure_3d_features(games_today)
 
 # ===================== Treinamento – três regressões (H/D/A) =====================
 st.markdown("### 🤖 Treinando modelos de EV 1X2 (Home / Draw / Away)")
