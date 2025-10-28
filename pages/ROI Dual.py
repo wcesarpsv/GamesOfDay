@@ -17,7 +17,7 @@ st.title("💸 ROI-Focused 3D – Dual Side (Home & Away) + Live Validation")
 
 GAMES_FOLDER = "GamesDay"
 LIVESCORE_FOLDER = "LiveScore"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa", "trophy"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "coppa", "uefa", "afc", "sudamericana", "copa", "trophy"]
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.makedirs(GAMES_FOLDER, exist_ok=True)
