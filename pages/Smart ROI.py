@@ -1163,17 +1163,3 @@ st.info("""
 - 💾 SISTEMA DE CACHE para processamento rápido
 """)
 
-
-
-st.markdown("---")
-st.success("💹 Pipeline ROI 1X2 – Triple Side + Live Validation + EV Ótimo Automático pronto!")
-st.info("""
-**O que esta versão faz:**
-- 🎯 Targets contínuos de lucro esperado para Home / Draw / Away (1X2)
-- 🤖 Três regressões de EV (H/D/A) e escolha automática do melhor lado
-- ⚙️ Opções: odds 'fair' sem juice + recenter de targets para EV relativo
-- 🎯 EV ÓTIMO AUTOMÁTICO por liga e lado com intervalos de confiança
-- 📈 Ranking inteligente com thresholds específicos por contexto
-- 📡 Validação em tempo real com gols do dia (Profit Real & ROI por lado)
-- 🧩 Mantém features 3D (Aggression × M × MT) + clusters KMeans
-""")
