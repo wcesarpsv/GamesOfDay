@@ -210,9 +210,8 @@ def calcular_ev_otimo_por_liga_lado(history, min_apostas=5, step=0.05, ev_range=
             
             # Para cada threshold, simular apostas baseadas no EV real
             for threshold in np.arange(ev_range[0], ev_range[1] + step, step):
-                # Filtrar jogos onde o EV REAL seria ≥ threshold
-                # No histórico, usamos o target EV como proxy da "decisão correta"
-                mask = (df_liga[target_col] >= threshold)
+                # CORREÇÃO: usar .values para evitar ambiguidade do pandas
+                mask = (df_liga[target_col].values >= threshold)
                 jogos_apostados = df_liga[mask]
                 
                 if len(jogos_apostados) < min_apostas:
@@ -223,15 +222,18 @@ def calcular_ev_otimo_por_liga_lado(history, min_apostas=5, step=0.05, ev_range=
                 roi_medio = profits.mean()
                 n_apostas = len(profits)
                 
-                # Intervalo de confiança 95% (bootstrap)
+                # Intervalo de confiança 95% (bootstrap) - apenas se houver dados suficientes
                 if n_apostas >= 10:
-                    bootstraps = []
-                    for _ in range(500):  # Reduzido para performance
-                        sample = np.random.choice(profits, size=n_apostas, replace=True)
-                        bootstraps.append(sample.mean())
-                    ci_lower = np.percentile(bootstraps, 2.5)
-                    ci_upper = np.percentile(bootstraps, 97.5)
-                    confianca = (ci_upper - ci_lower) / 2  # semi-amplitude
+                    try:
+                        bootstraps = []
+                        for _ in range(100):  # Reduzido para performance
+                            sample = np.random.choice(profits.values, size=n_apostas, replace=True)
+                            bootstraps.append(sample.mean())
+                        ci_lower = np.percentile(bootstraps, 2.5)
+                        ci_upper = np.percentile(bootstraps, 97.5)
+                        confianca = (ci_upper - ci_lower) / 2
+                    except:
+                        ci_lower = ci_upper = confianca = roi_medio
                 else:
                     ci_lower = ci_upper = confianca = roi_medio
                 
@@ -270,8 +272,19 @@ def encontrar_melhores_thresholds(df_analise, min_apostas=10):
             
             # Penalizar thresholds com poucas apostas e alta variância
             df_filtrado = df_filtrado.copy()
-            df_filtrado['score'] = df_filtrado['roi'] * (1 - df_filtrado['confianca']/abs(df_filtrado['roi']) if df_filtrado['roi'].abs() > 0 else 1)
+            # CORREÇÃO: usar .values para evitar ambiguidade
+            roi_vals = df_filtrado['roi'].values
+            confianca_vals = df_filtrado['confianca'].values
             
+            scores = []
+            for i in range(len(roi_vals)):
+                if abs(roi_vals[i]) > 0:
+                    score = roi_vals[i] * (1 - confianca_vals[i] / abs(roi_vals[i]))
+                else:
+                    score = roi_vals[i]
+                scores.append(score)
+            
+            df_filtrado['score'] = scores
             melhor_idx = df_filtrado['score'].idxmax()
             melhor = df_filtrado.loc[melhor_idx]
             
