@@ -201,23 +201,24 @@ def calcular_ev_otimo_por_liga_lado(history, min_apostas=5, step=0.05, ev_range=
             df_liga = history[history['League'] == liga].copy()
         
         for lado in lados:
-            # Colunas relevantes para este lado
-            ev_col = f'Predicted_EV_{"H" if lado == "H" else "D" if lado == "D" else "A"}'
+            # Colunas relevantes para este lado - USAR TARGETS REAIS DO HISTÓRICO
             target_col = f'Target_EV_{"Home" if lado == "H" else "Draw" if lado == "D" else "Away"}'
+            odd_col = f'Odd_{"H" if lado == "H" else "D" if lado == "D" else "A"}'
             
-            if ev_col not in df_liga.columns or target_col not in df_liga.columns:
+            if target_col not in df_liga.columns or odd_col not in df_liga.columns:
                 continue
             
-            # Testar diferentes thresholds
+            # Para cada threshold, simular apostas baseadas no EV real
             for threshold in np.arange(ev_range[0], ev_range[1] + step, step):
-                # Filtrar jogos que seriam apostados
-                mask = (df_liga[ev_col] >= threshold)
+                # Filtrar jogos onde o EV REAL seria ≥ threshold
+                # No histórico, usamos o target EV como proxy da "decisão correta"
+                mask = (df_liga[target_col] >= threshold)
                 jogos_apostados = df_liga[mask]
                 
                 if len(jogos_apostados) < min_apostas:
                     continue
                 
-                # Calcular ROI e intervalo de confiança
+                # Calcular ROI real dessas apostas
                 profits = jogos_apostados[target_col]
                 roi_medio = profits.mean()
                 n_apostas = len(profits)
@@ -225,7 +226,7 @@ def calcular_ev_otimo_por_liga_lado(history, min_apostas=5, step=0.05, ev_range=
                 # Intervalo de confiança 95% (bootstrap)
                 if n_apostas >= 10:
                     bootstraps = []
-                    for _ in range(1000):
+                    for _ in range(500):  # Reduzido para performance
                         sample = np.random.choice(profits, size=n_apostas, replace=True)
                         bootstraps.append(sample.mean())
                     ci_lower = np.percentile(bootstraps, 2.5)
@@ -253,6 +254,9 @@ def encontrar_melhores_thresholds(df_analise, min_apostas=10):
     """
     melhores = []
     
+    if df_analise.empty:
+        return pd.DataFrame(melhores)
+    
     for liga in df_analise['liga'].unique():
         for lado in ['H', 'D', 'A']:
             df_filtrado = df_analise[
@@ -265,6 +269,7 @@ def encontrar_melhores_thresholds(df_analise, min_apostas=10):
                 continue
             
             # Penalizar thresholds com poucas apostas e alta variância
+            df_filtrado = df_filtrado.copy()
             df_filtrado['score'] = df_filtrado['roi'] * (1 - df_filtrado['confianca']/abs(df_filtrado['roi']) if df_filtrado['roi'].abs() > 0 else 1)
             
             melhor_idx = df_filtrado['score'].idxmax()
@@ -460,42 +465,55 @@ df_melhores = pd.DataFrame()
 
 if usar_ev_auto:
     with st.spinner("🔍 Calculando EV ótimo por liga e lado..."):
-        df_analise = calcular_ev_otimo_por_liga_lado(history)
-        df_melhores = encontrar_melhores_thresholds(df_analise)
-        
-        # Encontrar threshold global (média ponderada por apostas)
-        if not df_melhores.empty:
-            total_apostas = df_melhores['apostas'].sum()
-            ev_global = (df_melhores['threshold_otimo'] * df_melhores['apostas']).sum() / total_apostas
-            ev_threshold = ev_global
+        try:
+            df_analise = calcular_ev_otimo_por_liga_lado(history)
             
-            st.success(f"**EV Ótimo Global:** {ev_global:.3f} | **Baseado em {len(df_melhores)} combinações liga/lado**")
-            
-            # Mostrar tabela de thresholds por liga/lado
-            st.markdown("#### 📊 Thresholds por Liga e Lado")
-            display_cols = ['liga', 'lado', 'threshold_otimo', 'roi_esperado', 'apostas', 'confianca']
-            st.dataframe(
-                df_melhores[display_cols]
-                .round({'threshold_otimo': 3, 'roi_esperado': 3, 'confianca': 3})
-                .sort_values('roi_esperado', ascending=False)
-                .style.background_gradient(subset=['roi_esperado'], cmap='RdYlGn')
-                .format({
-                    'threshold_otimo': '{:.3f}',
-                    'roi_esperado': '{:.1%}',
-                    'confianca': '{:.3f}'
-                })
-            )
-            
-            # Gráfico de análise
-            st.markdown("#### 📈 Análise EV vs ROI")
-            fig = px.line(df_analise[df_analise['apostas'] >= 10], 
-                         x='threshold', y='roi', color='lado',
-                         facet_col='liga', facet_col_wrap=3,
-                         title='ROI vs EV Threshold por Liga e Lado')
-            st.plotly_chart(fig, use_container_width=True)
-            
-        else:
-            st.warning("⚠️ Dados insuficientes para cálculo automático. Usando EV manual.")
+            if not df_analise.empty:
+                df_melhores = encontrar_melhores_thresholds(df_analise)
+                
+                # Encontrar threshold global (média ponderada por apostas)
+                if not df_melhores.empty:
+                    total_apostas = df_melhores['apostas'].sum()
+                    ev_global = (df_melhores['threshold_otimo'] * df_melhores['apostas']).sum() / total_apostas
+                    ev_threshold = ev_global
+                    
+                    st.success(f"**EV Ótimo Global:** {ev_global:.3f} | **Baseado em {len(df_melhores)} combinações liga/lado**")
+                    
+                    # Mostrar tabela de thresholds por liga/lado
+                    st.markdown("#### 📊 Thresholds por Liga e Lado")
+                    display_cols = ['liga', 'lado', 'threshold_otimo', 'roi_esperado', 'apostas', 'confianca']
+                    st.dataframe(
+                        df_melhores[display_cols]
+                        .round({'threshold_otimo': 3, 'roi_esperado': 3, 'confianca': 3})
+                        .sort_values('roi_esperado', ascending=False)
+                        .style.background_gradient(subset=['roi_esperado'], cmap='RdYlGn')
+                        .format({
+                            'threshold_otimo': '{:.3f}',
+                            'roi_esperado': '{:.1%}',
+                            'confianca': '{:.3f}'
+                        })
+                    )
+                    
+                    # Gráfico de análise (apenas se houver dados suficientes)
+                    ligas_com_dados = df_analise[df_analise['apostas'] >= 10]['liga'].unique()
+                    if len(ligas_com_dados) > 0:
+                        st.markdown("#### 📈 Análise EV vs ROI")
+                        fig = px.line(df_analise[df_analise['apostas'] >= 10], 
+                                     x='threshold', y='roi', color='lado',
+                                     facet_col='liga', facet_col_wrap=2,
+                                     title='ROI vs EV Threshold por Liga e Lado')
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                else:
+                    st.warning("⚠️ Não foram encontrados thresholds ótimos com dados suficientes.")
+                    ev_threshold = ev_manual
+            else:
+                st.warning("⚠️ Dados insuficientes para cálculo automático. Verifique se há histórico suficiente.")
+                ev_threshold = ev_manual
+                
+        except Exception as e:
+            st.error(f"❌ Erro no cálculo automático: {e}")
+            st.info("📝 Usando EV manual como fallback")
             ev_threshold = ev_manual
 
 # ===================== Filtros e Ranking =====================
