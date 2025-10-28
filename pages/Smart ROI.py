@@ -554,9 +554,44 @@ else:
         except Exception as e:
             st.warning(f"Erro ao aplicar filtro temporal: {e}")
 
+    # ===================== Targets EV (Home / Draw / Away) – histórico =====================
+    def build_1x2_targets(df_hist: pd.DataFrame):
+        df = df_hist.copy()
+    
+        # Verificar duplicados finais
+        chaves_finais = ['Home', 'Away', 'Date'] if all(col in df.columns for col in ['Home', 'Away', 'Date']) else ['Home', 'Away']
+        if all(col in df.columns for col in chaves_finais):
+            duplicados_finais = df.duplicated(subset=chaves_finais, keep='first')
+            if duplicados_finais.any():
+                st.error(f"🚨 ATENÇÃO: {duplicados_finais.sum()} duplicados ainda presentes após limpeza!")
+                st.dataframe(df[duplicados_finais][chaves_finais + ['League']].head(10))
+                # Remover os duplicados finais
+                df = df[~duplicados_finais]
+    
+        # resultado real 1X2 (usando FT)
+        df['Result_1X2'] = [result_1x2_from_ft(h, a) for h, a in zip(df['Goals_H_FT'], df['Goals_A_FT'])]
+    
+        # odds (podem ser decimais ou líquidas; função trata ambos)
+        df['Target_EV_Home'] = df.apply(lambda r: calc_profit_1x2(r['Result_1X2'], 'H', r.get('Odd_H', np.nan)), axis=1)
+        df['Target_EV_Draw'] = df.apply(lambda r: calc_profit_1x2(r['Result_1X2'], 'D', r.get('Odd_D', np.nan)), axis=1)
+        df['Target_EV_Away'] = df.apply(lambda r: calc_profit_1x2(r['Result_1X2'], 'A', r.get('Odd_A', np.nan)), axis=1)
+    
+        return df
+    
     # Processar targets e features
     with st.spinner("Processando targets e features..."):
         history = build_1x2_targets(history)
+        
+        if use_fair:
+            history = remove_juice_1x2(history)
+        
+        if center_targets:
+            for tgt in ['Target_EV_Home','Target_EV_Draw','Target_EV_Away']:
+                if tgt in history.columns:
+                    mean_tgt = pd.to_numeric(history[tgt], errors='coerce').mean()
+                    history[tgt] = history[tgt] - mean_tgt
+        
+        history = ensure_3d_features(history)
         
         if use_fair:
             history = remove_juice_1x2(history)
@@ -586,29 +621,6 @@ games_today = load_and_merge_livescore(games_today, selected_date_str)
 
 # ===================== Targets EV (Home / Draw / Away) – histórico =====================
 st.markdown("### 🎯 Construindo targets de lucro 1X2 (histórico)")
-
-def build_1x2_targets(df_hist: pd.DataFrame):
-    df = df_hist.copy()
-
-    # Verificar duplicados finais
-    chaves_finais = ['Home', 'Away', 'Date'] if all(col in df.columns for col in ['Home', 'Away', 'Date']) else ['Home', 'Away']
-    if all(col in df.columns for col in chaves_finais):
-        duplicados_finais = df.duplicated(subset=chaves_finais, keep='first')
-        if duplicados_finais.any():
-            st.error(f"🚨 ATENÇÃO: {duplicados_finais.sum()} duplicados ainda presentes após limpeza!")
-            st.dataframe(df[duplicados_finais][chaves_finais + ['League']].head(10))
-            # Remover os duplicados finais
-            df = df[~duplicados_finais]
-
-    # resultado real 1X2 (usando FT)
-    df['Result_1X2'] = [result_1x2_from_ft(h, a) for h, a in zip(df['Goals_H_FT'], df['Goals_A_FT'])]
-
-    # odds (podem ser decimais ou líquidas; função trata ambos)
-    df['Target_EV_Home'] = df.apply(lambda r: calc_profit_1x2(r['Result_1X2'], 'H', r.get('Odd_H', np.nan)), axis=1)
-    df['Target_EV_Draw'] = df.apply(lambda r: calc_profit_1x2(r['Result_1X2'], 'D', r.get('Odd_D', np.nan)), axis=1)
-    df['Target_EV_Away'] = df.apply(lambda r: calc_profit_1x2(r['Result_1X2'], 'A', r.get('Odd_A', np.nan)), axis=1)
-
-    return df
 
 history = build_1x2_targets(history)
 
