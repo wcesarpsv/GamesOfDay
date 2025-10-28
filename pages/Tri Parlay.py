@@ -30,6 +30,25 @@ BAND_MAP = {
     'Band 6': 6, 'Band 7': 7, 'Band 8': 8, 'Band 9': 9, 'Band 10': 10
 }
 
+# =====================================================
+# 🎯 NOVO: SELETOR DE ESTRATÉGIA DE PROBABILIDADES
+# =====================================================
+st.sidebar.header("🎯 Estratégia de Probabilidades")
+
+strategy = st.sidebar.radio(
+    "Selecione a estratégia:",
+    ["🛡️ Conservador (Normalizadas)", "⚡ Agressivo (Brutas)"],
+    index=0,
+    help="Conservador: Probabilidades calibradas (soma=100%) | Agressivo: Probabilidades brutas dos modelos especializados"
+)
+
+# Definir qual conjunto de probabilidades usar
+USE_RAW_PROBS = (strategy == "⚡ Agressivo (Brutas)")
+
+st.sidebar.markdown("---")
+
+
+
 ########################################
 ####### Bloco 3 – Helper Functions #####
 ########################################
@@ -390,21 +409,43 @@ st.success(f"🎯 Todos os 3 modelos especializados treinados com sucesso!")
 
 
 ########################################
-########################################
 ####### Bloco 7 – Apply ML to Today ####
 ########################################
 threshold = st.sidebar.slider("ML Threshold for Direct Win (%)", 50, 80, 65) / 100.0
 
-def ml_recommendation_from_proba(p_home, p_draw, p_away, threshold=0.65):
-    if p_home >= threshold: return "🟢 Back Home"
-    elif p_away >= threshold: return "🟠 Back Away"
+def ml_recommendation_from_proba(p_home, p_draw, p_away, p_home_raw, p_draw_raw, p_away_raw, threshold=0.65, use_raw_probs=False):
+    """
+    Gera recomendação baseada nas probabilidades
+    use_raw_probs: True para usar probabilidades brutas, False para normalizadas
+    """
+    # Escolher qual conjunto de probabilidades usar
+    if use_raw_probs:
+        home_prob = p_home_raw
+        draw_prob = p_draw_raw  
+        away_prob = p_away_raw
+        prob_type = "BRUTA"
     else:
-        sum_home_draw = p_home + p_draw
-        sum_away_draw = p_away + p_draw
-        if abs(p_home - p_away) < 0.05 and p_draw > 0.50: return "⚪ Back Draw"
-        elif sum_home_draw > sum_away_draw: return "🟦 1X (Home/Draw)"
-        elif sum_away_draw > sum_home_draw: return "🟪 X2 (Away/Draw)"
-        else: return "❌ Avoid"
+        home_prob = p_home
+        draw_prob = p_draw
+        away_prob = p_away
+        prob_type = "NORM"
+    
+    # Lógica de recomendação (mesma de antes)
+    if home_prob >= threshold: 
+        return f"🟢 Back Home [{prob_type}]"
+    elif away_prob >= threshold: 
+        return f"🟠 Back Away [{prob_type}]"
+    else:
+        sum_home_draw = home_prob + draw_prob
+        sum_away_draw = away_prob + draw_prob
+        if abs(home_prob - away_prob) < 0.05 and draw_prob > 0.50: 
+            return f"⚪ Back Draw [{prob_type}]"
+        elif sum_home_draw > sum_away_draw: 
+            return f"🟦 1X (Home/Draw) [{prob_type}]"
+        elif sum_away_draw > sum_home_draw: 
+            return f"🟪 X2 (Away/Draw) [{prob_type}]"
+        else: 
+            return f"❌ Avoid [{prob_type}]"
 
 # =====================================================
 # 🎯 NOVO: VALIDAÇÃO DE FEATURES PARA OS 3 MODELOS
@@ -602,17 +643,23 @@ if valid_games_mask.sum() > 0:
     games_today.loc[valid_indices, "ML_Proba_Away_Raw"] = proba_away_raw
     games_today.loc[valid_indices, "ML_Proba_Sum_Raw"] = proba_home_raw + proba_draw_raw + proba_away_raw
     
-    # Gerar recomendações apenas para válidos (usando probabilidades NORMALIZADAS)
+    # 🔥 NOVO: Gerar recomendações com estratégia selecionada
     for idx in valid_indices:
         p_home = games_today.at[idx, "ML_Proba_Home"]
         p_draw = games_today.at[idx, "ML_Proba_Draw"]
         p_away = games_today.at[idx, "ML_Proba_Away"]
+        p_home_raw = games_today.at[idx, "ML_Proba_Home_Raw"]
+        p_draw_raw = games_today.at[idx, "ML_Proba_Draw_Raw"]
+        p_away_raw = games_today.at[idx, "ML_Proba_Away_Raw"]
         
         games_today.at[idx, "ML_Recommendation"] = ml_recommendation_from_proba(
-            p_home, p_draw, p_away, threshold
+            p_home, p_draw, p_away, 
+            p_home_raw, p_draw_raw, p_away_raw,
+            threshold, USE_RAW_PROBS
         )
     
     st.success(f"✅ Predições aplicadas em {len(valid_indices)} jogos válidos")
+    st.info(f"🎯 Estratégia: {'⚡ AGRESSIVO (Brutas)' if USE_RAW_PROBS else '🛡️ CONSERVADOR (Normalizadas)'}")
 else:
     st.error("❌ Nenhum jogo com features completas para predição")
 
@@ -642,7 +689,6 @@ if valid_games_mask.sum() > 0:
     total_probs_normalized = games_today['ML_Proba_Home'] + games_today['ML_Proba_Draw'] + games_today['ML_Proba_Away']
     st.info(f"📊 **Calibragem**: Soma NORMALIZADA = {total_probs_normalized.mean():.3f} | Soma BRUTA = {games_today['ML_Proba_Sum_Raw'].mean():.3f}")
 
-
 # =====================================================
 # 🎯 GARANTIR COLUNAS NECESSÁRIAS PARA O PERFORMANCE SUMMARY
 # =====================================================
@@ -651,11 +697,9 @@ if valid_games_mask.sum() > 0:
 required_cols_for_summary = ['ML_Correct', 'Profit_ML_Fixed', 'Profit_ML_Kelly', 'Kelly_Stake_ML']
 for col in required_cols_for_summary:
     if col not in games_today.columns:
-        games_today[col] = np.nan  # ou 0, dependendo da coluna
+        games_today[col] = np.nan
 
-st.info(f"✅ Colunas preparadas para Performance Summary: {', '.join(required_cols_for_summary)}")
-
-
+st.info(f"✅ Colunas preparadas para Performance Summary")
 
 # =====================================================
 # 🎯 NOVO: DIAGNÓSTICO DOS MODELOS
@@ -710,15 +754,29 @@ def kelly_stake(probability, odds, bankroll=1000, kelly_fraction=0.25, min_stake
 
 def get_kelly_stake_ml(row):
     rec = row['ML_Recommendation']
-    if pd.isna(rec) or rec == '❌ Avoid': return 0
+    if pd.isna(rec) or '❌ Avoid' in rec: return 0
     
-    if 'Back Home' in rec: return kelly_stake(row['ML_Proba_Home'], row['Odd_H'], bankroll, kelly_fraction, min_stake, max_stake)
-    elif 'Back Away' in rec: return kelly_stake(row['ML_Proba_Away'], row['Odd_A'], bankroll, kelly_fraction, min_stake, max_stake)
-    elif 'Back Draw' in rec: return kelly_stake(row['ML_Proba_Draw'], row['Odd_D'], bankroll, kelly_fraction, min_stake, max_stake)
-    elif '1X' in rec: return kelly_stake(row['ML_Proba_Home'] + row['ML_Proba_Draw'], row['Odd_1X'], bankroll, kelly_fraction, min_stake, max_stake)
-    elif 'X2' in rec: return kelly_stake(row['ML_Proba_Away'] + row['ML_Proba_Draw'], row['Odd_X2'], bankroll, kelly_fraction, min_stake, max_stake)
+    # Escolher probabilidades baseadas na estratégia
+    if USE_RAW_PROBS:
+        prob_home = row.get('ML_Proba_Home_Raw', 0)
+        prob_draw = row.get('ML_Proba_Draw_Raw', 0) 
+        prob_away = row.get('ML_Proba_Away_Raw', 0)
+    else:
+        prob_home = row.get('ML_Proba_Home', 0)
+        prob_draw = row.get('ML_Proba_Draw', 0)
+        prob_away = row.get('ML_Proba_Away', 0)
+    
+    if 'Back Home' in rec: 
+        return kelly_stake(prob_home, row['Odd_H'], bankroll, kelly_fraction, min_stake, max_stake)
+    elif 'Back Away' in rec: 
+        return kelly_stake(prob_away, row['Odd_A'], bankroll, kelly_fraction, min_stake, max_stake)
+    elif 'Back Draw' in rec: 
+        return kelly_stake(prob_draw, row['Odd_D'], bankroll, kelly_fraction, min_stake, max_stake)
+    elif '1X' in rec: 
+        return kelly_stake(prob_home + prob_draw, row['Odd_1X'], bankroll, kelly_fraction, min_stake, max_stake)
+    elif 'X2' in rec: 
+        return kelly_stake(prob_away + prob_draw, row['Odd_X2'], bankroll, kelly_fraction, min_stake, max_stake)
     return 0
-
 games_today['Kelly_Stake_ML'] = games_today.apply(get_kelly_stake_ml, axis=1)
 
 ########################################
@@ -1389,10 +1447,19 @@ super_parlay = generate_super_parlay(games_today, target_super_odds)
 ##### Bloco 13 – Display Results #######
 ########################################
 
+# =====================================================
+# 🎯 NOVO: MOSTRAR ESTRATÉGIA SELECIONADA
+# =====================================================
+strategy_color = "🟢" if not USE_RAW_PROBS else "🔴"
+strategy_name = "CONSERVADOR (Normalizadas)" if not USE_RAW_PROBS else "AGRESSIVO (Brutas)"
+
+st.header(f"🤖 {strategy_color} ML System - Estratégia: {strategy_name}")
+
 # SEÇÃO 3: RESUMO GERAL - ATUALIZADO
 st.sidebar.header("📊 System Summary")
 st.sidebar.markdown(f"""
 **⚙️ Configuração Atual**  
+• **Estratégia:** {strategy_name}  
 • **ML Bankroll:** ${bankroll:,}  
 • **Parlay Bankroll:** ${parlay_bankroll:,}  
 • **Super Parlay Stake:** ${super_parlay_stake}  
