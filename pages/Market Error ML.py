@@ -29,7 +29,7 @@ st.markdown("### Meta-Modelo 3D com Detecção Dual (Home & Away)")
 
 # Configurações principais
 GAMES_FOLDER = "GamesDay"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa", "afc","trophy"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "copa", "coppa", "afc","trophy"]
 
 ########################################
 ####### Bloco 3 – Helper Functions #####
