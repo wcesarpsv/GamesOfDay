@@ -238,80 +238,6 @@ if cache_info['files']:
 
 
 
-# ====================== 3D features (diferenças, trig, magnitude) ======================
-def calcular_distancias_3d(df):
-    df = df.copy()
-    for c in ['Aggression_Home','Aggression_Away','M_H','M_A','MT_H','MT_A']:
-        if c not in df.columns:
-            df[c] = 0.0
-    dx = df['Aggression_Home'] - df['Aggression_Away']
-    dy = df['M_H'] - df['M_A']
-    dz = df['MT_H'] - df['MT_A']
-    df['Quadrant_Dist_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
-    df['Quadrant_Separation_3D'] = (dx + dy + dz) / 3
-    # ângulos e projeções
-    a_xy = np.arctan2(dy, dx)
-    a_xz = np.arctan2(dz, dx)
-    a_yz = np.arctan2(dz, np.where(dy==0, 1e-9, dy))
-    df['Quadrant_Sin_XY'] = np.sin(a_xy); df['Quadrant_Cos_XY'] = np.cos(a_xy)
-    df['Quadrant_Sin_XZ'] = np.sin(a_xz); df['Quadrant_Cos_XZ'] = np.cos(a_xz)
-    df['Quadrant_Sin_YZ'] = np.sin(a_yz); df['Quadrant_Cos_YZ'] = np.cos(a_yz)
-    combo = a_xy + a_xz + a_yz
-    df['Quadrant_Sin_Combo'] = np.sin(combo); df['Quadrant_Cos_Combo'] = np.cos(combo)
-    df['Vector_Sign'] = np.sign(dx * dy * dz)
-    df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
-    return df
-
-def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
-    df = df.copy()
-    df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
-    df['dy'] = df['M_H'] - df['M_A']
-    df['dz'] = df['MT_H'] - df['MT_A']
-    Xc = df[['dx','dy','dz']].fillna(0)
-    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=20)
-    df['Cluster3D_Label'] = kmeans.fit_predict(Xc)
-    return df
-
-# ====================== LiveScore (merge) ======================
-def setup_livescore_columns(df):
-    if 'Goals_H_Today' not in df.columns: df['Goals_H_Today'] = np.nan
-    if 'Goals_A_Today' not in df.columns: df['Goals_A_Today'] = np.nan
-    if 'Home_Red'      not in df.columns: df['Home_Red']      = np.nan
-    if 'Away_Red'      not in df.columns: df['Away_Red']      = np.nan
-    return df
-
-def load_and_merge_livescore(games_today, selected_date_str):
-    games_today = setup_livescore_columns(games_today)
-    fp = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
-    if not os.path.exists(fp):
-        st.warning(f"⚠️ LiveScore não encontrado para {selected_date_str} em {fp}")
-        return games_today
-    try:
-        raw = pd.read_csv(fp)
-    except Exception as e:
-        st.error(f"Erro ao ler LiveScore: {e}")
-        return games_today
-
-    if 'status' in raw.columns:
-        raw = raw[~raw['status'].isin(['Cancel', 'Postp.'])]
-
-    left_key = 'Id' if 'Id' in games_today.columns else None
-    right_key = 'Id' if 'Id' in raw.columns else None
-    if left_key and right_key:
-        games_today = games_today.merge(raw, left_on=left_key, right_on=right_key, how='left', suffixes=('', '_RAW'))
-
-    # mapeia colunas comuns
-    for src, dst in [('home_goal','Goals_H_Today'), ('away_goal','Goals_A_Today'),
-                     ('home_red','Home_Red'), ('away_red','Away_Red')]:
-        if src in games_today.columns:
-            games_today[dst] = games_today[src]
-
-    if 'status' in games_today.columns:
-        games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today','Goals_A_Today']] = np.nan
-
-    st.success(f"✅ LiveScore mesclado ({len(raw)} linhas)")
-    return games_today
-
 # ===================== EV ÓTIMO AUTOMÁTICO =====================
 def calcular_ev_otimo_por_liga_lado(history, min_apostas=5, step=0.05, ev_range=(0.0, 1.0)):
     """
@@ -429,6 +355,113 @@ def encontrar_melhores_thresholds(df_analise, min_apostas=10):
             })
     
     return pd.DataFrame(melhores)
+
+
+# ====================== 3D features (diferenças, trig, magnitude) ======================
+def calcular_distancias_3d(df):
+    df = df.copy()
+    for c in ['Aggression_Home','Aggression_Away','M_H','M_A','MT_H','MT_A']:
+        if c not in df.columns:
+            df[c] = 0.0
+    dx = df['Aggression_Home'] - df['Aggression_Away']
+    dy = df['M_H'] - df['M_A']
+    dz = df['MT_H'] - df['MT_A']
+    df['Quadrant_Dist_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+    df['Quadrant_Separation_3D'] = (dx + dy + dz) / 3
+    # ângulos e projeções
+    a_xy = np.arctan2(dy, dx)
+    a_xz = np.arctan2(dz, dx)
+    a_yz = np.arctan2(dz, np.where(dy==0, 1e-9, dy))
+    df['Quadrant_Sin_XY'] = np.sin(a_xy); df['Quadrant_Cos_XY'] = np.cos(a_xy)
+    df['Quadrant_Sin_XZ'] = np.sin(a_xz); df['Quadrant_Cos_XZ'] = np.cos(a_xz)
+    df['Quadrant_Sin_YZ'] = np.sin(a_yz); df['Quadrant_Cos_YZ'] = np.cos(a_yz)
+    combo = a_xy + a_xz + a_yz
+    df['Quadrant_Sin_Combo'] = np.sin(combo); df['Quadrant_Cos_Combo'] = np.cos(combo)
+    df['Vector_Sign'] = np.sign(dx * dy * dz)
+    df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+    return df
+
+def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
+    df = df.copy()
+    df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
+    df['dy'] = df['M_H'] - df['M_A']
+    df['dz'] = df['MT_H'] - df['MT_A']
+    Xc = df[['dx','dy','dz']].fillna(0)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=20)
+    df['Cluster3D_Label'] = kmeans.fit_predict(Xc)
+    return df
+
+# ====================== LiveScore (merge) ======================
+def setup_livescore_columns(df):
+    if 'Goals_H_Today' not in df.columns: df['Goals_H_Today'] = np.nan
+    if 'Goals_A_Today' not in df.columns: df['Goals_A_Today'] = np.nan
+    if 'Home_Red'      not in df.columns: df['Home_Red']      = np.nan
+    if 'Away_Red'      not in df.columns: df['Away_Red']      = np.nan
+    return df
+
+def load_and_merge_livescore(games_today, selected_date_str):
+    games_today = setup_livescore_columns(games_today)
+    fp = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
+    if not os.path.exists(fp):
+        st.warning(f"⚠️ LiveScore não encontrado para {selected_date_str} em {fp}")
+        return games_today
+    try:
+        raw = pd.read_csv(fp)
+    except Exception as e:
+        st.error(f"Erro ao ler LiveScore: {e}")
+        return games_today
+
+    if 'status' in raw.columns:
+        raw = raw[~raw['status'].isin(['Cancel', 'Postp.'])]
+
+    left_key = 'Id' if 'Id' in games_today.columns else None
+    right_key = 'Id' if 'Id' in raw.columns else None
+    if left_key and right_key:
+        games_today = games_today.merge(raw, left_on=left_key, right_on=right_key, how='left', suffixes=('', '_RAW'))
+
+    # mapeia colunas comuns
+    for src, dst in [('home_goal','Goals_H_Today'), ('away_goal','Goals_A_Today'),
+                     ('home_red','Home_Red'), ('away_red','Away_Red')]:
+        if src in games_today.columns:
+            games_today[dst] = games_today[src]
+
+    if 'status' in games_today.columns:
+        games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today','Goals_A_Today']] = np.nan
+
+    st.success(f"✅ LiveScore mesclado ({len(raw)} linhas)")
+    return games_today
+
+# ===================== Feature engineering 3D =====================
+def ensure_3d_features(df):
+    df = calcular_distancias_3d(df)
+    df = aplicar_clusterizacao_3d(df, n_clusters=5)
+    return df
+
+# ===================== Targets EV (Home / Draw / Away) – histórico =====================
+def build_1x2_targets(df_hist: pd.DataFrame):
+    df = df_hist.copy()
+
+    # Verificar duplicados finais
+    chaves_finais = ['Home', 'Away', 'Date'] if all(col in df.columns for col in ['Home', 'Away', 'Date']) else ['Home', 'Away']
+    if all(col in df.columns for col in chaves_finais):
+        duplicados_finais = df.duplicated(subset=chaves_finais, keep='first')
+        if duplicados_finais.any():
+            st.error(f"🚨 ATENÇÃO: {duplicados_finais.sum()} duplicados ainda presentes após limpeza!")
+            st.dataframe(df[duplicados_finais][chaves_finais + ['League']].head(10))
+            # Remover os duplicados finais
+            df = df[~duplicados_finais]
+
+    # resultado real 1X2 (usando FT)
+    df['Result_1X2'] = [result_1x2_from_ft(h, a) for h, a in zip(df['Goals_H_FT'], df['Goals_A_FT'])]
+
+    # odds (podem ser decimais ou líquidas; função trata ambos)
+    df['Target_EV_Home'] = df.apply(lambda r: calc_profit_1x2(r['Result_1X2'], 'H', r.get('Odd_H', np.nan)), axis=1)
+    df['Target_EV_Draw'] = df.apply(lambda r: calc_profit_1x2(r['Result_1X2'], 'D', r.get('Odd_D', np.nan)), axis=1)
+    df['Target_EV_Away'] = df.apply(lambda r: calc_profit_1x2(r['Result_1X2'], 'A', r.get('Odd_A', np.nan)), axis=1)
+
+    return df
+
+
 
 # ============================ Carregamento com Cache ============================
 st.info("📂 Carregando dados 1X2...")
