@@ -451,7 +451,24 @@ games_today = filter_leagues(games_today)
 # Configurações para o hash do cache (mantenha essas checkboxes onde estavam)
 # use_fair e center_targets já estão definidas anteriormente na UI
 
+# ===================== Configurações para Cache =====================
+st.markdown("### ⚙️ Configurações (Afetam o Cache)")
+
+col_conf1, col_conf2 = st.columns(2)
+
+with col_conf1:
+    use_fair = st.checkbox("Usar odds fair (remover juice 1X2)", value=False, 
+                          help="Reestima odds sem vig. Muda o cache.")
+
+with col_conf2:
+    center_targets = st.checkbox("Recentrar targets (EV relativo ao mercado)", value=True, 
+                                help="Subtrai a média do EV histórico. Muda o cache.")
+
+# Calcular hash baseado nas configurações
 config_hash = calcular_hash_configuracao(use_fair, center_targets, files)
+
+# Mostrar info do cache atual
+st.info(f"**Configuração atual:** {config_hash[:16]}...")
 
 # Tentar carregar do cache
 cache_loaded = False
@@ -597,11 +614,6 @@ def build_1x2_targets(df_hist: pd.DataFrame):
 history = build_1x2_targets(history)
 
 # ===================== Opções de normalização na UI =====================
-st.markdown("### ⚙️ Normalizações de odds / targets (opcional)")
-col_opt1, col_opt2 = st.columns(2)
-use_fair = col_opt1.checkbox("Usar odds fair (remover juice 1X2)", value=False, help="Reestima odds sem vig pelo método de prob. normalizadas.")
-center_targets = col_opt2.checkbox("Recentrar targets (EV relativo ao mercado)", value=True, help="Subtrai a média do EV histórico por lado.")
-
 if use_fair:
     history = remove_juice_1x2(history)
     games_today = remove_juice_1x2(games_today)
