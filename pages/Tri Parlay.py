@@ -619,9 +619,9 @@ def get_kelly_stake_ml(row):
     rec = row['ML_Recommendation']
     if pd.isna(rec) or rec == '❌ Avoid': return 0
     
-    if 'Back Home' in rec: return kelly_stake(row['ML_Proba_Home'], row['Odd_H_OP'], bankroll, kelly_fraction, min_stake, max_stake)
-    elif 'Back Away' in rec: return kelly_stake(row['ML_Proba_Away'], row['Odd_A_OP'], bankroll, kelly_fraction, min_stake, max_stake)
-    elif 'Back Draw' in rec: return kelly_stake(row['ML_Proba_Draw'], row['Odd_D_OP'], bankroll, kelly_fraction, min_stake, max_stake)
+    if 'Back Home' in rec: return kelly_stake(row['ML_Proba_Home'], row['Odd_H'], bankroll, kelly_fraction, min_stake, max_stake)
+    elif 'Back Away' in rec: return kelly_stake(row['ML_Proba_Away'], row['Odd_A'], bankroll, kelly_fraction, min_stake, max_stake)
+    elif 'Back Draw' in rec: return kelly_stake(row['ML_Proba_Draw'], row['Odd_D'], bankroll, kelly_fraction, min_stake, max_stake)
     elif '1X' in rec: return kelly_stake(row['ML_Proba_Home'] + row['ML_Proba_Draw'], row['Odd_1X'], bankroll, kelly_fraction, min_stake, max_stake)
     elif 'X2' in rec: return kelly_stake(row['ML_Proba_Away'] + row['ML_Proba_Draw'], row['Odd_X2'], bankroll, kelly_fraction, min_stake, max_stake)
     return 0
@@ -679,13 +679,13 @@ def calculate_profit(rec, result, odds_row):
         return 0
     rec = str(rec)
     if 'Back Home' in rec:
-        odd = odds_row.get('Odd_H_OP', np.nan)
+        odd = odds_row.get('Odd_H', np.nan)
         return odd - 1 if result == "Home" else -1
     elif 'Back Away' in rec:
-        odd = odds_row.get('Odd_A_OP', np.nan)
+        odd = odds_row.get('Odd_A', np.nan)
         return odd - 1 if result == "Away" else -1
     elif 'Back Draw' in rec:
-        odd = odds_row.get('Odd_D_OP', np.nan)
+        odd = odds_row.get('Odd_D', np.nan)
         return odd - 1 if result == "Draw" else -1
     elif '1X' in rec:
         odd = odds_row.get('Odd_1X', np.nan)
@@ -705,19 +705,19 @@ def calculate_profit_with_kelly(rec, result, odds_row, ml_probabilities):
 
     # 🔥 CORREÇÃO: Estrutura condicional completa
     if 'Back Home' in rec:
-        odd = odds_row.get('Odd_H_OP', np.nan)
+        odd = odds_row.get('Odd_H', np.nan)
         stake_kelly = kelly_stake(ml_probabilities.get('Home', 0.5), odd, bankroll, kelly_fraction, min_stake, max_stake)
         profit_fixed = odd - 1 if result == "Home" else -1
         profit_kelly = (odd - 1) * stake_kelly if result == "Home" else -stake_kelly
 
     elif 'Back Away' in rec:
-        odd = odds_row.get('Odd_A_OP', np.nan)
+        odd = odds_row.get('Odd_A', np.nan)
         stake_kelly = kelly_stake(ml_probabilities.get('Away', 0.5), odd, bankroll, kelly_fraction, min_stake, max_stake)
         profit_fixed = odd - 1 if result == "Away" else -1
         profit_kelly = (odd - 1) * stake_kelly if result == "Away" else -stake_kelly
 
     elif 'Back Draw' in rec:
-        odd = odds_row.get('Odd_D_OP', np.nan)
+        odd = odds_row.get('Odd_D', np.nan)
         stake_kelly = kelly_stake(ml_probabilities.get('Draw', 0.5), odd, bankroll, kelly_fraction, min_stake, max_stake)
         profit_fixed = odd - 1 if result == "Draw" else -1
         profit_kelly = (odd - 1) * stake_kelly if result == "Draw" else -stake_kelly
@@ -807,13 +807,13 @@ def calculate_parlay_odds(games_list, games_df):
         game = games_df.loc[Idx]
         if bet_type == 'Home':
             prob = game['ML_Proba_Home']
-            odds = game['Odd_H_OP']
+            odds = game['Odd_H']
         elif bet_type == 'Away':
             prob = game['ML_Proba_Away']
-            odds = game['Odd_A_OP']
+            odds = game['Odd_A']
         elif bet_type == 'Draw':
             prob = game['ML_Proba_Draw']
-            odds = game['Odd_D_OP']
+            odds = game['Odd_D']
         elif bet_type == '1X':
             prob = game['ML_Proba_Home'] + game['ML_Proba_Draw']
             odds = game['Odd_1X']
@@ -917,17 +917,17 @@ def generate_parlay_suggestions(games_df, bankroll_parlay=200, min_prob=0.50, ma
             
             if 'Back Home' in rec:
                 prob = row['ML_Proba_Home']
-                odds = row['Odd_H_OP']
+                odds = row['Odd_H']
                 bet_type = 'Home'
                 edge = prob * odds - 1
             elif 'Back Away' in rec:
                 prob = row['ML_Proba_Away'] 
-                odds = row['Odd_A_OP']
+                odds = row['Odd_A']
                 bet_type = 'Away'
                 edge = prob * odds - 1
             elif 'Back Draw' in rec:
                 prob = row['ML_Proba_Draw']
-                odds = row['Odd_D_OP']
+                odds = row['Odd_D']
                 bet_type = 'Draw'
                 edge = prob * odds - 1
             elif '1X' in rec:
@@ -1179,15 +1179,15 @@ def generate_super_parlay(games_df, target_odds=50, max_games=8):
         
         if 'Back Home' in rec:
             prob = row['ML_Proba_Home']
-            odds = row['Odd_H_OP']
+            odds = row['Odd_H']
             bet_type = 'Home'
         elif 'Back Away' in rec:
             prob = row['ML_Proba_Away']
-            odds = row['Odd_A_OP']
+            odds = row['Odd_A']
             bet_type = 'Away'
         elif 'Back Draw' in rec:
             prob = row['ML_Proba_Draw']
-            odds = row['Odd_D_OP']
+            odds = row['Odd_D']
             bet_type = 'Draw'
         elif '1X' in rec:
             prob = row['ML_Proba_Home'] + row['ML_Proba_Draw']
@@ -1282,7 +1282,7 @@ cols_to_show = [
     'ML_Recommendation', 'ML_Data_Valid', 'ML_Correct', 'Kelly_Stake_ML',  # 🔥 NOVO
     'Profit_ML_Fixed', 'Profit_ML_Kelly',
     'ML_Proba_Home', 'ML_Proba_Draw', 'ML_Proba_Away', 
-    'Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP'
+    'Odd_H', 'Odd_D', 'Odd_A'
 ]
 
 available_cols = [c for c in cols_to_show if c in games_today.columns]
@@ -1297,9 +1297,9 @@ st.dataframe(
         'ML_Proba_Home': '{:.3f}',
         'ML_Proba_Draw': '{:.3f}',
         'ML_Proba_Away': '{:.3f}',
-        'Odd_H_OP': '{:.2f}',
-        'Odd_D_OP': '{:.2f}',
-        'Odd_A_OP': '{:.2f}'
+        'Odd_H': '{:.2f}',
+        'Odd_D': '{:.2f}',
+        'Odd_A': '{:.2f}'
     }).apply(lambda x: ['background-color: #ffcccc' if x.name == 'ML_Data_Valid' and x.iloc[0] == False else '' 
                        for i in range(len(x))], axis=1),  # 🔥 Destaque visual
     use_container_width=True,
