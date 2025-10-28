@@ -367,7 +367,39 @@ selected_date_str = m.group(0) if m else datetime.now().strftime("%Y-%m-%d")
 games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
 games_today = filter_leagues(games_today)
 
-history = filter_leagues(load_all_games(GAMES_FOLDER))
+# Adicionar análise de qualidade antes do processamento
+st.markdown("### 🔍 Análise de Qualidade dos Dados")
+
+col_q1, col_q2, col_q3 = st.columns(3)
+
+with col_q1:
+    st.metric("Jogos Hoje (Raw)", len(games_today))
+
+# Carregar histórico com limpeza
+with st.spinner("Limpando e carregando histórico..."):
+    history = filter_leagues(load_all_games(GAMES_FOLDER))
+    
+    with col_q2:
+        st.metric("Histórico (Limpo)", len(history))
+    
+    # Análise de completude dos dados
+    colunas_importantes = ['Goals_H_FT', 'Goals_A_FT', 'Odd_H', 'Odd_D', 'Odd_A']
+    colunas_presentes = [col for col in colunas_importantes if col in history.columns]
+    
+    completude = {}
+    for col in colunas_presentes:
+        completude[col] = history[col].notna().sum() / len(history) * 100
+    
+    with col_q3:
+        completude_media = np.mean(list(completude.values())) if completude else 0
+        st.metric("Completude Média", f"{completude_media:.1f}%")
+
+# Mostrar detalhes da completude
+if completude:
+    st.markdown("#### 📊 Completude por Coluna")
+    for col, perc in completude.items():
+        st.progress(perc/100, text=f"{col}: {perc:.1f}%")
+
 history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT"]).copy()
 
 # filtro temporal
@@ -376,6 +408,7 @@ if "Date" in history.columns:
         sel_date = pd.to_datetime(selected_date_str)
         history["Date"] = pd.to_datetime(history["Date"], errors="coerce")
         history = history[history["Date"] < sel_date].copy()
+        st.info(f"📅 Histórico filtrado: {len(history)} jogos antes de {selected_date_str}")
     except Exception as e:
         st.warning(f"Erro ao aplicar filtro temporal: {e}")
 
@@ -393,6 +426,16 @@ st.markdown("### 🎯 Construindo targets de lucro 1X2 (histórico)")
 
 def build_1x2_targets(df_hist: pd.DataFrame):
     df = df_hist.copy()
+
+    # Verificar duplicados finais
+    chaves_finais = ['Home', 'Away', 'Date'] if all(col in df.columns for col in ['Home', 'Away', 'Date']) else ['Home', 'Away']
+    if all(col in df.columns for col in chaves_finais):
+        duplicados_finais = df.duplicated(subset=chaves_finais, keep='first')
+        if duplicados_finais.any():
+            st.error(f"🚨 ATENÇÃO: {duplicados_finais.sum()} duplicados ainda presentes após limpeza!")
+            st.dataframe(df[duplicados_finais][chaves_finais + ['League']].head(10))
+            # Remover os duplicados finais
+            df = df[~duplicados_finais]
 
     # resultado real 1X2 (usando FT)
     df['Result_1X2'] = [result_1x2_from_ft(h, a) for h, a in zip(df['Goals_H_FT'], df['Goals_A_FT'])]
