@@ -642,6 +642,21 @@ if valid_games_mask.sum() > 0:
     total_probs_normalized = games_today['ML_Proba_Home'] + games_today['ML_Proba_Draw'] + games_today['ML_Proba_Away']
     st.info(f"📊 **Calibragem**: Soma NORMALIZADA = {total_probs_normalized.mean():.3f} | Soma BRUTA = {games_today['ML_Proba_Sum_Raw'].mean():.3f}")
 
+
+# =====================================================
+# 🎯 GARANTIR COLUNAS NECESSÁRIAS PARA O PERFORMANCE SUMMARY
+# =====================================================
+
+# Inicializar colunas que podem ser usadas no Performance Summary
+required_cols_for_summary = ['ML_Correct', 'Profit_ML_Fixed', 'Profit_ML_Kelly', 'Kelly_Stake_ML']
+for col in required_cols_for_summary:
+    if col not in games_today.columns:
+        games_today[col] = np.nan  # ou 0, dependendo da coluna
+
+st.info(f"✅ Colunas preparadas para Performance Summary: {', '.join(required_cols_for_summary)}")
+
+
+
 # =====================================================
 # 🎯 NOVO: DIAGNÓSTICO DOS MODELOS
 # =====================================================
@@ -1186,28 +1201,33 @@ parlay_suggestions = generate_parlay_suggestions(
 ########################################
 ##### Bloco 11 – Performance Summary ###
 ########################################
+
+# Filtrar apenas jogos finalizados
 finished_games = games_today.dropna(subset=['Result_Today'])
 
 def summary_stats_ml(df):
-    bets = df[df['ML_Correct'].notna()]
+    # Usar apenas jogos onde fizemos recomendações (não "Avoid")
+    bets = df[df['ML_Recommendation'] != '❌ Avoid']
     total_bets = len(bets)
-    correct_bets = bets['ML_Correct'].sum()
+    
+    # Calcular acertos
+    correct_bets = bets['ML_Correct'].sum() if 'ML_Correct' in bets.columns else 0
     winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
     
     # Fixed stake profits
-    total_profit_fixed = bets['Profit_ML_Fixed'].sum()
+    total_profit_fixed = bets['Profit_ML_Fixed'].sum() if 'Profit_ML_Fixed' in bets.columns else 0
     roi_fixed = (total_profit_fixed / total_bets) * 100 if total_bets > 0 else 0
     
     # Kelly stake profits
-    total_profit_kelly = bets['Profit_ML_Kelly'].sum()
-    total_stake_kelly = bets['Kelly_Stake_ML'].sum()
+    total_profit_kelly = bets['Profit_ML_Kelly'].sum() if 'Profit_ML_Kelly' in bets.columns else 0
+    total_stake_kelly = bets['Kelly_Stake_ML'].sum() if 'Kelly_Stake_ML' in bets.columns else 0
     roi_kelly = (total_profit_kelly / total_stake_kelly) * 100 if total_stake_kelly > 0 else 0
     
     # Average stake sizes
-    avg_stake_kelly = bets['Kelly_Stake_ML'].mean() if total_bets > 0 else 0
+    avg_stake_kelly = bets['Kelly_Stake_ML'].mean() if total_bets > 0 and 'Kelly_Stake_ML' in bets.columns else 0
     
     # Kelly bets made
-    kelly_bets = bets[bets['Kelly_Stake_ML'] > 0]
+    kelly_bets = bets[bets['Kelly_Stake_ML'] > 0] if 'Kelly_Stake_ML' in bets.columns else pd.DataFrame()
 
     return {
         "Total Games": len(df),
@@ -1223,7 +1243,40 @@ def summary_stats_ml(df):
         "Kelly Bets Made": len(kelly_bets)
     }
 
-summary_ml = summary_stats_ml(finished_games)
+# Calcular estatísticas apenas se houver jogos finalizados
+if not finished_games.empty:
+    summary_ml = summary_stats_ml(finished_games)
+    
+    # 🔥 CORREÇÃO: Garantir que o summary seja mostrado
+    st.header("📈 Day's Summary - Machine Learning Performance")
+    
+    # Mostrar como JSON ou como métricas visuais
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Bets Made", summary_ml["Bets Made"])
+        st.metric("Correct", summary_ml["Correct"])
+    
+    with col2:
+        st.metric("Winrate", f"{summary_ml['Winrate (%)']}%")
+        st.metric("ROI Fixed", f"{summary_ml['ROI Fixed (%)']}%")
+    
+    with col3:
+        st.metric("Profit Fixed", f"${summary_ml['Profit Fixed (Stake=1)']}")
+        st.metric("Profit Kelly", f"${summary_ml['Profit Kelly']}")
+    
+    with col4:
+        st.metric("ROI Kelly", f"{summary_ml['ROI Kelly (%)']}%")
+        st.metric("Avg Kelly Stake", f"${summary_ml['Avg Kelly Stake']}")
+    
+    # Também mostrar JSON completo para detalhes
+    with st.expander("📊 Detailed JSON Summary"):
+        st.json(summary_ml)
+        
+else:
+    st.header("📈 Day's Summary - Machine Learning Performance")
+    st.info("No finished games available for performance analysis yet.")
+    summary_ml = {}
 
 ########################################
 ##### Bloco 12 – SUPER PARLAY OF THE DAY #
