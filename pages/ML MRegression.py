@@ -936,7 +936,7 @@ def create_fixed_3d_plot(df_plot, n_to_show, selected_league):
             # CONFIGURAÇÃO DE CÂMERA FIXA
             aspectmode="cube",  # FORÇA PROPORÇÕES IGUAIS
             camera=dict(
-                eye=dict(x=1.8, y=1.9, z=1.4),  # POSIÇÃO FIXA DA CÂMERA
+                eye=dict(x=2.2, y=1.8, z=1.4),  # POSIÇÃO FIXA DA CÂMERA
                 up=dict(x=0.3, y=0, z=1),
                 center=dict(x=0, y=0, z=0)
             )
