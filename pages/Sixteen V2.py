@@ -95,24 +95,47 @@ def calc_handicap_result(margin, asian_line_str, invert=False):
             results.append(0.0)
     return np.mean(results)
 
-def convert_asian_line_to_decimal(line_str):
-    """Converte qualquer formato de Asian Line para valor decimal único"""
-    if pd.isna(line_str) or line_str == "":
-        return None
-    
+def convert_asian_line_to_home(value):
+    """
+    Converte handicaps asiáticos (Away) no formato string para decimal invertido (Home).
+
+    Regras oficiais e consistentes com Pinnacle/Bet365:
+      '0/0.5'   -> +0.25  (para away) → invertido: -0.25 (para home)
+      '-0.5/0'  -> -0.25  (para away) → invertido: +0.25 (para home)
+      '-1/1.5'  -> -0.25  → +0.25
+      '1/1.5'   -> +1.25  → -1.25
+      '1.5'     -> +1.50  → -1.50
+      '0'       ->  0.00  →  0.00
+
+    Retorna: float
+    """
+    if pd.isna(value):
+        return np.nan
+
+    value = str(value).strip()
+
+    # Caso simples — número único
+    if "/" not in value:
+        try:
+            num = float(value)
+            return -num  # Inverte sinal (Away → Home)
+        except ValueError:
+            return np.nan
+
+    # Caso duplo — média dos dois lados
     try:
-        line_str = str(line_str).strip()
-        
-        # Se não tem "/" é valor único
-        if "/" not in line_str:
-            return float(line_str)
-        
-        # Se tem "/" é linha fracionada - calcular média
-        parts = [float(x) for x in line_str.split("/")]
-        return sum(parts) / len(parts)
-        
-    except (ValueError, TypeError):
-        return None
+        parts = [float(p) for p in value.split("/")]
+        avg = np.mean(parts)
+        # Mantém o sinal do primeiro número
+        if str(value).startswith("-"):
+            result = -abs(avg)
+        else:
+            result = abs(avg)
+        # Inverte o sinal no final (Away → Home)
+        return -result
+    except ValueError:
+        return np.nan
+
 
 # ---------------- Carregar Dados ----------------
 st.info("📂 Carregando dados para análise de 16 quadrantes...")
@@ -196,8 +219,8 @@ history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line"]).copy
 
 # ---------------- CONVERSÃO ASIAN LINE ----------------
 # Aplicar conversão no histórico e jogos de hoje
-history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
-games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
+history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_home)
+games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_home)
 
 # Filtrar apenas jogos com linha válida no histórico
 history = history.dropna(subset=['Asian_Line_Decimal'])
