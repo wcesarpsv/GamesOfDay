@@ -1308,15 +1308,10 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
     
     ########### ---------------- ATUALIZAR COM DADOS LIVE 3D ----------------
-
-import math
-import numpy as np
-import pandas as pd
-
-
-# ============================================================
-# 🧮 Função principal – Determina resultado do handicap
-# ============================================================
+    
+    # ============================================================
+    # 🧮 Função principal – Determina resultado do handicap
+    # ============================================================
     def determine_handicap_result_3d(row):
         """
         Determina o resultado do handicap asiático com base no lado recomendado.
