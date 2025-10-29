@@ -60,59 +60,55 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
     pattern = "|".join(EXCLUDED_LEAGUE_KEYWORDS)
     return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
 
-def convert_asian_line(line_str):
-    """Converte string de linha asiática em média numérica"""
-    try:
-        if pd.isna(line_str) or line_str == "":
-            return None
-        line_str = str(line_str).strip()
-        if "/" not in line_str:
-            val = float(line_str)
-            return 0.0 if abs(val) < 1e-10 else val
-        parts = [float(x) for x in line_str.split("/")]
-        avg = sum(parts) / len(parts)
-        return 0.0 if abs(avg) < 1e-10 else avg
-    except:
-        return None
 
-def calc_handicap_result(margin, asian_line_str, invert=False):
-    """Retorna média de pontos por linha (1 win, 0.5 push, 0 loss)"""
-    if pd.isna(asian_line_str):
+def convert_asian_line_to_decimal(value):
+    """
+    Converte handicaps asiáticos (Away) no formato string para decimal invertido (Home).
+
+    Regras oficiais e consistentes com Pinnacle/Bet365:
+      '0/0.5'   -> +0.25  (para away) → invertido: -0.25 (para home)
+      '-0.5/0'  -> -0.25  (para away) → invertido: +0.25 (para home)
+      '-1/1.5'  -> -0.25  → +0.25
+      '1/1.5'   -> +1.25  → -1.25
+      '1.5'     -> +1.50  → -1.50
+      '0'       ->  0.00  →  0.00
+
+    Retorna: float
+    """
+    if pd.isna(value):
         return np.nan
-    if invert:
-        margin = -margin
+
+    value = str(value).strip()
+
+    # Caso simples — número único
+    if "/" not in value:
+        try:
+            num = float(value)
+            return -num  # Inverte sinal (Away → Home)
+        except ValueError:
+            return np.nan
+
+    # Caso duplo — média dos dois lados
     try:
-        parts = [float(x) for x in str(asian_line_str).split('/')]
-    except:
-        return np.nan
-    results = []
-    for line in parts:
-        if margin > line:
-            results.append(1.0)
-        elif margin == line:
-            results.append(0.5)
+        parts = [float(p) for p in value.split("/")]
+        avg = np.mean(parts)
+        # Mantém o sinal do primeiro número
+        if str(value).startswith("-"):
+            result = -abs(avg)
         else:
-            results.append(0.0)
-    return np.mean(results)
+            result = abs(avg)
+        # Inverte o sinal no final (Away → Home)
+        return -result
+    except ValueError:
+        return np.nan
 
-def convert_asian_line_to_decimal(line_str):
-    """Converte qualquer formato de Asian Line para valor decimal único"""
-    if pd.isna(line_str) or line_str == "":
-        return None
 
-    try:
-        line_str = str(line_str).strip()
-
-        # Se não tem "/" é valor único
-        if "/" not in line_str:
-            return float(line_str)
-
-        # Se tem "/" é linha fracionada - calcular média
-        parts = [float(x) for x in line_str.split("/")]
-        return sum(parts) / len(parts)
-
-    except (ValueError, TypeError):
-        return None
+def calculate_ah_home_target(margin, asian_line_str):
+    """Calcula target AH Home diretamente da string original"""
+    line_home = convert_asian_line_to_decimal(asian_line_str)
+    if pd.isna(line_home) or pd.isna(margin):
+        return np.nan
+    return 1 if margin > line_home else 0
 
 
 from sklearn.cluster import KMeans
@@ -297,7 +293,7 @@ if "Date" in history.columns:
 # Targets AH históricos
 history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
 history["Target_AH_Home"] = history.apply(
-    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line"], invert=False) > 0.5 else 0, axis=1
+    lambda r: calculate_ah_home_target(r["Margin"], r["Asian_Line"]), axis=1
 )
 
 # ---------------- SISTEMA 3D DE 16 QUADRANTES ----------------
@@ -1312,23 +1308,23 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
     # ---------------- ATUALIZAR COM DADOS LIVE 3D ----------------
     def determine_handicap_result(row):
-        """Determina se o HOME cobriu o handicap"""
+        """Determina se o HOME cobriu o handicap usando linha já convertida"""
         try:
             gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
             ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
-            asian_line_decimal = row.get('Asian_Line_Decimal')
+            asian_line_decimal = row.get('Asian_Line_Decimal')  # Já convertida para Home
         except (ValueError, TypeError):
             return None
-
+    
         if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line_decimal):
             return None
-
+    
         margin = gh - ga
-        handicap_result = calc_handicap_result(margin, asian_line_decimal, invert=False)
-
-        if handicap_result > 0.5:
+        
+        # ✅ CÁLCULO DIRETO - linha já está no formato Home
+        if margin > asian_line_decimal:
             return "HOME_COVERED"
-        elif handicap_result == 0.5:
+        elif margin == asian_line_decimal:
             return "PUSH"
         else:
             return "HOME_NOT_COVERED"
@@ -1348,21 +1344,21 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         return None
 
     def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal):
-        """Calcula profit para handicap asiático"""
+        """Calcula profit para handicap asiático (usando linha já convertida para Home)"""
         if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid' or pd.isna(asian_line_decimal):
             return 0
-
+    
         rec = str(rec).upper()
         is_home_bet = any(k in rec for k in ['HOME', 'FAVORITO HOME', 'VALUE NO HOME'])
         is_away_bet = any(k in rec for k in ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
-
+    
         if not (is_home_bet or is_away_bet):
             return 0
-
+    
         odd = odds_row.get('Odd_H_Asi', np.nan) if is_home_bet else odds_row.get('Odd_A_Asi', np.nan)
         if pd.isna(odd):
             return 0
-
+    
         def split_line(line):
             frac = abs(line) % 1
             if frac == 0.25:
@@ -1375,10 +1371,12 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
                 return [base + (0.5 if line > 0 else -0.5), base + (1.0 if line > 0 else -1.0)]
             else:
                 return [line]
-
-        asian_line_for_eval = -asian_line_decimal if is_home_bet else asian_line_decimal
+    
+        # ⚠️ IMPORTANTE: asian_line_decimal já está no formato Home
+        # Para apostas Away, invertemos o sinal
+        asian_line_for_eval = asian_line_decimal if is_home_bet else -asian_line_decimal
         lines = split_line(asian_line_for_eval)
-
+    
         def single_profit(result):
             if result == "PUSH":
                 return 0
@@ -1387,7 +1385,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             elif (is_home_bet and result == "HOME_NOT_COVERED") or (is_away_bet and result == "HOME_COVERED"):
                 return -1
             return 0
-
+    
         if len(lines) == 2:
             p1 = single_profit(handicap_result)
             p2 = single_profit(handicap_result)
