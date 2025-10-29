@@ -1306,73 +1306,88 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # Aplicar scoring combinado 3D
     ranking_3d = gerar_score_combinado_3d_16(ranking_3d)
 
+    
     ########### ---------------- ATUALIZAR COM DADOS LIVE 3D ----------------
     def determine_handicap_result_3d(row):
-        """Determina se a RECOMENDAÇÃO cobriu o handicap"""
+        """
+        Determina o resultado do handicap asiático (HOME/AWAY) com base no placar e linha.
+        Cobre todas as linhas entre -3.0 e +3.0, incluindo 0.25, 0.75, 1.25, 1.75 etc.
+        """
         try:
             gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
             ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
-            asian_line_decimal = row.get('Asian_Line_Decimal')  # Linha convertida para HOME
-            recomendacao = row.get('Recomendacao', '')
+            asian_line_decimal = row.get('Asian_Line_Decimal')
+            recomendacao = str(row.get('Recomendacao', '')).upper().strip()
         except (ValueError, TypeError):
             return None
     
         if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line_decimal):
             return None
     
-        margin = gh - ga
-        
-        # 🔥 CORREÇÃO: Determinar se apostamos em HOME ou AWAY
-        is_home_bet = any(keyword in str(recomendacao).upper() for keyword in 
-                         ['HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME', 'H:'])
-        
-        is_away_bet = any(keyword in str(recomendacao).upper() for keyword in 
-                         ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY', 'A:'])
-        
-        # 🔥 CORREÇÃO: Se apostamos no AWAY, invertemos a linha!
-        if is_away_bet:
-            line_for_calc = -asian_line_decimal  # Inverte a perspectiva
-        else:
-            line_for_calc = asian_line_decimal   # Mantém perspectiva HOME
-        
-        # Agora calculamos baseado na linha ajustada
-        is_integer_line = line_for_calc % 1 == 0
-        is_half_line = abs(line_for_calc % 1) == 0.5
-        is_quarter_line = abs(line_for_calc % 1) in [0.25, 0.75]
-        
-        if is_half_line:
-            if margin > line_for_calc:
-                return "HOME_COVERED" if not is_away_bet else "AWAY_COVERED"
-            else:
-                return "HOME_NOT_COVERED" if not is_away_bet else "AWAY_NOT_COVERED"
-        
-        elif is_integer_line:
+        margin = gh - ga  # diferença de gols (positiva se HOME venceu)
+    
+        # ---------------- IDENTIFICAÇÃO DO LADO APOSTADO ----------------
+        is_home_bet = any(k in recomendacao for k in 
+                          ['HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME', 'H:', 'HOME)'])
+        is_away_bet = any(k in recomendacao for k in 
+                          ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY', 'A:', 'AWAY)'])
+    
+        # 🔄 Inverte a linha se a aposta for no AWAY
+        line_for_calc = -asian_line_decimal if is_away_bet else asian_line_decimal
+    
+        frac = abs(line_for_calc % 1)
+        is_integer_line = frac == 0
+        is_half_line = frac == 0.5
+        is_quarter_line = frac in [0.25, 0.75]
+    
+        # ---------------- LINHAS INTEIRAS ----------------
+        if is_integer_line:
             if margin > line_for_calc:
                 return "HOME_COVERED" if not is_away_bet else "AWAY_COVERED"
             elif margin == line_for_calc:
                 return "PUSH"
             else:
                 return "HOME_NOT_COVERED" if not is_away_bet else "AWAY_NOT_COVERED"
-        
+    
+        # ---------------- LINHAS DE MEIA (.5) ----------------
+        elif is_half_line:
+            if margin > line_for_calc:
+                return "HOME_COVERED" if not is_away_bet else "AWAY_COVERED"
+            else:
+                return "HOME_NOT_COVERED" if not is_away_bet else "AWAY_NOT_COVERED"
+    
+        # ---------------- LINHAS FRACIONADAS (.25 / .75) ----------------
         elif is_quarter_line:
+            # Define os pares de linhas equivalentes
             if line_for_calc > 0:
-                line1 = math.floor(line_for_calc)
+                # Exemplo: +0.25 → [0.0, +0.5]; +0.75 → [+0.5, +1.0]
+                line1 = math.floor(line_for_calc * 2) / 2
                 line2 = line1 + 0.5
             else:
-                line1 = math.ceil(line_for_calc) 
+                # Exemplo: -0.25 → [0.0, -0.5]; -0.75 → [-0.5, -1.0]
+                line1 = math.ceil(line_for_calc * 2) / 2
                 line2 = line1 - 0.5
-            
-            result1 = 1.0 if margin > line1 else (0.5 if margin == line1 else 0.0)
-            result2 = 1.0 if margin > line2 else (0.5 if margin == line2 else 0.0)
+    
+            def partial_result(line):
+                if margin > line:
+                    return 1.0
+                elif margin == line:
+                    return 0.5
+                else:
+                    return 0.0
+    
+            result1 = partial_result(line1)
+            result2 = partial_result(line2)
             avg_result = (result1 + result2) / 2
-            
+    
             if avg_result > 0.5:
                 return "HOME_COVERED" if not is_away_bet else "AWAY_COVERED"
             elif avg_result == 0.5:
                 return "PUSH"
             else:
                 return "HOME_NOT_COVERED" if not is_away_bet else "AWAY_NOT_COVERED"
-        
+    
+        # ---------------- Fallback para valores incomuns ----------------
         else:
             if margin > line_for_calc:
                 return "HOME_COVERED" if not is_away_bet else "AWAY_COVERED"
@@ -1381,22 +1396,24 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             else:
                 return "HOME_NOT_COVERED" if not is_away_bet else "AWAY_NOT_COVERED"
     
+    
+    # ---------------------------------------------------------------------
     def check_handicap_recommendation_correct_3d(recomendacao, handicap_result, ml_side):
-        """Verifica se a recomendação estava correta - CORRIGIDA para excluir ⚖️ ANALISAR"""
+        """
+        Verifica se a recomendação estava correta com base no resultado real do handicap.
+        """
         if (pd.isna(recomendacao) or handicap_result is None or 
-            recomendacao == '❌ Avoid' or '⚖️ ANALISAR' in str(recomendacao)):
+            recomendacao == '❌ AVOID' or '⚖️ ANALISAR' in str(recomendacao).upper()):
             return None
     
-        recomendacao_str = str(recomendacao).upper()
-        
-        # Identificação do lado recomendado
-        is_home_bet = any(keyword in recomendacao_str for keyword in 
+        recomendacao_str = str(recomendacao).upper().strip()
+    
+        is_home_bet = any(k in recomendacao_str for k in 
                          ['HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME', 'H:', 'HOME)'])
-        
-        is_away_bet = any(keyword in recomendacao_str for keyword in 
+        is_away_bet = any(k in recomendacao_str for k in 
                          ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY', 'A:', 'AWAY)'])
-        
-        # Fallback para ML_Side se não identificar claramente
+    
+        # Fallback para ML_Side
         if not is_home_bet and not is_away_bet:
             if ml_side == 'HOME':
                 is_home_bet = True
@@ -1408,27 +1425,27 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         if is_home_bet:
             return handicap_result == "HOME_COVERED"
         elif is_away_bet:
-            return handicap_result in ["HOME_NOT_COVERED", "PUSH"]
-        
+            return handicap_result == "AWAY_COVERED"
         return None
     
+    
+    # ---------------------------------------------------------------------
     def calculate_handicap_profit_3d(recomendacao, handicap_result, odds_row, asian_line_decimal, ml_side):
-        """Calcula profit para handicap asiático - CORRIGIDA para excluir ⚖️ ANALISAR"""
+        """
+        Calcula o profit líquido (odd - 1) para handicap asiático, cobrindo linhas até ±3.0.
+        """
         if (pd.isna(recomendacao) or handicap_result is None or 
-            recomendacao == '❌ Avoid' or '⚖️ ANALISAR' in str(recomendacao) or 
+            recomendacao == '❌ AVOID' or '⚖️ ANALISAR' in str(recomendacao).upper() or 
             pd.isna(asian_line_decimal)):
             return 0
     
-        recomendacao_str = str(recomendacao).upper()
-        
-        # Identificação mais precisa do lado da aposta
-        is_home_bet = any(keyword in recomendacao_str for keyword in 
+        recomendacao_str = str(recomendacao).upper().strip()
+    
+        is_home_bet = any(k in recomendacao_str for k in 
                          ['HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME', 'H:', 'HOME)'])
-        
-        is_away_bet = any(keyword in recomendacao_str for keyword in 
+        is_away_bet = any(k in recomendacao_str for k in 
                          ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY', 'A:', 'AWAY)'])
-        
-        # Fallback para ML_Side
+    
         if not is_home_bet and not is_away_bet:
             if ml_side == 'HOME':
                 is_home_bet = True
@@ -1437,33 +1454,30 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             else:
                 return 0
     
-        # Obter odds corretas
-        if is_home_bet:
-            odd = odds_row.get('Odd_H_Asi', np.nan)
-        else:
-            odd = odds_row.get('Odd_A_Asi', np.nan)
-            
+        odd = odds_row.get('Odd_H_Asi', np.nan) if is_home_bet else odds_row.get('Odd_A_Asi', np.nan)
         if pd.isna(odd):
             return 0
     
-        # Lógica de cálculo de profit
-        if is_home_bet and handicap_result == "HOME_COVERED":
-            return odd   # Profit
-        elif is_home_bet and handicap_result == "HOME_NOT_COVERED":
-            return -1  # Loss
-        elif is_away_bet and handicap_result == "HOME_NOT_COVERED":
-            return odd   # Profit
-        elif is_away_bet and handicap_result == "HOME_COVERED":
-            return -1  # Loss
+        # Lucro líquido: odd - 1
+        if (is_home_bet and handicap_result == "HOME_COVERED") or \
+           (is_away_bet and handicap_result == "AWAY_COVERED"):
+            return odd - 1
+        elif (is_home_bet and handicap_result == "HOME_NOT_COVERED") or \
+             (is_away_bet and handicap_result == "AWAY_NOT_COVERED"):
+            return -1
         elif handicap_result == "PUSH":
-            return 0  # Push (devolve aposta)
-        
-        return 0
+            return 0
+        else:
+            return 0
     
+    
+    # ---------------------------------------------------------------------
     def update_real_time_data_3d(df):
-        """Atualiza todos os dados em tempo real para sistema 3D - CORRIGIDA"""
+        """
+        Atualiza todas as métricas de handicap em tempo real para o sistema 3D.
+        """
         df = df.copy()
-        
+    
         df['Handicap_Result'] = df.apply(determine_handicap_result_3d, axis=1)
         df['Quadrante_Correct'] = df.apply(
             lambda r: check_handicap_recommendation_correct_3d(
@@ -1472,11 +1486,13 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         )
         df['Profit_Quadrante'] = df.apply(
             lambda r: calculate_handicap_profit_3d(
-                r['Recomendacao'], r['Handicap_Result'], r, 
+                r['Recomendacao'], r['Handicap_Result'], r,
                 r['Asian_Line_Decimal'], r.get('ML_Side')
             ), axis=1
         )
+    
         return df
+
 
     # Aplicar atualização em tempo real 3D
     ranking_3d = update_real_time_data_3d(ranking_3d)
