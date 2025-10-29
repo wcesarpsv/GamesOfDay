@@ -1308,11 +1308,12 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
     ########### ---------------- ATUALIZAR COM DADOS LIVE 3D ----------------
     def determine_handicap_result_3d(row):
-        """Determina se o HOME cobriu o handicap - LÓGICA CORRIGIDA"""
+        """Determina se a RECOMENDAÇÃO cobriu o handicap"""
         try:
             gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
             ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
-            asian_line_decimal = row.get('Asian_Line_Decimal')  # Handicap que HOME precisa cobrir
+            asian_line_decimal = row.get('Asian_Line_Decimal')  # Linha convertida para HOME
+            recomendacao = row.get('Recomendacao', '')
         except (ValueError, TypeError):
             return None
     
@@ -1320,61 +1321,65 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             return None
     
         margin = gh - ga
-        handicap_for_home = asian_line_decimal
         
-        # 🔥 LÓGICA CORRETA: HOME cobre se MARGIN > HANDICAP
-        is_integer_line = handicap_for_home % 1 == 0
-        is_half_line = abs(handicap_for_home % 1) == 0.5
-        is_quarter_line = abs(handicap_for_home % 1) in [0.25, 0.75]
+        # 🔥 CORREÇÃO: Determinar se apostamos em HOME ou AWAY
+        is_home_bet = any(keyword in str(recomendacao).upper() for keyword in 
+                         ['HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME', 'H:'])
         
-        # Handicaps MEIO (0.5, 1.5, etc.)
+        is_away_bet = any(keyword in str(recomendacao).upper() for keyword in 
+                         ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY', 'A:'])
+        
+        # 🔥 CORREÇÃO: Se apostamos no AWAY, invertemos a linha!
+        if is_away_bet:
+            line_for_calc = -asian_line_decimal  # Inverte a perspectiva
+        else:
+            line_for_calc = asian_line_decimal   # Mantém perspectiva HOME
+        
+        # Agora calculamos baseado na linha ajustada
+        is_integer_line = line_for_calc % 1 == 0
+        is_half_line = abs(line_for_calc % 1) == 0.5
+        is_quarter_line = abs(line_for_calc % 1) in [0.25, 0.75]
+        
         if is_half_line:
-            if margin > handicap_for_home:
-                return "HOME_COVERED"
+            if margin > line_for_calc:
+                return "HOME_COVERED" if not is_away_bet else "AWAY_COVERED"
             else:
-                return "HOME_NOT_COVERED"
+                return "HOME_NOT_COVERED" if not is_away_bet else "AWAY_NOT_COVERED"
         
-        # Handicaps INTEIROS
         elif is_integer_line:
-            if margin > handicap_for_home:
-                return "HOME_COVERED"
-            elif margin == handicap_for_home:
+            if margin > line_for_calc:
+                return "HOME_COVERED" if not is_away_bet else "AWAY_COVERED"
+            elif margin == line_for_calc:
                 return "PUSH"
             else:
-                return "HOME_NOT_COVERED"
+                return "HOME_NOT_COVERED" if not is_away_bet else "AWAY_NOT_COVERED"
         
-        # Handicaps FRACIONADOS (0.25, 0.75)
         elif is_quarter_line:
-            # Split do handicap fracionado
-            if handicap_for_home > 0:
-                line1 = math.floor(handicap_for_home)
+            if line_for_calc > 0:
+                line1 = math.floor(line_for_calc)
                 line2 = line1 + 0.5
             else:
-                line1 = math.ceil(handicap_for_home) 
+                line1 = math.ceil(line_for_calc) 
                 line2 = line1 - 0.5
             
-            # Calcular resultado para cada parte do split
             result1 = 1.0 if margin > line1 else (0.5 if margin == line1 else 0.0)
             result2 = 1.0 if margin > line2 else (0.5 if margin == line2 else 0.0)
-            
             avg_result = (result1 + result2) / 2
             
-            # Converter média para resultado final
             if avg_result > 0.5:
-                return "HOME_COVERED"
+                return "HOME_COVERED" if not is_away_bet else "AWAY_COVERED"
             elif avg_result == 0.5:
                 return "PUSH"
             else:
-                return "HOME_NOT_COVERED"
+                return "HOME_NOT_COVERED" if not is_away_bet else "AWAY_NOT_COVERED"
         
         else:
-            # Fallback
-            if margin > handicap_for_home:
-                return "HOME_COVERED"
-            elif margin == handicap_for_home:
+            if margin > line_for_calc:
+                return "HOME_COVERED" if not is_away_bet else "AWAY_COVERED"
+            elif margin == line_for_calc:
                 return "PUSH"
             else:
-                return "HOME_NOT_COVERED"
+                return "HOME_NOT_COVERED" if not is_away_bet else "AWAY_NOT_COVERED"
     
     def check_handicap_recommendation_correct_3d(recomendacao, handicap_result, ml_side):
         """Verifica se a recomendação estava correta - CORRIGIDA para excluir ⚖️ ANALISAR"""
