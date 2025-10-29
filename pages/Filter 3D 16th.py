@@ -1421,11 +1421,11 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
         # Lógica de cálculo de profit
         if is_home_bet and handicap_result == "HOME_COVERED":
-            return odd - 1  # Profit
+            return odd   # Profit
         elif is_home_bet and handicap_result == "HOME_NOT_COVERED":
             return -1  # Loss
         elif is_away_bet and handicap_result == "HOME_NOT_COVERED":
-            return odd - 1  # Profit
+            return odd   # Profit
         elif is_away_bet and handicap_result == "HOME_COVERED":
             return -1  # Loss
         elif handicap_result == "PUSH":
