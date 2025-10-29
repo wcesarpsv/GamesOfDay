@@ -1308,6 +1308,108 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
     
     ########### ---------------- ATUALIZAR COM DADOS LIVE 3D ----------------
+
+    ########### ---------------- LIVE SCORE MONITOR – SISTEMA 3D (1X2) ----------------
+
+    def determine_match_result_1x2(row):
+        """Determina o resultado 1X2 puro (sem handicap)."""
+        try:
+            gh = float(row['Goals_H_Today'])
+            ga = float(row['Goals_A_Today'])
+        except (ValueError, TypeError):
+            return None
+    
+        if pd.isna(gh) or pd.isna(ga):
+            return None
+    
+        if gh > ga:
+            return "HOME_WIN"
+        elif gh < ga:
+            return "AWAY_WIN"
+        else:
+            return "DRAW"
+    
+    
+    def check_recommendation_correct_1x2(recomendacao, match_result):
+        """Verifica se a recomendação acertou o resultado 1X2."""
+        if pd.isna(recomendacao) or match_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
+            return None
+    
+        recomendacao_str = str(recomendacao).upper()
+    
+        is_home_bet = any(k in recomendacao_str for k in [
+            'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+            'MODELO CONFIA HOME', 'H:', 'HOME)'
+        ])
+        is_away_bet = any(k in recomendacao_str for k in [
+            'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+            'MODELO CONFIA AWAY', 'A:', 'AWAY)'
+        ])
+    
+        if is_home_bet and match_result == "HOME_WIN":
+            return True
+        elif is_away_bet and match_result == "AWAY_WIN":
+            return True
+        else:
+            return False
+    
+    
+    def calculate_profit_1x2(recomendacao, match_result, odds_row):
+        """Calcula o profit líquido (odds brutas - 1) para apostas 1X2."""
+        if pd.isna(recomendacao) or match_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
+            return 0
+    
+        recomendacao_str = str(recomendacao).upper()
+    
+        is_home_bet = any(k in recomendacao_str for k in [
+            'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+            'MODELO CONFIA HOME', 'H:', 'HOME)'
+        ])
+        is_away_bet = any(k in recomendacao_str for k in [
+            'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+            'MODELO CONFIA AWAY', 'A:', 'AWAY)'
+        ])
+    
+        if is_home_bet:
+            odd = odds_row.get('Odd_H', np.nan)
+            won = match_result == "HOME_WIN"
+        elif is_away_bet:
+            odd = odds_row.get('Odd_A', np.nan)
+            won = match_result == "AWAY_WIN"
+        else:
+            return 0
+    
+        if pd.isna(odd):
+            return 0
+    
+        return (odd - 1) if won else -1
+    
+    
+    def update_real_time_data_1x2(df):
+        """
+        Atualiza as métricas 1X2 no DataFrame.
+        Retorna: Result_1x2, Quadrante_Correct_1x2, Profit_1x2
+        """
+        df = df.copy()
+    
+        df['Result_1x2'] = df.apply(determine_match_result_1x2, axis=1)
+        df['Quadrante_Correct_1x2'] = df.apply(
+            lambda r: check_recommendation_correct_1x2(
+                r['Recomendacao'], r['Result_1x2']
+            ), axis=1
+        )
+        df['Profit_1x2'] = df.apply(
+            lambda r: calculate_profit_1x2(
+                r['Recomendacao'], r['Result_1x2'], r
+            ), axis=1
+        )
+    
+        return df
+
+
+    ##################################################################
+
+    
     
     # ============================================================
     # 🧮 Função principal – Determina resultado do handicap
@@ -1536,27 +1638,70 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             "ROI Quadrante 3D": f"{roi:.1f}%"
         }
 
-        quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
-        total_bets = len(quadrante_bets)
-        correct_bets = quadrante_bets['Quadrante_Correct'].sum()
-        winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
-        total_profit = quadrante_bets['Profit_Quadrante'].sum()
-        roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
 
-        return {
-            "Total Jogos": len(df),
-            "Jogos Finalizados": len(finished_games),
-            "Apostas Quadrante 3D": total_bets,
-            "Acertos Quadrante 3D": int(correct_bets),
-            "Winrate Quadrante 3D": f"{winrate:.1f}%",
-            "Profit Quadrante 3D": f"{total_profit:.2f}u",
-            "ROI Quadrante 3D": f"{roi:.1f}%"
-        }
 
     # Exibir resumo live 3D
     st.markdown("## 📡 Live Score Monitor - Sistema 3D")
     live_summary_3d = generate_live_summary_3d(ranking_3d)
     st.json(live_summary_3d)
+
+    #####################################################################
+
+    # ================================================================
+    # ⚽ LIVE SCORE MONITOR – SISTEMA 3D – 1x2
+    # ================================================================
+    st.markdown("## 📡 Live Score Monitor - Sistema 3D (1x2)")
+    
+    # Atualiza os resultados e lucros 1x2 com base no LiveScore
+    ranking_3d = update_real_time_data_1x2(ranking_3d)
+    
+    # Mostra resumo 1x2
+    finished_1x2 = ranking_3d[ranking_3d['Result_1x2'].notna()]
+    if not finished_1x2.empty:
+        total_bets = finished_1x2['Quadrante_Correct_1x2'].notna().sum()
+        correct_bets = finished_1x2['Quadrante_Correct_1x2'].sum()
+        total_profit = finished_1x2['Profit_1x2'].sum()
+        winrate = correct_bets / total_bets if total_bets > 0 else 0
+        roi = total_profit / total_bets if total_bets > 0 else 0
+    
+        st.metric("Apostas (1x2)", total_bets)
+        st.metric("Winrate (1x2)", f"{winrate:.1%}")
+        st.metric("Lucro Total (1x2)", f"{total_profit:.2f}u")
+        st.metric("ROI (1x2)", f"{roi:.1%}")
+    else:
+        st.info("⚠️ Nenhum jogo finalizado ainda para o sistema 1x2.")
+    
+    
+    # ================================================================
+    # ⚖️ COMPARATIVO – AH x 1x2
+    # ================================================================
+    def compare_systems_summary(df):
+        """Compara Sistema 3D Handicap x Sistema 1x2"""
+        def calc(prefix):
+            valid = df[f'Quadrante_Correct_{prefix}'].notna().sum()
+            total_profit = df[f'Profit_{prefix}'].sum()
+            roi = total_profit / valid if valid > 0 else 0
+            acc = df[f'Quadrante_Correct_{prefix}'].mean(skipna=True)
+            return {"Bets": valid, "Hit%": f"{acc:.1%}", "Profit": f"{total_profit:.2f}", "ROI": f"{roi:.1%}"}
+    
+        ah = calc("Quadrante")
+        x12 = calc("1x2")
+    
+        resumo = pd.DataFrame({
+            "Métrica": ["Apostas", "Taxa de Acerto", "Lucro Total", "ROI Médio"],
+            "Sistema Asiático (AH)": [ah["Bets"], ah["Hit%"], ah["Profit"], ah["ROI"]],
+            "Sistema 1x2": [x12["Bets"], x12["Hit%"], x12["Profit"], x12["ROI"]]
+        })
+    
+        st.markdown("### ⚖️ Comparativo de Performance – AH vs 1x2")
+        st.dataframe(resumo.style.highlight_max(axis=1, color='lightgreen')
+                               .highlight_min(axis=1, color='#ffb3b3'),
+                     use_container_width=True)
+    
+    compare_systems_summary(ranking_3d)
+
+
+    #####################################################################
 
     # Ordenar por score final 3D
     ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
