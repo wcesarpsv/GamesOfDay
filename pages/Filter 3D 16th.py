@@ -1678,10 +1678,17 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     def compare_systems_summary(df):
         """Compara Sistema 3D Handicap x Sistema 1x2"""
         def calc(prefix):
-            valid = df[f'Quadrante_Correct_{prefix}'].notna().sum()
-            total_profit = df[f'Profit_{prefix}'].sum()
+            if prefix == "Quadrante":  # Handicap Asiático
+                correct_col = "Quadrante_Correct"
+                profit_col = "Profit_Quadrante"
+            else:  # 1x2
+                correct_col = f"Quadrante_Correct_{prefix}"
+                profit_col = f"Profit_{prefix}"
+    
+            valid = df[correct_col].notna().sum()
+            total_profit = df[profit_col].sum()
             roi = total_profit / valid if valid > 0 else 0
-            acc = df[f'Quadrante_Correct_{prefix}'].mean(skipna=True)
+            acc = df[correct_col].mean(skipna=True)
             return {"Bets": valid, "Hit%": f"{acc:.1%}", "Profit": f"{total_profit:.2f}", "ROI": f"{roi:.1%}"}
     
         ah = calc("Quadrante")
@@ -1694,11 +1701,12 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         })
     
         st.markdown("### ⚖️ Comparativo de Performance – AH vs 1x2")
-        st.dataframe(resumo.style.highlight_max(axis=1, color='lightgreen')
-                               .highlight_min(axis=1, color='#ffb3b3'),
-                     use_container_width=True)
-    
-    compare_systems_summary(ranking_3d)
+        st.dataframe(
+            resumo.style.highlight_max(axis=1, color='lightgreen')
+                          .highlight_min(axis=1, color='#ffb3b3'),
+            use_container_width=True
+        )
+
 
 
     #####################################################################
