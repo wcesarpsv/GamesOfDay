@@ -985,7 +985,7 @@ def adicionar_features_inteligentes_ml(df):
     """
     df = df.copy()
     
-    # 1. 🎯 PADRÕES DE QUADRANTES FORTES
+    # 1. 🎯 PADRÕES DE QUADRANTES FORTES (usando Aggression e Momentum diretamente)
     df['eh_fav_forte_com_momentum'] = (
         (df['Quadrante_Home'].isin([1, 2, 3, 4])) & 
         (df['M_H'] > 0.5) & 
@@ -998,60 +998,57 @@ def adicionar_features_inteligentes_ml(df):
         (df['Regressao_Force_Away'] < 0)
     ).astype(int)
     
-    # 2. 📈 OPORTUNIDADES DE REGRESSÃO
+    # 2. 📈 OPORTUNIDADES DE REGRESSÃO (usando tendências diretamente)
     df['eh_forte_melhora_home'] = (
-        (df['Tendencia_Home'] == '📈 FORTE MELHORA') & 
-        (df['Quadrante_ML_Score_Home'] >= 0.58)
+        (df['Tendencia_Home'] == '📈 FORTE MELHORA')
     ).astype(int)
     
     df['eh_forte_melhora_away'] = (
-        (df['Tendencia_Away'] == '📈 FORTE MELHORA') & 
-        (df['Quadrante_ML_Score_Away'] >= 0.58)
+        (df['Tendencia_Away'] == '📈 FORTE MELHORA')
     ).astype(int)
     
     df['eh_forte_queda_home'] = (
-        (df['Tendencia_Home'] == '📉 FORTE QUEDA') & 
-        (df['Quadrante_ML_Score_Away'] >= 0.55)
+        (df['Tendencia_Home'] == '📉 FORTE QUEDA')
     ).astype(int)
     
     df['eh_forte_queda_away'] = (
-        (df['Tendencia_Away'] == '📉 FORTE QUEDA') & 
-        (df['Quadrante_ML_Score_Home'] >= 0.55)
+        (df['Tendencia_Away'] == '📉 FORTE QUEDA')
     ).astype(int)
     
     # 3. 🔥 CONFLITOS ML vs REGRESSÃO (VALUE SPOTS)
-    df['conflito_ml_regressao_home'] = (
-        (df['ML_Side'] == 'HOME') & 
-        (df['Regressao_Force_Home'] < -0.8)
+    # Nota: ML_Side será criado depois, então vamos usar Aggression como proxy
+    df['conflito_agg_regressao_home'] = (
+        (df['Aggression_Home'] > 0.3) &  # ML favorece Home
+        (df['Regressao_Force_Home'] < -0.8)  # Regressão contra Home
     ).astype(int)
     
-    df['conflito_ml_regressao_away'] = (
-        (df['ML_Side'] == 'AWAY') & 
-        (df['Regressao_Force_Away'] < -0.8)
+    df['conflito_agg_regressao_away'] = (
+        (df['Aggression_Away'] < -0.3) &  # ML favorece Away  
+        (df['Regressao_Force_Away'] < -0.8)  # Regressão contra Away
     ).astype(int)
     
-    # 4. 💪 MOMENTUM CONFIRMATÓRIO
+    # 4. 💪 MOMENTUM CONFIRMATÓRIO (usando Aggression como proxy do ML)
     df['momentum_confirma_home'] = (
-        (df['ML_Side'] == 'HOME') & 
-        (df['M_H'] > 0) & 
-        (df['Quadrante_ML_Score_Home'] >= 0.60)
+        (df['Aggression_Home'] > 0.3) &  # ML favorece Home
+        (df['M_H'] > 0) &  # Momentum positivo
+        (df['Regressao_Force_Home'] > 0)  # Regressão favorável
     ).astype(int)
     
     df['momentum_confirma_away'] = (
-        (df['ML_Side'] == 'AWAY') & 
-        (df['M_A'] > 0) & 
-        (df['Quadrante_ML_Score_Away'] >= 0.60)
+        (df['Aggression_Away'] < -0.3) &  # ML favorece Away
+        (df['M_A'] > 0) &  # Momentum positivo
+        (df['Regressao_Force_Away'] > 0)  # Regressão favorável
     ).astype(int)
     
     # 5. 🚫 MOMENTUM NEGATIVO ALARMANTE
     df['momentum_negativo_alarmante_home'] = (
         (df['M_H'] < -1.0) & 
-        (df['Quadrante_ML_Score_Away'] >= 0.55)
+        (df['Regressao_Force_Home'] < -0.5)
     ).astype(int)
     
     df['momentum_negativo_alarmante_away'] = (
         (df['M_A'] < -1.0) & 
-        (df['Quadrante_ML_Score_Home'] >= 0.55)
+        (df['Regressao_Force_Away'] < -0.5)
     ).astype(int)
     
     # 6. 🎯 PADRÕES ESPECÍFICOS DOS 16 QUADRANTES
@@ -1065,13 +1062,16 @@ def adicionar_features_inteligentes_ml(df):
         (df['Quadrante_Away'].isin([9, 10, 11, 12]))
     ).astype(int)
     
-    # 7. 📊 SCORE DE CONFIANÇA COMPOSTO
+    # 7. 📊 SCORE DE CONFIANÇA COMPOSTO (usando dados disponíveis)
+    # Usando Aggression como proxy para probabilidade ML
+    aggression_proxy_home = (df['Aggression_Home'] + 1) / 2  # Normaliza -1 a +1 para 0-1
+    aggression_proxy_away = (1 - (df['Aggression_Away'] + 1) / 2)  # Invertido para Away
+    
     df['score_confianca_composto'] = (
-        (df['Quadrante_ML_Score_Main'] * 0.4) +
+        (aggression_proxy_home * 0.3) +  # Proxy ML Home
+        (aggression_proxy_away * 0.3) +  # Proxy ML Away
         (df['Media_Score_Home'] * 0.2) +
-        (df['Media_Score_Away'] * 0.2) +
-        ((df['M_H'] + 4) / 8 * 0.1) +  # Normaliza momentum para 0-1
-        ((df['M_A'] + 4) / 8 * 0.1)
+        (df['Media_Score_Away'] * 0.2)
     )
     
     return df
@@ -1080,7 +1080,7 @@ def treinar_modelo_inteligente(history, games_today):
     """
     Treina modelo ML com as novas features inteligentes
     """
-    # Aplicar features inteligentes
+    # Aplicar features inteligentes (APENAS COM DADOS DISPONÍVEIS)
     history = adicionar_features_inteligentes_ml(history)
     games_today = adicionar_features_inteligentes_ml(games_today)
     
@@ -1111,23 +1111,28 @@ def treinar_modelo_inteligente(history, games_today):
         'Extremidade_Home', 'Extremidade_Away'
     ]
     
-    # 🆕 NOVAS FEATURES INTELIGENTES
+    # 🆕 NOVAS FEATURES INTELIGENTES (TODAS DISPONÍVEIS)
     features_inteligentes = [
         'eh_fav_forte_com_momentum', 'eh_under_forte_sem_momentum',
         'eh_forte_melhora_home', 'eh_forte_melhora_away',
         'eh_forte_queda_home', 'eh_forte_queda_away',
-        'conflito_ml_regressao_home', 'conflito_ml_regressao_away',
+        'conflito_agg_regressao_home', 'conflito_agg_regressao_away',
         'momentum_confirma_home', 'momentum_confirma_away',
         'momentum_negativo_alarmante_home', 'momentum_negativo_alarmante_away',
         'padrao_fav_forte_vs_under_forte', 'padrao_fav_moderado_vs_under_moderado',
         'score_confianca_composto'
     ]
 
-    extras_3d = history[features_3d].fillna(0)
-    extras_regressao = history[features_regressao].fillna(0)
-    extras_inteligentes = history[features_inteligentes].fillna(0)
+    # Garantir que todas as features existem
+    available_3d = [f for f in features_3d if f in history.columns]
+    available_regressao = [f for f in features_regressao if f in history.columns]
+    available_inteligentes = [f for f in features_inteligentes if f in history.columns]
+    
+    extras_3d = history[available_3d].fillna(0)
+    extras_regressao = history[available_regressao].fillna(0)
+    extras_inteligentes = history[available_inteligentes].fillna(0)
 
-    # Combinar TODAS as features
+    # Combinar TODAS as features disponíveis
     X = pd.concat([ligas_dummies, clusters_dummies, extras_3d, extras_regressao, extras_inteligentes], axis=1)
 
     # Target
@@ -1146,9 +1151,9 @@ def treinar_modelo_inteligente(history, games_today):
     # Preparar dados de hoje
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
     clusters_today = pd.get_dummies(games_today['Cluster3D_Label'], prefix='C3D').reindex(columns=clusters_dummies.columns, fill_value=0)
-    extras_today = games_today[features_3d].fillna(0)
-    extras_regressao_today = games_today[features_regressao].fillna(0)
-    extras_inteligentes_today = games_today[features_inteligentes].fillna(0)
+    extras_today = games_today[available_3d].fillna(0)
+    extras_regressao_today = games_today[available_regressao].fillna(0)
+    extras_inteligentes_today = games_today[available_inteligentes].fillna(0)
 
     X_today = pd.concat([ligas_today, clusters_today, extras_today, extras_regressao_today, extras_inteligentes_today], axis=1)
 
@@ -1176,6 +1181,7 @@ def treinar_modelo_inteligente(history, games_today):
 
     st.success("✅ Modelo Inteligente treinado com sucesso!")
     return model_home, games_today
+# ---------------- FIM DO BLOCO DO MODELO INTELIGENTE ----------------
 
 # ---------------- SISTEMA DE INDICAÇÕES 3D PARA 16 QUADRANTES ----------------
 def adicionar_indicadores_explicativos_3d_16_dual(df):
