@@ -1355,20 +1355,21 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             return "HOME_NOT_COVERED"
     
     def check_handicap_recommendation_correct_3d(recomendacao, handicap_result, ml_side):
-        """Verifica se a recomendação estava correta - CORRIGIDA"""
-        if pd.isna(recomendacao) or handicap_result is None or recomendacao == '❌ Avoid':
+        """Verifica se a recomendação estava correta - CORRIGIDA para excluir ⚖️ ANALISAR"""
+        if (pd.isna(recomendacao) or handicap_result is None or 
+            recomendacao == '❌ Avoid' or '⚖️ ANALISAR' in str(recomendacao)):
             return None
     
         recomendacao_str = str(recomendacao).upper()
         
-        # 🔧 CORREÇÃO: Lógica mais robusta para identificar o lado recomendado
+        # Identificação do lado recomendado
         is_home_bet = any(keyword in recomendacao_str for keyword in 
                          ['HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME', 'H:', 'HOME)'])
         
         is_away_bet = any(keyword in recomendacao_str for keyword in 
                          ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY', 'A:', 'AWAY)'])
         
-        # 🔧 CORREÇÃO: Fallback para ML_Side se não identificar claramente
+        # Fallback para ML_Side se não identificar claramente
         if not is_home_bet and not is_away_bet:
             if ml_side == 'HOME':
                 is_home_bet = True
@@ -1385,20 +1386,22 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         return None
     
     def calculate_handicap_profit_3d(recomendacao, handicap_result, odds_row, asian_line_decimal, ml_side):
-        """Calcula profit para handicap asiático - CORRIGIDA"""
-        if pd.isna(recomendacao) or handicap_result is None or recomendacao == '❌ Avoid' or pd.isna(asian_line_decimal):
+        """Calcula profit para handicap asiático - CORRIGIDA para excluir ⚖️ ANALISAR"""
+        if (pd.isna(recomendacao) or handicap_result is None or 
+            recomendacao == '❌ Avoid' or '⚖️ ANALISAR' in str(recomendacao) or 
+            pd.isna(asian_line_decimal)):
             return 0
     
         recomendacao_str = str(recomendacao).upper()
         
-        # 🔧 CORREÇÃO: Identificação mais precisa do lado da aposta
+        # Identificação mais precisa do lado da aposta
         is_home_bet = any(keyword in recomendacao_str for keyword in 
                          ['HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME', 'H:', 'HOME)'])
         
         is_away_bet = any(keyword in recomendacao_str for keyword in 
                          ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY', 'A:', 'AWAY)'])
         
-        # 🔧 CORREÇÃO: Fallback para ML_Side
+        # Fallback para ML_Side
         if not is_home_bet and not is_away_bet:
             if ml_side == 'HOME':
                 is_home_bet = True
@@ -1416,7 +1419,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         if pd.isna(odd):
             return 0
     
-        # 🔧 CORREÇÃO: Lógica de cálculo de profit simplificada e correta
+        # Lógica de cálculo de profit
         if is_home_bet and handicap_result == "HOME_COVERED":
             return odd - 1  # Profit
         elif is_home_bet and handicap_result == "HOME_NOT_COVERED":
