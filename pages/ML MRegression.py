@@ -1697,7 +1697,6 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         # Colunas 3D
         'M_H', 'M_A', 'Quadrant_Dist_3D', 'Momentum_Diff',
         # Colunas de Regressão à Média
-        'Tendencia_Home', 'Tendencia_Away',
         'Media_Score_Home', 'Media_Score_Away', 
         'Regressao_Force_Home', 'Regressao_Force_Away',
         # 🆕 Novas Features Inteligentes
