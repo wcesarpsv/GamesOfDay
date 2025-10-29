@@ -742,51 +742,88 @@ def adicionar_indicadores_explicativos_clusters(df):
 
     # 3. RECOMENDAÇÃO BASEADA EM CLUSTERS + REGRESSÃO
     def gerar_recomendacao_clusters(row):
+        """CORREÇÃO: Recomendações inteligentes baseadas em score ML + cluster + consistência"""
         cluster = row['Cluster3D_Desc']
         score_home = row['Cluster_ML_Score_Home']
         score_away = row['Cluster_ML_Score_Away']
         ml_side = row['ML_Side']
         tendencia_h = row.get('Tendencia_Home', '⚖️ ESTÁVEL')
         tendencia_a = row.get('Tendencia_Away', '⚖️ ESTÁVEL')
-
-        # Estratégias por tipo de cluster
+        
+        # Determinar lado com melhor valor (não apenas cluster fixo)
+        melhor_lado = 'HOME' if score_home > score_away else 'AWAY'
+        melhor_score = max(score_home, score_away)
+        pior_score = min(score_home, score_away)
+        
+        # CORREÇÃO 1: Se cluster e score são contraditórios, priorizar score
+        if (cluster == '🏠 Home Domina Confronto' and melhor_lado == 'AWAY' and melhor_score >= 0.60) or \
+           (cluster == '🚗 Away Domina Confronto' and melhor_lado == 'HOME' and melhor_score >= 0.60):
+            return f'🎯 VALUE NO {melhor_lado} (Cluster Contraditório) ({melhor_score:.1%})'
+        
+        # CORREÇÃO 2: Lógica por cluster com foco no VALUE real
         if cluster == '🏠 Home Domina Confronto':
-            if score_home >= 0.65 and '📈' in tendencia_h:
-                return f'💪 HOME DOMINANTE + Regressão Positiva ({score_home:.1%})'
-            elif score_home >= 0.58:
-                return f'🎯 HOME DOMINANTE ({score_home:.1%})'
+            if score_home >= 0.65:
+                if '📈' in tendencia_h:
+                    return f'💪 HOME DOMINANTE + Melhora ({score_home:.1%})'
+                else:
+                    return f'🎯 HOME DOMINANTE ({score_home:.1%})'
+            elif score_home >= 0.55:
+                return f'📈 VALUE HOME ({score_home:.1%})'
             else:
-                return f'⚖️ HOME DOMINA mas cuidado ({score_home:.1%})'
-
+                # Cluster indica Home, mas score é baixo - sinal de alerta
+                return f'⚠️ HOME DOMINA mas Score Baixo ({score_home:.1%})'
+    
         elif cluster == '🚗 Away Domina Confronto':
-            if score_away >= 0.65 and '📈' in tendencia_a:
-                return f'💪 AWAY DOMINANTE + Regressão Positiva ({score_away:.1%})'
-            elif score_away >= 0.58:
-                return f'🎯 AWAY DOMINANTE ({score_away:.1%})'
+            if score_away >= 0.65:
+                if '📈' in tendencia_a:
+                    return f'💪 AWAY DOMINANTE + Melhora ({score_away:.1%})'
+                else:
+                    return f'🎯 AWAY DOMINANTE ({score_away:.1%})'
+            elif score_away >= 0.55:
+                return f'📈 VALUE AWAY ({score_away:.1%})'
             else:
-                return f'⚖️ AWAY DOMINA mas cuidado ({score_away:.1%})'
-
+                # Cluster indica Away, mas score é baixo - sinal de alerta
+                return f'⚠️ AWAY DOMINA mas Score Baixo ({score_away:.1%})'
+    
         elif cluster == '⚖️ Confronto Equilibrado':
-            if ml_side == 'HOME' and score_home >= 0.55:
-                return f'📈 VALUE NO HOME (Equilibrado) ({score_home:.1%})'
-            elif ml_side == 'AWAY' and score_away >= 0.55:
-                return f'📈 VALUE NO AWAY (Equilibrado) ({score_away:.1%})'
+            if melhor_score >= 0.58 and (melhor_score - pior_score) >= 0.08:
+                # Diferença significativa em jogo equilibrado = VALUE
+                if melhor_lado == 'HOME':
+                    return f'📈 VALUE HOME (Equilibrado) ({score_home:.1%})'
+                else:
+                    return f'📈 VALUE AWAY (Equilibrado) ({score_away:.1%})'
+            elif melhor_score >= 0.55:
+                # Pequena vantagem em jogo equilibrado
+                return f'⚖️ PEQUENO VALUE {melhor_lado} ({melhor_score:.1%})'
             else:
                 return f'⚖️ CONFRONTO EQUILIBRADO (H:{score_home:.1%} A:{score_away:.1%})'
-
+    
         elif cluster == '🎭 Home Imprevisível':
-            if '📈 FORTE MELHORA' in tendencia_h and score_home >= 0.55:
-                return f'🎲 IMPREVISÍVEL mas Home Melhorando ({score_home:.1%})'
-            elif '📈 FORTE MELHORA' in tendencia_a and score_away >= 0.55:
-                return f'🎲 IMPREVISÍVEL mas Away Melhorando ({score_away:.1%})'
+            # Em jogos imprevisíveis, exigir score mais alto + tendência positiva
+            if melhor_score >= 0.62 and ('📈' in tendencia_h or '📈' in tendencia_a):
+                lado_melhor_tendencia = 'HOME' if '📈' in tendencia_h else 'AWAY'
+                score_melhor_tendencia = score_home if '📈' in tendencia_h else score_away
+                return f'🎲 {lado_melhor_tendencia} MELHORANDO ({score_melhor_tendencia:.1%})'
             else:
                 return f'🎲 JOGO IMPREVISÍVEL - Cautela (H:{score_home:.1%} A:{score_away:.1%})'
-
+    
         elif cluster == '🌪️ Home Instável':
-            return f'🌪️ CONFRONTO INSTÁVEL - Evitar ou apostas pequenas'
-
+            # Em jogos instáveis, só recomendar com score muito alto
+            if melhor_score >= 0.70:
+                return f'🎯 ALTO VALUE {melhor_lado} (Instável) ({melhor_score:.1%})'
+            elif melhor_score >= 0.60:
+                return f'⚠️ VALUE CUIDadosO {melhor_lado} (Instável) ({melhor_score:.1%})'
+            else:
+                return f'🌪️ CONFRONTO INSTÁVEL - Evitar (H:{score_home:.1%} A:{score_away:.1%})'
+    
         else:
-            return f'🔍 ANALISAR (H:{score_home:.1%} A:{score_away:.1%})'
+            # Cluster desconhecido - usar lógica genérica de value
+            if melhor_score >= 0.65:
+                return f'🎯 VALUE {melhor_lado} ({melhor_score:.1%})'
+            elif melhor_score >= 0.55:
+                return f'📈 PEQUENO VALUE {melhor_lado} ({melhor_score:.1%})'
+            else:
+                return f'🔍 ANALISAR (H:{score_home:.1%} A:{score_away:.1%})'
 
     df['Recomendacao'] = df.apply(gerar_recomendacao_clusters, axis=1)
 
