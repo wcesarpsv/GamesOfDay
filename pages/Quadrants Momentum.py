@@ -61,20 +61,6 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
     pattern = "|".join(EXCLUDED_LEAGUE_KEYWORDS)
     return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
 
-def convert_asian_line(line_str):
-    """Converte string de linha asiática em média numérica"""
-    try:
-        if pd.isna(line_str) or line_str == "":
-            return None
-        line_str = str(line_str).strip()
-        if "/" not in line_str:
-            val = float(line_str)
-            return 0.0 if abs(val) < 1e-10 else val
-        parts = [float(x) for x in line_str.split("/")]
-        avg = sum(parts) / len(parts)
-        return 0.0 if abs(avg) < 1e-10 else avg
-    except:
-        return None
 
 def calc_handicap_result(margin, asian_line_str, invert=False):
     """Retorna média de pontos por linha (1 win, 0.5 push, 0 loss)"""
@@ -82,19 +68,23 @@ def calc_handicap_result(margin, asian_line_str, invert=False):
         return np.nan
     if invert:
         margin = -margin
+    
+    # ✅ USAR A FUNÇÃO CORRETA para converter a linha
     try:
-        parts = [float(x) for x in str(asian_line_str).split('/')]
+        # Primeiro converte a linha asiática usando a função padronizada
+        line_value = convert_asian_line_to_decimal(asian_line_str)
+        # Para cálculo de handicap, usamos o valor absoluto
+        line_value_abs = abs(line_value)
+        
+        # Lógica de cálculo do resultado
+        if margin > line_value_abs:
+            return 1.0
+        elif margin == line_value_abs:
+            return 0.5
+        else:
+            return 0.0
     except:
         return np.nan
-    results = []
-    for line in parts:
-        if margin > line:
-            results.append(1.0)
-        elif margin == line:
-            results.append(0.5)
-        else:
-            results.append(0.0)
-    return np.mean(results)
 
 def convert_asian_line_to_decimal(value):  # ← SÓ MUDA AQUI O NOME!
     """
