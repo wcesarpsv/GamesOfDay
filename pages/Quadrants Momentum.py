@@ -841,7 +841,7 @@ if not games_today.empty and 'Momentum_ML_Score_Home' in games_today.columns:
             elif '🔻 MOMENTUM NEGATIVO' in str(valor): return 'font-weight: bold'
             elif '🏆 ALTO VALOR' in str(valor): return 'font-weight: bold'
             elif '🔴 ALTO RISCO' in str(valor): return 'font-weight: bold'
-            elif 'EXPLOSIVO' in str(valor): return 'background-color: #FFD700'
+            elif 'EXPLOSIVO' in str(valor): return 'font-weight: bold'
             else: return ''
         
         colunas_para_estilo = []
