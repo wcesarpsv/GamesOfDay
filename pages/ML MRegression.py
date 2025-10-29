@@ -1689,11 +1689,11 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # Colunas para exibição 3D
     colunas_3d = [
         'League', 'Time',
-        'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today','ML_Side','Cluster3D_Desc',
+        'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Recomendacao','ML_Side','Cluster3D_Desc',
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
         'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
         'Score_Final_3D', 'Classificacao_Potencial_3D',
-        'Classificacao_Valor_Home', 'Classificacao_Valor_Away', 'Recomendacao',
+        'Classificacao_Valor_Home', 'Classificacao_Valor_Away',
         # Colunas 3D
         'M_H', 'M_A', 'Quadrant_Dist_3D', 'Momentum_Diff',
         # Colunas de Regressão à Média
