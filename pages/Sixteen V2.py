@@ -75,25 +75,53 @@ def convert_asian_line(line_str):
     except:
         return None
 
-def calc_handicap_result(margin, asian_line_str, invert=False):
-    """Retorna média de pontos por linha (1 win, 0.5 push, 0 loss)"""
-    if pd.isna(asian_line_str):
+def calc_handicap_result(margin, asian_line_decimal, invert=False):
+    """
+    Calcula resultado do handicap asiático usando linha já convertida para decimal.
+    
+    Args:
+        margin: Goals_H_FT - Goals_A_FT
+        asian_line_decimal: Linha asiática já convertida pela convert_asian_line_to_home
+        invert: Se True, inverte a perspectiva
+    
+    Returns:
+        float: 1.0 (win), 0.5 (push), 0.0 (loss)
+    """
+    if pd.isna(asian_line_decimal):
         return np.nan
+    
     if invert:
         margin = -margin
-    try:
-        parts = [float(x) for x in str(asian_line_str).split('/')]
-    except:
-        return np.nan
-    results = []
-    for line in parts:
-        if margin > line:
-            results.append(1.0)
-        elif margin == line:
-            results.append(0.5)
-        else:
-            results.append(0.0)
-    return np.mean(results)
+    
+    # Para linhas fracionadas (0.25, 0.75, etc.), simulamos o split
+    line_abs = abs(asian_line_decimal)
+    fractional_part = line_abs - int(line_abs)
+    
+    if fractional_part == 0.25:
+        # Linha do tipo 0.25 (equivale a 0/0.5) - split em duas apostas
+        base_line = int(line_abs) if asian_line_decimal >= 0 else -int(line_abs)
+        line1 = base_line
+        line2 = base_line + 0.5 if asian_line_decimal >= 0 else base_line - 0.5
+        
+        result1 = 1.0 if margin > line1 else (0.5 if margin == line1 else 0.0)
+        result2 = 1.0 if margin > line2 else (0.5 if margin == line2 else 0.0)
+        
+        return (result1 + result2) / 2.0
+    
+    elif fractional_part == 0.75:
+        # Linha do tipo 0.75 (equivale a 0.5/1) - split em duas apostas
+        base_line = int(line_abs) if asian_line_decimal >= 0 else -int(line_abs)
+        line1 = base_line + 0.5 if asian_line_decimal >= 0 else base_line - 0.5
+        line2 = base_line + 1.0 if asian_line_decimal >= 0 else base_line - 1.0
+        
+        result1 = 1.0 if margin > line1 else (0.5 if margin == line1 else 0.0)
+        result2 = 1.0 if margin > line2 else (0.5 if margin == line2 else 0.0)
+        
+        return (result1 + result2) / 2.0
+    
+    else:
+        # Linha inteira ou meia (0, 0.5, 1.0, etc.) - aposta única
+        return 1.0 if margin > asian_line_decimal else (0.5 if margin == asian_line_decimal else 0.0)
 
 def convert_asian_line_to_home(value):
     """
@@ -239,7 +267,7 @@ if "Date" in history.columns:
 # Targets AH históricos
 history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
 history["Target_AH_Home"] = history.apply(
-    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line"], invert=False) > 0.5 else 0, axis=1
+    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"], invert=False) > 0.5 else 0, axis=1
 )
 
 # ---------------- NOVO SISTEMA DE 16 QUADRANTES ----------------
@@ -961,14 +989,14 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
     # ---------------- ATUALIZAR COM DADOS LIVE ----------------
     def determine_handicap_result(row):
-        """Determina se o HOME cobriu o handicap"""
+        """Determina se o HOME cobriu o handicap usando linha convertida"""
         try:
             gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
             ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
-            asian_line_decimal = row.get('Asian_Line_Decimal')
+            asian_line_decimal = row.get('Asian_Line_Decimal')  # ← Já convertida!
         except (ValueError, TypeError):
             return None
-
+    
         if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line_decimal):
             return None
         
