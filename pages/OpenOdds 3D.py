@@ -1074,16 +1074,7 @@ def treinar_modelo_3d_clusters_single(history, games_today, use_opening_odds=Tru
 
 
 
-# ---------------- EXECUÇÃO PRINCIPAL 3D ----------------
-# Executar treinamento 3D
-if not history.empty:
-    # MOVER O CHECKBOX PARA FORA DA FUNÇÃO
-    st.markdown("### ⚙️ Configuração do Treino 3D com Odds de Abertura")
-    use_opening_odds = st.checkbox("📊 Incluir Odds de Abertura no Treino", value=True)
-    
-    # AGORA CHAMAR A FUNÇÃO COM O PARÂMETRO
-    modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today, use_opening_odds)
-    
+   
     # ============================================================
     # 🎯 GERAÇÃO DE RECOMENDAÇÕES HÍBRIDAS
     # ============================================================
@@ -1179,11 +1170,6 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
 
     return df
 
-# ---------------- EXECUÇÃO PRINCIPAL 3D ----------------
-# Executar treinamento 3D
-if not history.empty:
-    modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today)
-
 
 
 # ADICIONAR FUNÇÃO FALTANTE
@@ -1217,7 +1203,12 @@ def gerar_recomendacoes_ml_quadrantes(df):
 # ---------------- EXECUÇÃO PRINCIPAL 3D ----------------
 # Executar treinamento 3D
 if not history.empty:
-    modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today)
+    # MOVER O CHECKBOX PARA FORA DA FUNÇÃO
+    st.markdown("### ⚙️ Configuração do Treino 3D com Odds de Abertura")
+    use_opening_odds = st.checkbox("📊 Incluir Odds de Abertura no Treino", value=True)
+    
+    # AGORA CHAMAR A FUNÇÃO COM O PARÂMETRO
+    modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today, use_opening_odds)
     
     # ============================================================
     # 🎯 GERAÇÃO DE RECOMENDAÇÕES HÍBRIDAS
@@ -1235,9 +1226,10 @@ if not history.empty:
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D")
 
-# NO FINAL DO CÓDIGO, CHAMAR A COMPARAÇÃO:
-compare_systems_summary(ranking_3d)
-
+# ---------------- EXIBIÇÃO DOS RESULTADOS 3D ----------------
+st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes ML")
+else:
+    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D")
 
 
 
