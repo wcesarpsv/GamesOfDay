@@ -1115,9 +1115,6 @@ def diagnosticar_recomendacoes(df):
     cols_amostra = [c for c in cols_amostra if c in df.columns]
     st.dataframe(df[cols_amostra].head(10), use_container_width=True)
 
-# No Bloco P - ANTES de exibir a tabela principal, adicione:
-st.markdown("## 🎯 Sistema de Recomendações - Diagnóstico")
-diagnosticar_recomendacoes(games_today)
 
 
 ############ Bloco K - Estratégias Baseadas em Clusters ################
@@ -1561,6 +1558,10 @@ else:
 
 
 ############ Bloco P - Execução Principal: Tabela Principal ################
+
+# No Bloco P - ANTES de exibir a tabela principal, adicione:
+st.markdown("## 🎯 Sistema de Recomendações - Diagnóstico")
+diagnosticar_recomendacoes(games_today)
 
 # ---------------- TABELA PRINCIPAL COM CLUSTERS ----------------
 st.markdown("## 🏆 Melhores Oportunidades - Sistema Clusters 3D")
