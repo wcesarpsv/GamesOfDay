@@ -1124,11 +1124,16 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     # Supondo aposta de 1 unidade por jogo no Home quando Prob_Home > 0.5
     # (pode adaptar a lógica depois para Away ou Handicap)
     games_today["Bet_Home"] = np.where(games_today["Prob_Home"] > 0.5, 1, 0)
-    games_today["Profit_Sim"] = np.where(
-        (games_today["Bet_Home"] == 1) & (games_today["Target_AH_Home"] == 1),
-        games_today["Imp_H_OP_Norm"] ** -1 - 1,  # lucro = 1/odd - 1
-        np.where(games_today["Bet_Home"] == 1, -1, 0)
-    )
+    if "Target_AH_Home" in games_today.columns:
+        games_today["Profit_Sim"] = np.where(
+            (games_today["Bet_Home"] == 1) & (games_today["Target_AH_Home"] == 1),
+            (1 / games_today["Imp_H_OP_Norm"]) - 1,
+            np.where(games_today["Bet_Home"] == 1, -1, 0)
+        )
+    else:
+        # Jogos ainda sem resultado → ROI apenas estimado (placeholder neutro)
+        games_today["Profit_Sim"] = np.nan
+
     
     # Agrupar por faixa de bias
     roi_summary = games_today.groupby("Bias_Group").agg(
