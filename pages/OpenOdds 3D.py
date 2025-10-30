@@ -153,8 +153,8 @@ def aplicar_clusterizacao_3d(df, n_clusters=2, random_state=42):
     centroids = pd.DataFrame(kmeans.cluster_centers_, columns=['dx', 'dy', 'dz'])
     centroids['Cluster'] = range(n_clusters)
 
-    # st.markdown("### 🧭 Clusters 3D Criados (KMeans)")
-    # st.dataframe(centroids.style.format({'dx': '{:.2f}', 'dy': '{:.2f}', 'dz': '{:.2f}'}))
+    st.markdown("### 🧭 Clusters 3D Criados (KMeans)")
+    st.dataframe(centroids.style.format({'dx': '{:.2f}', 'dy': '{:.2f}', 'dz': '{:.2f}'}))
 
     # Adicionar também uma descrição textual leve (para visualização)
     df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
@@ -907,14 +907,16 @@ games_today = aplicar_clusterizacao_3d(games_today, n_clusters=5)
 
 
 
-def treinar_modelo_3d_clusters_single(history, games_today, use_opening_odds=True):
+def treinar_modelo_3d_clusters_single(history, games_today):
     """
     Treina o modelo 3D (Home) com possibilidade de incluir odds de abertura implícitas normalizadas
     e gera análise de viés de mercado (Market Bias Opening) com segurança de dados.
     """
 
-    # REMOVENDO O st.checkbox() DA FUNÇÃO - AGORA É PASSADO COMO PARÂMETRO
-    # use_opening_odds = st.checkbox("📊 Incluir Odds de Abertura no Treino", value=True)
+    st.markdown("### ⚙️ Configuração do Treino 3D com Odds de Abertura")
+
+    # Toggle no Streamlit
+    use_opening_odds = st.checkbox("📊 Incluir Odds de Abertura no Treino", value=True)
 
     # ----------------------------
     # 🧩 Garantir features 3D e clusters
@@ -1050,6 +1052,38 @@ def treinar_modelo_3d_clusters_single(history, games_today, use_opening_odds=Tru
             st.info("📊 As odds de abertura ainda não mostraram forte impacto.")
 
     # ============================================================
+    # 💹 BLOCO — Análise de Viés de Abertura
+    # ============================================================
+    st.markdown("### 💹 Análise do Viés de Abertura do Mercado")
+
+    games_today['Market_Bias_Opening'] = games_today['Imp_H_OP_Norm'] - games_today['Imp_A_OP_Norm']
+
+    fig_corr, ax2 = plt.subplots(figsize=(6, 4))
+    ax2.scatter(
+        games_today['Market_Bias_Opening'],
+        games_today['Prob_Home'],
+        alpha=0.6, s=50,
+        c=np.where(games_today['Market_Bias_Opening'] > 0, 'green', 'orange'),
+        edgecolor='white'
+    )
+    ax2.axhline(0.5, color='gray', linestyle='--', lw=1)
+    ax2.axvline(0, color='red', linestyle='--', lw=1)
+    ax2.set_xlabel("Market Bias Opening (Home - Away)")
+    ax2.set_ylabel("Probabilidade ML (Home)")
+    ax2.set_title("Viés de Mercado x Predição do Modelo")
+    st.pyplot(fig_corr)
+
+    corr_bias = games_today['Market_Bias_Opening'].corr(games_today['Prob_Home'])
+    st.metric("Correlação (Bias x Probabilidade ML Home)", f"{corr_bias:.3f}")
+
+    if corr_bias > 0.2:
+        st.success("📈 O modelo está alinhado com o viés do mercado — quanto mais o mercado favorece o Home, maior a probabilidade prevista.")
+    elif corr_bias < -0.2:
+        st.warning("📉 O modelo contradiz o mercado — pode haver oportunidades de valor contra o viés de abertura.")
+    else:
+        st.info("⚖️ O modelo está neutro em relação ao viés — o mercado parece eficiente nesta amostra.")
+
+    # ============================================================
     # 🧩 Segurança final
     # ============================================================
     if "Quadrante_ML_Score_Home" not in games_today.columns:
@@ -1070,27 +1104,6 @@ def treinar_modelo_3d_clusters_single(history, games_today, use_opening_odds=Tru
 
     st.success("✅ Modelo 3D treinado (HOME) – com análise de viés integrada.")
     return model_home, games_today
-
-
-
-
-   
-    # ============================================================
-    # 🎯 GERAÇÃO DE RECOMENDAÇÕES HÍBRIDAS
-    # ============================================================
-    games_today = gerar_recomendacoes_ml_quadrantes(games_today)
-
-    st.markdown("### 🎯 Recomendações Híbridas (ML + Quadrantes)")
-    st.dataframe(
-        games_today[["League", "Home", "Away", "Recomendacao_Final"]],
-        use_container_width=True
-    )
-
-    # ✅ Mensagem final confirmando treino e recomendações
-    st.success("✅ Modelo 3D dual com 16 quadrantes treinado com sucesso!")
-else:
-    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D")
-
 
 
 
@@ -1170,68 +1183,13 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
 
     return df
 
-
-
-# ADICIONAR FUNÇÃO FALTANTE
-def gerar_recomendacoes_ml_quadrantes(df):
-    """Gera recomendações híbridas combinando ML e quadrantes"""
-    df = df.copy()
-    
-    def gerar_recomendacao_final(row):
-        ml_side = row.get('ML_Side', '')
-        ml_conf = row.get('ML_Confidence', 0)
-        quadrante_home = row.get('Quadrante_Home_Label', '')
-        quadrante_away = row.get('Quadrante_Away_Label', '')
-        
-        # Lógica de recomendação híbrida
-        if ml_side == 'HOME' and ml_conf >= 0.60:
-            if 'Fav Forte' in quadrante_home or 'Fav Moderado' in quadrante_home:
-                return f"🎯 FORTE HOME (ML: {ml_conf:.1%})"
-            else:
-                return f"✅ HOME (ML: {ml_conf:.1%})"
-        elif ml_side == 'AWAY' and ml_conf >= 0.60:
-            if 'Under Forte' in quadrante_home or 'Under Moderado' in quadrante_home:
-                return f"🎯 FORTE AWAY (ML: {ml_conf:.1%})"
-            else:
-                return f"✅ AWAY (ML: {ml_conf:.1%})"
-        else:
-            return f"⚖️ ANALISAR (ML: {ml_conf:.1%})"
-    
-    df['Recomendacao_Final'] = df.apply(gerar_recomendacao_final, axis=1)
-    return df
-
 # ---------------- EXECUÇÃO PRINCIPAL 3D ----------------
 # Executar treinamento 3D
 if not history.empty:
-    # MOVER O CHECKBOX PARA FORA DA FUNÇÃO
-    st.markdown("### ⚙️ Configuração do Treino 3D com Odds de Abertura")
-    use_opening_odds = st.checkbox("📊 Incluir Odds de Abertura no Treino", value=True)
-    
-    # AGORA CHAMAR A FUNÇÃO COM O PARÂMETRO
-    modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today, use_opening_odds)
-    
-    # ============================================================
-    # 🎯 GERAÇÃO DE RECOMENDAÇÕES HÍBRIDAS
-    # ============================================================
-    games_today = gerar_recomendacoes_ml_quadrantes(games_today)
-
-    st.markdown("### 🎯 Recomendações Híbridas (ML + Quadrantes)")
-    st.dataframe(
-        games_today[["League", "Home", "Away", "Recomendacao_Final"]],
-        use_container_width=True
-    )
-
-    # ✅ Mensagem final confirmando treino e recomendações
+    modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today)
     st.success("✅ Modelo 3D dual com 16 quadrantes treinado com sucesso!")
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D")
-
-# ---------------- EXIBIÇÃO DOS RESULTADOS 3D ----------------
-st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes ML")
-else:
-    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D")
-
-
 
 # ---------------- ANÁLISE DE PADRÕES 3D PARA 16 QUADRANTES ----------------
 def analisar_padroes_3d_quadrantes_16_dual(df):
@@ -1870,9 +1828,6 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
                           .highlight_min(axis=1, color='#ffb3b3'),
             use_container_width=True
         )
-
-    # CHAMAR A FUNÇÃO DE COMPARAÇÃO
-    compare_systems_summary(ranking_3d)
 
 
 
