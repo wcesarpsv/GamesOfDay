@@ -1560,39 +1560,39 @@ def diagnosticar_grafico_3d(df_plot, selected_date_str):
     # Verificar dados numéricos
     numeric_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
     
-    # st.write("**📊 Estatísticas dos dados numéricos:**")
-    # for col in numeric_cols:
-    #     if col in df_plot.columns:
-    #         non_null = df_plot[col].notna().sum()
-    #         zero_count = (df_plot[col].fillna(0) == 0).sum()
-    #         st.write(f"- {col}: {non_null} não-nulos, {zero_count} zeros")
+    st.write("**📊 Estatísticas dos dados numéricos:**")
+    for col in numeric_cols:
+        if col in df_plot.columns:
+            non_null = df_plot[col].notna().sum()
+            zero_count = (df_plot[col].fillna(0) == 0).sum()
+            st.write(f"- {col}: {non_null} não-nulos, {zero_count} zeros")
             
-    #         # Mostrar alguns valores
-    #         if non_null > 0:
-    #             st.write(f"  Valores: {df_plot[col].head(3).tolist()}")
+            # Mostrar alguns valores
+            if non_null > 0:
+                st.write(f"  Valores: {df_plot[col].head(3).tolist()}")
     
-    # # Verificar clusters
-    # if 'Cluster3D_Desc' in df_plot.columns:
-    #     cluster_info = df_plot['Cluster3D_Desc'].value_counts()
-    #     st.write("**🎯 Distribuição de clusters:**")
-    #     st.write(cluster_info)
+    # Verificar clusters
+    if 'Cluster3D_Desc' in df_plot.columns:
+        cluster_info = df_plot['Cluster3D_Desc'].value_counts()
+        st.write("**🎯 Distribuição de clusters:**")
+        st.write(cluster_info)
     
-    # # Verificar se há dados válidos para plotagem
-    # has_valid_data = False
-    # for col in numeric_cols:
-    #     if col in df_plot.columns:
-    #         # Verificar se há pelo menos alguns valores não-zero e não-NaN
-    #         valid_data = df_plot[col].dropna()
-    #         if len(valid_data) > 0 and (valid_data != 0).any():
-    #             has_valid_data = True
-    #             break
+    # Verificar se há dados válidos para plotagem
+    has_valid_data = False
+    for col in numeric_cols:
+        if col in df_plot.columns:
+            # Verificar se há pelo menos alguns valores não-zero e não-NaN
+            valid_data = df_plot[col].dropna()
+            if len(valid_data) > 0 and (valid_data != 0).any():
+                has_valid_data = True
+                break
     
-    # if not has_valid_data:
-    #     st.error("❌ Nenhum dado numérico válido para plotagem (todos zero ou NaN)")
-    #     return False
+    if not has_valid_data:
+        st.error("❌ Nenhum dado numérico válido para plotagem (todos zero ou NaN)")
+        return False
     
-    # st.success("✅ Dados válidos encontrados para plotagem")
-    # return True
+    st.success("✅ Dados válidos encontrados para plotagem")
+    return True
 
 def garantir_clusterizacao(df):
     """Garante que a clusterização foi aplicada corretamente"""
