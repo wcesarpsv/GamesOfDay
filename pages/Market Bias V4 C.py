@@ -1516,7 +1516,7 @@ games_today = calcular_regressao_media(games_today)
 
 ############ Bloco O - Execução Principal: Treinamento e Visualização ################
 # ---------------- TREINAMENTO DO MODELO ----------------
-st.markdown("## 🧠 Sistema 3D com Clusters - ML")
+# st.markdown("## 🧠 Sistema 3D com Clusters - ML")
 
 if not history.empty:
     try:
