@@ -909,8 +909,8 @@ games_today = aplicar_clusterizacao_3d(games_today, n_clusters=5)
 
 def treinar_modelo_3d_clusters_single(history, games_today):
     """
-    Treina o modelo 3D (Home) com possibilidade de incluir odds de abertura implícitas normalizadas,
-    analisa viés de mercado e calcula ROI por faixa de bias.
+    Treina o modelo 3D (Home) com possibilidade de incluir odds de abertura implícitas normalizadas
+    e gera análise de viés de mercado (Market Bias Opening) com segurança de dados.
     """
 
     st.markdown("### ⚙️ Configuração do Treino 3D com Odds de Abertura")
@@ -1024,6 +1024,9 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     games_today['Prob_Away'] = proba_away
     games_today['ML_Side'] = np.where(proba_home > proba_away, 'HOME', 'AWAY')
     games_today['ML_Confidence'] = np.maximum(proba_home, proba_away)
+    games_today['Quadrante_ML_Score_Home'] = games_today['Prob_Home']
+    games_today['Quadrante_ML_Score_Away'] = games_today['Prob_Away']
+    games_today['Quadrante_ML_Score_Main'] = games_today['ML_Confidence']
 
     # ----------------------------
     # 📊 Avaliação rápida (cross-check)
@@ -1049,7 +1052,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
             st.info("📊 As odds de abertura ainda não mostraram forte impacto.")
 
     # ============================================================
-    # 💹 BLOCO EXTRA — Análise de Viés de Abertura
+    # 💹 BLOCO — Análise de Viés de Abertura
     # ============================================================
     st.markdown("### 💹 Análise do Viés de Abertura do Mercado")
 
@@ -1073,17 +1076,35 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     corr_bias = games_today['Market_Bias_Opening'].corr(games_today['Prob_Home'])
     st.metric("Correlação (Bias x Probabilidade ML Home)", f"{corr_bias:.3f}")
 
-    
-    if len(roi_summary) > 0:
-        best_zone = roi_summary.loc[roi_summary["ROI"].idxmax(), "Bias_Group"]
-        best_roi = roi_summary["ROI"].max()
-        if best_roi > 0:
-            st.success(f"💡 Melhor ROI em: **{best_zone}** → ROI médio de **{best_roi:.2%}**")
-        else:
-            st.info("⚖️ Nenhuma faixa apresentou ROI positivo — mercado eficiente nesta amostra.")
+    if corr_bias > 0.2:
+        st.success("📈 O modelo está alinhado com o viés do mercado — quanto mais o mercado favorece o Home, maior a probabilidade prevista.")
+    elif corr_bias < -0.2:
+        st.warning("📉 O modelo contradiz o mercado — pode haver oportunidades de valor contra o viés de abertura.")
+    else:
+        st.info("⚖️ O modelo está neutro em relação ao viés — o mercado parece eficiente nesta amostra.")
 
-    st.success("✅ Modelo 3D treinado (HOME) – com análise de viés e ROI integrada.")
+    # ============================================================
+    # 🧩 Segurança final
+    # ============================================================
+    if "Quadrante_ML_Score_Home" not in games_today.columns:
+        games_today["Quadrante_ML_Score_Home"] = np.nan
+        games_today["Quadrante_ML_Score_Away"] = np.nan
+        games_today["Quadrante_ML_Score_Main"] = np.nan
+        games_today["ML_Side"] = "N/A"
+        games_today["ML_Confidence"] = 0.0
+
+    for col in ["League", "Home", "Away"]:
+        if col not in games_today.columns:
+            games_today[col] = "N/A"
+
+    if games_today.empty:
+        st.warning("⚠️ Nenhum jogo válido encontrado após o treino. Verifique o CSV e as odds.")
+    else:
+        st.success(f"✅ {len(games_today)} jogos processados e prontos para análise 3D.")
+
+    st.success("✅ Modelo 3D treinado (HOME) – com análise de viés integrada.")
     return model_home, games_today
+
 
 
 
