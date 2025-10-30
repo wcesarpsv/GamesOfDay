@@ -1160,40 +1160,60 @@ if not history.empty:
 
 
 
-# ============================================================
-# 🎯 GERAÇÃO DE RECOMENDAÇÕES HÍBRIDAS
-# ============================================================
-games_today = gerar_recomendacoes_ml_quadrantes(games_today)
+# ADICIONAR FUNÇÃO FALTANTE
+def gerar_recomendacoes_ml_quadrantes(df):
+    """Gera recomendações híbridas combinando ML e quadrantes"""
+    df = df.copy()
+    
+    def gerar_recomendacao_final(row):
+        ml_side = row.get('ML_Side', '')
+        ml_conf = row.get('ML_Confidence', 0)
+        quadrante_home = row.get('Quadrante_Home_Label', '')
+        quadrante_away = row.get('Quadrante_Away_Label', '')
+        
+        # Lógica de recomendação híbrida
+        if ml_side == 'HOME' and ml_conf >= 0.60:
+            if 'Fav Forte' in quadrante_home or 'Fav Moderado' in quadrante_home:
+                return f"🎯 FORTE HOME (ML: {ml_conf:.1%})"
+            else:
+                return f"✅ HOME (ML: {ml_conf:.1%})"
+        elif ml_side == 'AWAY' and ml_conf >= 0.60:
+            if 'Under Forte' in quadrante_home or 'Under Moderado' in quadrante_home:
+                return f"🎯 FORTE AWAY (ML: {ml_conf:.1%})"
+            else:
+                return f"✅ AWAY (ML: {ml_conf:.1%})"
+        else:
+            return f"⚖️ ANALISAR (ML: {ml_conf:.1%})"
+    
+    df['Recomendacao_Final'] = df.apply(gerar_recomendacao_final, axis=1)
+    return df
 
-st.markdown("### 🎯 Recomendações Híbridas (ML + Quadrantes)")
-st.dataframe(
-    games_today[["League", "Home", "Away", "Recomendacao_Final"]],
-    use_container_width=True
-)
+# ---------------- EXECUÇÃO PRINCIPAL 3D ----------------
+# Executar treinamento 3D
+if not history.empty:
+    modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today)
+    
+    # ============================================================
+    # 🎯 GERAÇÃO DE RECOMENDAÇÕES HÍBRIDAS
+    # ============================================================
+    games_today = gerar_recomendacoes_ml_quadrantes(games_today)
 
-# ✅ Mensagem final confirmando treino e recomendações
-st.success("✅ Modelo 3D dual com 16 quadrantes treinado com sucesso!")
-else:
-    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D")
+    st.markdown("### 🎯 Recomendações Híbridas (ML + Quadrantes)")
+    st.dataframe(
+        games_today[["League", "Home", "Away", "Recomendacao_Final"]],
+        use_container_width=True
+    )
 
-
-
-
-
-# ============================================================
-# 🎯 GERAÇÃO DE RECOMENDAÇÕES HÍBRIDAS
-# ============================================================
-games_today = gerar_recomendacoes_ml_quadrantes(games_today)
-
-st.markdown("### 🎯 Recomendações Híbridas (ML + Quadrantes)")
-st.dataframe(
-    games_today[["League", "Home", "Away", "Recomendacao_Final"]],
-    use_container_width=True
-)
-
+    # ✅ Mensagem final confirmando treino e recomendações
     st.success("✅ Modelo 3D dual com 16 quadrantes treinado com sucesso!")
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D")
+
+# NO FINAL DO CÓDIGO, CHAMAR A COMPARAÇÃO:
+compare_systems_summary(ranking_3d)
+
+
+
 
 # ---------------- ANÁLISE DE PADRÕES 3D PARA 16 QUADRANTES ----------------
 def analisar_padroes_3d_quadrantes_16_dual(df):
@@ -1832,6 +1852,9 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
                           .highlight_min(axis=1, color='#ffb3b3'),
             use_container_width=True
         )
+
+    # CHAMAR A FUNÇÃO DE COMPARAÇÃO
+    compare_systems_summary(ranking_3d)
 
 
 
