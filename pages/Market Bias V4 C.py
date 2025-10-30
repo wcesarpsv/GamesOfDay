@@ -580,6 +580,7 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
         color = cluster_cores.get(cluster_name, 'gray')
         
         # LINHAS DE CONEXÃO (Home → Away) - AGORA MAIS ROBUSTO
+        # LINHAS DE CONEXÃO (Home → Away) - AGORA MAIS ROBUSTO
         for idx, row in cluster_data.iterrows():
             try:
                 # Extrair valores com fallbacks seguros
@@ -609,8 +610,8 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
                         mode='lines',
                         line=dict(
                             color=color, 
-                            width=4,  # Linha mais grossa
-                            opacity=0.6  # Mais visível
+                            width=4  # Linha mais grossa
+                            # REMOVIDO: opacity não é suportado em linhas 3D
                         ),
                         name=f'Linha {cluster_name}',
                         showlegend=False,  # Não mostrar na legenda para não poluir
