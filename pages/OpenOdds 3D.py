@@ -1051,38 +1051,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         else:
             st.info("📊 As odds de abertura ainda não mostraram forte impacto.")
 
-    # ============================================================
-    # 💹 BLOCO — Análise de Viés de Abertura
-    # ============================================================
-    st.markdown("### 💹 Análise do Viés de Abertura do Mercado")
-
-    games_today['Market_Bias_Opening'] = games_today['Imp_H_OP_Norm'] - games_today['Imp_A_OP_Norm']
-
-    fig_corr, ax2 = plt.subplots(figsize=(6, 4))
-    ax2.scatter(
-        games_today['Market_Bias_Opening'],
-        games_today['Prob_Home'],
-        alpha=0.6, s=50,
-        c=np.where(games_today['Market_Bias_Opening'] > 0, 'green', 'orange'),
-        edgecolor='white'
-    )
-    ax2.axhline(0.5, color='gray', linestyle='--', lw=1)
-    ax2.axvline(0, color='red', linestyle='--', lw=1)
-    ax2.set_xlabel("Market Bias Opening (Home - Away)")
-    ax2.set_ylabel("Probabilidade ML (Home)")
-    ax2.set_title("Viés de Mercado x Predição do Modelo")
-    st.pyplot(fig_corr)
-
-    corr_bias = games_today['Market_Bias_Opening'].corr(games_today['Prob_Home'])
-    st.metric("Correlação (Bias x Probabilidade ML Home)", f"{corr_bias:.3f}")
-
-    if corr_bias > 0.2:
-        st.success("📈 O modelo está alinhado com o viés do mercado — quanto mais o mercado favorece o Home, maior a probabilidade prevista.")
-    elif corr_bias < -0.2:
-        st.warning("📉 O modelo contradiz o mercado — pode haver oportunidades de valor contra o viés de abertura.")
-    else:
-        st.info("⚖️ O modelo está neutro em relação ao viés — o mercado parece eficiente nesta amostra.")
-
+    
     # ============================================================
     # 🧩 Segurança final
     # ============================================================
