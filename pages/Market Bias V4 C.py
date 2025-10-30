@@ -1223,9 +1223,9 @@ if not games_today.empty and 'Cluster_ML_Score_Home' in games_today.columns:
     st.json(live_summary_3d)
     
     colunas_principais = [
-        'Ranking', 'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'ML_Side',
-        'Cluster3D_Desc', 'Cluster_ML_Score_Home', 'Cluster_ML_Score_Away',
-        'Score_Final_Clusters', 'Classificacao_Potencial', 'Recomendacao',
+        'Ranking', 'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'ML_Side', 'Recomendacao','Cluster3D_Desc',
+         'Cluster_ML_Score_Home', 'Cluster_ML_Score_Away',
+        'Score_Final_Clusters', 'Classificacao_Potencial',
         'Tendencia_Home', 'Tendencia_Away',
         # Live Score Handicap 3D
         'Asian_Line_Decimal', 'Handicap_Result', 'Cluster_Correct_3D', 'Profit_3D'
