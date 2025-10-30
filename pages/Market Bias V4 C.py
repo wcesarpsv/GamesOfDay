@@ -83,24 +83,46 @@ def setup_livescore_columns(df):
 
 ############ Bloco C - Funções Asian Line ################
 # ---------------- Funções Asian Line ----------------
-def convert_asian_line_to_decimal(line_str):
-    """Converte qualquer formato de Asian Line para valor decimal único"""
-    if pd.isna(line_str) or line_str == "":
-        return None
+def convert_asian_line_to_decimal(value):
+    """
+    Converte handicaps asiáticos (Away) no formato string para decimal invertido (Home).
 
+    Regras oficiais e consistentes com Pinnacle/Bet365:
+      '0/0.5'   -> +0.25  (para away) → invertido: -0.25 (para home)
+      '-0.5/0'  -> -0.25  (para away) → invertido: +0.25 (para home)
+      '-1/1.5'  -> -0.25  → +0.25
+      '1/1.5'   -> +1.25  → -1.25
+      '1.5'     -> +1.50  → -1.50
+      '0'       ->  0.00  →  0.00
+
+    Retorna: float
+    """
+    if pd.isna(value):
+        return np.nan
+
+    value = str(value).strip()
+
+    # Caso simples — número único
+    if "/" not in value:
+        try:
+            num = float(value)
+            return -num  # ✅ INVERTE SINAL (Away → Home)
+        except ValueError:
+            return np.nan
+
+    # Caso duplo — média dos dois lados
     try:
-        line_str = str(line_str).strip()
-
-        # Se não tem "/" é valor único
-        if "/" not in line_str:
-            return float(line_str)
-
-        # Se tem "/" é linha fracionada - calcular média
-        parts = [float(x) for x in line_str.split("/")]
-        return sum(parts) / len(parts)
-
-    except (ValueError, TypeError):
-        return None
+        parts = [float(p) for p in value.split("/")]
+        avg = np.mean(parts)
+        # Mantém o sinal do primeiro número
+        if str(value).startswith("-"):
+            result = -abs(avg)
+        else:
+            result = abs(avg)
+        # ✅ INVERTE O SINAL NO FINAL (Away → Home)
+        return -result
+    except ValueError:
+        return np.nan
 
 def calc_handicap_result(margin, asian_line_str, invert=False):
     """Retorna média de pontos por linha (1 win, 0.5 push, 0 loss)"""
@@ -121,6 +143,61 @@ def calc_handicap_result(margin, asian_line_str, invert=False):
         else:
             results.append(0.0)
     return np.mean(results)
+
+def validar_conversao_handicap():
+    """Testa a conversão de handicaps com exemplos conhecidos"""
+    exemplos = [
+        '0', '0.5', '-0.5', '0/0.5', '-0.5/0', '1/1.5', '-1/1.5', '1.5', '-1.5'
+    ]
+    
+    st.markdown("### 🧪 Validação da Conversão de Handicap")
+    st.write("**Regra:** Away → Home (inverte sinal)")
+    
+    resultados = []
+    for exemplo in exemplos:
+        convertido = convert_asian_line_to_decimal(exemplo)
+        resultados.append({
+            'Original (Away)': exemplo,
+            'Convertido (Home)': convertido,
+            'Descrição': f"Away {exemplo} → Home {convertido:.2f}"
+        })
+    
+    df_validacao = pd.DataFrame(resultados)
+    st.dataframe(df_validacao, use_container_width=True)
+    
+    # Verificar consistência
+    st.markdown("#### ✅ Verificação de Consistência")
+    st.write("**0/0.5** → Away +0.25 → Home -0.25:", convert_asian_line_to_decimal('0/0.5') == -0.25)
+    st.write("**-0.5/0** → Away -0.25 → Home +0.25:", convert_asian_line_to_decimal('-0.5/0') == 0.25)
+    st.write("**1.5** → Away +1.50 → Home -1.50:", convert_asian_line_to_decimal('1.5') == -1.50)
+
+def verificar_sistema_handicap(history, games_today):
+    """Verifica a integridade do sistema de handicap"""
+    st.markdown("### 🔍 Verificação do Sistema de Handicap")
+    
+    # 1. Verificar se há valores convertidos
+    st.write("**1. Valores convertidos no histórico:**")
+    st.write(f"- Total: {len(history)}")
+    st.write(f"- Com Asian Line: {history['Asian_Line_Decimal'].notna().sum()}")
+    st.write(f"- Exemplos: {history['Asian_Line_Decimal'].head(5).tolist()}")
+    
+    # 2. Verificar distribuição
+    st.write("**2. Distribuição dos handicaps:**")
+    if 'Asian_Line_Decimal' in history.columns:
+        st.write(history['Asian_Line_Decimal'].describe())
+    
+    # 3. Verificar cálculo de resultados
+    st.write("**3. Exemplo de cálculo de handicap:**")
+    if len(history) > 0:
+        exemplo = history.iloc[0]
+        margin = exemplo.get('Goals_H_FT', 0) - exemplo.get('Goals_A_FT', 0)
+        handicap_line = exemplo.get('Asian_Line_Decimal', 0)
+        resultado = calc_handicap_result(margin, handicap_line)
+        
+        st.write(f"Jogo: {exemplo.get('Home', '')} vs {exemplo.get('Away', '')}")
+        st.write(f"Margin: {margin}, Handicap: {handicap_line:.2f}")
+        st.write(f"Resultado: {resultado:.2f}")
+
 
 
 ############ Bloco D - Sistema de Clusterização 3D ################
@@ -807,10 +884,10 @@ def treinar_modelo_com_clusters(history, games_today):
     history = aplicar_clusterizacao_3d(history)
     games_today = aplicar_clusterizacao_3d(games_today)
 
-    # Targets AH históricos
+    # ✅ Targets AH históricos COM HANDICAP CORRETO
     history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
     history["Target_AH_Home"] = history.apply(
-        lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line"], invert=False) > 0.5 else 0, axis=1
+        lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"], invert=False) > 0.5 else 0, axis=1
     )
 
     # Features categóricas (liga + cluster)
@@ -1123,7 +1200,7 @@ def determine_handicap_result(row):
     try:
         gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
         ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
-        asian_line_decimal = row.get('Asian_Line_Decimal')
+        asian_line_decimal = row.get('Asian_Line_Decimal')  # ✅ AGORA USA A COLUNA CORRETA
     except (ValueError, TypeError):
         return None
 
@@ -1131,6 +1208,7 @@ def determine_handicap_result(row):
         return None
 
     margin = gh - ga
+    # ✅ USA A LINJA JÁ CONVERTIDA PARA PERSPECTIVA HOME
     handicap_result = calc_handicap_result(margin, asian_line_decimal, invert=False)
 
     if handicap_result > 0.5:
@@ -1246,9 +1324,14 @@ games_today, history = load_cached_data(selected_file)
 # Aplicar Live Score
 games_today = load_and_merge_livescore(games_today, selected_date_str)
 
-# Converter Asian Line
+# ✅ Converter Asian Line COM A NOVA FUNÇÃO
+st.info("🔄 Convertendo Asian Line para perspectiva Home...")
 history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
 games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
+
+# ✅ VALIDAÇÃO DO SISTEMA DE HANDICAP
+validar_conversao_handicap()
+verificar_sistema_handicap(history, games_today)
 
 # Filtrar histórico com linha válida
 history = history.dropna(subset=['Asian_Line_Decimal'])
@@ -1269,7 +1352,6 @@ history = calcular_momentum_time(history)
 games_today = calcular_momentum_time(games_today)
 history = calcular_regressao_media(history)
 games_today = calcular_regressao_media(games_today)
-
 
 
 ############ Bloco O - Execução Principal: Treinamento e Visualização ################
