@@ -533,7 +533,7 @@ def calcular_regressao_media(df):
 
 # ---------------- VISUALIZAÇÃO 3D COM CLUSTERS ----------------
 def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
-    """Gráfico 3D colorido por clusters - VERSÃO CORRIGIDA"""
+    """Gráfico 3D colorido por clusters - VERSÃO CORRIGIDA COM LINHAS"""
     
     # Verificar se temos dados válidos
     if df_plot.empty:
@@ -543,7 +543,7 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
     # Criar figura
     fig_3d = go.Figure()
 
-    # Cores por cluster - ATUALIZADO COM TODOS OS CLUSTERS POSSÍVEIS
+    # Cores por cluster
     cluster_cores = {
         '🏠 Home Domina Totalmente': 'blue',
         '🏠 Home Domina (Liga Forte)': 'darkblue',
@@ -570,14 +570,67 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
     
     st.write(f"🎯 Clusters presentes: {list(clusters_presentes)}")
 
-    # Plotar cada cluster com sua cor
+    # PRIMEIRO: Plotar todas as LINHAS de conexão
     for cluster_name in clusters_presentes:
         cluster_data = df_plot[df_plot['Cluster3D_Desc'] == cluster_name]
         
         if cluster_data.empty:
             continue
             
-        # Usar cor padrão se não encontrada no dicionário
+        color = cluster_cores.get(cluster_name, 'gray')
+        
+        # LINHAS DE CONEXÃO (Home → Away) - AGORA MAIS ROBUSTO
+        for idx, row in cluster_data.iterrows():
+            try:
+                # Extrair valores com fallbacks seguros
+                xh = row.get('Aggression_Home', 0) or 0
+                xa = row.get('Aggression_Away', 0) or 0
+                yh = row.get('M_H', 0) or 0
+                ya = row.get('M_A', 0) or 0  
+                zh = row.get('MT_H', 0) or 0
+                za = row.get('MT_A', 0) or 0
+                
+                # Converter para float para garantir
+                xh = float(xh) if not pd.isna(xh) else 0.0
+                xa = float(xa) if not pd.isna(xa) else 0.0
+                yh = float(yh) if not pd.isna(yh) else 0.0
+                ya = float(ya) if not pd.isna(ya) else 0.0
+                zh = float(zh) if not pd.isna(zh) else 0.0
+                za = float(za) if not pd.isna(za) else 0.0
+                
+                # Só plotar linha se os pontos forem diferentes (evitar linhas de tamanho zero)
+                points_different = (xh != xa) or (yh != ya) or (zh != za)
+                
+                if points_different:
+                    fig_3d.add_trace(go.Scatter3d(
+                        x=[xh, xa],
+                        y=[yh, ya], 
+                        z=[zh, za],
+                        mode='lines',
+                        line=dict(
+                            color=color, 
+                            width=4,  # Linha mais grossa
+                            opacity=0.6  # Mais visível
+                        ),
+                        name=f'Linha {cluster_name}',
+                        showlegend=False,  # Não mostrar na legenda para não poluir
+                        hoverinfo='text',
+                        text=f"{row.get('Home', 'Home')} vs {row.get('Away', 'Away')}<br>{cluster_name}",
+                        hovertemplate='<b>%{text}</b><extra></extra>'
+                    ))
+                    
+            except Exception as e:
+                # Log do erro mas continuar com outros jogos
+                st.write(f"⚠️ Erro na linha do jogo {idx}: {e}")
+                continue
+
+    # SEGUNDO: Plotar os PONTOS (Home e Away)
+    for cluster_name in clusters_presentes:
+        cluster_data = df_plot[df_plot['Cluster3D_Desc'] == cluster_name]
+        
+        if cluster_data.empty:
+            continue
+            
         color = cluster_cores.get(cluster_name, 'gray')
         
         # Preparar dados para HOME
@@ -600,18 +653,18 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
                 name=f'{cluster_name} - Home',
                 marker=dict(
                     color=color,
-                    size=8,
+                    size=10,  # Aumentado para melhor visibilidade
                     symbol='circle',
-                    opacity=0.8,
-                    line=dict(color='white', width=1)
+                    opacity=0.9,
+                    line=dict(color='white', width=2)
                 ),
                 text=home_valid.apply(
-                    lambda r: f"<b>{r['Home']}</b><br>"
+                    lambda r: f"<b>{r.get('Home', 'Home')}</b><br>"
                              f"Cluster: {cluster_name}<br>"
-                             f"vs {r['Away']}<br>"
-                             f"Agg: {r['Aggression_Home']:.2f}<br>"
-                             f"M_Liga: {r['M_H']:.2f}<br>"
-                             f"M_Time: {r['MT_H']:.2f}", 
+                             f"vs {r.get('Away', 'Away')}<br>"
+                             f"Agg: {r.get('Aggression_Home', 0):.2f}<br>"
+                             f"M_Liga: {r.get('M_H', 0):.2f}<br>"
+                             f"M_Time: {r.get('MT_H', 0):.2f}", 
                     axis=1
                 ),
                 hovertemplate='%{text}<extra></extra>'
@@ -627,52 +680,22 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
                 name=f'{cluster_name} - Away',
                 marker=dict(
                     color=color,
-                    size=8,
+                    size=10,  # Aumentado para melhor visibilidade
                     symbol='diamond',
-                    opacity=0.8,
-                    line=dict(color='white', width=1)
+                    opacity=0.9,
+                    line=dict(color='white', width=2)
                 ),
                 text=away_valid.apply(
-                    lambda r: f"<b>{r['Away']}</b><br>"
+                    lambda r: f"<b>{r.get('Away', 'Away')}</b><br>"
                              f"Cluster: {cluster_name}<br>" 
-                             f"vs {r['Home']}<br>"
-                             f"Agg: {r['Aggression_Away']:.2f}<br>"
-                             f"M_Liga: {r['M_A']:.2f}<br>"
-                             f"M_Time: {r['MT_A']:.2f}",
+                             f"vs {r.get('Home', 'Home')}<br>"
+                             f"Agg: {r.get('Aggression_Away', 0):.2f}<br>"
+                             f"M_Liga: {r.get('M_A', 0):.2f}<br>"
+                             f"M_Time: {r.get('MT_A', 0):.2f}",
                     axis=1
                 ),
                 hovertemplate='%{text}<extra></extra>'
             ))
-
-        # ➕ LINHAS DE CONEXÃO (Home → Away)
-        for _, row in cluster_data.iterrows():
-            try:
-                # Verificar se todos os dados são válidos para a linha
-                xh = row['Aggression_Home'] if not pd.isna(row['Aggression_Home']) else None
-                xa = row['Aggression_Away'] if not pd.isna(row['Aggression_Away']) else None
-                yh = row['M_H'] if not pd.isna(row['M_H']) else None
-                ya = row['M_A'] if not pd.isna(row['M_A']) else None
-                zh = row['MT_H'] if not pd.isna(row['MT_H']) else None
-                za = row['MT_A'] if not pd.isna(row['MT_A']) else None
-                
-                # Só plotar linha se todos os pontos forem válidos
-                if all(v is not None for v in [xh, xa, yh, ya, zh, za]):
-                    fig_3d.add_trace(go.Scatter3d(
-                        x=[xh, xa],
-                        y=[yh, ya],
-                        z=[zh, za],
-                        mode='lines',
-                        line=dict(
-                            color=color, 
-                            width=3,
-                            opacity=0.3
-                        ),
-                        showlegend=False,
-                        hoverinfo='skip'
-                    ))
-            except Exception as e:
-                # Ignorar erros em linhas individuais
-                continue
 
     # Verificar se há traces no gráfico
     if len(fig_3d.data) == 0:
@@ -684,6 +707,12 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
             marker=dict(size=1, opacity=0),
             showlegend=False
         ))
+
+    # Contar tipos de elementos
+    linhas = len([t for t in fig_3d.data if t.mode == 'lines'])
+    pontos = len([t for t in fig_3d.data if t.mode == 'markers'])
+    
+    st.success(f"✅ Gráfico 3D criado com {linhas} linhas e {pontos} grupos de pontos")
 
     # ---------------------- LAYOUT FIXO ----------------------
     # Calcular ranges dinâmicos baseados nos dados
@@ -755,7 +784,6 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
         )
     )
     
-    st.success(f"✅ Gráfico 3D criado com {len(fig_3d.data)} elementos")
     return fig_3d
 
 
