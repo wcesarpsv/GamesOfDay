@@ -909,8 +909,8 @@ games_today = aplicar_clusterizacao_3d(games_today, n_clusters=5)
 
 def treinar_modelo_3d_clusters_single(history, games_today):
     """
-    Treina um modelo ML 3D (lado Home) e permite incluir odds de abertura
-    (Odd_H_OP, Odd_D_OP, Odd_A_OP) para capturar vieses de mercado.
+    Treina o modelo 3D (Home) com possibilidade de incluir odds de abertura implícitas normalizadas,
+    analisa viés de mercado e calcula ROI por faixa de bias.
     """
 
     st.markdown("### ⚙️ Configuração do Treino 3D com Odds de Abertura")
@@ -944,7 +944,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     extras_3d = history[features_3d].fillna(0)
 
     # ----------------------------
-    # 🎯 Preparar features de Odds de Abertura (1x2)
+    # 🎯 Features de Odds Implícitas Normalizadas
     # ----------------------------
     odds_features = pd.DataFrame()
     if use_opening_odds:
@@ -952,20 +952,17 @@ def treinar_modelo_3d_clusters_single(history, games_today):
             if col not in history.columns:
                 history[col] = np.nan
 
-        # Calcular probabilidades implícitas
         history['Imp_H_OP'] = 1 / history['Odd_H_OP']
         history['Imp_D_OP'] = 1 / history['Odd_D_OP']
         history['Imp_A_OP'] = 1 / history['Odd_A_OP']
+        history[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']] = history[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']].replace([np.inf, -np.inf], np.nan)
 
-        # Normalizar (somando 1)
         sum_probs = history[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']].sum(axis=1).replace(0, np.nan)
         history['Imp_H_OP_Norm'] = history['Imp_H_OP'] / sum_probs
         history['Imp_D_OP_Norm'] = history['Imp_D_OP'] / sum_probs
         history['Imp_A_OP_Norm'] = history['Imp_A_OP'] / sum_probs
 
-        odds_features = history[[
-            'Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm'
-        ]].fillna(0)
+        odds_features = history[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm']].fillna(0)
 
     # ----------------------------
     # 🧩 Montagem final do dataset
@@ -1005,16 +1002,14 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         games_today['Imp_H_OP'] = 1 / games_today['Odd_H_OP']
         games_today['Imp_D_OP'] = 1 / games_today['Odd_D_OP']
         games_today['Imp_A_OP'] = 1 / games_today['Odd_A_OP']
+        games_today[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']] = games_today[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']].replace([np.inf, -np.inf], np.nan)
 
         sum_today = games_today[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']].sum(axis=1).replace(0, np.nan)
         games_today['Imp_H_OP_Norm'] = games_today['Imp_H_OP'] / sum_today
         games_today['Imp_D_OP_Norm'] = games_today['Imp_D_OP'] / sum_today
         games_today['Imp_A_OP_Norm'] = games_today['Imp_A_OP'] / sum_today
 
-        odds_today = games_today[[
-            'Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm'
-        ]].fillna(0)
-
+        odds_today = games_today[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm']].fillna(0)
         X_today = pd.concat([ligas_today, clusters_today, extras_today, odds_today], axis=1)
     else:
         X_today = pd.concat([ligas_today, clusters_today, extras_today], axis=1)
@@ -1029,9 +1024,6 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     games_today['Prob_Away'] = proba_away
     games_today['ML_Side'] = np.where(proba_home > proba_away, 'HOME', 'AWAY')
     games_today['ML_Confidence'] = np.maximum(proba_home, proba_away)
-    games_today['Quadrante_ML_Score_Home'] = games_today['Prob_Home']
-    games_today['Quadrante_ML_Score_Away'] = games_today['Prob_Away']
-    games_today['Quadrante_ML_Score_Main'] = games_today['ML_Confidence']
 
     # ----------------------------
     # 📊 Avaliação rápida (cross-check)
@@ -1045,50 +1037,29 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     # ----------------------------
     importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
     top_feats = importances.head(25).to_frame("Importância")
-    
+
     st.markdown("### 🔍 Top Features (Modelo Único – Home)")
     st.dataframe(top_feats, use_container_width=True)
-    
-    # Destaque se as odds estão influentes
+
     if use_opening_odds:
         odds_influentes = [f for f in top_feats.index if "Imp_" in f]
         if odds_influentes:
-            st.success(f"💡 As seguintes variáveis de abertura mostraram influência significativa: {', '.join(odds_influentes)}")
+            st.success(f"💡 Variáveis de abertura influentes: {', '.join(odds_influentes)}")
         else:
-            st.info("📊 As odds de abertura ainda não mostraram forte impacto — mas o teste é válido")
-    
+            st.info("📊 As odds de abertura ainda não mostraram forte impacto.")
+
     # ============================================================
-    # 💹 BLOCO EXTRA — Análise de Viés de Abertura (Market Bias)
+    # 💹 BLOCO EXTRA — Análise de Viés de Abertura
     # ============================================================
     st.markdown("### 💹 Análise do Viés de Abertura do Mercado")
-    
-    # Calcular diferença entre as probabilidades implícitas
-    games_today['Market_Bias_Opening'] = (
-        games_today['Imp_H_OP_Norm'] - games_today['Imp_A_OP_Norm']
-    )
-    
-    # Interpretação:
-    # > positivo → mercado abriu favorecendo o Home
-    # > negativo → mercado abriu favorecendo o Away
-    
-    # Visualização rápida
-    st.write("#### Distribuição do viés de abertura")
-    fig_bias, ax = plt.subplots(figsize=(6, 3))
-    ax.hist(games_today['Market_Bias_Opening'], bins=20, color='skyblue', edgecolor='white')
-    ax.axvline(0, color='red', linestyle='--', lw=1)
-    ax.set_xlabel("Market Bias Opening (Home - Away)")
-    ax.set_ylabel("Frequência")
-    ax.set_title("Distribuição do Viés de Abertura (Mercado → Casa)")
-    st.pyplot(fig_bias)
-    
-    # Relação entre viés e previsão da ML
-    st.write("#### Correlação entre Viés e Probabilidade ML (Home)")
+
+    games_today['Market_Bias_Opening'] = games_today['Imp_H_OP_Norm'] - games_today['Imp_A_OP_Norm']
+
     fig_corr, ax2 = plt.subplots(figsize=(6, 4))
     ax2.scatter(
         games_today['Market_Bias_Opening'],
         games_today['Prob_Home'],
-        alpha=0.6,
-        s=50,
+        alpha=0.6, s=50,
         c=np.where(games_today['Market_Bias_Opening'] > 0, 'green', 'orange'),
         edgecolor='white'
     )
@@ -1098,32 +1069,21 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     ax2.set_ylabel("Probabilidade ML (Home)")
     ax2.set_title("Viés de Mercado x Predição do Modelo")
     st.pyplot(fig_corr)
-    
-    # Resumo estatístico
+
     corr_bias = games_today['Market_Bias_Opening'].corr(games_today['Prob_Home'])
     st.metric("Correlação (Bias x Probabilidade ML Home)", f"{corr_bias:.3f}")
-    
-    # Insight textual automático
-    if corr_bias > 0.2:
-        st.success("📈 O modelo está alinhado com o viés do mercado — quanto mais o mercado favorece o Home, maior a probabilidade prevista.")
-    elif corr_bias < -0.2:
-        st.warning("📉 O modelo contradiz o mercado — pode haver oportunidades de valor contra o viés de abertura.")
-    else:
-        st.info("⚖️ O modelo está neutro em relação ao viés — o mercado parece razoavelmente eficiente nesta amostra.")
 
     # ============================================================
-    # 💰 BLOCO EXTRA — ROI por Faixas de Viés de Abertura
+    # 💰 BLOCO EXTRA — ROI por Faixas de Viés
     # ============================================================
-    st.markdown("### 💰 ROI por Faixas de Viés de Abertura (Market Bias)")
-    
-    # Definir faixas do bias (quartis ou bins fixos)
+    st.markdown("### 💰 ROI por Faixas de Viés de Abertura")
+
     bins = [-1.0, -0.15, -0.05, 0.05, 0.15, 1.0]
     labels = ["📉 Forte pró-Away", "🟠 Leve pró-Away", "⚖️ Neutro", "🟢 Leve pró-Home", "🏠 Forte pró-Home"]
     games_today["Bias_Group"] = pd.cut(games_today["Market_Bias_Opening"], bins=bins, labels=labels, include_lowest=True)
-    
-    # Supondo aposta de 1 unidade por jogo no Home quando Prob_Home > 0.5
-    # (pode adaptar a lógica depois para Away ou Handicap)
+
     games_today["Bet_Home"] = np.where(games_today["Prob_Home"] > 0.5, 1, 0)
+
     if "Target_AH_Home" in games_today.columns:
         games_today["Profit_Sim"] = np.where(
             (games_today["Bet_Home"] == 1) & (games_today["Target_AH_Home"] == 1),
@@ -1131,42 +1091,36 @@ def treinar_modelo_3d_clusters_single(history, games_today):
             np.where(games_today["Bet_Home"] == 1, -1, 0)
         )
     else:
-        # Jogos ainda sem resultado → ROI apenas estimado (placeholder neutro)
         games_today["Profit_Sim"] = np.nan
 
-    
-    # Agrupar por faixa de bias
     roi_summary = games_today.groupby("Bias_Group").agg(
         Jogos=("Profit_Sim", "count"),
         Apostas=("Bet_Home", "sum"),
-        Winrate=("Target_AH_Home", "mean"),
-        ROI=("Profit_Sim", lambda x: x.sum() / (len(x) if len(x) > 0 else 1))
+        Winrate=("Target_AH_Home", "mean") if "Target_AH_Home" in games_today.columns else ("Bet_Home", "mean"),
+        ROI=("Profit_Sim", lambda x: x.sum() / (games_today.loc[x.index, "Bet_Home"].sum() or 1))
     ).reset_index()
-    
-    # Mostrar tabela
+
     st.dataframe(roi_summary, use_container_width=True)
-    
-    # Plotar gráfico de ROI por faixa
+
     fig_roi, ax3 = plt.subplots(figsize=(6, 4))
     ax3.bar(roi_summary["Bias_Group"], roi_summary["ROI"], color=np.where(roi_summary["ROI"] > 0, "green", "red"))
     ax3.axhline(0, color="gray", linestyle="--", lw=1)
     ax3.set_ylabel("ROI Médio")
-    ax3.set_xlabel("Faixa de Viés de Abertura (Market Bias)")
+    ax3.set_xlabel("Faixa de Viés de Abertura")
     ax3.set_title("ROI por Nível de Viés de Abertura (Home - Away)")
     st.pyplot(fig_roi)
-    
-    # Interpretação automática
-    best_zone = roi_summary.loc[roi_summary["ROI"].idxmax(), "Bias_Group"]
-    best_roi = roi_summary["ROI"].max()
-    
-    if best_roi > 0:
-        st.success(f"💡 Melhor ROI observado em: **{best_zone}** → ROI médio de **{best_roi:.2%}**")
-    else:
-        st.info("⚖️ Nenhuma faixa apresentou ROI positivo significativo — o mercado está eficiente neste conjunto.")
 
-    
-    st.success("✅ Modelo 3D treinado (HOME) – com integração de Odds de Abertura opcional.")
+    if len(roi_summary) > 0:
+        best_zone = roi_summary.loc[roi_summary["ROI"].idxmax(), "Bias_Group"]
+        best_roi = roi_summary["ROI"].max()
+        if best_roi > 0:
+            st.success(f"💡 Melhor ROI em: **{best_zone}** → ROI médio de **{best_roi:.2%}**")
+        else:
+            st.info("⚖️ Nenhuma faixa apresentou ROI positivo — mercado eficiente nesta amostra.")
+
+    st.success("✅ Modelo 3D treinado (HOME) – com análise de viés e ROI integrada.")
     return model_home, games_today
+
 
 
 
