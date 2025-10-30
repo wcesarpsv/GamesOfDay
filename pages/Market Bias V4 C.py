@@ -388,17 +388,17 @@ def exibir_diagnostico_clusters(df, centroids, classificacoes):
             st.write(f"**dx real:** {exemplo['dx']:.3f} | **Legenda:** {legenda}")
             
             # VALIDAÇÃO DA LEGENDA
-            dx_exemplo = exemplo['dx']
-            if "Home" in legenda and dx_exemplo > 0:
-                st.success("✅ Legenda coerente com dados")
-            elif "Away" in legenda and dx_exemplo < 0:
-                st.success("✅ Legenda coerente com dados") 
-            elif "Equilíbrio" in legenda and abs(dx_exemplo) < 0.2:
-                st.success("✅ Legenda coerente com dados")
-            else:
-                st.info("🔍 Legenda baseada em padrão complexo")
+            # dx_exemplo = exemplo['dx']
+            # if "Home" in legenda and dx_exemplo > 0:
+            #     st.success("✅ Legenda coerente com dados")
+            # elif "Away" in legenda and dx_exemplo < 0:
+            #     st.success("✅ Legenda coerente com dados") 
+            # elif "Equilíbrio" in legenda and abs(dx_exemplo) < 0.2:
+            #     st.success("✅ Legenda coerente com dados")
+            # else:
+            #     st.info("🔍 Legenda baseada em padrão complexo")
             
-            st.write("---")
+            # st.write("---")
 
     # # RESUMO ESTATÍSTICO
     # st.markdown("#### 📋 Resumo Estatístico")
