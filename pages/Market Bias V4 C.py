@@ -704,6 +704,83 @@ def adicionar_indicadores_explicativos_clusters(df):
 
     return df
 
+
+
+############ Bloco L - Sistema Live Score com Clusters ################
+# ---------------- LIVE SCORE COM CLUSTERS ----------------
+def determine_handicap_result(row):
+    """Determina se o HOME cobriu o handicap"""
+    try:
+        gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
+        ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
+        asian_line_decimal = row.get('Asian_Line_Decimal')
+    except (ValueError, TypeError):
+        return None
+
+    if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line_decimal):
+        return None
+
+    margin = gh - ga
+    handicap_result = calc_handicap_result(margin, asian_line_decimal, invert=False)
+
+    if handicap_result > 0.5:
+        return "HOME_COVERED"
+    elif handicap_result == 0.5:
+        return "PUSH"
+    else:
+        return "HOME_NOT_COVERED"
+
+def check_handicap_recommendation_correct(rec, handicap_result):
+    """Verifica se a recomendação estava correta"""
+    if pd.isna(rec) or handicap_result is None or 'EVITAR' in str(rec):
+        return None
+
+    rec = str(rec)
+
+    if any(keyword in rec for keyword in ['HOME', 'Home', 'DOMINANTE']):
+        return handicap_result == "HOME_COVERED"
+    elif any(keyword in rec for keyword in ['AWAY', 'Away', 'DOMINANTE']):
+        return handicap_result in ["HOME_NOT_COVERED", "PUSH"]
+
+    return None
+
+def update_real_time_data_clusters(df):
+    """Atualiza todos os dados em tempo real para sistema com clusters"""
+    df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
+    df['Cluster_Correct'] = df.apply(
+        lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
+    )
+    return df
+
+def generate_live_summary_clusters(df):
+    """Gera resumo em tempo real para sistema com clusters"""
+    finished_games = df.dropna(subset=['Handicap_Result'])
+
+    if finished_games.empty:
+        return {
+            "Total Jogos": len(df),
+            "Jogos Finalizados": 0,
+            "Recomendações Cluster": 0,
+            "Acertos Cluster": 0,
+            "Winrate Cluster": "0%"
+        }
+
+    cluster_recomendados = finished_games[finished_games['Cluster_Correct'].notna()]
+    total_recomendados = len(cluster_recomendados)
+    correct_recomendados = cluster_recomendados['Cluster_Correct'].sum()
+    winrate = (correct_recomendados / total_recomendados) * 100 if total_recomendados > 0 else 0
+
+    return {
+        "Total Jogos": len(df),
+        "Jogos Finalizados": len(finished_games),
+        "Recomendações Cluster": total_recomendados,
+        "Acertos Cluster": int(correct_recomendados),
+        "Winrate Cluster": f"{winrate:.1f}%"
+    }
+
+
+
+
 ############ Bloco K - Sistema Live Score com Clusters ################
 def determine_handicap_result(row):
     try:
@@ -730,7 +807,79 @@ def update_real_time_data_clusters(df):
     df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
     return df
 
-############ Bloco L - Estilo da Tabela ################
+############ Bloco L - Sistema Live Score com Clusters ################
+# ---------------- LIVE SCORE COM CLUSTERS ----------------
+def determine_handicap_result(row):
+    """Determina se o HOME cobriu o handicap"""
+    try:
+        gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
+        ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
+        asian_line_decimal = row.get('Asian_Line_Decimal')
+    except (ValueError, TypeError):
+        return None
+
+    if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line_decimal):
+        return None
+
+    margin = gh - ga
+    handicap_result = calc_handicap_result(margin, asian_line_decimal, invert=False)
+
+    if handicap_result > 0.5:
+        return "HOME_COVERED"
+    elif handicap_result == 0.5:
+        return "PUSH"
+    else:
+        return "HOME_NOT_COVERED"
+
+def check_handicap_recommendation_correct(rec, handicap_result):
+    """Verifica se a recomendação estava correta"""
+    if pd.isna(rec) or handicap_result is None or 'EVITAR' in str(rec):
+        return None
+
+    rec = str(rec)
+
+    if any(keyword in rec for keyword in ['HOME', 'Home', 'DOMINANTE']):
+        return handicap_result == "HOME_COVERED"
+    elif any(keyword in rec for keyword in ['AWAY', 'Away', 'DOMINANTE']):
+        return handicap_result in ["HOME_NOT_COVERED", "PUSH"]
+
+    return None
+
+def update_real_time_data_clusters(df):
+    """Atualiza todos os dados em tempo real para sistema com clusters"""
+    df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
+    df['Cluster_Correct'] = df.apply(
+        lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
+    )
+    return df
+
+def generate_live_summary_clusters(df):
+    """Gera resumo em tempo real para sistema com clusters"""
+    finished_games = df.dropna(subset=['Handicap_Result'])
+
+    if finished_games.empty:
+        return {
+            "Total Jogos": len(df),
+            "Jogos Finalizados": 0,
+            "Recomendações Cluster": 0,
+            "Acertos Cluster": 0,
+            "Winrate Cluster": "0%"
+        }
+
+    cluster_recomendados = finished_games[finished_games['Cluster_Correct'].notna()]
+    total_recomendados = len(cluster_recomendados)
+    correct_recomendados = cluster_recomendados['Cluster_Correct'].sum()
+    winrate = (correct_recomendados / total_recomendados) * 100 if total_recomendados > 0 else 0
+
+    return {
+        "Total Jogos": len(df),
+        "Jogos Finalizados": len(finished_games),
+        "Recomendações Cluster": total_recomendados,
+        "Acertos Cluster": int(correct_recomendados),
+        "Winrate Cluster": f"{winrate:.1f}%"
+    }
+
+############ Bloco M - Estilo da Tabela ################
 def estilo_tabela_clusters(df):
     def cor_classificacao(valor):
         if '🌟🌟🌟' in str(valor): return 'font-weight: bold'
@@ -760,7 +909,7 @@ def estilo_tabela_clusters(df):
 
     return styler
 
-############ Bloco M - Execução Principal ################
+############ Bloco N - Execução Principal ################
 st.info("📂 Carregando dados para análise 3D com clusters...")
 
 files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
@@ -858,14 +1007,21 @@ st.markdown("## 🏆 Melhores Oportunidades - Sistema Clusters 3D")
 if not games_today.empty and 'Cluster_ML_Score_Home' in games_today.columns:
     ranking_clusters = games_today.copy()
     ranking_clusters = adicionar_indicadores_explicativos_clusters(ranking_clusters)
-    ranking_clusters = update_real_time_data_clusters(ranking_clusters)
+    ranking_clusters = update_real_time_data_clusters(ranking_clusters)  # ✅ ATUALIZA LIVE SCORE
     ranking_clusters = ranking_clusters.sort_values('Score_Final_Clusters', ascending=False)
+
+    # ---------------- EXIBIR RESUMO LIVE ----------------
+    st.markdown("### 📡 Live Score Monitor")
+    live_summary = generate_live_summary_clusters(ranking_clusters)
+    st.json(live_summary)
     
     colunas_principais = [
         'Ranking', 'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'ML_Side',
         'Cluster3D_Desc', 'Cluster_ML_Score_Home', 'Cluster_ML_Score_Away',
         'Score_Final_Clusters', 'Classificacao_Potencial', 'Recomendacao',
-        'M_H', 'M_A', 'Tendencia_Home', 'Tendencia_Away'
+        'Tendencia_Home', 'Tendencia_Away',
+        # Live Score
+        'Asian_Line_Decimal', 'Handicap_Result', 'Cluster_Correct'
     ]
     
     cols_finais = [c for c in colunas_principais if c in ranking_clusters.columns]
@@ -876,6 +1032,7 @@ if not games_today.empty and 'Cluster_ML_Score_Home' in games_today.columns:
         styler.format({
             'Goals_H_Today': '{:.0f}',
             'Goals_A_Today': '{:.0f}',
+            'Asian_Line_Decimal': '{:.2f}',
             'Cluster_ML_Score_Home': '{:.1%}',
             'Cluster_ML_Score_Away': '{:.1%}',
             'Score_Final_Clusters': '{:.1f}',
