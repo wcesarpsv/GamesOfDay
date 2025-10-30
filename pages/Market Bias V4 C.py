@@ -144,59 +144,59 @@ def calc_handicap_result(margin, asian_line_str, invert=False):
             results.append(0.0)
     return np.mean(results)
 
-def validar_conversao_handicap():
-    """Testa a conversão de handicaps com exemplos conhecidos"""
-    exemplos = [
-        '0', '0.5', '-0.5', '0/0.5', '-0.5/0', '1/1.5', '-1/1.5', '1.5', '-1.5'
-    ]
+# def validar_conversao_handicap():
+#     """Testa a conversão de handicaps com exemplos conhecidos"""
+#     exemplos = [
+#         '0', '0.5', '-0.5', '0/0.5', '-0.5/0', '1/1.5', '-1/1.5', '1.5', '-1.5'
+#     ]
     
-    st.markdown("### 🧪 Validação da Conversão de Handicap")
-    st.write("**Regra:** Away → Home (inverte sinal)")
+#     st.markdown("### 🧪 Validação da Conversão de Handicap")
+#     st.write("**Regra:** Away → Home (inverte sinal)")
     
-    resultados = []
-    for exemplo in exemplos:
-        convertido = convert_asian_line_to_decimal(exemplo)
-        resultados.append({
-            'Original (Away)': exemplo,
-            'Convertido (Home)': convertido,
-            'Descrição': f"Away {exemplo} → Home {convertido:.2f}"
-        })
+#     resultados = []
+#     for exemplo in exemplos:
+#         convertido = convert_asian_line_to_decimal(exemplo)
+#         resultados.append({
+#             'Original (Away)': exemplo,
+#             'Convertido (Home)': convertido,
+#             'Descrição': f"Away {exemplo} → Home {convertido:.2f}"
+#         })
     
-    df_validacao = pd.DataFrame(resultados)
-    st.dataframe(df_validacao, use_container_width=True)
+#     df_validacao = pd.DataFrame(resultados)
+#     st.dataframe(df_validacao, use_container_width=True)
     
-    # Verificar consistência
-    st.markdown("#### ✅ Verificação de Consistência")
-    st.write("**0/0.5** → Away +0.25 → Home -0.25:", convert_asian_line_to_decimal('0/0.5') == -0.25)
-    st.write("**-0.5/0** → Away -0.25 → Home +0.25:", convert_asian_line_to_decimal('-0.5/0') == 0.25)
-    st.write("**1.5** → Away +1.50 → Home -1.50:", convert_asian_line_to_decimal('1.5') == -1.50)
+#     # Verificar consistência
+#     st.markdown("#### ✅ Verificação de Consistência")
+#     st.write("**0/0.5** → Away +0.25 → Home -0.25:", convert_asian_line_to_decimal('0/0.5') == -0.25)
+#     st.write("**-0.5/0** → Away -0.25 → Home +0.25:", convert_asian_line_to_decimal('-0.5/0') == 0.25)
+#     st.write("**1.5** → Away +1.50 → Home -1.50:", convert_asian_line_to_decimal('1.5') == -1.50)
 
-def verificar_sistema_handicap(history, games_today):
-    """Verifica a integridade do sistema de handicap"""
-    st.markdown("### 🔍 Verificação do Sistema de Handicap")
+# def verificar_sistema_handicap(history, games_today):
+#     """Verifica a integridade do sistema de handicap"""
+#     st.markdown("### 🔍 Verificação do Sistema de Handicap")
     
-    # 1. Verificar se há valores convertidos
-    st.write("**1. Valores convertidos no histórico:**")
-    st.write(f"- Total: {len(history)}")
-    st.write(f"- Com Asian Line: {history['Asian_Line_Decimal'].notna().sum()}")
-    st.write(f"- Exemplos: {history['Asian_Line_Decimal'].head(5).tolist()}")
+#     # 1. Verificar se há valores convertidos
+#     st.write("**1. Valores convertidos no histórico:**")
+#     st.write(f"- Total: {len(history)}")
+#     st.write(f"- Com Asian Line: {history['Asian_Line_Decimal'].notna().sum()}")
+#     st.write(f"- Exemplos: {history['Asian_Line_Decimal'].head(5).tolist()}")
     
-    # 2. Verificar distribuição
-    st.write("**2. Distribuição dos handicaps:**")
-    if 'Asian_Line_Decimal' in history.columns:
-        st.write(history['Asian_Line_Decimal'].describe())
+#     # 2. Verificar distribuição
+#     st.write("**2. Distribuição dos handicaps:**")
+#     if 'Asian_Line_Decimal' in history.columns:
+#         st.write(history['Asian_Line_Decimal'].describe())
     
-    # 3. Verificar cálculo de resultados
-    st.write("**3. Exemplo de cálculo de handicap:**")
-    if len(history) > 0:
-        exemplo = history.iloc[0]
-        margin = exemplo.get('Goals_H_FT', 0) - exemplo.get('Goals_A_FT', 0)
-        handicap_line = exemplo.get('Asian_Line_Decimal', 0)
-        resultado = calc_handicap_result(margin, handicap_line)
+#     # 3. Verificar cálculo de resultados
+#     st.write("**3. Exemplo de cálculo de handicap:**")
+#     if len(history) > 0:
+#         exemplo = history.iloc[0]
+#         margin = exemplo.get('Goals_H_FT', 0) - exemplo.get('Goals_A_FT', 0)
+#         handicap_line = exemplo.get('Asian_Line_Decimal', 0)
+#         resultado = calc_handicap_result(margin, handicap_line)
         
-        st.write(f"Jogo: {exemplo.get('Home', '')} vs {exemplo.get('Away', '')}")
-        st.write(f"Margin: {margin}, Handicap: {handicap_line:.2f}")
-        st.write(f"Resultado: {resultado:.2f}")
+#         st.write(f"Jogo: {exemplo.get('Home', '')} vs {exemplo.get('Away', '')}")
+#         st.write(f"Margin: {margin}, Handicap: {handicap_line:.2f}")
+#         st.write(f"Resultado: {resultado:.2f}")
 
 
 
