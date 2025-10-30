@@ -153,8 +153,8 @@ def aplicar_clusterizacao_3d(df, n_clusters=2, random_state=42):
     centroids = pd.DataFrame(kmeans.cluster_centers_, columns=['dx', 'dy', 'dz'])
     centroids['Cluster'] = range(n_clusters)
 
-    st.markdown("### 🧭 Clusters 3D Criados (KMeans)")
-    st.dataframe(centroids.style.format({'dx': '{:.2f}', 'dy': '{:.2f}', 'dz': '{:.2f}'}))
+    # st.markdown("### 🧭 Clusters 3D Criados (KMeans)")
+    # st.dataframe(centroids.style.format({'dx': '{:.2f}', 'dy': '{:.2f}', 'dz': '{:.2f}'}))
 
     # Adicionar também uma descrição textual leve (para visualização)
     df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
