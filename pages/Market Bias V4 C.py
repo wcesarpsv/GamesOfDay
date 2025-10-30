@@ -30,9 +30,9 @@ for module_name in list(sys.modules.keys()):
 
 #######################################
 
-# Configuração da página
-st.set_page_config(page_title="Sistema 3D Clusters - Bet Indicator", layout="wide")
-st.title("🎯 Sistema 3D com Clusters - ML Avançado")
+# # Configuração da página
+# st.set_page_config(page_title="Sistema 3D Clusters - Bet Indicator", layout="wide")
+# st.title("🎯 Sistema 3D com Clusters - ML Avançado")
 
 # Configurações base
 PAGE_PREFIX = "Clusters3D_ML"
@@ -347,15 +347,15 @@ def exibir_diagnostico_clusters(df, centroids, classificacoes):
         lambda x: len(df[df['Cluster3D_Label'] == x])
     )
     
-    st.markdown("#### 🎯 Centroides com Legendas Dinâmicas")
-    st.dataframe(centroids_df.style.format({
-        'dx': '{:.3f}', 
-        'dy': '{:.3f}', 
-        'dz': '{:.3f}'
-    }), use_container_width=True)
+    # st.markdown("#### 🎯 Centroides com Legendas Dinâmicas")
+    # st.dataframe(centroids_df.style.format({
+    #     'dx': '{:.3f}', 
+    #     'dy': '{:.3f}', 
+    #     'dz': '{:.3f}'
+    # }), use_container_width=True)
     
-    # ANÁLISE DETALHADA POR CLUSTER
-    st.markdown("#### 📈 Análise Detalhada por Cluster")
+    # # ANÁLISE DETALHADA POR CLUSTER
+    # st.markdown("#### 📈 Análise Detalhada por Cluster")
     
     for cluster_id in sorted(df['Cluster3D_Label'].unique()):
         cluster_data = df[df['Cluster3D_Label'] == cluster_id]
@@ -400,20 +400,20 @@ def exibir_diagnostico_clusters(df, centroids, classificacoes):
             
             st.write("---")
 
-    # RESUMO ESTATÍSTICO
-    st.markdown("#### 📋 Resumo Estatístico")
-    resumo = df.groupby('Cluster3D_Desc').agg({
-        'Cluster3D_Label': 'count',
-        'dx': 'mean',
-        'dy': 'mean', 
-        'dz': 'mean'
-    }).rename(columns={'Cluster3D_Label': 'Jogos'})
+    # # RESUMO ESTATÍSTICO
+    # st.markdown("#### 📋 Resumo Estatístico")
+    # resumo = df.groupby('Cluster3D_Desc').agg({
+    #     'Cluster3D_Label': 'count',
+    #     'dx': 'mean',
+    #     'dy': 'mean', 
+    #     'dz': 'mean'
+    # }).rename(columns={'Cluster3D_Label': 'Jogos'})
     
-    st.dataframe(resumo.style.format({
-        'dx': '{:.3f}',
-        'dy': '{:.3f}', 
-        'dz': '{:.3f}'
-    }), use_container_width=True)
+    # st.dataframe(resumo.style.format({
+    #     'dx': '{:.3f}',
+    #     'dy': '{:.3f}', 
+    #     'dz': '{:.3f}'
+    # }), use_container_width=True)
 #################################################################
 
 ############ Bloco E - Cálculo de Momentum e Regressão ################
