@@ -226,31 +226,43 @@ def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
     df['dy'] = df['M_H'] - df['M_A']
     df['dz'] = df['MT_H'] - df['MT_A']
 
+    # Preencher NaN com 0 para evitar erro no KMeans
     X_cluster = df[['dx', 'dy', 'dz']].fillna(0).to_numpy()
 
-    # KMeans 3D
-    kmeans = KMeans(
-        n_clusters=n_clusters,
-        random_state=random_state,
-        init='k-means++',
-        n_init=10
-    )
-    df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
+    # Verificar se há dados suficientes para clusterização
+    if len(X_cluster) < n_clusters:
+        st.warning(f"⚠️ Dados insuficientes para {n_clusters} clusters. Apenas {len(X_cluster)} amostras disponíveis.")
+        n_clusters = max(2, len(X_cluster) // 2)  # Ajustar número de clusters
 
-    # 🎯 SISTEMA FLEXÍVEL: CLASSIFICAR CLUSTERS DINAMICAMENTE
-    st.markdown("## 🧠 Sistema Flexível de Legendas Dinâmicas")
-    
-    # 1. CALCULAR CENTROIDES REAIS
-    centroids = kmeans.cluster_centers_
-    
-    # 2. CLASSIFICAR CADA CLUSTER BASEADO NOS CENTROIDES
-    classificacoes_clusters = classificar_clusters_dinamicamente(centroids)
-    
-    # 3. APLICAR LEGENDAS DINÂMICAS
-    df['Cluster3D_Desc'] = df['Cluster3D_Label'].map(classificacoes_clusters).fillna('🌀 Caso Atípico')
-    
-    # 4. EXIBIR DIAGNÓSTICO INTELIGENTE
-    exibir_diagnostico_clusters(df, centroids, classificacoes_clusters)
+    # KMeans 3D
+    try:
+        kmeans = KMeans(
+            n_clusters=n_clusters,
+            random_state=random_state,
+            init='k-means++',
+            n_init=10
+        )
+        df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
+
+        # 🎯 SISTEMA FLEXÍVEL: CLASSIFICAR CLUSTERS DINAMICAMENTE
+        st.markdown("## 🧠 Sistema Flexível de Legendas Dinâmicas")
+        
+        # 1. CALCULAR CENTROIDES REAIS
+        centroids = kmeans.cluster_centers_
+        
+        # 2. CLASSIFICAR CADA CLUSTER BASEADO NOS CENTROIDES
+        classificacoes_clusters = classificar_clusters_dinamicamente(centroids)
+        
+        # 3. APLICAR LEGENDAS DINÂMICAS
+        df['Cluster3D_Desc'] = df['Cluster3D_Label'].map(classificacoes_clusters).fillna('🌀 Caso Atípico')
+        
+        # 4. EXIBIR DIAGNÓSTICO INTELIGENTE
+        exibir_diagnostico_clusters(df, centroids, classificacoes_clusters)
+        
+    except Exception as e:
+        st.error(f"❌ Erro na clusterização: {e}")
+        df['Cluster3D_Label'] = -1
+        df['Cluster3D_Desc'] = '🌀 Erro na Clusterização'
     
     return df
 
@@ -404,6 +416,7 @@ def exibir_diagnostico_clusters(df, centroids, classificacoes):
     }), use_container_width=True)
 #################################################################
 
+############ Bloco E - Cálculo de Momentum e Regressão ################
 # ---------------- CÁLCULO DE MOMENTUM DO TIME ----------------
 def calcular_momentum_time(df, window=6):
     """
@@ -418,6 +431,13 @@ def calcular_momentum_time(df, window=6):
     if 'MT_A' not in df.columns:
         df['MT_A'] = np.nan
 
+    # Verificar se HandScore existe
+    if 'HandScore_Home' not in df.columns or 'HandScore_Away' not in df.columns:
+        st.warning("⚠️ Colunas HandScore não encontradas - preenchendo MT com 0")
+        df['MT_H'] = 0
+        df['MT_A'] = 0
+        return df
+
     # Lista de todos os times (Home + Away)
     all_teams = pd.unique(df[['Home', 'Away']].values.ravel())
 
@@ -425,16 +445,28 @@ def calcular_momentum_time(df, window=6):
         # ---------------- HOME ----------------
         mask_home = df['Home'] == team
         if mask_home.sum() > 2:  # precisa de histórico mínimo
-            series = df.loc[mask_home, 'HandScore_Home'].astype(float).rolling(window, min_periods=2).mean()
-            zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
-            df.loc[mask_home, 'MT_H'] = zscore
+            try:
+                series = df.loc[mask_home, 'HandScore_Home'].astype(float).rolling(window, min_periods=2).mean()
+                if series.std(ddof=0) != 0:
+                    zscore = (series - series.mean()) / series.std(ddof=0)
+                else:
+                    zscore = series * 0  # Todos zeros se não há variação
+                df.loc[mask_home, 'MT_H'] = zscore
+            except Exception as e:
+                df.loc[mask_home, 'MT_H'] = 0
 
         # ---------------- AWAY ----------------
         mask_away = df['Away'] == team
         if mask_away.sum() > 2:
-            series = df.loc[mask_away, 'HandScore_Away'].astype(float).rolling(window, min_periods=2).mean()
-            zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
-            df.loc[mask_away, 'MT_A'] = zscore
+            try:
+                series = df.loc[mask_away, 'HandScore_Away'].astype(float).rolling(window, min_periods=2).mean()
+                if series.std(ddof=0) != 0:
+                    zscore = (series - series.mean()) / series.std(ddof=0)
+                else:
+                    zscore = series * 0
+                df.loc[mask_away, 'MT_A'] = zscore
+            except Exception as e:
+                df.loc[mask_away, 'MT_A'] = 0
 
     # Preenche eventuais NaN com 0 (neutro)
     df['MT_H'] = df['MT_H'].fillna(0)
@@ -1425,8 +1457,75 @@ if {'Odd_H_OP', 'Odd_A_OP', 'Quadrant_Dist_3D'}.issubset(games_today.columns):
 else:
     st.warning("⚠️ Dados insuficientes para cálculo de Valor Angular (faltam odds de abertura ou colunas 3D)")
 
+# ---------------- DIAGNÓSTICO DO GRÁFICO 3D ----------------
+def diagnosticar_grafico_3d(df_plot, selected_date_str):
+    """Diagnóstico detalhado dos dados para o gráfico 3D"""
+    st.markdown("### 🔍 Diagnóstico do Gráfico 3D")
+    
+    st.write(f"**Data analisada:** {selected_date_str}")
+    st.write(f"**Total de jogos filtrados:** {len(df_plot)}")
+    
+    if df_plot.empty:
+        st.error("❌ DataFrame vazio - nenhum dado para exibir")
+        return False
+    
+    # Verificar colunas essenciais
+    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A', 'Cluster3D_Desc']
+    missing_cols = [col for col in required_cols if col not in df_plot.columns]
+    
+    if missing_cols:
+        st.error(f"❌ Colunas faltantes: {missing_cols}")
+        return False
+    
+    st.success("✅ Todas as colunas necessárias estão presentes")
+    
+    # Verificar dados numéricos
+    numeric_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+    
+    st.write("**📊 Estatísticas dos dados numéricos:**")
+    for col in numeric_cols:
+        if col in df_plot.columns:
+            non_null = df_plot[col].notna().sum()
+            zero_count = (df_plot[col].fillna(0) == 0).sum()
+            st.write(f"- {col}: {non_null} não-nulos, {zero_count} zeros")
+            
+            # Mostrar alguns valores
+            if non_null > 0:
+                st.write(f"  Valores: {df_plot[col].head(3).tolist()}")
+    
+    # Verificar clusters
+    if 'Cluster3D_Desc' in df_plot.columns:
+        cluster_info = df_plot['Cluster3D_Desc'].value_counts()
+        st.write("**🎯 Distribuição de clusters:**")
+        st.write(cluster_info)
+    
+    # Verificar se há dados válidos para plotagem
+    has_valid_data = False
+    for col in numeric_cols:
+        if col in df_plot.columns:
+            # Verificar se há pelo menos alguns valores não-zero e não-NaN
+            valid_data = df_plot[col].dropna()
+            if len(valid_data) > 0 and (valid_data != 0).any():
+                has_valid_data = True
+                break
+    
+    if not has_valid_data:
+        st.error("❌ Nenhum dado numérico válido para plotagem (todos zero ou NaN)")
+        return False
+    
+    st.success("✅ Dados válidos encontrados para plotagem")
+    return True
 
-
+def garantir_clusterizacao(df):
+    """Garante que a clusterização foi aplicada corretamente"""
+    if 'Cluster3D_Desc' not in df.columns or df['Cluster3D_Desc'].isna().all():
+        st.warning("🔄 Aplicando clusterização...")
+        try:
+            df = aplicar_clusterizacao_3d(df)
+            st.success("✅ Clusterização aplicada com sucesso")
+        except Exception as e:
+            st.error(f"❌ Erro na clusterização: {e}")
+    return df
 
 # ---------------- VISUALIZAÇÃO 3D INTERATIVA ----------------
 st.markdown("## 🎯 Visualização 3D com Clusters")
@@ -1455,6 +1554,9 @@ if selected_league != "⚽ Todas as ligas":
 else:
     df_filtered = games_today.copy()
 
+# Garantir clusterização
+df_filtered = garantir_clusterizacao(df_filtered)
+
 # Filtro por cluster
 st.markdown("### 🔍 Filtro por Cluster")
 clusters_disponiveis = df_filtered['Cluster3D_Desc'].unique() if 'Cluster3D_Desc' in df_filtered.columns else []
@@ -1470,91 +1572,89 @@ if len(clusters_disponiveis) > 0:
     else:
         df_plot = df_filtered.copy()
 else:
-    st.warning("⚠️ Nenhum cluster disponível - aplicando clusterização...")
-    try:
-        df_filtered = aplicar_clusterizacao_3d(df_filtered)
-        clusters_disponiveis = df_filtered['Cluster3D_Desc'].unique()
-        df_plot = df_filtered.copy()
-    except Exception as e:
-        st.error(f"❌ Erro na clusterização: {e}")
-        df_plot = df_filtered.copy()
+    st.warning("⚠️ Nenhum cluster disponível - usando dados brutos")
+    df_plot = df_filtered.copy()
 
 # Aplicar limite de jogos
 df_plot = df_plot.head(n_to_show)
 
-# Verificar se há dados válidos para o gráfico 3D
-required_cols_3d = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A', 'Cluster3D_Desc']
-missing_3d_cols = [col for col in required_cols_3d if col not in df_plot.columns]
+# ✅ EXECUTAR DIAGNÓSTICO ANTES DO GRÁFICO
+diagnostico_ok = diagnosticar_grafico_3d(df_plot, selected_date_str)
 
-if missing_3d_cols:
-    st.warning(f"⚠️ Colunas necessárias para gráfico 3D não encontradas: {missing_3d_cols}")
-    st.info("📊 O gráfico 3D será pulado devido a dados insuficientes")
+if not diagnostico_ok:
+    st.warning("🚨 Gráfico 3D não será exibido devido a problemas nos dados")
     
-    # Mostrar estatísticas dos dados disponíveis
-    st.markdown("### 📈 Dados Disponíveis para Análise")
-    available_cols = [col for col in required_cols_3d if col in df_plot.columns]
-    if available_cols:
-        st.write(f"Colunas disponíveis: {available_cols}")
-        st.write(f"Total de jogos: {len(df_plot)}")
-        
+    # Mostrar dados brutos para debug
+    st.markdown("### 📋 Dados Brutos para Análise")
+    debug_cols = ['Home', 'Away', 'League', 'Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A', 'Cluster3D_Desc']
+    debug_cols = [col for col in debug_cols if col in df_plot.columns]
+    
+    if debug_cols:
+        st.dataframe(df_plot[debug_cols], use_container_width=True)
+    
 else:
-    # Verificar se há dados numéricos válidos
-    numeric_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
-    df_numeric_check = df_plot[numeric_cols].fillna(0)
-    
-    if df_numeric_check.select_dtypes(include=[np.number]).empty:
-        st.warning("⚠️ Não há dados numéricos válidos para o gráfico 3D")
+    # VERIFICAR SE HÁ DADOS VÁLIDOS PARA O GRÁFICO 3D
+    required_cols_3d = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A', 'Cluster3D_Desc']
+    missing_3d_cols = [col for col in required_cols_3d if col not in df_plot.columns]
+
+    if missing_3d_cols:
+        st.warning(f"⚠️ Colunas necessárias para gráfico 3D não encontradas: {missing_3d_cols}")
     else:
-        # Verificar se temos pelo menos alguns dados não-zero
-        has_valid_data = False
+        # Verificar se temos dados numéricos válidos
+        numeric_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+        df_numeric_check = df_plot[numeric_cols].fillna(0)
+        
+        # Verificar se há valores não-zero
+        has_non_zero_data = False
         for col in numeric_cols:
-            if col in df_plot.columns and df_plot[col].notna().any():
+            if col in df_plot.columns:
                 non_zero_values = df_plot[col].fillna(0) != 0
                 if non_zero_values.any():
-                    has_valid_data = True
+                    has_non_zero_data = True
                     break
         
-        if not has_valid_data:
-            st.warning("⚠️ Todos os valores numéricos são zero ou NaN")
-        else:
-            try:
-                # Criar e exibir gráfico 3D
-                fig_3d_clusters = create_3d_plot_with_clusters(df_plot, n_to_show, selected_league)
-                st.plotly_chart(fig_3d_clusters, use_container_width=True)
-                
-                # Legenda dos clusters
-                st.markdown("""
-                ### 🎨 Legenda dos Clusters 3D:
-                - **🔵 Home Domina Confronto**: Home superior nas 3 dimensões
-                - **🔴 Away Domina Confronto**: Away superior nas 3 dimensões  
-                - **🟢 Confronto Equilibrado**: Times muito parecidos
-                - **🟠 Home Imprevisível**: Sinais mistos e conflitantes
-                - **🟣 Home Instável**: Alta volatilidade e inconsistência
-                """)
-                
-                # Estatísticas dos clusters exibidos
-                st.markdown("### 📊 Estatísticas dos Clusters no Gráfico")
-                cluster_counts = df_plot['Cluster3D_Desc'].value_counts()
-                st.dataframe(cluster_counts, use_container_width=True)
-                
-            except Exception as e:
-                st.error(f"❌ Erro ao criar gráfico 3D: {e}")
-                st.info("📋 Mostrando dados em formato de tabela...")
-                
-                # Mostrar dados em tabela como fallback
-                display_cols = ['Home', 'Away', 'League', 'Cluster3D_Desc', 'Aggression_Home', 'Aggression_Away', 'M_H', 'M_A']
-                display_cols = [col for col in display_cols if col in df_plot.columns]
-                
-                if display_cols:
-                    st.dataframe(
-                        df_plot[display_cols].style.format({
-                            'Aggression_Home': '{:.2f}',
-                            'Aggression_Away': '{:.2f}',
-                            'M_H': '{:.2f}',
-                            'M_A': '{:.2f}'
-                        }),
-                        use_container_width=True
-                    )
+        if not has_non_zero_data:
+            st.warning("⚠️ Todos os valores numéricos são zero - gráfico 3D pode ficar vazio")
+        
+        try:
+            # Criar e exibir gráfico 3D
+            st.info("🎨 Gerando gráfico 3D...")
+            fig_3d_clusters = create_3d_plot_with_clusters(df_plot, n_to_show, selected_league)
+            st.plotly_chart(fig_3d_clusters, use_container_width=True)
+            
+            # Legenda dos clusters
+            st.markdown("""
+            ### 🎨 Legenda dos Clusters 3D:
+            - **🔵 Home Domina Confronto**: Home superior nas 3 dimensões
+            - **🔴 Away Domina Confronto**: Away superior nas 3 dimensões  
+            - **🟢 Confronto Equilibrado**: Times muito parecidos
+            - **🟠 Home Imprevisível**: Sinais mistos e conflitantes
+            - **🟣 Home Instável**: Alta volatilidade e inconsistência
+            """)
+            
+            # Estatísticas dos clusters exibidos
+            st.markdown("### 📊 Estatísticas dos Clusters no Gráfico")
+            cluster_counts = df_plot['Cluster3D_Desc'].value_counts()
+            st.dataframe(cluster_counts, use_container_width=True)
+            
+        except Exception as e:
+            st.error(f"❌ Erro ao criar gráfico 3D: {e}")
+            st.info("📋 Mostrando dados em formato de tabela...")
+            
+            # Mostrar dados em tabela como fallback
+            display_cols = ['Home', 'Away', 'League', 'Cluster3D_Desc', 'Aggression_Home', 'Aggression_Away', 'M_H', 'M_A']
+            display_cols = [col for col in display_cols if col in df_plot.columns]
+            
+            if display_cols:
+                st.dataframe(
+                    df_plot[display_cols].style.format({
+                        'Aggression_Home': '{:.2f}',
+                        'Aggression_Away': '{:.2f}',
+                        'M_H': '{:.2f}',
+                        'M_A': '{:.2f}'
+                    }),
+                    use_container_width=True
+                )
 
 
 ############ Bloco P - Execução Principal: Tabela Principal ################
