@@ -1537,11 +1537,11 @@ else:
 
 # ---------------- DIAGNÓSTICO DO GRÁFICO 3D ----------------
 def diagnosticar_grafico_3d(df_plot, selected_date_str):
-    """Diagnóstico detalhado dos dados para o gráfico 3D"""
-    st.markdown("### 🔍 Diagnóstico do Gráfico 3D")
+    # """Diagnóstico detalhado dos dados para o gráfico 3D"""
+    # st.markdown("### 🔍 Diagnóstico do Gráfico 3D")
     
-    st.write(f"**Data analisada:** {selected_date_str}")
-    st.write(f"**Total de jogos filtrados:** {len(df_plot)}")
+    # st.write(f"**Data analisada:** {selected_date_str}")
+    # st.write(f"**Total de jogos filtrados:** {len(df_plot)}")
     
     if df_plot.empty:
         st.error("❌ DataFrame vazio - nenhum dado para exibir")
