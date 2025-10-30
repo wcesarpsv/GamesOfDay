@@ -533,37 +533,130 @@ def calcular_regressao_media(df):
 
 # ---------------- VISUALIZAÇÃO 3D COM CLUSTERS ----------------
 def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
-    """Gráfico 3D colorido por clusters"""
+    """Gráfico 3D colorido por clusters - VERSÃO CORRIGIDA"""
+    
+    # Verificar se temos dados válidos
+    if df_plot.empty:
+        st.warning("📭 DataFrame vazio - não é possível criar gráfico")
+        return go.Figure()
+    
+    # Criar figura
     fig_3d = go.Figure()
 
-    # Cores por cluster
+    # Cores por cluster - ATUALIZADO COM TODOS OS CLUSTERS POSSÍVEIS
     cluster_cores = {
-        '🏠 Home Domina Confronto': 'blue',
-        '🚗 Away Domina Confronto': 'red', 
+        '🏠 Home Domina Totalmente': 'blue',
+        '🏠 Home Domina (Liga Forte)': 'darkblue',
+        '🏠 Home Domina (Time Forte)': 'lightblue',
+        '📈 Home Agressivo': 'cyan',
+        '🚗 Away Domina Totalmente': 'red',
+        '🚗 Away Domina (Liga Forte)': 'darkred', 
+        '🚗 Away Domina (Time Forte)': 'lightcoral',
+        '📉 Away Agressivo': 'orange',
         '⚖️ Confronto Equilibrado': 'green',
-        '🎭 Home Imprevisível': 'orange',
-        '🌪️ Home Instável': 'purple',
-        '🌀 Caso Atípico': 'gray',
-        '🌀 Dados Insuficientes': 'lightgray'
+        '🎭 Home Imprevisível': 'purple',
+        '🌪️ Away Imprevisível': 'magenta',
+        '🔄 Sinais Contraditórios': 'yellow',
+        '📊 Home Leve Vantagem': 'lightgreen',
+        '📊 Away Leve Vantagem': 'lightsalmon',
+        '⚖️ Equilíbrio Neutro': 'gray',
+        '🌀 Caso Atípico': 'lightgray',
+        '🌀 Dados Insuficientes': 'white',
+        '🌀 Erro na Clusterização': 'black'
     }
 
+    # Obter clusters únicos presentes nos dados
+    clusters_presentes = df_plot['Cluster3D_Desc'].unique()
+    
+    st.write(f"🎯 Clusters presentes: {list(clusters_presentes)}")
+
     # Plotar cada cluster com sua cor
-    for cluster_name, color in cluster_cores.items():
+    for cluster_name in clusters_presentes:
         cluster_data = df_plot[df_plot['Cluster3D_Desc'] == cluster_name]
         
-        if not cluster_data.empty:
-            # Linhas de conexão (Home → Away) - COM VERIFICAÇÃO DE DADOS VÁLIDOS
-            for _, row in cluster_data.iterrows():
-                # Verificar se todos os dados são válidos
-                xh = row.get('Aggression_Home', 0) or 0
-                xa = row.get('Aggression_Away', 0) or 0
-                yh = row.get('M_H', 0) if not pd.isna(row.get('M_H')) else 0
-                ya = row.get('M_A', 0) if not pd.isna(row.get('M_A')) else 0
-                zh = row.get('MT_H', 0) if not pd.isna(row.get('MT_H')) else 0
-                za = row.get('MT_A', 0) if not pd.isna(row.get('MT_A')) else 0
+        if cluster_data.empty:
+            continue
+            
+        # Usar cor padrão se não encontrada no dicionário
+        color = cluster_cores.get(cluster_name, 'gray')
+        
+        # Preparar dados para HOME
+        home_valid = cluster_data[
+            cluster_data[['Aggression_Home', 'M_H', 'MT_H']].notna().all(axis=1)
+        ]
+        
+        # Preparar dados para AWAY  
+        away_valid = cluster_data[
+            cluster_data[['Aggression_Away', 'M_A', 'MT_A']].notna().all(axis=1)
+        ]
+
+        # ➕ PONTOS HOME (apenas dados válidos)
+        if not home_valid.empty:
+            fig_3d.add_trace(go.Scatter3d(
+                x=home_valid['Aggression_Home'],
+                y=home_valid['M_H'],
+                z=home_valid['MT_H'],
+                mode='markers',
+                name=f'{cluster_name} - Home',
+                marker=dict(
+                    color=color,
+                    size=8,
+                    symbol='circle',
+                    opacity=0.8,
+                    line=dict(color='white', width=1)
+                ),
+                text=home_valid.apply(
+                    lambda r: f"<b>{r['Home']}</b><br>"
+                             f"Cluster: {cluster_name}<br>"
+                             f"vs {r['Away']}<br>"
+                             f"Agg: {r['Aggression_Home']:.2f}<br>"
+                             f"M_Liga: {r['M_H']:.2f}<br>"
+                             f"M_Time: {r['MT_H']:.2f}", 
+                    axis=1
+                ),
+                hovertemplate='%{text}<extra></extra>'
+            ))
+
+        # ➕ PONTOS AWAY (apenas dados válidos)
+        if not away_valid.empty:
+            fig_3d.add_trace(go.Scatter3d(
+                x=away_valid['Aggression_Away'],
+                y=away_valid['M_A'],
+                z=away_valid['MT_A'],
+                mode='markers',
+                name=f'{cluster_name} - Away',
+                marker=dict(
+                    color=color,
+                    size=8,
+                    symbol='diamond',
+                    opacity=0.8,
+                    line=dict(color='white', width=1)
+                ),
+                text=away_valid.apply(
+                    lambda r: f"<b>{r['Away']}</b><br>"
+                             f"Cluster: {cluster_name}<br>" 
+                             f"vs {r['Home']}<br>"
+                             f"Agg: {r['Aggression_Away']:.2f}<br>"
+                             f"M_Liga: {r['M_A']:.2f}<br>"
+                             f"M_Time: {r['MT_A']:.2f}",
+                    axis=1
+                ),
+                hovertemplate='%{text}<extra></extra>'
+            ))
+
+        # ➕ LINHAS DE CONEXÃO (Home → Away)
+        for _, row in cluster_data.iterrows():
+            try:
+                # Verificar se todos os dados são válidos para a linha
+                xh = row['Aggression_Home'] if not pd.isna(row['Aggression_Home']) else None
+                xa = row['Aggression_Away'] if not pd.isna(row['Aggression_Away']) else None
+                yh = row['M_H'] if not pd.isna(row['M_H']) else None
+                ya = row['M_A'] if not pd.isna(row['M_A']) else None
+                zh = row['MT_H'] if not pd.isna(row['MT_H']) else None
+                za = row['MT_A'] if not pd.isna(row['MT_A']) else None
                 
-                # Só plotar se tiver dados válidos
-                if any(v != 0 for v in [xh, xa, yh, ya, zh, za]):
+                # Só plotar linha se todos os pontos forem válidos
+                if all(v is not None for v in [xh, xa, yh, ya, zh, za]):
                     fig_3d.add_trace(go.Scatter3d(
                         x=[xh, xa],
                         y=[yh, ya],
@@ -571,82 +664,36 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
                         mode='lines',
                         line=dict(
                             color=color, 
-                            width=4
-                        ),  # REMOVIDO: opacity=0.3 - não é suportado em linhas 3D
+                            width=3,
+                            opacity=0.3
+                        ),
                         showlegend=False,
                         hoverinfo='skip'
                     ))
-            
-            # Filtrar dados válidos para os pontos
-            valid_home = cluster_data[
-                (cluster_data['Aggression_Home'].notna()) & 
-                (cluster_data['M_H'].notna()) & 
-                (cluster_data['MT_H'].notna())
-            ]
-            valid_away = cluster_data[
-                (cluster_data['Aggression_Away'].notna()) & 
-                (cluster_data['M_A'].notna()) & 
-                (cluster_data['MT_A'].notna())
-            ]
-            
-            # Pontos HOME - apenas dados válidos
-            if not valid_home.empty:
-                fig_3d.add_trace(go.Scatter3d(
-                    x=valid_home['Aggression_Home'],
-                    y=valid_home['M_H'],
-                    z=valid_home['MT_H'],
-                    mode='markers',
-                    name=f'{cluster_name} - Home',
-                    marker=dict(
-                        color=color,
-                        size=8,  # Reduzido para melhor visualização
-                        symbol='circle',
-                        opacity=0.8,  # Apenas para markers, não para lines
-                        line=dict(color='white', width=1)
-                    ),
-                    text=valid_home.apply(
-                        lambda r: f"<b>{r['Home']}</b><br>"
-                                 f"Cluster: {cluster_name}<br>"
-                                 f"vs {r['Away']}<br>"
-                                 f"Agg: {r['Aggression_Home']:.2f}<br>"
-                                 f"M_Liga: {r['M_H']:.2f}<br>"
-                                 f"M_Time: {r['MT_H']:.2f}", 
-                        axis=1
-                    ),
-                    hovertemplate='%{text}<extra></extra>'
-                ))
-            
-            # Pontos AWAY - apenas dados válidos
-            if not valid_away.empty:
-                fig_3d.add_trace(go.Scatter3d(
-                    x=valid_away['Aggression_Away'],
-                    y=valid_away['M_A'],
-                    z=valid_away['MT_A'],
-                    mode='markers',
-                    name=f'{cluster_name} - Away',
-                    marker=dict(
-                        color=color,
-                        size=8,  # Reduzido para melhor visualização
-                        symbol='diamond',
-                        opacity=0.8,  # Apenas para markers, não para lines
-                        line=dict(color='white', width=1)
-                    ),
-                    text=valid_away.apply(
-                        lambda r: f"<b>{r['Away']}</b><br>"
-                                 f"Cluster: {cluster_name}<br>" 
-                                 f"vs {r['Home']}<br>"
-                                 f"Agg: {r['Aggression_Away']:.2f}<br>"
-                                 f"M_Liga: {r['M_A']:.2f}<br>"
-                                 f"M_Time: {r['MT_A']:.2f}",
-                        axis=1
-                    ),
-                    hovertemplate='%{text}<extra></extra>'
-                ))
+            except Exception as e:
+                # Ignorar erros em linhas individuais
+                continue
+
+    # Verificar se há traces no gráfico
+    if len(fig_3d.data) == 0:
+        st.warning("⚠️ Nenhum dado válido para plotar no gráfico 3D")
+        # Adicionar um trace vazio para evitar erro
+        fig_3d.add_trace(go.Scatter3d(
+            x=[0], y=[0], z=[0],
+            mode='markers',
+            marker=dict(size=1, opacity=0),
+            showlegend=False
+        ))
 
     # ---------------------- LAYOUT FIXO ----------------------
-    X_RANGE = [-1.2, 1.2]
-    Y_RANGE = [-4.0, 4.0]  
-    Z_RANGE = [-4.0, 4.0]
+    # Calcular ranges dinâmicos baseados nos dados
+    all_x = pd.concat([df_plot['Aggression_Home'], df_plot['Aggression_Away']]).dropna()
+    all_y = pd.concat([df_plot['M_H'], df_plot['M_A']]).dropna()  
+    all_z = pd.concat([df_plot['MT_H'], df_plot['MT_A']]).dropna()
+    
+    x_range = [all_x.min() - 0.1, all_x.max() + 0.1] if len(all_x) > 0 else [-1, 1]
+    y_range = [all_y.min() - 0.5, all_y.max() + 0.5] if len(all_y) > 0 else [-3, 3]
+    z_range = [all_z.min() - 0.5, all_z.max() + 0.5] if len(all_z) > 0 else [-3, 3]
 
     titulo_3d = f"Top {n_to_show} Confrontos - Visualização 3D por Clusters"
     if selected_league != "⚽ Todas as ligas":
@@ -661,7 +708,7 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
         scene=dict(
             xaxis=dict(
                 title='Aggression (-1 zebra ↔ +1 favorito)',
-                range=X_RANGE,
+                range=x_range,
                 backgroundcolor="rgba(20,20,20,0.1)",
                 gridcolor="gray",
                 showbackground=True,
@@ -671,8 +718,8 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
             ),
             yaxis=dict(
                 title='Momentum (Liga)',
-                range=Y_RANGE, 
-                backgroundcolor="rgba(20,20,20,0.1)",
+                range=y_range,
+                backgroundcolor="rgba(20,20,20,0.1)", 
                 gridcolor="gray",
                 showbackground=True,
                 gridwidth=2,
@@ -681,9 +728,9 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
             ),
             zaxis=dict(
                 title='Momentum (Time)',
-                range=Z_RANGE,
-                backgroundcolor="rgba(20,20,20,0.1)", 
-                gridcolor="gray",
+                range=z_range,
+                backgroundcolor="rgba(20,20,20,0.1)",
+                gridcolor="gray", 
                 showbackground=True,
                 gridwidth=2,
                 zerolinecolor="blue",
@@ -703,10 +750,12 @@ def create_3d_plot_with_clusters(df_plot, n_to_show, selected_league):
             x=0.02,
             y=0.98,
             bgcolor="rgba(0,0,0,0.5)",
-            font=dict(size=10)
+            font=dict(size=10),
+            itemsizing='constant'
         )
     )
     
+    st.success(f"✅ Gráfico 3D criado com {len(fig_3d.data)} elementos")
     return fig_3d
 
 
