@@ -880,9 +880,9 @@ def calculate_handicap_profit_3d(recomendacao, handicap_result, odds_row):
     # Lucro conforme resultado
     if (is_home_bet and handicap_result == "HOME_COVERED") or \
        (is_away_bet and handicap_result == "AWAY_COVERED"):
-        return odd - 1  # Profit líquido (odd - stake)
+        return odd   # Profit líquido (odd - stake)
     elif handicap_result == "HALF_WIN":
-        return (odd - 1) / 2  # Metade do profit
+        return odd  / 2  # Metade do profit
     elif handicap_result == "HALF_LOSS":
         return -0.5  # Metade da perda
     elif handicap_result == "PUSH":
@@ -921,9 +921,9 @@ def calculate_handicap_profit_3d(recomendacao, handicap_result, odds_row):
     # Lucro conforme resultado
     if (is_home_bet and handicap_result == "HOME_COVERED") or \
        (is_away_bet and handicap_result == "AWAY_COVERED"):
-        return odd - 1  # Profit líquido (odd - stake)
+        return odd  # Profit líquido (odd - stake)
     elif handicap_result == "HALF_WIN":
-        return (odd - 1) / 2  # Metade do profit
+        return odd / 2  # Metade do profit
     elif handicap_result == "HALF_LOSS":
         return -0.5  # Metade da perda
     elif handicap_result == "PUSH":
