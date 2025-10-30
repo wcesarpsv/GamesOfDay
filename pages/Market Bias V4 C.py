@@ -244,8 +244,8 @@ def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
         )
         df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
 
-        # 🎯 SISTEMA FLEXÍVEL: CLASSIFICAR CLUSTERS DINAMICAMENTE
-        st.markdown("## 🧠 Sistema Flexível de Legendas Dinâmicas")
+        # # 🎯 SISTEMA FLEXÍVEL: CLASSIFICAR CLUSTERS DINAMICAMENTE
+        # st.markdown("## 🧠 Sistema Flexível de Legendas Dinâmicas")
         
         # 1. CALCULAR CENTROIDES REAIS
         centroids = kmeans.cluster_centers_
@@ -337,15 +337,15 @@ def exibir_diagnostico_clusters(df, centroids, classificacoes):
     """
     Exibe diagnóstico inteligente dos clusters
     """
-    st.markdown("### 📊 Diagnóstico Inteligente dos Clusters")
+    # st.markdown("### 📊 Diagnóstico Inteligente dos Clusters")
     
     # TABELA DE CENTROIDES COM LEGENDAS DINÂMICAS
-    centroids_df = pd.DataFrame(centroids, columns=['dx', 'dy', 'dz'])
-    centroids_df['Cluster'] = range(len(centroids))
-    centroids_df['Legenda Dinâmica'] = centroids_df['Cluster'].map(classificacoes)
-    centroids_df['Jogos'] = centroids_df['Cluster'].apply(
-        lambda x: len(df[df['Cluster3D_Label'] == x])
-    )
+    # centroids_df = pd.DataFrame(centroids, columns=['dx', 'dy', 'dz'])
+    # centroids_df['Cluster'] = range(len(centroids))
+    # centroids_df['Legenda Dinâmica'] = centroids_df['Cluster'].map(classificacoes)
+    # centroids_df['Jogos'] = centroids_df['Cluster'].apply(
+    #     lambda x: len(df[df['Cluster3D_Label'] == x])
+    # )
     
     # st.markdown("#### 🎯 Centroides com Legendas Dinâmicas")
     # st.dataframe(centroids_df.style.format({
