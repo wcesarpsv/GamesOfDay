@@ -907,16 +907,14 @@ games_today = aplicar_clusterizacao_3d(games_today, n_clusters=5)
 
 
 
-def treinar_modelo_3d_clusters_single(history, games_today):
+def treinar_modelo_3d_clusters_single(history, games_today, use_opening_odds=True):
     """
     Treina o modelo 3D (Home) com possibilidade de incluir odds de abertura implícitas normalizadas
     e gera análise de viés de mercado (Market Bias Opening) com segurança de dados.
     """
 
-    st.markdown("### ⚙️ Configuração do Treino 3D com Odds de Abertura")
-
-    # Toggle no Streamlit
-    use_opening_odds = st.checkbox("📊 Incluir Odds de Abertura no Treino", value=True)
+    # REMOVENDO O st.checkbox() DA FUNÇÃO - AGORA É PASSADO COMO PARÂMETRO
+    # use_opening_odds = st.checkbox("📊 Incluir Odds de Abertura no Treino", value=True)
 
     # ----------------------------
     # 🧩 Garantir features 3D e clusters
@@ -987,7 +985,6 @@ def treinar_modelo_3d_clusters_single(history, games_today):
 
     model_home.fit(X, y_home)
 
-
     # ----------------------------
     # 🔮 Previsões no dataset do dia
     # ----------------------------
@@ -1052,7 +1049,6 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         else:
             st.info("📊 As odds de abertura ainda não mostraram forte impacto.")
 
-    
     # ============================================================
     # 🧩 Segurança final
     # ============================================================
@@ -1074,6 +1070,36 @@ def treinar_modelo_3d_clusters_single(history, games_today):
 
     st.success("✅ Modelo 3D treinado (HOME) – com análise de viés integrada.")
     return model_home, games_today
+
+
+
+
+# ---------------- EXECUÇÃO PRINCIPAL 3D ----------------
+# Executar treinamento 3D
+if not history.empty:
+    # MOVER O CHECKBOX PARA FORA DA FUNÇÃO
+    st.markdown("### ⚙️ Configuração do Treino 3D com Odds de Abertura")
+    use_opening_odds = st.checkbox("📊 Incluir Odds de Abertura no Treino", value=True)
+    
+    # AGORA CHAMAR A FUNÇÃO COM O PARÂMETRO
+    modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today, use_opening_odds)
+    
+    # ============================================================
+    # 🎯 GERAÇÃO DE RECOMENDAÇÕES HÍBRIDAS
+    # ============================================================
+    games_today = gerar_recomendacoes_ml_quadrantes(games_today)
+
+    st.markdown("### 🎯 Recomendações Híbridas (ML + Quadrantes)")
+    st.dataframe(
+        games_today[["League", "Home", "Away", "Recomendacao_Final"]],
+        use_container_width=True
+    )
+
+    # ✅ Mensagem final confirmando treino e recomendações
+    st.success("✅ Modelo 3D dual com 16 quadrantes treinado com sucesso!")
+else:
+    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D")
+
 
 
 
