@@ -1110,6 +1110,55 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         st.warning("📉 O modelo contradiz o mercado — pode haver oportunidades de valor contra o viés de abertura.")
     else:
         st.info("⚖️ O modelo está neutro em relação ao viés — o mercado parece razoavelmente eficiente nesta amostra.")
+
+    # ============================================================
+    # 💰 BLOCO EXTRA — ROI por Faixas de Viés de Abertura
+    # ============================================================
+    st.markdown("### 💰 ROI por Faixas de Viés de Abertura (Market Bias)")
+    
+    # Definir faixas do bias (quartis ou bins fixos)
+    bins = [-1.0, -0.15, -0.05, 0.05, 0.15, 1.0]
+    labels = ["📉 Forte pró-Away", "🟠 Leve pró-Away", "⚖️ Neutro", "🟢 Leve pró-Home", "🏠 Forte pró-Home"]
+    games_today["Bias_Group"] = pd.cut(games_today["Market_Bias_Opening"], bins=bins, labels=labels, include_lowest=True)
+    
+    # Supondo aposta de 1 unidade por jogo no Home quando Prob_Home > 0.5
+    # (pode adaptar a lógica depois para Away ou Handicap)
+    games_today["Bet_Home"] = np.where(games_today["Prob_Home"] > 0.5, 1, 0)
+    games_today["Profit_Sim"] = np.where(
+        (games_today["Bet_Home"] == 1) & (games_today["Target_AH_Home"] == 1),
+        games_today["Imp_H_OP_Norm"] ** -1 - 1,  # lucro = 1/odd - 1
+        np.where(games_today["Bet_Home"] == 1, -1, 0)
+    )
+    
+    # Agrupar por faixa de bias
+    roi_summary = games_today.groupby("Bias_Group").agg(
+        Jogos=("Profit_Sim", "count"),
+        Apostas=("Bet_Home", "sum"),
+        Winrate=("Target_AH_Home", "mean"),
+        ROI=("Profit_Sim", lambda x: x.sum() / (len(x) if len(x) > 0 else 1))
+    ).reset_index()
+    
+    # Mostrar tabela
+    st.dataframe(roi_summary, use_container_width=True)
+    
+    # Plotar gráfico de ROI por faixa
+    fig_roi, ax3 = plt.subplots(figsize=(6, 4))
+    ax3.bar(roi_summary["Bias_Group"], roi_summary["ROI"], color=np.where(roi_summary["ROI"] > 0, "green", "red"))
+    ax3.axhline(0, color="gray", linestyle="--", lw=1)
+    ax3.set_ylabel("ROI Médio")
+    ax3.set_xlabel("Faixa de Viés de Abertura (Market Bias)")
+    ax3.set_title("ROI por Nível de Viés de Abertura (Home - Away)")
+    st.pyplot(fig_roi)
+    
+    # Interpretação automática
+    best_zone = roi_summary.loc[roi_summary["ROI"].idxmax(), "Bias_Group"]
+    best_roi = roi_summary["ROI"].max()
+    
+    if best_roi > 0:
+        st.success(f"💡 Melhor ROI observado em: **{best_zone}** → ROI médio de **{best_roi:.2%}**")
+    else:
+        st.info("⚖️ Nenhuma faixa apresentou ROI positivo significativo — o mercado está eficiente neste conjunto.")
+
     
     st.success("✅ Modelo 3D treinado (HOME) – com integração de Odds de Abertura opcional.")
     return model_home, games_today
