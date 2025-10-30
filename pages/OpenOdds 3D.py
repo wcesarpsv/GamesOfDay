@@ -987,67 +987,67 @@ def treinar_modelo_3d_clusters_single(history, games_today):
 
     model_home.fit(X, y_home)
 
-    # ============================================================
-    # 🎯 GERAÇÃO DE RECOMENDAÇÕES HÍBRIDAS (ML + QUADRANTES)
-    # ============================================================
-    def gerar_recomendacoes_ml_quadrantes(df):
-        """
-        Gera recomendações híbridas (ML + Quadrantes 3D).
-        Integra probabilidade predita, confiança e contexto de momentum/agressão.
-        """
-        df = df.copy()
-        recs = []
-    
-        for _, row in df.iterrows():
-            pH = row.get("Prob_Home", 0)
-            pA = row.get("Prob_Away", 0)
-            conf = row.get("ML_Confidence", max(pH, pA))
-    
-            qH = row.get("Quadrante_Home_Label", "")
-            qA = row.get("Quadrante_Away_Label", "")
-            diff_m = row.get("Diff_M", 0)
-            diff_ht = row.get("Diff_HT_P", 0)
-    
-            # ===============================
-            # 🎯 Lógica combinada principal
-            # ===============================
-    
-            # 1️⃣ Alta confiança HOME
-            if pH >= 0.70:
-                if "Favorável" in qH or diff_m > 0.2 or diff_ht > 0.1:
-                    rec = f"🏠 BACK HOME (H:{pH:.1%}) – Quadrante {qH} + Momentum Positivo"
-                else:
-                    rec = f"🏠 BACK HOME (H:{pH:.1%}) – mas contexto neutro ({qH})"
-    
-            # 2️⃣ Tendência HOME moderada
-            elif pH >= 0.55:
-                if "Favorável" in qH or diff_m > 0:
-                    rec = f"🟢 TENDÊNCIA HOME (H:{pH:.1%}) – Quadrante {qH}"
-                else:
-                    rec = f"⚖️ ANALISAR (H:{pH:.1%}) – cenário neutro"
-    
-            # 3️⃣ Alta confiança AWAY
-            elif pA >= 0.70:
-                if "Favorável" in qA or diff_m < -0.2 or diff_ht < -0.1:
-                    rec = f"🚀 BACK AWAY (A:{pA:.1%}) – Quadrante {qA} + Momentum Positivo"
-                else:
-                    rec = f"🚀 BACK AWAY (A:{pA:.1%}) – mas contexto neutro ({qA})"
-    
-            # 4️⃣ Tendência AWAY moderada
-            elif pA >= 0.55:
-                if "Favorável" in qA or diff_m < 0:
-                    rec = f"🟠 TENDÊNCIA AWAY (A:{pA:.1%}) – Quadrante {qA}"
-                else:
-                    rec = f"⚖️ ANALISAR (A:{pA:.1%}) – cenário neutro"
-    
-            # 5️⃣ Zona cinza (nenhum lado forte)
+# ============================================================
+# 🎯 GERAÇÃO DE RECOMENDAÇÕES HÍBRIDAS (ML + QUADRANTES)
+# ============================================================
+def gerar_recomendacoes_ml_quadrantes(df):
+    """
+    Gera recomendações híbridas (ML + Quadrantes 3D).
+    Integra probabilidade predita, confiança e contexto de momentum/agressão.
+    """
+    df = df.copy()
+    recs = []
+
+    for _, row in df.iterrows():
+        pH = row.get("Prob_Home", 0)
+        pA = row.get("Prob_Away", 0)
+        conf = row.get("ML_Confidence", max(pH, pA))
+
+        qH = row.get("Quadrante_Home_Label", "")
+        qA = row.get("Quadrante_Away_Label", "")
+        diff_m = row.get("Diff_M", 0)
+        diff_ht = row.get("Diff_HT_P", 0)
+
+        # ===============================
+        # 🎯 Lógica combinada principal
+        # ===============================
+
+        # 1️⃣ Alta confiança HOME
+        if pH >= 0.70:
+            if "Favorável" in qH or diff_m > 0.2 or diff_ht > 0.1:
+                rec = f"🏠 BACK HOME (H:{pH:.1%}) – Quadrante {qH} + Momentum Positivo"
             else:
-                rec = f"⚪ EVITAR – Probabilidades equilibradas (H:{pH:.1%} / A:{pA:.1%})"
-    
-            recs.append(rec)
-    
-        df["Recomendacao_Final"] = recs
-        return df
+                rec = f"🏠 BACK HOME (H:{pH:.1%}) – mas contexto neutro ({qH})"
+
+        # 2️⃣ Tendência HOME moderada
+        elif pH >= 0.55:
+            if "Favorável" in qH or diff_m > 0:
+                rec = f"🟢 TENDÊNCIA HOME (H:{pH:.1%}) – Quadrante {qH}"
+            else:
+                rec = f"⚖️ ANALISAR (H:{pH:.1%}) – cenário neutro"
+
+        # 3️⃣ Alta confiança AWAY
+        elif pA >= 0.70:
+            if "Favorável" in qA or diff_m < -0.2 or diff_ht < -0.1:
+                rec = f"🚀 BACK AWAY (A:{pA:.1%}) – Quadrante {qA} + Momentum Positivo"
+            else:
+                rec = f"🚀 BACK AWAY (A:{pA:.1%}) – mas contexto neutro ({qA})"
+
+        # 4️⃣ Tendência AWAY moderada
+        elif pA >= 0.55:
+            if "Favorável" in qA or diff_m < 0:
+                rec = f"🟠 TENDÊNCIA AWAY (A:{pA:.1%}) – Quadrante {qA}"
+            else:
+                rec = f"⚖️ ANALISAR (A:{pA:.1%}) – cenário neutro"
+
+        # 5️⃣ Zona cinza (nenhum lado forte)
+        else:
+            rec = f"⚪ EVITAR – Probabilidades equilibradas (H:{pH:.1%} / A:{pA:.1%})"
+
+        recs.append(rec)
+
+    df["Recomendacao_Final"] = recs
+    return df
 
 
     # ----------------------------
