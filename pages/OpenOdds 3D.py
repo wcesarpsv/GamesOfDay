@@ -1220,16 +1220,16 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
 if not history.empty:
     modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today)
 
-    # ============================================================
-    # 🎯 GERAÇÃO DE RECOMENDAÇÕES HÍBRIDAS
-    # ============================================================
-    games_today = gerar_recomendacoes_ml_quadrantes(games_today)
-    
-    st.markdown("### 🎯 Recomendações Híbridas (ML + Quadrantes)")
-    st.dataframe(
-        games_today[["League", "Home", "Away", "Recomendacao_Final"]],
-        use_container_width=True
-    )
+# ============================================================
+# 🎯 GERAÇÃO DE RECOMENDAÇÕES HÍBRIDAS
+# ============================================================
+games_today = gerar_recomendacoes_ml_quadrantes(games_today)
+
+st.markdown("### 🎯 Recomendações Híbridas (ML + Quadrantes)")
+st.dataframe(
+    games_today[["League", "Home", "Away", "Recomendacao_Final"]],
+    use_container_width=True
+)
 
     st.success("✅ Modelo 3D dual com 16 quadrantes treinado com sucesso!")
 else:
