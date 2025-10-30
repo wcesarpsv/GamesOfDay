@@ -992,61 +992,81 @@ def adicionar_indicadores_explicativos_clusters(df):
     choices_away = ['🏆 ALTO VALOR', '✅ BOM VALOR', '⚖️ NEUTRO', '⚠️ CAUTELA', '🔴 ALTO RISCO']
     df['Classificacao_Valor_Away'] = np.select(conditions_away, choices_away, default='⚖️ NEUTRO')
 
-    # 3. RECOMENDAÇÃO BASEADA EM CLUSTERS + REGRESSÃO
+    # 3. RECOMENDAÇÃO BASEADA EM CLUSTERS + REGRESSÃO (CORRIGIDA)
     def gerar_recomendacao_clusters(row):
-        cluster = row['Cluster3D_Desc']
-        score_home = row['Cluster_ML_Score_Home']
-        score_away = row['Cluster_ML_Score_Away']
-        ml_side = row['ML_Side']
-        tendencia_h = row.get('Tendencia_Home', '⚖️ ESTÁVEL')
-        tendencia_a = row.get('Tendencia_Away', '⚖️ ESTÁVEL')
+        try:
+            cluster = row.get('Cluster3D_Desc', '🌀 Caso Atípico')
+            score_home = row.get('Cluster_ML_Score_Home', 0.5)
+            score_away = row.get('Cluster_ML_Score_Away', 0.5)
+            ml_side = row.get('ML_Side', 'HOME')
+            tendencia_h = row.get('Tendencia_Home', '⚖️ ESTÁVEL')
+            tendencia_a = row.get('Tendencia_Away', '⚖️ ESTÁVEL')
+            
+            # 🎯 DEBUG: Ver o que está chegando
+            debug_info = f"[CLUSTER: {cluster} | SCORE_H: {score_home:.1%} | SCORE_A: {score_away:.1%}]"
+            
+            # Estratégias por tipo de cluster - COM NOMES FLEXÍVEIS
+            if any(term in cluster for term in ['Home Domina', 'Home Agressivo', 'Home Vantagem']):
+                if score_home >= 0.65 and any(term in tendencia_h for term in ['MELHORA', 'FORTE']):
+                    return f'💪 HOME DOMINANTE + Melhora ({score_home:.1%}) {debug_info}'
+                elif score_home >= 0.58:
+                    return f'🎯 HOME DOMINANTE ({score_home:.1%}) {debug_info}'
+                elif score_home >= 0.52:
+                    return f'📈 HOME com Vantagem ({score_home:.1%}) {debug_info}'
+                else:
+                    return f'⚖️ HOME favorecido mas cuidado ({score_home:.1%}) {debug_info}'
 
-        # Estratégias por tipo de cluster
-        if cluster == '🏠 Home Domina Confronto':
-            if score_home >= 0.65 and '📈' in tendencia_h:
-                return f'💪 HOME DOMINANTE + Regressão Positiva ({score_home:.1%})'
-            elif score_home >= 0.58:
-                return f'🎯 HOME DOMINANTE ({score_home:.1%})'
+            elif any(term in cluster for term in ['Away Domina', 'Away Agressivo', 'Away Vantagem']):
+                if score_away >= 0.65 and any(term in tendencia_a for term in ['MELHORA', 'FORTE']):
+                    return f'💪 AWAY DOMINANTE + Melhora ({score_away:.1%}) {debug_info}'
+                elif score_away >= 0.58:
+                    return f'🎯 AWAY DOMINANTE ({score_away:.1%}) {debug_info}'
+                elif score_away >= 0.52:
+                    return f'📈 AWAY com Vantagem ({score_away:.1%}) {debug_info}'
+                else:
+                    return f'⚖️ AWAY favorecido mas cuidado ({score_away:.1%}) {debug_info}'
+
+            elif any(term in cluster for term in ['Equilibrado', 'Equilíbrio', 'Neutro']):
+                if ml_side == 'HOME' and score_home >= 0.55:
+                    return f'📈 VALUE NO HOME (Equilibrado) ({score_home:.1%}) {debug_info}'
+                elif ml_side == 'AWAY' and score_away >= 0.55:
+                    return f'📈 VALUE NO AWAY (Equilibrado) ({score_away:.1%}) {debug_info}'
+                else:
+                    return f'⚖️ CONFRONTO EQUILIBRADO (H:{score_home:.1%} A:{score_away:.1%}) {debug_info}'
+
+            elif any(term in cluster for term in ['Imprevisível', 'Instável', 'Contraditório']):
+                if 'MELHORA' in tendencia_h and score_home >= 0.55:
+                    return f'🎲 IMPREVISÍVEL mas Home Melhorando ({score_home:.1%}) {debug_info}'
+                elif 'MELHORA' in tendencia_a and score_away >= 0.55:
+                    return f'🎲 IMPREVISÍVEL mas Away Melhorando ({score_away:.1%}) {debug_info}'
+                else:
+                    return f'🎲 JOGO IMPREVISÍVEL - Cautela (H:{score_home:.1%} A:{score_away:.1%}) {debug_info}'
+
             else:
-                return f'⚖️ HOME DOMINA mas cuidado ({score_home:.1%})'
-
-        elif cluster == '🚗 Away Domina Confronto':
-            if score_away >= 0.65 and '📈' in tendencia_a:
-                return f'💪 AWAY DOMINANTE + Regressão Positiva ({score_away:.1%})'
-            elif score_away >= 0.58:
-                return f'🎯 AWAY DOMINANTE ({score_away:.1%})'
-            else:
-                return f'⚖️ AWAY DOMINA mas cuidado ({score_away:.1%})'
-
-        elif cluster == '⚖️ Confronto Equilibrado':
-            if ml_side == 'HOME' and score_home >= 0.55:
-                return f'📈 VALUE NO HOME (Equilibrado) ({score_home:.1%})'
-            elif ml_side == 'AWAY' and score_away >= 0.55:
-                return f'📈 VALUE NO AWAY (Equilibrado) ({score_away:.1%})'
-            else:
-                return f'⚖️ CONFRONTO EQUILIBRADO (H:{score_home:.1%} A:{score_away:.1%})'
-
-        elif cluster == '🎭 Home Imprevisível':
-            if '📈 FORTE MELHORA' in tendencia_h and score_home >= 0.55:
-                return f'🎲 IMPREVISÍVEL mas Home Melhorando ({score_home:.1%})'
-            elif '📈 FORTE MELHORA' in tendencia_a and score_away >= 0.55:
-                return f'🎲 IMPREVISÍVEL mas Away Melhorando ({score_away:.1%})'
-            else:
-                return f'🎲 JOGO IMPREVISÍVEL - Cautela (H:{score_home:.1%} A:{score_away:.1%})'
-
-        elif cluster == '🌪️ Home Instável':
-            return f'🌪️ CONFRONTO INSTÁVEL - Evitar ou apostas pequenas'
-
-        else:
-            return f'🔍 ANALISAR (H:{score_home:.1%} A:{score_away:.1%})'
+                # 🎯 RECOMENDAÇÃO BASEADA APENAS NOS SCORES (fallback)
+                if score_home >= 0.70:
+                    return f'🏆 HOME FORTE ({score_home:.1%}) {debug_info}'
+                elif score_away >= 0.70:
+                    return f'🏆 AWAY FORTE ({score_away:.1%}) {debug_info}'
+                elif score_home >= 0.60:
+                    return f'✅ HOME com Valor ({score_home:.1%}) {debug_info}'
+                elif score_away >= 0.60:
+                    return f'✅ AWAY com Valor ({score_away:.1%}) {debug_info}'
+                elif abs(score_home - score_away) < 0.1:
+                    return f'⚖️ CONFRONTO EQUILIBRADO (H:{score_home:.1%} A:{score_away:.1%}) {debug_info}'
+                else:
+                    return f'🔍 ANALISAR (H:{score_home:.1%} A:{score_away:.1%}) {debug_info}'
+                    
+        except Exception as e:
+            return f'❌ ERRO: {str(e)}'
 
     df['Recomendacao'] = df.apply(gerar_recomendacao_clusters, axis=1)
 
     # 4. SCORE FINAL COMBINADO (Clusters + ML + Regressão)
     df['Score_Final_Clusters'] = (
         df['Cluster_ML_Score_Main'] * 0.6 + 
-        df['Media_Score_Home'] * 0.2 + 
-        df['Media_Score_Away'] * 0.2
+        df.get('Media_Score_Home', 0.5) * 0.2 + 
+        df.get('Media_Score_Away', 0.5) * 0.2
     ) * 100
 
     # 5. CLASSIFICAÇÃO DE POTENCIAL
@@ -1065,6 +1085,39 @@ def adicionar_indicadores_explicativos_clusters(df):
 
     return df
 
+# ---------------- FUNÇÃO DE DIAGNÓSTICO DAS RECOMENDAÇÕES ----------------
+def diagnosticar_recomendacoes(df):
+    """Diagnóstico detalhado do sistema de recomendações"""
+    st.markdown("### 🔍 Diagnóstico do Sistema de Recomendações")
+    
+    if df.empty:
+        st.warning("Nenhum dado para diagnóstico")
+        return
+    
+    # 1. Verificar clusters disponíveis
+    st.write("**🎯 Clusters disponíveis no dataset:**")
+    if 'Cluster3D_Desc' in df.columns:
+        cluster_counts = df['Cluster3D_Desc'].value_counts()
+        for cluster, count in cluster_counts.items():
+            st.write(f"  - `{cluster}`: {count} jogos")
+    else:
+        st.error("❌ Coluna 'Cluster3D_Desc' não encontrada!")
+    
+    # 2. Verificar scores
+    st.write("**📊 Distribuição dos scores:**")
+    if 'Cluster_ML_Score_Home' in df.columns:
+        st.write(f"  - Score Home: {df['Cluster_ML_Score_Home'].min():.1%} a {df['Cluster_ML_Score_Home'].max():.1%}")
+        st.write(f"  - Score Away: {df['Cluster_ML_Score_Away'].min():.1%} a {df['Cluster_ML_Score_Away'].max():.1%}")
+    
+    # 3. Amostra de recomendações
+    st.write("**👀 Amostra de recomendações geradas:**")
+    cols_amostra = ['Home', 'Away', 'Cluster3D_Desc', 'Cluster_ML_Score_Home', 'Cluster_ML_Score_Away', 'Recomendacao']
+    cols_amostra = [c for c in cols_amostra if c in df.columns]
+    st.dataframe(df[cols_amostra].head(10), use_container_width=True)
+
+# No Bloco P - ANTES de exibir a tabela principal, adicione:
+st.markdown("## 🎯 Sistema de Recomendações - Diagnóstico")
+diagnosticar_recomendacoes(games_today)
 
 
 ############ Bloco K - Estratégias Baseadas em Clusters ################
