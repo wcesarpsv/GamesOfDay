@@ -1045,18 +1045,72 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     # ----------------------------
     importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
     top_feats = importances.head(25).to_frame("Importância")
-
+    
     st.markdown("### 🔍 Top Features (Modelo Único – Home)")
     st.dataframe(top_feats, use_container_width=True)
-
+    
     # Destaque se as odds estão influentes
     if use_opening_odds:
-        odds_influentes = [f for f in top_feats.index if "Odd_" in f or "Imp_" in f]
+        odds_influentes = [f for f in top_feats.index if "Imp_" in f]
         if odds_influentes:
             st.success(f"💡 As seguintes variáveis de abertura mostraram influência significativa: {', '.join(odds_influentes)}")
         else:
-            st.info("📊 As odds de abertura ainda não mostraram forte impacto — mas o teste é válido!")
-
+            st.info("📊 As odds de abertura ainda não mostraram forte impacto — mas o teste é válido")
+    
+    # ============================================================
+    # 💹 BLOCO EXTRA — Análise de Viés de Abertura (Market Bias)
+    # ============================================================
+    st.markdown("### 💹 Análise do Viés de Abertura do Mercado")
+    
+    # Calcular diferença entre as probabilidades implícitas
+    games_today['Market_Bias_Opening'] = (
+        games_today['Imp_H_OP_Norm'] - games_today['Imp_A_OP_Norm']
+    )
+    
+    # Interpretação:
+    # > positivo → mercado abriu favorecendo o Home
+    # > negativo → mercado abriu favorecendo o Away
+    
+    # Visualização rápida
+    st.write("#### Distribuição do viés de abertura")
+    fig_bias, ax = plt.subplots(figsize=(6, 3))
+    ax.hist(games_today['Market_Bias_Opening'], bins=20, color='skyblue', edgecolor='white')
+    ax.axvline(0, color='red', linestyle='--', lw=1)
+    ax.set_xlabel("Market Bias Opening (Home - Away)")
+    ax.set_ylabel("Frequência")
+    ax.set_title("Distribuição do Viés de Abertura (Mercado → Casa)")
+    st.pyplot(fig_bias)
+    
+    # Relação entre viés e previsão da ML
+    st.write("#### Correlação entre Viés e Probabilidade ML (Home)")
+    fig_corr, ax2 = plt.subplots(figsize=(6, 4))
+    ax2.scatter(
+        games_today['Market_Bias_Opening'],
+        games_today['Prob_Home'],
+        alpha=0.6,
+        s=50,
+        c=np.where(games_today['Market_Bias_Opening'] > 0, 'green', 'orange'),
+        edgecolor='white'
+    )
+    ax2.axhline(0.5, color='gray', linestyle='--', lw=1)
+    ax2.axvline(0, color='red', linestyle='--', lw=1)
+    ax2.set_xlabel("Market Bias Opening (Home - Away)")
+    ax2.set_ylabel("Probabilidade ML (Home)")
+    ax2.set_title("Viés de Mercado x Predição do Modelo")
+    st.pyplot(fig_corr)
+    
+    # Resumo estatístico
+    corr_bias = games_today['Market_Bias_Opening'].corr(games_today['Prob_Home'])
+    st.metric("Correlação (Bias x Probabilidade ML Home)", f"{corr_bias:.3f}")
+    
+    # Insight textual automático
+    if corr_bias > 0.2:
+        st.success("📈 O modelo está alinhado com o viés do mercado — quanto mais o mercado favorece o Home, maior a probabilidade prevista.")
+    elif corr_bias < -0.2:
+        st.warning("📉 O modelo contradiz o mercado — pode haver oportunidades de valor contra o viés de abertura.")
+    else:
+        st.info("⚖️ O modelo está neutro em relação ao viés — o mercado parece razoavelmente eficiente nesta amostra.")
+    
     st.success("✅ Modelo 3D treinado (HOME) – com integração de Odds de Abertura opcional.")
     return model_home, games_today
 
