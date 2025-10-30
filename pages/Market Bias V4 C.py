@@ -131,7 +131,7 @@ def calc_handicap_result(margin, asian_line_str, invert=False):
 def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
     """
     Cria clusters espaciais com base em Aggression, Momentum Liga e Momentum Time.
-    Retorna o DataFrame com as colunas de cluster.
+    COM SISTEMA DE CORREÇÃO AUTOMÁTICA DE LEGENDAS
     """
     df = df.copy()
 
@@ -160,7 +160,7 @@ def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
     )
     df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
 
-    # 🎯 NOVAS LEGENDAS - Relação Home vs Away
+    # 🎯 LEGENDAS ORIGINAIS (PODE ESTAR COM INVERSÃO)
     df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
         0: '🏠 Home Domina Confronto',
         1: '🚗 Away Domina Confronto', 
@@ -169,19 +169,217 @@ def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
         4: '🌪️ Home Instável'
     }).fillna('🌀 Caso Atípico')
 
-    # 🧠 Calcular centroide de cada cluster para diagnóstico
+    # 🔧 VALIDAÇÃO E CORREÇÃO DAS LEGENDAS
+    st.markdown("## 🔧 VALIDAÇÃO DE LEGENDAS - CORREÇÃO DE INVERSÃO HOME/AWAY")
+    
+    # 1. ANALISAR CENTROIDES PARA IDENTIFICAR INVERSÕES
+    centroids_analysis = []
+    for cluster_id in range(n_clusters):
+        cluster_data = df[df['Cluster3D_Label'] == cluster_id]
+        
+        if len(cluster_data) > 0:
+            # Calcular médias das dimensões principais
+            dx_medio = cluster_data['dx'].mean()  # Aggression Home - Away
+            dy_medio = cluster_data['dy'].mean()  # Momentum Liga Home - Away  
+            dz_medio = cluster_data['dz'].mean()  # Momentum Time Home - Away
+            
+            # Analisar se indica HOME ou AWAY dominante
+            home_dominante = dx_medio > 0.1 and dy_medio > 0.1 and dz_medio > 0.1
+            away_dominante = dx_medio < -0.1 and dy_medio < -0.1 and dz_medio < -0.1
+            equilibrado = abs(dx_medio) < 0.2 and abs(dy_medio) < 1.0 and abs(dz_medio) < 1.0
+            
+            centroids_analysis.append({
+                'Cluster': cluster_id,
+                'dx': dx_medio,
+                'dy': dy_medio,
+                'dz': dz_medio,
+                'Home_Dominante_Real': home_dominante,
+                'Away_Dominante_Real': away_dominante,
+                'Equilibrado_Real': equilibrado,
+                'Legenda_Atual': cluster_data['Cluster3D_Desc'].iloc[0]
+            })
+    
+    # 2. IDENTIFICAR CLUSTERS COM LEGENDAS TROCADAS
+    clusters_trocados = []
+    legendas_corrigidas = {}
+    
+    for analysis in centroids_analysis:
+        cluster_id = analysis['Cluster']
+        legenda_atual = analysis['Legenda_Atual']
+        
+        # Verificar inversão
+        home_domina_real = analysis['Home_Dominante_Real']
+        away_domina_real = analysis['Away_Dominante_Real']
+        
+        home_na_legenda = 'Home Domina' in legenda_atual
+        away_na_legenda = 'Away Domina' in legenda_atual
+        
+        # Detectar inversão
+        inversao_detectada = False
+        nova_legenda = legenda_atual
+        
+        if home_domina_real and away_na_legenda:
+            inversao_detectada = True
+            nova_legenda = '🏠 Home Domina Confronto'
+            st.error(f"🚨 CLUSTER {cluster_id}: Inversão detectada! De '🚗 Away' para '🏠 Home'")
+        elif away_domina_real and home_na_legenda:
+            inversao_detectada = True  
+            nova_legenda = '🚗 Away Domina Confronto'
+            st.error(f"🚨 CLUSTER {cluster_id}: Inversão detectada! De '🏠 Home' para '🚗 Away'")
+        
+        if inversao_detectada:
+            clusters_trocados.append(cluster_id)
+            legendas_corrigidas[cluster_id] = nova_legenda
+            
+        # Atualizar análise
+        analysis['Inversao_Detectada'] = inversao_detectada
+        analysis['Nova_Legenda'] = nova_legenda
+    
+    # 3. EXIBIR DIAGNÓSTICO DA INVERSÃO
+    st.markdown("#### 📊 Diagnóstico dos Clusters")
+    
+    for analysis in centroids_analysis:
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.write(f"**Cluster {analysis['Cluster']}**")
+            st.write(f"dx: {analysis['dx']:.3f}")
+            st.write(f"dy: {analysis['dy']:.3f}")
+            st.write(f"dz: {analysis['dz']:.3f}")
+            
+        with col2:
+            st.write("**Status Real:**")
+            if analysis['Home_Dominante_Real']:
+                st.success("🏠 HOME DOMINANTE")
+            elif analysis['Away_Dominante_Real']:
+                st.error("🚗 AWAY DOMINANTE")
+            elif analysis['Equilibrado_Real']:
+                st.info("⚖️ EQUILIBRADO")
+            else:
+                st.warning("🎭 PADRÃO MISTO")
+                
+        with col3:
+            st.write("**Legenda:**")
+            if analysis['Inversao_Detectada']:
+                st.error(f"❌ {analysis['Legenda_Atual']}")
+                st.success(f"✅ {analysis['Nova_Legenda']}")
+            else:
+                st.success(f"✅ {analysis['Legenda_Atual']}")
+        
+        st.write("---")
+    
+    # 4. APLICAR CORREÇÕES SE NECESSÁRIO
+    if clusters_trocados:
+        st.warning(f"🚨 **INVERSÃO DETECTADA:** Clusters {clusters_trocados} têm legendas trocadas!")
+        
+        # Criar novo mapeamento corrigido
+        mapeamento_corrigido = {}
+        for cluster_id in range(n_clusters):
+            if cluster_id in legendas_corrigidas:
+                mapeamento_corrigido[cluster_id] = legendas_corrigidas[cluster_id]
+            else:
+                # Manter legenda original para clusters não afetados
+                mapeamento_corrigido[cluster_id] = df[df['Cluster3D_Label'] == cluster_id]['Cluster3D_Desc'].iloc[0]
+        
+        st.success("✅ **Legendas corrigidas automaticamente!**")
+        
+        # APLICAR CORREÇÃO
+        df['Cluster3D_Desc'] = df['Cluster3D_Label'].map(mapeamento_corrigido).fillna('🌀 Caso Atípico')
+        
+        # Mostrar o novo mapeamento
+        st.markdown("### ✅ NOVO MAPEAMENTO APLICADO:")
+        for cluster_id, legenda in mapeamento_corrigido.items():
+            st.write(f"**Cluster {cluster_id}:** {legenda}")
+    
+    else:
+        st.success("✅ **Nenhuma inversão detectada - legendas estão corretas!**")
+
+    # 5. ANÁLISE DETALHADA POR CLUSTER
+    st.markdown("### 📈 Análise Detalhada por Cluster")
+    
+    for cluster_id in sorted(df['Cluster3D_Label'].unique()):
+        cluster_data = df[df['Cluster3D_Label'] == cluster_id]
+        
+        if len(cluster_data) > 0:
+            st.write(f"**Cluster {cluster_id} - {cluster_data['Cluster3D_Desc'].iloc[0]}**")
+            
+            # Métricas principais
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Jogos", len(cluster_data))
+                st.write(f"**dx:** {cluster_data['dx'].mean():.3f}")
+                st.write("(Aggression H - A)")
+                
+            with col2:
+                agg_h = cluster_data['Aggression_Home'].mean()
+                agg_a = cluster_data['Aggression_Away'].mean()
+                st.metric("Aggression", f"H:{agg_h:.3f} A:{agg_a:.3f}")
+                st.write(f"**dy:** {cluster_data['dy'].mean():.3f}")
+                st.write("(Momentum Liga H - A)")
+                
+            with col3:
+                m_h = cluster_data['M_H'].mean()
+                m_a = cluster_data['M_A'].mean()
+                st.metric("Momentum Liga", f"H:{m_h:.3f} A:{m_a:.3f}")
+                st.write(f"**dz:** {cluster_data['dz'].mean():.3f}")
+                st.write("(MT H - A)")
+                
+            with col4:
+                mt_h = cluster_data['MT_H'].mean()
+                mt_a = cluster_data['MT_A'].mean()
+                st.metric("Momentum Time", f"H:{mt_h:.3f} A:{mt_a:.3f}")
+                
+                # Indicador de dominância
+                dx = cluster_data['dx'].mean()
+                if dx > 0.2:
+                    st.success("→ HOME domina aggression")
+                elif dx < -0.2:
+                    st.error("→ AWAY domina aggression")
+                else:
+                    st.info("→ Aggression equilibrado")
+            
+            st.write("---")
+
+    # 6. CALCULAR CENTROIDES OFICIAIS
     centroids = pd.DataFrame(kmeans.cluster_centers_, columns=['dx', 'dy', 'dz'])
     centroids['Cluster'] = range(n_clusters)
-    centroids['Descrição'] = centroids['Cluster'].map({
-        0: '🏠 Home Domina Confronto',
-        1: '🚗 Away Domina Confronto', 
-        2: '⚖️ Confronto Equilibrado',
-        3: '🎭 Home Imprevisível',
-        4: '🌪️ Home Instável'
-    })
+    
+    # Usar legendas corrigidas ou originais
+    if clusters_trocados:
+        centroids['Descrição'] = centroids['Cluster'].map(mapeamento_corrigido)
+    else:
+        centroids['Descrição'] = centroids['Cluster'].map({
+            0: '🏠 Home Domina Confronto',
+            1: '🚗 Away Domina Confronto', 
+            2: '⚖️ Confronto Equilibrado',
+            3: '🎭 Home Imprevisível',
+            4: '🌪️ Home Instável'
+        })
 
-    st.markdown("### 🧭 Clusters 3D Criados (KMeans)")
-    st.dataframe(centroids.style.format({'dx': '{:.2f}', 'dy': '{:.2f}', 'dz': '{:.2f}'}))
+    st.markdown("### 🧭 Clusters 3D Criados (KMeans) - LEGENDAS VALIDADAS")
+    st.dataframe(centroids.style.format({'dx': '{:.3f}', 'dy': '{:.3f}', 'dz': '{:.3f}'}))
+
+    # 7. TESTE RÁPIDO DE VALIDAÇÃO
+    st.markdown("### 🧪 Teste Rápido de Validação")
+    
+    for cluster_id in sorted(df['Cluster3D_Label'].unique()):
+        exemplo = df[df['Cluster3D_Label'] == cluster_id].iloc[0]
+        
+        st.write(f"**Exemplo Cluster {cluster_id} - {exemplo['Cluster3D_Desc']}**")
+        st.write(f"Jogo: {exemplo['Home']} vs {exemplo['Away']}")
+        st.write(f"Aggression: H={exemplo['Aggression_Home']:.3f} A={exemplo['Aggression_Away']:.3f}")
+        st.write(f"dx (H-A): {exemplo['dx']:.3f}")
+        
+        # Verificar se faz sentido
+        if exemplo['dx'] > 0.2 and 'Away Domina' in exemplo['Cluster3D_Desc']:
+            st.error("❌ INVERSÃO PERMANECE!")
+        elif exemplo['dx'] < -0.2 and 'Home Domina' in exemplo['Cluster3D_Desc']:
+            st.error("❌ INVERSÃO PERMANECE!")
+        else:
+            st.success("✅ Legenda coerente")
+        
+        st.write("---")
 
     return df
 
