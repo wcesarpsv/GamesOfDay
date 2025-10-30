@@ -1485,13 +1485,13 @@ games_today, history = load_cached_data(selected_file)
 games_today = load_and_merge_livescore(games_today, selected_date_str)
 
 # ✅ Converter Asian Line COM A NOVA FUNÇÃO
-st.info("🔄 Convertendo Asian Line para perspectiva Home...")
+# st.info("🔄 Convertendo Asian Line para perspectiva Home...")
 history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
 games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
 
-# ✅ VALIDAÇÃO DO SISTEMA DE HANDICAP
-validar_conversao_handicap()
-verificar_sistema_handicap(history, games_today)
+# # ✅ VALIDAÇÃO DO SISTEMA DE HANDICAP
+# validar_conversao_handicap()
+# verificar_sistema_handicap(history, games_today)
 
 # Filtrar histórico com linha válida
 history = history.dropna(subset=['Asian_Line_Decimal'])
