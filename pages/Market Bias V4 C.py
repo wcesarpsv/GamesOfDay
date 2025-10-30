@@ -706,79 +706,222 @@ def adicionar_indicadores_explicativos_clusters(df):
 
 
 
-############ Bloco L - Sistema Live Score com Clusters ################
-# ---------------- LIVE SCORE COM CLUSTERS ----------------
-def determine_handicap_result(row):
-    """Determina se o HOME cobriu o handicap"""
+############ Bloco L - Sistema Live Score Handicap Asiático 3D ################
+# ============================================================
+# 🧮 Função principal – Determina resultado do handicap
+# ============================================================
+def determine_handicap_result_3d(row):
+    """
+    Determina o resultado do handicap asiático com base no lado recomendado.
+    Agora cobre linhas fracionadas (.25 / .75) com half-win / half-loss.
+    """
     try:
         gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
         ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
-        asian_line_decimal = row.get('Asian_Line_Decimal')
+        asian_line = float(row['Asian_Line_Decimal'])
+        recomendacao = str(row.get('Recomendacao', '')).upper()
     except (ValueError, TypeError):
         return None
 
-    if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line_decimal):
+    if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line):
         return None
 
-    margin = gh - ga
-    handicap_result = calc_handicap_result(margin, asian_line_decimal, invert=False)
+    # Detectar lado da aposta
+    is_home_bet = any(k in recomendacao for k in [
+        'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+        'MODELO CONFIA HOME', 'H:', 'HOME)'
+    ])
+    is_away_bet = any(k in recomendacao for k in [
+        'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+        'MODELO CONFIA AWAY', 'A:', 'AWAY)'
+    ])
 
-    if handicap_result > 0.5:
-        return "HOME_COVERED"
-    elif handicap_result == 0.5:
-        return "PUSH"
+    if not is_home_bet and not is_away_bet:
+        return None
+
+    side = "HOME" if is_home_bet else "AWAY"
+
+    # -----------------------
+    # Half-win / Half-loss
+    # -----------------------
+    frac = abs(asian_line % 1)
+    is_quarter = frac in [0.25, 0.75]
+
+    def single_result(gh, ga, line, side):
+        if side == "HOME":
+            adjusted = (gh + line) - ga
+        else:
+            adjusted = (ga - line) - gh
+
+        if adjusted > 0:
+            return 1.0
+        elif adjusted == 0:
+            return 0.5
+        else:
+            return 0.0
+
+    if is_quarter:
+        # Gera as duas linhas equivalentes (ex: +0.25 → +0, +0.5)
+        if asian_line > 0:
+            line1 = math.floor(asian_line * 2) / 2
+            line2 = line1 + 0.5
+        else:
+            line1 = math.ceil(asian_line * 2) / 2
+            line2 = line1 - 0.5
+
+        r1 = single_result(gh, ga, line1, side)
+        r2 = single_result(gh, ga, line2, side)
+        avg = (r1 + r2) / 2
+
+        if avg == 1:
+            return f"{side}_COVERED"
+        elif avg == 0.75:
+            return "HALF_WIN"
+        elif avg == 0.5:
+            return "PUSH"
+        elif avg == 0.25:
+            return "HALF_LOSS"
+        else:
+            return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
+
+    # -----------------------
+    # Linhas padrão (0, .5, 1, 1.5, etc.)
+    # -----------------------
+    if side == "HOME":
+        adjusted = (gh + asian_line) - ga
     else:
-        return "HOME_NOT_COVERED"
+        adjusted = (ga - asian_line) - gh
 
-def check_handicap_recommendation_correct(rec, handicap_result):
-    """Verifica se a recomendação estava correta"""
-    if pd.isna(rec) or handicap_result is None or 'EVITAR' in str(rec):
+    if adjusted > 0:
+        return f"{side}_COVERED"
+    elif adjusted < 0:
+        return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
+    else:
+        return "PUSH"
+
+# ============================================================
+# 🎯 Checa se a recomendação foi correta
+# ============================================================
+def check_handicap_recommendation_correct_3d(recomendacao, handicap_result):
+    if pd.isna(recomendacao) or handicap_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
         return None
 
-    rec = str(rec)
+    recomendacao_str = str(recomendacao).upper()
 
-    if any(keyword in rec for keyword in ['HOME', 'Home', 'DOMINANTE']):
-        return handicap_result == "HOME_COVERED"
-    elif any(keyword in rec for keyword in ['AWAY', 'Away', 'DOMINANTE']):
-        return handicap_result in ["HOME_NOT_COVERED", "PUSH"]
+    is_home_bet = any(k in recomendacao_str for k in [
+        'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+        'MODELO CONFIA HOME', 'H:', 'HOME)'
+    ])
+    is_away_bet = any(k in recomendacao_str for k in [
+        'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+        'MODELO CONFIA AWAY', 'A:', 'AWAY)'
+    ])
 
-    return None
+    if is_home_bet and handicap_result in ["HOME_COVERED", "HALF_WIN"]:
+        return True
+    elif is_away_bet and handicap_result in ["AWAY_COVERED", "HALF_WIN"]:
+        return True
+    elif handicap_result == "PUSH":
+        return None
+    else:
+        return False
 
-def update_real_time_data_clusters(df):
-    """Atualiza todos os dados em tempo real para sistema com clusters"""
-    df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
-    df['Cluster_Correct'] = df.apply(
-        lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
+# ============================================================
+# 💰 Calcula o profit líquido
+# ============================================================
+def calculate_handicap_profit_3d(recomendacao, handicap_result, odds_row):
+    if pd.isna(recomendacao) or handicap_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
+        return 0
+
+    recomendacao_str = str(recomendacao).upper()
+
+    is_home_bet = any(k in recomendacao_str for k in [
+        'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+        'MODELO CONFIA HOME', 'H:', 'HOME)'
+    ])
+    is_away_bet = any(k in recomendacao_str for k in [
+        'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+        'MODELO CONFIA AWAY', 'A:', 'AWAY)'
+    ])
+
+    if is_home_bet:
+        odd = odds_row.get('Odd_H_Asi', np.nan)
+    elif is_away_bet:
+        odd = odds_row.get('Odd_A_Asi', np.nan)
+    else:
+        return 0
+
+    if pd.isna(odd):
+        return 0
+
+    # Lucro conforme resultado
+    if (is_home_bet and handicap_result == "HOME_COVERED") or \
+       (is_away_bet and handicap_result == "AWAY_COVERED"):
+        return odd - 1  # Profit líquido (odd - stake)
+    elif handicap_result == "HALF_WIN":
+        return (odd - 1) / 2  # Metade do profit
+    elif handicap_result == "HALF_LOSS":
+        return -0.5  # Metade da perda
+    elif handicap_result == "PUSH":
+        return 0  # Devolve o stake
+    else:
+        return -1  # Perda total
+
+# ============================================================
+# 🧩 Atualiza o DataFrame com todas as colunas
+# ============================================================
+def update_real_time_data_3d(df):
+    """
+    Atualiza colunas Handicap_Result, Cluster_Correct e Profit_3D no df.
+    Suporta half-win / half-loss.
+    """
+    df = df.copy()
+
+    df['Handicap_Result'] = df.apply(determine_handicap_result_3d, axis=1)
+    df['Cluster_Correct_3D'] = df.apply(
+        lambda r: check_handicap_recommendation_correct_3d(
+            r['Recomendacao'], r['Handicap_Result']
+        ), axis=1
     )
+    df['Profit_3D'] = df.apply(
+        lambda r: calculate_handicap_profit_3d(
+            r['Recomendacao'], r['Handicap_Result'], r
+        ), axis=1
+    )
+
     return df
 
-def generate_live_summary_clusters(df):
-    """Gera resumo em tempo real para sistema com clusters"""
-    finished_games = df.dropna(subset=['Handicap_Result'])
+def generate_live_summary_3d(df):
+    """Gera resumo em tempo real para sistema 3D"""
+    finished_games = df[df['Handicap_Result'].notna()]
 
     if finished_games.empty:
         return {
             "Total Jogos": len(df),
             "Jogos Finalizados": 0,
-            "Recomendações Cluster": 0,
-            "Acertos Cluster": 0,
-            "Winrate Cluster": "0%"
+            "Apostas Cluster 3D": 0,
+            "Acertos Cluster 3D": 0,
+            "Winrate Cluster 3D": "0%",
+            "Profit Cluster 3D": "0.00u",
+            "ROI Cluster 3D": "0%"
         }
 
-    cluster_recomendados = finished_games[finished_games['Cluster_Correct'].notna()]
-    total_recomendados = len(cluster_recomendados)
-    correct_recomendados = cluster_recomendados['Cluster_Correct'].sum()
-    winrate = (correct_recomendados / total_recomendados) * 100 if total_recomendados > 0 else 0
+    cluster_bets = finished_games[finished_games['Cluster_Correct_3D'].notna()]
+    total_bets = len(cluster_bets)
+    correct_bets = cluster_bets['Cluster_Correct_3D'].sum()
+    winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
+    total_profit = cluster_bets['Profit_3D'].sum()
+    roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
 
     return {
         "Total Jogos": len(df),
         "Jogos Finalizados": len(finished_games),
-        "Recomendações Cluster": total_recomendados,
-        "Acertos Cluster": int(correct_recomendados),
-        "Winrate Cluster": f"{winrate:.1f}%"
+        "Apostas Cluster 3D": total_bets,
+        "Acertos Cluster 3D": int(correct_bets),
+        "Winrate Cluster 3D": f"{winrate:.1f}%",
+        "Profit Cluster 3D": f"{total_profit:.2f}u",
+        "ROI Cluster 3D": f"{roi:.1f}%"
     }
-
-
 
 
 ############ Bloco K - Sistema Live Score com Clusters ################
@@ -1007,21 +1150,21 @@ st.markdown("## 🏆 Melhores Oportunidades - Sistema Clusters 3D")
 if not games_today.empty and 'Cluster_ML_Score_Home' in games_today.columns:
     ranking_clusters = games_today.copy()
     ranking_clusters = adicionar_indicadores_explicativos_clusters(ranking_clusters)
-    ranking_clusters = update_real_time_data_clusters(ranking_clusters)  # ✅ ATUALIZA LIVE SCORE
+    ranking_clusters = update_real_time_data_3d(ranking_clusters)  # ✅ HANDICAP 3D
     ranking_clusters = ranking_clusters.sort_values('Score_Final_Clusters', ascending=False)
 
-    # ---------------- EXIBIR RESUMO LIVE ----------------
-    st.markdown("### 📡 Live Score Monitor")
-    live_summary = generate_live_summary_clusters(ranking_clusters)
-    st.json(live_summary)
+    # ---------------- EXIBIR RESUMO LIVE 3D ----------------
+    st.markdown("### 📡 Live Score Monitor - Handicap Asiático 3D")
+    live_summary_3d = generate_live_summary_3d(ranking_clusters)
+    st.json(live_summary_3d)
     
     colunas_principais = [
-        'League','Time' ,'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'ML_Side',
-        'Recomendacao', 'Cluster_ML_Score_Home', 'Cluster_ML_Score_Away',
-        'Score_Final_Clusters', 'Classificacao_Potencial', 'Cluster3D_Desc',
+        'Ranking', 'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'ML_Side',
+        'Cluster3D_Desc', 'Cluster_ML_Score_Home', 'Cluster_ML_Score_Away',
+        'Score_Final_Clusters', 'Classificacao_Potencial', 'Recomendacao',
         'Tendencia_Home', 'Tendencia_Away',
-        # Live Score
-        'Asian_Line_Decimal', 'Handicap_Result', 'Cluster_Correct'
+        # Live Score Handicap 3D
+        'Asian_Line_Decimal', 'Handicap_Result', 'Cluster_Correct_3D', 'Profit_3D'
     ]
     
     cols_finais = [c for c in colunas_principais if c in ranking_clusters.columns]
@@ -1036,8 +1179,7 @@ if not games_today.empty and 'Cluster_ML_Score_Home' in games_today.columns:
             'Cluster_ML_Score_Home': '{:.1%}',
             'Cluster_ML_Score_Away': '{:.1%}',
             'Score_Final_Clusters': '{:.1f}',
-            'M_H': '{:.2f}',
-            'M_A': '{:.2f}'
+            'Profit_3D': '{:.2f}'
         }, na_rep="-"),
         use_container_width=True,
         height=600
