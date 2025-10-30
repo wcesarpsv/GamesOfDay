@@ -629,55 +629,46 @@ def adicionar_indicadores_explicativos_clusters(df):
             tendencia_h = row.get('Tendencia_Home', '⚖️ ESTÁVEL')
             tendencia_a = row.get('Tendencia_Away', '⚖️ ESTÁVEL')
             
-            if any(term in cluster for term in ['Home Domina', 'Home Agressivo', 'Home Vantagem']):
+            # 🎯 RECOMENDAÇÕES FORTES (serão contabilizadas no Live Score)
+            if any(term in cluster for term in ['Home Domina', 'Home Agressivo']):
                 if score_home >= 0.65 and any(term in tendencia_h for term in ['MELHORA', 'FORTE']):
                     return f'💪 HOME DOMINANTE + Melhora ({score_home:.1%})'
-                elif score_home >= 0.58:
+                elif score_home >= 0.60:
                     return f'🎯 HOME DOMINANTE ({score_home:.1%})'
-                elif score_home >= 0.52:
-                    return f'📈 HOME com Vantagem ({score_home:.1%})'
+                elif score_home >= 0.55:
+                    return f'📈 HOME com Valor ({score_home:.1%})'
                 else:
-                    return f'⚖️ HOME favorecido mas cuidado ({score_home:.1%})'
-
-            elif any(term in cluster for term in ['Away Domina', 'Away Agressivo', 'Away Vantagem']):
+                    return f'⚖️ HOME favorecido mas cuidado ({score_home:.1%})'  # 🚫 NÃO CONTABILIZA
+    
+            elif any(term in cluster for term in ['Away Domina', 'Away Agressivo']):
                 if score_away >= 0.65 and any(term in tendencia_a for term in ['MELHORA', 'FORTE']):
                     return f'💪 AWAY DOMINANTE + Melhora ({score_away:.1%})'
-                elif score_away >= 0.58:
+                elif score_away >= 0.60:
                     return f'🎯 AWAY DOMINANTE ({score_away:.1%})'
-                elif score_away >= 0.52:
-                    return f'📈 AWAY com Vantagem ({score_away:.1%})'
+                elif score_away >= 0.55:
+                    return f'📈 AWAY com Valor ({score_away:.1%})'
                 else:
-                    return f'⚖️ AWAY favorecido mas cuidado ({score_away:.1%})'
-
+                    return f'⚖️ AWAY favorecido mas cuidado ({score_away:.1%})'  # 🚫 NÃO CONTABILIZA
+    
+            # 🎲 RECOMENDAÇÕES CAUTELOSAS (NÃO contabilizam)
             elif any(term in cluster for term in ['Equilibrado', 'Equilíbrio', 'Neutro']):
-                if ml_side == 'HOME' and score_home >= 0.55:
-                    return f'📈 VALUE NO HOME (Equilibrado) ({score_home:.1%})'
-                elif ml_side == 'AWAY' and score_away >= 0.55:
-                    return f'📈 VALUE NO AWAY (Equilibrado) ({score_away:.1%})'
-                else:
-                    return f'⚖️ CONFRONTO EQUILIBRADO (H:{score_home:.1%} A:{score_away:.1%})'
-
+                return f'⚖️ CONFRONTO EQUILIBRADO (H:{score_home:.1%} A:{score_away:.1%})'  # 🚫 NÃO CONTABILIZA
+    
             elif any(term in cluster for term in ['Imprevisível', 'Instável', 'Contraditório']):
-                if 'MELHORA' in tendencia_h and score_home >= 0.55:
-                    return f'🎲 IMPREVISÍVEL mas Home Melhorando ({score_home:.1%})'
-                elif 'MELHORA' in tendencia_a and score_away >= 0.55:
-                    return f'🎲 IMPREVISÍVEL mas Away Melhorando ({score_away:.1%})'
-                else:
-                    return f'🎲 JOGO IMPREVISÍVEL - Cautela (H:{score_home:.1%} A:{score_away:.1%})'
-
+                return f'🎲 JOGO IMPREVISÍVEL - Cautela (H:{score_home:.1%} A:{score_away:.1%})'  # 🚫 NÃO CONTABILIZA
+    
             else:
+                # 🎯 RECOMENDAÇÕES FORTES (fallback)
                 if score_home >= 0.70:
                     return f'🏆 HOME FORTE ({score_home:.1%})'
                 elif score_away >= 0.70:
                     return f'🏆 AWAY FORTE ({score_away:.1%})'
-                elif score_home >= 0.60:
+                elif score_home >= 0.62:
                     return f'✅ HOME com Valor ({score_home:.1%})'
-                elif score_away >= 0.60:
+                elif score_away >= 0.62:
                     return f'✅ AWAY com Valor ({score_away:.1%})'
-                elif abs(score_home - score_away) < 0.1:
-                    return f'⚖️ CONFRONTO EQUILIBRADO (H:{score_home:.1%} A:{score_away:.1%})'
                 else:
-                    return f'🔍 ANALISAR (H:{score_home:.1%} A:{score_away:.1%})'
+                    return f'🔍 ANALISAR (H:{score_home:.1%} A:{score_away:.1%})'  # 🚫 NÃO CONTABILIZA
                     
         except Exception as e:
             return f'❌ ERRO: {str(e)}'
@@ -800,31 +791,104 @@ def determine_handicap_result_3d(row):
         return "PUSH"
 
 # ============================================================
-# 🎯 Checa se a recomendação foi correta
+# 🎯 Checa se a recomendação foi correta (VERSÃO CORRIGIDA)
 # ============================================================
 def check_handicap_recommendation_correct_3d(recomendacao, handicap_result):
-    if pd.isna(recomendacao) or handicap_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
+    """Verifica se a recomendação acertou o handicap, IGNORANDO recomendações cautelares"""
+    if pd.isna(recomendacao) or handicap_result is None:
         return None
 
     recomendacao_str = str(recomendacao).upper()
+    
+    # 🚫 IGNORAR recomendações cautelares (não contabilizar como aposta)
+    cautious_keywords = [
+        'CUIDADO', 'ANALISAR', '⚖️', '🎲', '🔍', 'IMPREVISÍVEL', 'INSTÁVEL',
+        'FAVORECIDO MAS CUIDADO', 'CONFRONTO EQUILIBRADO', 'SINAIS CONTRADITÓRIOS'
+    ]
+    
+    if any(keyword in recomendacao_str for keyword in cautious_keywords):
+        return None
 
+    # ✅ Apenas recomendações FORTES são contabilizadas
     is_home_bet = any(k in recomendacao_str for k in [
-        'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
-        'MODELO CONFIA HOME', 'H:', 'HOME)'
+        'HOME DOMINANTE', '💪 HOME', '🎯 HOME', '📈 HOME', '🏆 HOME',
+        'HOME FORTE', 'HOME COM VALOR', 'VALUE NO HOME'
     ])
+    
     is_away_bet = any(k in recomendacao_str for k in [
-        'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
-        'MODELO CONFIA AWAY', 'A:', 'AWAY)'
+        'AWAY DOMINANTE', '💪 AWAY', '🎯 AWAY', '📈 AWAY', '🏆 AWAY', 
+        'AWAY FORTE', 'AWAY COM VALOR', 'VALUE NO AWAY'
     ])
+
+    # Se não é uma recomendação forte, não contabiliza
+    if not is_home_bet and not is_away_bet:
+        return None
 
     if is_home_bet and handicap_result in ["HOME_COVERED", "HALF_WIN"]:
         return True
     elif is_away_bet and handicap_result in ["AWAY_COVERED", "HALF_WIN"]:
         return True
     elif handicap_result == "PUSH":
-        return None
+        return None  # Push não conta como acerto nem erro
     else:
         return False
+
+
+# ============================================================
+# 💰 Calcula o profit líquido (VERSÃO CORRIGIDA)
+# ============================================================
+def calculate_handicap_profit_3d(recomendacao, handicap_result, odds_row):
+    """Calcula profit APENAS para recomendações fortes"""
+    if pd.isna(recomendacao) or handicap_result is None:
+        return 0
+
+    recomendacao_str = str(recomendacao).upper()
+    
+    # 🚫 IGNORAR recomendações cautelares (profit = 0)
+    cautious_keywords = [
+        'CUIDADO', 'ANALISAR', '⚖️', '🎲', '🔍', 'IMPREVISÍVEL', 'INSTÁVEL',
+        'FAVORECIDO MAS CUIDADO', 'CONFRONTO EQUILIBRADO', 'SINAIS CONTRADITÓRIOS'
+    ]
+    
+    if any(keyword in recomendacao_str for keyword in cautious_keywords):
+        return 0
+
+    # ✅ Apenas recomendações FORTES geram profit
+    is_home_bet = any(k in recomendacao_str for k in [
+        'HOME DOMINANTE', '💪 HOME', '🎯 HOME', '📈 HOME', '🏆 HOME',
+        'HOME FORTE', 'HOME COM VALOR', 'VALUE NO HOME'
+    ])
+    
+    is_away_bet = any(k in recomendacao_str for k in [
+        'AWAY DOMINANTE', '💪 AWAY', '🎯 AWAY', '📈 AWAY', '🏆 AWAY', 
+        'AWAY FORTE', 'AWAY COM VALOR', 'VALUE NO AWAY'
+    ])
+
+    if not is_home_bet and not is_away_bet:
+        return 0
+
+    if is_home_bet:
+        odd = odds_row.get('Odd_H_Asi', np.nan)
+    elif is_away_bet:
+        odd = odds_row.get('Odd_A_Asi', np.nan)
+    else:
+        return 0
+
+    if pd.isna(odd):
+        return 0
+
+    # Lucro conforme resultado
+    if (is_home_bet and handicap_result == "HOME_COVERED") or \
+       (is_away_bet and handicap_result == "AWAY_COVERED"):
+        return odd - 1  # Profit líquido (odd - stake)
+    elif handicap_result == "HALF_WIN":
+        return (odd - 1) / 2  # Metade do profit
+    elif handicap_result == "HALF_LOSS":
+        return -0.5  # Metade da perda
+    elif handicap_result == "PUSH":
+        return 0  # Devolve o stake
+    else:
+        return -1  # Perda total
 
 # ============================================================
 # 💰 Calcula o profit líquido
