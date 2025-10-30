@@ -1073,43 +1073,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     corr_bias = games_today['Market_Bias_Opening'].corr(games_today['Prob_Home'])
     st.metric("Correlação (Bias x Probabilidade ML Home)", f"{corr_bias:.3f}")
 
-    # ============================================================
-    # 💰 BLOCO EXTRA — ROI por Faixas de Viés
-    # ============================================================
-    st.markdown("### 💰 ROI por Faixas de Viés de Abertura")
-
-    bins = [-1.0, -0.15, -0.05, 0.05, 0.15, 1.0]
-    labels = ["📉 Forte pró-Away", "🟠 Leve pró-Away", "⚖️ Neutro", "🟢 Leve pró-Home", "🏠 Forte pró-Home"]
-    games_today["Bias_Group"] = pd.cut(games_today["Market_Bias_Opening"], bins=bins, labels=labels, include_lowest=True)
-
-    games_today["Bet_Home"] = np.where(games_today["Prob_Home"] > 0.5, 1, 0)
-
-    if "Target_AH_Home" in games_today.columns:
-        games_today["Profit_Sim"] = np.where(
-            (games_today["Bet_Home"] == 1) & (games_today["Target_AH_Home"] == 1),
-            (1 / games_today["Imp_H_OP_Norm"]) - 1,
-            np.where(games_today["Bet_Home"] == 1, -1, 0)
-        )
-    else:
-        games_today["Profit_Sim"] = np.nan
-
-    roi_summary = games_today.groupby("Bias_Group").agg(
-        Jogos=("Profit_Sim", "count"),
-        Apostas=("Bet_Home", "sum"),
-        Winrate=("Target_AH_Home", "mean") if "Target_AH_Home" in games_today.columns else ("Bet_Home", "mean"),
-        ROI=("Profit_Sim", lambda x: x.sum() / (games_today.loc[x.index, "Bet_Home"].sum() or 1))
-    ).reset_index()
-
-    st.dataframe(roi_summary, use_container_width=True)
-
-    fig_roi, ax3 = plt.subplots(figsize=(6, 4))
-    ax3.bar(roi_summary["Bias_Group"], roi_summary["ROI"], color=np.where(roi_summary["ROI"] > 0, "green", "red"))
-    ax3.axhline(0, color="gray", linestyle="--", lw=1)
-    ax3.set_ylabel("ROI Médio")
-    ax3.set_xlabel("Faixa de Viés de Abertura")
-    ax3.set_title("ROI por Nível de Viés de Abertura (Home - Away)")
-    st.pyplot(fig_roi)
-
+    
     if len(roi_summary) > 0:
         best_zone = roi_summary.loc[roi_summary["ROI"].idxmax(), "Bias_Group"]
         best_roi = roi_summary["ROI"].max()
