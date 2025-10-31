@@ -117,56 +117,110 @@ from sklearn.cluster import KMeans
 # 🧩 BLOCO – CLUSTERIZAÇÃO 3D (KMEANS)
 # ==============================================================
 
-def aplicar_clusterizacao_3d(df, n_clusters=2, random_state=42):
-    """
-    Cria clusters espaciais com base em Aggression, Momentum Liga e Momentum Time.
-    Retorna o DataFrame com a nova coluna 'Cluster3D_Label'.
-    """
+# def aplicar_clusterizacao_3d(df, n_clusters=2, random_state=42):
+#     """
+#     Cria clusters espaciais com base em Aggression, Momentum Liga e Momentum Time.
+#     Retorna o DataFrame com a nova coluna 'Cluster3D_Label'.
+#     """
 
-    df = df.copy()
+#     df = df.copy()
 
-    # Garante as colunas necessárias
+#     # Garante as colunas necessárias
+#     required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+#     missing = [c for c in required_cols if c not in df.columns]
+#     if missing:
+#         st.warning(f"⚠️ Colunas ausentes para clusterização 3D: {missing}")
+#         df['Cluster3D_Label'] = -1
+#         return df
+
+#     # Diferenças espaciais (vetor 3D)
+#     df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
+#     df['dy'] = df['M_H'] - df['M_A']
+#     df['dz'] = df['MT_H'] - df['MT_A']
+
+#     X_cluster = df[['dx', 'dy', 'dz']].fillna(0).to_numpy()
+
+#     # KMeans 3D
+#     kmeans = KMeans(
+#         n_clusters=n_clusters,
+#         random_state=random_state,
+#         init='k-means++',   # garante convergência estável
+#         n_init=10           # mais robusto
+#     )
+#     df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
+
+#     # 🧠 Calcular centroide de cada cluster para diagnóstico
+#     centroids = pd.DataFrame(kmeans.cluster_centers_, columns=['dx', 'dy', 'dz'])
+#     centroids['Cluster'] = range(n_clusters)
+
+#     st.markdown("### 🧭 Clusters 3D Criados (KMeans)")
+#     st.dataframe(centroids.style.format({'dx': '{:.2f}', 'dy': '{:.2f}', 'dz': '{:.2f}'}))
+
+#     # Adicionar também uma descrição textual leve (para visualização)
+#     df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
+#         0: '⚡ Agressivos + Momentum Positivo',
+#         1: '💤 Reativos + Momentum Negativo',
+#         2: '⚖️ Equilibrados',
+#         3: '🔥 Alta Variância',
+#         4: '🌪️ Caóticos / Transição'
+#     }).fillna('🌀 Outro')
+
+#     return df
+
+
+def aplicar_clusterizacao_3d(history, games_today, n_clusters=5):
+    """
+    Clusterização temporalmente segura:
+    - Treina clusters apenas nos dados históricos
+    - Aplica nos dados históricos e nos jogos de hoje
+    """
+    
+    # 1. Preparar dados para clusterização (apenas históricos)
     required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        st.warning(f"⚠️ Colunas ausentes para clusterização 3D: {missing}")
-        df['Cluster3D_Label'] = -1
-        return df
-
-    # Diferenças espaciais (vetor 3D)
-    df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
-    df['dy'] = df['M_H'] - df['M_A']
-    df['dz'] = df['MT_H'] - df['MT_A']
-
-    X_cluster = df[['dx', 'dy', 'dz']].fillna(0).to_numpy()
-
-    # KMeans 3D
+    
+    # Garantir que temos as colunas necessárias
+    history_clean = history[required_cols].fillna(0)
+    games_today_clean = games_today[required_cols].fillna(0)
+    
+    # 2. Calcular diferenças espaciais (apenas para clusterização)
+    history_clean['dx'] = history_clean['Aggression_Home'] - history_clean['Aggression_Away']
+    history_clean['dy'] = history_clean['M_H'] - history_clean['M_A']
+    history_clean['dz'] = history_clean['MT_H'] - history_clean['MT_A']
+    
+    games_today_clean['dx'] = games_today_clean['Aggression_Home'] - games_today_clean['Aggression_Away']
+    games_today_clean['dy'] = games_today_clean['M_H'] - games_today_clean['M_A']
+    games_today_clean['dz'] = games_today_clean['MT_H'] - games_today_clean['MT_A']
+    
+    # 3. Treinar KMeans APENAS nos dados históricos
+    X_train = history_clean[['dx', 'dy', 'dz']].values
+    
     kmeans = KMeans(
         n_clusters=n_clusters,
-        random_state=random_state,
-        init='k-means++',   # garante convergência estável
-        n_init=10           # mais robusto
+        random_state=42,
+        init='k-means++',
+        n_init=10
     )
-    df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
-
-    # 🧠 Calcular centroide de cada cluster para diagnóstico
-    centroids = pd.DataFrame(kmeans.cluster_centers_, columns=['dx', 'dy', 'dz'])
-    centroids['Cluster'] = range(n_clusters)
-
-    st.markdown("### 🧭 Clusters 3D Criados (KMeans)")
-    st.dataframe(centroids.style.format({'dx': '{:.2f}', 'dy': '{:.2f}', 'dz': '{:.2f}'}))
-
-    # Adicionar também uma descrição textual leve (para visualização)
-    df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
+    kmeans.fit(X_train)
+    
+    # 4. Aplicar clusters nos dados históricos
+    history['Cluster3D_Label'] = kmeans.predict(history_clean[['dx', 'dy', 'dz']].values)
+    
+    # 5. Aplicar clusters nos jogos de hoje
+    games_today['Cluster3D_Label'] = kmeans.predict(games_today_clean[['dx', 'dy', 'dz']].values)
+    
+    # 6. Adicionar descrição
+    cluster_descriptions = {
         0: '⚡ Agressivos + Momentum Positivo',
-        1: '💤 Reativos + Momentum Negativo',
+        1: '💤 Reativos + Momentum Negativo', 
         2: '⚖️ Equilibrados',
         3: '🔥 Alta Variância',
         4: '🌪️ Caóticos / Transição'
-    }).fillna('🌀 Outro')
-
-    return df
-
+    }
+    
+    history['Cluster3D_Desc'] = history['Cluster3D_Label'].map(cluster_descriptions).fillna('🌀 Outro')
+    games_today['Cluster3D_Desc'] = games_today['Cluster3D_Label'].map(cluster_descriptions).fillna('🌀 Outro')
+    
+    return history, games_today
 
 
 
@@ -901,8 +955,8 @@ st.markdown("""
 """)
 
 # Aplicar clusterização 3D antes do treino
-history = aplicar_clusterizacao_3d(history, n_clusters=5)
-games_today = aplicar_clusterizacao_3d(games_today, n_clusters=5)
+# ✅ NOVO (seguro)
+history, games_today = aplicar_clusterizacao_3d_segura(history, games_today, n_clusters=5)
 
 
 
