@@ -74,7 +74,7 @@ def calc_handicap_result(margin, asian_line_str, invert=False):
         # Primeiro converte a linha asiática usando a função padronizada
         line_value = convert_asian_line_to_decimal(asian_line_str)
         # Para cálculo de handicap, usamos o valor absoluto
-        line_value_abs = abs(line_value)
+        line_value_abs = line_value
         
         # Lógica de cálculo do resultado
         if margin > line_value_abs:
