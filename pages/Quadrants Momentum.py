@@ -835,15 +835,15 @@ if not games_today.empty and 'Momentum_ML_Score_Home' in games_today.columns:
     ranking_momentum = gerar_score_combinado_momentum(ranking_momentum)
     
     # Ordenar por score final momentum
-    ranking_momentum = ranking_momentum.sort_values('Score_Final_Momentum', ascending=False)
+    ranking_momentum = ranking_momentum.sort_values('Time', ascending=False)
     
     # Colunas para exibição momentum
     colunas_momentum = [
-        'League', 'Time', 'Home', 'Away', 'Goals_H_Today','Goals_A_Today','ML_Side_Momentum',
+        'League', 'Time', 'Home', 'Away', 'Goals_H_Today','Goals_A_Today','ML_Side_Momentum', 'Recomendacao_Momentum',
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
         'Momentum_ML_Score_Home', 'Momentum_ML_Score_Away', 
         'Score_Final_Momentum', 'Classificacao_Momentum',
-        'Classificacao_Valor_Home_Momentum', 'Classificacao_Valor_Away_Momentum', 'Recomendacao_Momentum',
+        'Classificacao_Valor_Home_Momentum', 'Classificacao_Valor_Away_Momentum', 
         'M_H', 'M_A', 'Quadrant_Dist'
     ]
     
