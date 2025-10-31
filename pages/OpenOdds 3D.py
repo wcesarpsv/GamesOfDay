@@ -978,8 +978,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     # ----------------------------
     history = calcular_distancias_3d(history)
     games_today = calcular_distancias_3d(games_today)
-    history = aplicar_clusterizacao_3d(history)
-    games_today = aplicar_clusterizacao_3d(games_today)
+    history, games_today = aplicar_clusterizacao_3d_segura(history, games_today, n_clusters=5)
 
     # ----------------------------
     # 🧠 Feature Engineering
