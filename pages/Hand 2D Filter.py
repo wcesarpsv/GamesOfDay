@@ -80,38 +80,64 @@ def calc_handicap_result(margin, asian_line_str, invert=False):
     """Retorna média de pontos por linha (1 win, 0.5 push, 0 loss)"""
     if pd.isna(asian_line_str):
         return np.nan
-    if invert:
-        margin = -margin
+    
+    # A linha já está convertida para perspectiva HOME, então NÃO inverta
+    # margin = gh - ga (sempre do ponto de vista do Home)
     try:
         parts = [float(x) for x in str(asian_line_str).split('/')]
     except:
         return np.nan
+    
     results = []
     for line in parts:
+        # Usando a linha do HOME (já convertida)
         if margin > line:
-            results.append(1.0)
+            results.append(1.0)   # Home cobre
         elif margin == line:
-            results.append(0.5)
+            results.append(0.5)   # Push
         else:
-            results.append(0.0)
+            results.append(0.0)   # Home não cobre
+    
     return np.mean(results)
 
 
 def convert_asian_line_to_decimal(line_str):
-    """Converte qualquer formato de Asian Line para valor decimal único"""
+    """
+    Converte handicaps asiáticos (Away) no formato string para decimal invertido (Home).
+    
+    Segue EXATAMENTE o mesmo padrão do modelo:
+    - '0/0.5'   -> +0.25 (away) → -0.25 (home)
+    - '-0.5/0'  -> -0.25 (away) → +0.25 (home) 
+    - '-1/1.5'  -> -1.25 (away) → +1.25 (home)
+    - '1/1.5'   -> +1.25 (away) → -1.25 (home)
+    - '1.5'     -> +1.50 (away) → -1.50 (home)
+    - '0'       ->  0.00 (away) →  0.00 (home)
+    
+    Retorna: float ou None
+    """
     if pd.isna(line_str) or line_str == "":
         return None
     
     try:
         line_str = str(line_str).strip()
         
-        # Se não tem "/" é valor único
+        # Caso simples — número único
         if "/" not in line_str:
-            return float(line_str)
+            num = float(line_str)
+            return -num  # Inverte sinal (Away → Home)
         
-        # Se tem "/" é linha fracionada - calcular média
-        parts = [float(x) for x in line_str.split("/")]
-        return sum(parts) / len(parts)
+        # Caso duplo — média dos dois lados com preservação de sinal
+        parts = [float(p) for p in line_str.split("/")]
+        avg = np.mean(parts)
+        
+        # Mantém o sinal do primeiro número (como no modelo)
+        if str(line_str).startswith("-"):
+            result = -abs(avg)
+        else:
+            result = abs(avg)
+            
+        # Inverte o sinal no final (Away → Home)
+        return -result
         
     except (ValueError, TypeError):
         return None
@@ -218,86 +244,13 @@ if "Date" in history.columns:
     except Exception as e:
         st.error(f"Erro ao aplicar filtro temporal: {e}")
 
-# ############################################
-# ### 🧭 COMPARATIVO: Ângulo Original vs Ângulo Normalizado
-# ############################################
-# import matplotlib.pyplot as plt
-# import seaborn as sns
 
-# # Garantir que history tenha os dados necessários
-# df_test = history.copy().dropna(subset=['Aggression_Home','Aggression_Away','HandScore_Home','HandScore_Away'])
-
-# # Recalcular ângulos (antes e depois)
-# dx = df_test['Aggression_Home'] - df_test['Aggression_Away']
-# dy = df_test['HandScore_Home'] - df_test['HandScore_Away']
-
-# # Ângulo original (geométrico puro)
-# df_test['Angle_Original'] = np.degrees(np.arctan2(dy, dx))
-
-# # Ângulo normalizado (ajustado visualmente)
-# df_test['Angle_Normalized'] = np.degrees(np.arctan2((dy / 60), dx))
-
-# # Correlação com resultado (Target_AH_Home)
-# if 'Target_AH_Home' not in df_test.columns:
-#     st.warning("⚠️ history não contém Target_AH_Home — será criado temporariamente.")
-#     df_test['Margin'] = df_test['Goals_H_FT'] - df_test['Goals_A_FT']
-#     df_test['Target_AH_Home'] = df_test.apply(
-#         lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line"], invert=False) > 0.5 else 0, axis=1
-#     )
-
-# corr_original = df_test['Angle_Original'].corr(df_test['Target_AH_Home'])
-# corr_normalized = df_test['Angle_Normalized'].corr(df_test['Target_AH_Home'])
-
-# st.markdown("### 📊 Correlação com resultado (Target_AH_Home)")
-# st.table(pd.DataFrame({
-#     'Versão': ['Original (geométrica)', 'Normalizada (visual)'],
-#     'Correlação': [corr_original, corr_normalized]
-# }).round(4))
-
-# # ==========================
-# # 📈 Histogramas comparativos
-# # ==========================
-# fig, ax = plt.subplots(figsize=(10,5))
-# sns.histplot(df_test['Angle_Original'], bins=60, color='gray', label='Original', kde=True, alpha=0.4)
-# sns.histplot(df_test['Angle_Normalized'], bins=60, color='green', label='Normalizado', kde=True, alpha=0.4)
-# ax.set_title("Distribuição dos Ângulos – Original vs Normalizado")
-# ax.set_xlabel("Ângulo (graus)")
-# ax.legend()
-# st.pyplot(fig)
-
-# # ==========================
-# # ⚖️ Dispersão entre versões
-# # ==========================
-# fig2, ax2 = plt.subplots(figsize=(6,6))
-# ax2.scatter(df_test['Angle_Original'], df_test['Angle_Normalized'], s=10, alpha=0.5)
-# ax2.set_title("Comparativo dos Ângulos (Original × Normalizado)")
-# ax2.set_xlabel("Ângulo Original (°)")
-# ax2.set_ylabel("Ângulo Normalizado (°)")
-# ax2.axline((0,0),(1,1),color='red',linestyle='--')
-# st.pyplot(fig2)
-
-# # ==========================
-# # 📉 Interpretação
-# # ==========================
-# st.markdown(f"""
-# ### 🧠 Interpretação rápida
-
-# - **Distribuição**: o ângulo *normalizado* tende a se concentrar mais em torno de 0°, pois o eixo Y foi comprimido na conta.
-# - **Correlação com Target**:
-#   - Original: `{corr_original:.4f}`
-#   - Normalizado: `{corr_normalized:.4f}`  
-#   *(valores positivos → quanto maior o ângulo, maior a chance do Home cobrir o AH)*
-
-# Se a correlação aumentou, isso indica que a **normalização trouxe coerência visual real** para o modelo — 
-# ou seja, times “por cima” no plano (ângulo > 0) realmente têm mais chance de cobrir.
-# """)
-
-#############################
 
 # Targets AH históricos
 history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
 history["Target_AH_Home"] = history.apply(
-    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line"], invert=False) > 0.5 else 0, axis=1
+    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]) > 0.5 else 0, 
+    axis=1
 )
 
 # ---------------- SISTEMA DE 8 QUADRANTES ----------------
