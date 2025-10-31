@@ -1000,10 +1000,10 @@ def detect_dual_value_bets(games_today, min_value_gap, value_confidence_threshol
 def display_dual_value_bets(value_bets, selected_date):
     """Exibe oportunidades de value bets do sistema dual"""
     if not value_bets.empty:
-        value_bets = value_bets.sort_values(['EV_Home_Dual', 'EV_Away_Dual'], ascending=False)
+        value_bets = value_bets.sort_values(['Time'], ascending=False)
         
         cols_to_show = [
-            'League', 'Home', 'Away', 'Dual_Value_Pick',
+            'League','Time', 'Home', 'Away', 'Dual_Value_Pick',
             'Dual_Proba_Home', 'Dual_Proba_Away', 
             'EV_Home_Dual', 'EV_Away_Dual',
             'ML_Proba_Home', 'ML_Proba_Away',
@@ -1026,7 +1026,7 @@ def display_dual_value_bets(value_bets, selected_date):
             })
             .background_gradient(subset=['EV_Home_Dual', 'EV_Away_Dual'], cmap='RdYlGn'),
             use_container_width=True,
-            height=400
+            height=600
         )
         
         st.success(f"🎉 Found {len(value_bets)} dual value bet opportunities for {selected_date}!")
