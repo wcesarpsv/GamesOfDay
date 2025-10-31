@@ -1832,24 +1832,4 @@ def resumo_3d_16_quadrantes_hoje(df):
 if not games_today.empty and 'Classificacao_Potencial_3D' in games_today.columns:
     resumo_3d_16_quadrantes_hoje(games_today)
 
-st.markdown("---")
-st.success("🎯 **Sistema 3D Inteligente de 16 Quadrantes ML** implementado com sucesso!")
 
-st.info("""
-**🚀 CORREÇÃO APLICADA - Asian Line Consertada**
-
-✅ **Problema Resolvido:**
-- Função `convert_asian_line_to_decimal` agora inverte corretamente o sinal
-- Segue padrões Pinnacle/Bet365: Away → Home perspective
-- Cálculos de handicap agora funcionam corretamente
-
-**Exemplos Corrigidos:**
-- '0/0.5'   → -0.25 (✅ CORRETO)  
-- '-0.5/0'  → +0.25 (✅ CORRETO)
-- '0.5'     → -0.5  (✅ CORRETO)
-
-**Impacto:**
-- ML treinado com targets corretos
-- Recomendações baseadas em handicaps precisos
-- Profit/ROI calculado corretamente
-""")
