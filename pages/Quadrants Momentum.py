@@ -296,21 +296,34 @@ history['Quadrante_Away'] = history.apply(
 
 # ---------------- CÁLCULO DE DISTÂNCIAS COM MOMENTUM ----------------
 def calcular_distancias_momentum(df):
-    """Calcula distância, separação média e ângulo entre os pontos Home e Away usando Momentum."""
+    """Calcula distância, separação média, ângulo e componentes sen/cos para Momentum."""
     df = df.copy()
     required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A']
+
     if all(col in df.columns for col in required_cols):
+        # Diferenças
         dx = df['Aggression_Home'] - df['Aggression_Away']
-        dy = df['M_H'] - df['M_A']  # Diferença de Momentum
-        df['Quadrant_Dist'] = np.sqrt(dx**2 + (dy/3.5)**2 * 2.5) * 10  # escala ajustada para momentum
-        df['Quadrant_Separation'] = 0.5 * (dy + 3.5 * dx)  # ajuste de escala
+        dy = df['M_H'] - df['M_A']
+
+        # Distância e ângulo base
+        df['Quadrant_Dist'] = np.sqrt(dx**2 + (dy/3.5)**2 * 2.5) * 10
+        df['Quadrant_Separation'] = 0.5 * (dy + 3.5 * dx)
         df['Quadrant_Angle'] = np.degrees(np.arctan2(dy, dx))
+
+        # 🧭 NOVO BLOCO: componentes vetoriais contínuas (seno e cosseno)
+        df['Quadrant_Sin'] = np.sin(np.radians(df['Quadrant_Angle']))
+        df['Quadrant_Cos'] = np.cos(np.radians(df['Quadrant_Angle']))
+
     else:
-        st.warning("⚠️ Colunas Aggression/Momentum não encontradas para calcular as distâncias.")
+        st.warning("⚠️ Colunas Aggression/Momentum não encontradas para calcular distâncias.")
         df['Quadrant_Dist'] = np.nan
         df['Quadrant_Separation'] = np.nan
         df['Quadrant_Angle'] = np.nan
+        df['Quadrant_Sin'] = np.nan
+        df['Quadrant_Cos'] = np.nan
+
     return df
+
 
 # Aplicar ao games_today
 games_today = calcular_distancias_momentum(games_today)
@@ -514,7 +527,9 @@ def treinar_modelo_momentum_dual(history, games_today):
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
 
     # Features contínuas
-    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle']].fillna(0)
+    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle',
+                  'Quadrant_Sin', 'Quadrant_Cos']].fillna(0)
+
 
     # Combinar todas as features
     X = pd.concat([quadrantes_home, quadrantes_away, ligas_dummies, extras], axis=1)
@@ -538,7 +553,9 @@ def treinar_modelo_momentum_dual(history, games_today):
     qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
     qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle']].fillna(0)
+    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle',
+                            'Quadrant_Sin', 'Quadrant_Cos']].fillna(0)
+
 
     X_today = pd.concat([qh_today, qa_today, ligas_today, extras_today], axis=1)
 
