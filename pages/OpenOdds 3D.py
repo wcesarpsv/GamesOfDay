@@ -220,8 +220,7 @@ def aplicar_clusterizacao_3d(history, games_today, n_clusters=5):
     history['Cluster3D_Desc'] = history['Cluster3D_Label'].map(cluster_descriptions).fillna('🌀 Outro')
     games_today['Cluster3D_Desc'] = games_today['Cluster3D_Label'].map(cluster_descriptions).fillna('🌀 Outro')
     
-    return history, games_today
-
+    return df
 
 
 
