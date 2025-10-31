@@ -956,7 +956,7 @@ st.markdown("""
 
 # Aplicar clusterização 3D antes do treino
 # ✅ NOVO (seguro)
-history, games_today = aplicar_clusterizacao_3d_segura(history, games_today, n_clusters=5)
+history, games_today = aplicar_clusterizacao_3d(history, games_today, n_clusters=5)
 
 
 
