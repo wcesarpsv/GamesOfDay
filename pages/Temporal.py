@@ -483,9 +483,6 @@ df = add_season_phase_encoding(df)
 # =====================================================
 st.subheader("⚙️ Calculando Momentum / Aggression / Power")
 
-df = calcular_momentum(df)
-df = calcular_aggression(df)
-df = calcular_power(df)
 
 st.write("✅ Features principais calculadas.")
 
