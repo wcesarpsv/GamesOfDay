@@ -208,6 +208,40 @@ games_today, history = load_cached_data(selected_file)
 
 
 
+# =====================================================
+# 🏟️ CÁLCULO DE TIMES E RODADAS POR LIGA
+# =====================================================
+st.markdown("### ⚽ Estimativa de Rodadas por Liga")
+
+def calcular_rodadas_por_liga(df):
+    """
+    Calcula quantos times existem em cada liga e estima
+    o número total de rodadas (turno + returno).
+    Fórmula: rodadas = (n_times - 1) * 2
+    """
+    if df.empty or "League" not in df.columns or "Home" not in df.columns or "Away" not in df.columns:
+        st.warning("⚠️ Dados insuficientes para calcular rodadas por liga.")
+        return pd.DataFrame()
+
+    # Times únicos por liga
+    liga_times = (
+        df.groupby("League")
+        .apply(lambda x: len(pd.unique(x[['Home', 'Away']].values.ravel())))
+        .reset_index(name="Num_Times")
+    )
+
+    # Estimativa de rodadas (turno e returno)
+    liga_times["Rodadas_Estimadas"] = (liga_times["Num_Times"] - 1) * 2
+
+    st.dataframe(liga_times, use_container_width=True)
+    return liga_times
+
+liga_rodadas = calcular_rodadas_por_liga(history)
+
+
+
+
+
 # ---------------- LIVE SCORE INTEGRATION ----------------
 def load_and_merge_livescore(games_today, selected_date_str):
     """Carrega e faz merge dos dados do Live Score"""
