@@ -168,7 +168,7 @@ from sklearn.cluster import KMeans
 #     return df
 
 
-def aplicar_clusterizacao_3d(history, games_today, n_clusters=5):
+def aplicar_clusterizacao_3d_segura(history, games_today, n_clusters=5):
     """
     Clusterização temporalmente segura:
     - Treina clusters apenas nos dados históricos
@@ -220,7 +220,7 @@ def aplicar_clusterizacao_3d(history, games_today, n_clusters=5):
     history['Cluster3D_Desc'] = history['Cluster3D_Label'].map(cluster_descriptions).fillna('🌀 Outro')
     games_today['Cluster3D_Desc'] = games_today['Cluster3D_Label'].map(cluster_descriptions).fillna('🌀 Outro')
     
-    return df
+    return history, games_today
 
 
 
@@ -954,8 +954,10 @@ st.markdown("""
 """)
 
 # Aplicar clusterização 3D antes do treino
-history = aplicar_clusterizacao_3d(history, n_clusters=5)
-games_today = aplicar_clusterizacao_3d(games_today, n_clusters=5)
+# history = aplicar_clusterizacao_3d(history, n_clusters=5)
+# games_today = aplicar_clusterizacao_3d(games_today, n_clusters=5)
+# ✅ NOVO (seguro)
+history, games_today = aplicar_clusterizacao_3d_segura(history, games_today, n_clusters=5)
 
 
 
