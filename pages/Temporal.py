@@ -1086,12 +1086,17 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     clusters_dummies = pd.get_dummies(history['Cluster3D_Label'], prefix='C3D')
 
     features_3d = [
+        # === Núcleo 3D ===        
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
         'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
         'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
         'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
         'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',
-        'Vector_Sign', 'Magnitude_3D'
+        'Vector_Sign', 'Magnitude_3D',
+    
+        # === Novas features temporais cíclicas ===
+        'Games_Home_sin', 'Games_Home_cos',
+        'Games_Away_sin', 'Games_Away_cos'
     ]
 
     extras_3d = history[features_3d].fillna(0)
