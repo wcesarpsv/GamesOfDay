@@ -652,13 +652,13 @@ def check_handicap_recommendation_correct(rec, handicap_result):
     
     rec = str(rec)
     
-    # Para recomendações HOME (Home deve cobrir)
-    if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME']):
-        return handicap_result == "HOME_COVERED"
+    # Para recomendações HOME
+    if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME', 'MODELO CONFIA HOME']):
+        return handicap_result == "COVERED"  # ← MUDOU de "HOME_COVERED" para "COVERED"
     
-    # Para recomendações AWAY (Home NÃO deve cobrir)  
+    # Para recomendações AWAY  
     elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY', 'MODELO CONFIA AWAY']):
-        return handicap_result in ["NOT_COVERED", "PUSH"]
+        return handicap_result in ["NOT_COVERED", "PUSH"]  # ← MUDOU de "HOME_NOT_COVERED" para "NOT_COVERED"
     
     return None
 
