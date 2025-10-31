@@ -551,13 +551,14 @@ with col2:
 
 def determine_handicap_result(row):
     """
-    Versão simplificada usando a lógica já consolidada do calc_handicap_result
-    Considera que Asian_Line_Decimal já está convertido para perspectiva HOME
+    Determina o resultado do handicap asiático com base no lado recomendado.
+    Agora cobre linhas fracionadas (.25 / .75) com half-win / half-loss.
+    **ATUALIZADA** para trabalhar com Asian_Line_Decimal já convertido para HOME
     """
     try:
         gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
         ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
-        asian_line_home = row['Asian_Line_Decimal']
+        asian_line_home = row['Asian_Line_Decimal']  # ← JÁ CONVERTIDO PARA HOME
         recomendacao = str(row.get('Recomendacao', '')).upper()
     except (ValueError, TypeError):
         return None
@@ -566,28 +567,83 @@ def determine_handicap_result(row):
         return None
 
     # Detectar lado da aposta
-    is_home_bet = any(k in recomendacao for k in ['HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
-    is_away_bet = any(k in recomendacao for k in ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+    is_home_bet = any(k in recomendacao for k in [
+        'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+        'MODELO CONFIA HOME', 'H:', 'HOME)'
+    ])
+    is_away_bet = any(k in recomendacao for k in [
+        'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 
+        'MODELO CONFIA AWAY', 'A:', 'AWAY)'
+    ])
 
-    if not (is_home_bet or is_away_bet):
+    if not is_home_bet and not is_away_bet:
         return None
 
-    margin = gh - ga
-    
-    # Para HOME: usamos linha home normalmente
-    # Para AWAY: invertemos a perspectiva (linha home → linha away)
+    # ✅ CORREÇÃO: Para AWAY bets, invertemos a linha HOME para ter perspectiva AWAY
     if is_home_bet:
-        score = calc_handicap_result(margin, str(asian_line_home))
+        asian_line = asian_line_home  # Já está na perspectiva HOME
     else:
-        score = calc_handicap_result(margin, str(-asian_line_home))  # Inverte para perspectiva Away
-    
-    # Converter score em resultado legível
-    if score > 0.5:
-        return "COVERED"
-    elif score == 0.5:
-        return "PUSH" 
+        asian_line = -asian_line_home  # Inverte para perspectiva AWAY
+
+    side = "HOME" if is_home_bet else "AWAY"
+
+    # -----------------------
+    # Half-win / Half-loss (MANTIDO ORIGINAL - FUNCIONA BEM)
+    # -----------------------
+    frac = abs(asian_line % 1)
+    is_quarter = frac in [0.25, 0.75]
+
+    def single_result(gh, ga, line, side):
+        if side == "HOME":
+            adjusted = (gh + line) - ga
+        else:
+            adjusted = (ga + line) - gh  # ✅ CORRIGIDO: (ga + line) - gh
+
+        if adjusted > 0:
+            return 1.0
+        elif adjusted == 0:
+            return 0.5
+        else:
+            return 0.0
+
+    if is_quarter:
+        # Gera as duas linhas equivalentes (ex: +0.25 → +0, +0.5)
+        if asian_line > 0:
+            line1 = math.floor(asian_line * 2) / 2
+            line2 = line1 + 0.5
+        else:
+            line1 = math.ceil(asian_line * 2) / 2
+            line2 = line1 - 0.5
+
+        r1 = single_result(gh, ga, line1, side)
+        r2 = single_result(gh, ga, line2, side)
+        avg = (r1 + r2) / 2
+
+        if avg == 1:
+            return f"{side}_COVERED"
+        elif avg == 0.75:
+            return "HALF_WIN"
+        elif avg == 0.5:
+            return "PUSH"
+        elif avg == 0.25:
+            return "HALF_LOSS"
+        else:
+            return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
+
+    # -----------------------
+    # Linhas padrão (0, .5, 1, 1.5, etc.)
+    # -----------------------
+    if side == "HOME":
+        adjusted = (gh + asian_line) - ga
     else:
-        return "NOT_COVERED"
+        adjusted = (ga + asian_line) - gh  # ✅ CORRIGIDO: (ga + line) - gh
+
+    if adjusted > 0:
+        return f"{side}_COVERED"
+    elif adjusted < 0:
+        return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
+    else:
+        return "PUSH"
 
 def check_handicap_recommendation_correct(rec, handicap_result):
     """Verifica se a recomendação de handicap estava correta"""
