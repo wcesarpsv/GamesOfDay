@@ -1224,6 +1224,15 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
 
     return df
 
+
+
+
+# Garantir que o histórico e os jogos do dia tenham as features temporais
+history = add_season_phase_encoding(history)
+games_today = add_season_phase_encoding(games_today)
+
+
+
 # ---------------- EXECUÇÃO PRINCIPAL 3D ----------------
 # Executar treinamento 3D
 if not history.empty:
