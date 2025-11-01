@@ -899,9 +899,9 @@ def estilo_tabela_quadrantes_dual(df):
         if '🏆 ALTO VALOR' in str(valor): return 'font-weight: bold'
         elif '✅ BOM VALOR' in str(valor): return 'font-weight: bold' 
         elif '🔴 ALTO RISCO' in str(valor): return 'font-weight: bold'
-        elif 'VALUE' in str(valor): return 'background-color: #98FB98'
-        elif 'EVITAR' in str(valor): return 'background-color: #FFCCCB'
-        elif 'SUPERAVALIADO' in str(valor): return 'background-color: #FFA07A'
+        elif 'VALUE' in str(valor): return 'font-weight: bold'
+        elif 'EVITAR' in str(valor): return 'font-weight: bold'
+        elif 'SUPERAVALIADO' in str(valor): return 'font-weight: bold'
         else: return ''
     
     # Aplicar apenas às colunas que existem
