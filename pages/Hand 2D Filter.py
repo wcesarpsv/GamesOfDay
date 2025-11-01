@@ -768,7 +768,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
 
     # 🔹 Novas features contínuas (Distância, Separação e Ângulo)
-    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized']].fillna(0)
+    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized','Asian_Line_Decimal']].fillna(0)
 
     # Combinar todas as features
     X = pd.concat([ligas_dummies, extras], axis=1)
@@ -800,7 +800,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     extras_today = games_today[['Quadrant_Dist', 
                             'Quadrant_Separation', 
                             'Quadrant_Angle_Geometric', 
-                            'Quadrant_Angle_Normalized']].fillna(0)
+                            'Quadrant_Angle_Normalized','Asian_Line_Decimal']].fillna(0)
 
     X_today = pd.concat([ligas_today, extras_today], axis=1)
     # qh_today, qa_today,
