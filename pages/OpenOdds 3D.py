@@ -936,8 +936,11 @@ def create_fixed_3d_plot(df_plot, n_to_show, selected_league):
     
     return fig_3d
 
-# Criar e exibir o gráfico 3D com tamanho fixo
-fig_3d_fixed = create_fixed_3d_plot(df_plot, n_to_show, selected_league)
+
+# Ajusta para múltiplas ligas (string amigável)
+selected_league_label = ", ".join(selected_leagues) if selected_leagues else "⚽ Todas as ligas"
+fig_3d_fixed = create_fixed_3d_plot(df_plot, n_to_show, selected_league_label)
+
 st.plotly_chart(fig_3d_fixed, use_container_width=True)
 
 # ---------------------- LEGENDA DE REFERÊNCIA ----------------------
