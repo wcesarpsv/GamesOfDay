@@ -771,7 +771,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized']].fillna(0)
 
     # Combinar todas as features
-    X = pd.concat([ligas_dummies, extras], axis=1)
+    X = pd.concat([ligas_dummies, extras,quadrantes_home, quadrantes_away], axis=1)
     # quadrantes_home, quadrantes_away, 
 
     # Targets
