@@ -613,17 +613,19 @@ import plotly.graph_objects as go
 
 st.markdown("## 🎯 Visualização Interativa 3D – Tamanho Fixo")
 
-# Filtros interativos
+# 🔽 Filtro multiselecionável de ligas
 if "League" in games_today.columns and not games_today["League"].isna().all():
     leagues = sorted(games_today["League"].dropna().unique())
-    selected_league = st.selectbox(
-        "Selecione a liga para análise:",
-        options=["⚽ Todas as ligas"] + leagues,
-        index=0
+    
+    selected_leagues = st.multiselect(
+        "Selecione uma ou mais ligas para análise:",
+        options=leagues,
+        default=[],
+        help="Escolha múltiplas ligas para comparar comportamentos entre campeonatos diferentes."
     )
 
-    if selected_league != "⚽ Todas as ligas":
-        df_filtered = games_today[games_today["League"] == selected_league].copy()
+    if selected_leagues:
+        df_filtered = games_today[games_today["League"].isin(selected_leagues)].copy()
     else:
         df_filtered = games_today.copy()
 else:
@@ -633,6 +635,7 @@ else:
 # Controle de número de confrontos
 max_n = len(df_filtered)
 n_to_show = st.slider("Quantos confrontos exibir (Top por distância 3D):", 10, min(max_n, 200), 40, step=5)
+
 
 
 
