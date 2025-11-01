@@ -1111,6 +1111,59 @@ else:
     
 
 
+
+# =====================================================
+# 🧮 TESTE DE ROI × THRESHOLD (ajuste de rigor da ML)
+# =====================================================
+import matplotlib.pyplot as plt
+
+st.markdown("### 🧮 Teste de Sensibilidade — Threshold da ML (0.50–0.70)")
+
+# Garantir que a coluna de profit existe
+if 'Profit_Quadrante' in ranking_quadrantes.columns and 'Quadrante_ML_Score_Main' in ranking_quadrantes.columns:
+    
+    thresholds = [0.50, 0.55, 0.60, 0.65, 0.70]
+    results = []
+
+    for thr in thresholds:
+        # Selecionar apostas acima do threshold
+        df_thr = ranking_quadrantes[ranking_quadrantes['Quadrante_ML_Score_Main'] >= thr]
+        total_bets = len(df_thr)
+        profit = df_thr['Profit_Quadrante'].sum() if total_bets > 0 else 0
+        roi = profit / total_bets if total_bets > 0 else 0
+
+        results.append({
+            'Threshold': thr,
+            'N_Jogos': total_bets,
+            'Profit_Total': profit,
+            'ROI_%': roi * 100
+        })
+
+    df_results = pd.DataFrame(results)
+
+    # Mostrar resultados
+    st.dataframe(df_results.style.format({
+        'Profit_Total': '{:.2f}',
+        'ROI_%': '{:.1f}'
+    }), use_container_width=True)
+
+    # Plotar gráfico de ROI
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.plot(df_results['Threshold'], df_results['ROI_%'], marker='o', linewidth=2)
+    ax.set_title('ROI (%) vs Threshold da ML', fontsize=12)
+    ax.set_xlabel('Threshold (Probabilidade mínima)')
+    ax.set_ylabel('ROI (%)')
+    ax.grid(True, linestyle='--', alpha=0.6)
+    st.pyplot(fig)
+
+else:
+    st.warning("⚠️ Não há colunas de Profit_Quadrante ou Quadrante_ML_Score_Main disponíveis para o teste.")
+
+
+
+
+
+
 # ---------------- RESUMO EXECUTIVO DUAL ----------------
 def resumo_quadrantes_hoje_dual(df):
     """Resumo executivo dos quadrantes de hoje com perspectiva dual"""
