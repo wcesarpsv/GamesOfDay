@@ -1459,8 +1459,6 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     ranking_3d = gerar_score_combinado_3d_16(ranking_3d)
 
 
-
-
 ########### NOVA SEÇÃO - INDICADORES DE FORMA E VALOR ###########
 # =========================================================
 # 🧠 4 NOVAS INDICAÇÕES DE FORMA (HOME & AWAY)
@@ -1547,6 +1545,26 @@ st.dataframe(
     .applymap(lambda v: "background-color: #1E90FF; color: white" if "Hidden" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"]),
     use_container_width=True
 )
+
+# =========================================================
+# 💾 EXPORTAR RESULTADO COM NOVAS INDICAÇÕES
+# =========================================================
+csv_path = os.path.join(BASE_DIR, "GamesDay", f"Estrategia_Forma_{datetime.now().strftime('%Y-%m-%d')}.csv")
+ranking_3d.to_csv(csv_path, index=False)
+
+st.success(f"✅ Estratégias salvas com sucesso em: {csv_path}")
+st.download_button(
+    "📥 Baixar CSV com Estratégias",
+    data=open(csv_path, "rb").read(),
+    file_name=os.path.basename(csv_path),
+    mime="text/csv"
+)
+
+
+
+
+
+
 
 # =========================================================
 # 💾 EXPORTAR RESULTADO COM NOVAS INDICAÇÕES
