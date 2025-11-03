@@ -1794,9 +1794,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # =========================================================
     # 🧠 4 NOVAS INDICAÇÕES DE FORMA (HOME & AWAY)
     # =========================================================
-    import numpy as np
-    import pandas as pd
-    
+        
     st.subheader("🧩 Indicadores de Forma e Valor (MT_ + M_)")
     
     def definir_indicacao_forma(df, prefix):
