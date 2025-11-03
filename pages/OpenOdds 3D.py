@@ -1889,8 +1889,6 @@ st.download_button(
     file_name=os.path.basename(csv_path),
     mime="text/csv"
 )
-
-
 # =========================================================
 # 💾 EXPORTAR RESULTADO COM NOVAS INDICAÇÕES
 # =========================================================
