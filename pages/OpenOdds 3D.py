@@ -1820,8 +1820,8 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         return np.select(condicoes, resultados, default="⚪ Neutra")
     
     # Aplicar regras
-    df["Indicacao_Forma_Home"] = definir_indicacao_forma(df, "H")
-    df["Indicacao_Forma_Away"] = definir_indicacao_forma(df, "A")
+    df["Indicacao_Forma_Home"] = definir_indicacao_forma(ranking_3d, "H")
+    df["Indicacao_Forma_Away"] = definir_indicacao_forma(ranking_3d, "A")
     
     # =========================================================
     # 🏷️ CRIAR SELO FINAL COMBINANDO CLASSIFICAÇÃO + FORMA
@@ -1838,8 +1838,8 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         else:
             return val
     
-    df["Selo_Estrategia_Home"] = df.apply(lambda r: criar_selo(r, "Home"), axis=1)
-    df["Selo_Estrategia_Away"] = df.apply(lambda r: criar_selo(r, "Away"), axis=1)
+    df["Selo_Estrategia_Home"] = ranking_3d.apply(lambda r: criar_selo(r, "Home"), axis=1)
+    df["Selo_Estrategia_Away"] = ranking_3d.apply(lambda r: criar_selo(r, "Away"), axis=1)
     
     # =========================================================
     # 🎨 VISUALIZAÇÃO NO STREAMLIT
