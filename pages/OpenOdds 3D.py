@@ -1791,95 +1791,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
         return df
 
-# =========================================================
-# 🧠 4 NOVAS INDICAÇÕES DE FORMA (HOME & AWAY)
-# =========================================================
-import numpy as np
-import pandas as pd
 
-st.subheader("🧩 Indicadores de Forma e Valor (MT_ + M_)")
-
-def definir_indicacao_forma(df, prefix):
-    """
-    Define a indicação estratégica baseada no momentum da liga (M_)
-    e no momentum próprio do time (MT_).
-    """
-    M_col = f"M_{prefix}"
-    MT_col = f"MT_{prefix}"
-
-    condicoes = [
-        (df[MT_col] >= 0.5) & (df[M_col].between(-0.5, 0.5)),   # Sustainable Form
-        (df[MT_col].between(0, 0.5)) & (df[M_col] <= -0.5),     # Undervalued Recovery
-        (df[MT_col] >= 0.5) & (df[M_col] >= 0.5)),              # Overhyped Risk
-        (df[MT_col] <= -0.5) & (df[M_col] <= -0.5)),            # Hidden Bounce
-    ]
-    resultados = [
-        "🟩 Sustainable Form",
-        "🟨 Undervalued Recovery",
-        "🟥 Overhyped Risk",
-        "🟦 Hidden Bounce",
-    ]
-    return np.select(condicoes, resultados, default="⚪ Neutra")
-
-# Aplicar regras
-df["Indicacao_Forma_Home"] = definir_indicacao_forma(df, "H")
-df["Indicacao_Forma_Away"] = definir_indicacao_forma(df, "A")
-
-# =========================================================
-# 🏷️ CRIAR SELO FINAL COMBINANDO CLASSIFICAÇÃO + FORMA
-# =========================================================
-def criar_selo(row, side="Home"):
-    val_col = f"Classificacao_Valor_{side}"
-    forma_col = f"Indicacao_Forma_{side}"
-    val = str(row.get(val_col, "") or "")
-    forma = str(row.get(forma_col, "") or "")
-    if val and forma and val != "nan" and forma != "nan":
-        return f"{val} | {forma}"
-    elif forma:
-        return forma
-    else:
-        return val
-
-df["Selo_Estrategia_Home"] = df.apply(lambda r: criar_selo(r, "Home"), axis=1)
-df["Selo_Estrategia_Away"] = df.apply(lambda r: criar_selo(r, "Away"), axis=1)
-
-# =========================================================
-# 🎨 VISUALIZAÇÃO NO STREAMLIT
-# =========================================================
-st.markdown("### 🎯 Recomendação de Estratégia por Time")
-st.dataframe(
-    df[
-        [
-            "League", "Home", "Away",
-            "M_H", "MT_H", "Indicacao_Forma_Home", "Classificacao_Valor_Home", "Selo_Estrategia_Home",
-            "M_A", "MT_A", "Indicacao_Forma_Away", "Classificacao_Valor_Away", "Selo_Estrategia_Away",
-            "Profit_Quadrante"
-        ]
-    ]
-    .style.format({
-        "M_H": "{:.2f}", "MT_H": "{:.2f}",
-        "M_A": "{:.2f}", "MT_A": "{:.2f}",
-        "Profit_Quadrante": "{:.2f}"
-    })
-    .applymap(lambda v: "background-color: #006400; color: white" if "Sustainable" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"])
-    .applymap(lambda v: "background-color: #9ACD32" if "Undervalued" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"])
-    .applymap(lambda v: "background-color: #FF6347; color: white" if "Overhyped" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"])
-    .applymap(lambda v: "background-color: #1E90FF; color: white" if "Hidden" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"]),
-    use_container_width=True
-)
-
-# =========================================================
-# 💾 EXPORTAR RESULTADO COM NOVAS INDICAÇÕES
-# =========================================================
-csv_path = os.path.join(BASE_DIR, "GamesDay", f"Estrategia_Forma_{datetime.now().strftime('%Y-%m-%d')}.csv")
-df.to_csv(csv_path, index=False)
-st.success(f"✅ Estratégias salvas com sucesso em: {csv_path}")
-st.download_button(
-    "📥 Baixar CSV com Estratégias",
-    data=open(csv_path, "rb").read(),
-    file_name=os.path.basename(csv_path),
-    mime="text/csv"
-)
 
 
 
@@ -2076,6 +1988,100 @@ st.download_button(
 
 else:
     st.info("⚠️ Aguardando dados para gerar ranking 3D de 16 quadrantes")
+
+
+
+# =========================================================
+# 🧠 4 NOVAS INDICAÇÕES DE FORMA (HOME & AWAY)
+# =========================================================
+import numpy as np
+import pandas as pd
+
+st.subheader("🧩 Indicadores de Forma e Valor (MT_ + M_)")
+
+def definir_indicacao_forma(df, prefix):
+    """
+    Define a indicação estratégica baseada no momentum da liga (M_)
+    e no momentum próprio do time (MT_).
+    """
+    M_col = f"M_{prefix}"
+    MT_col = f"MT_{prefix}"
+
+    condicoes = [
+        (df[MT_col] >= 0.5) & (df[M_col].between(-0.5, 0.5)),   # Sustainable Form
+        (df[MT_col].between(0, 0.5)) & (df[M_col] <= -0.5),     # Undervalued Recovery
+        (df[MT_col] >= 0.5) & (df[M_col] >= 0.5)),              # Overhyped Risk
+        (df[MT_col] <= -0.5) & (df[M_col] <= -0.5)),            # Hidden Bounce
+    ]
+    resultados = [
+        "🟩 Sustainable Form",
+        "🟨 Undervalued Recovery",
+        "🟥 Overhyped Risk",
+        "🟦 Hidden Bounce",
+    ]
+    return np.select(condicoes, resultados, default="⚪ Neutra")
+
+# Aplicar regras
+df["Indicacao_Forma_Home"] = definir_indicacao_forma(df, "H")
+df["Indicacao_Forma_Away"] = definir_indicacao_forma(df, "A")
+
+# =========================================================
+# 🏷️ CRIAR SELO FINAL COMBINANDO CLASSIFICAÇÃO + FORMA
+# =========================================================
+def criar_selo(row, side="Home"):
+    val_col = f"Classificacao_Valor_{side}"
+    forma_col = f"Indicacao_Forma_{side}"
+    val = str(row.get(val_col, "") or "")
+    forma = str(row.get(forma_col, "") or "")
+    if val and forma and val != "nan" and forma != "nan":
+        return f"{val} | {forma}"
+    elif forma:
+        return forma
+    else:
+        return val
+
+df["Selo_Estrategia_Home"] = df.apply(lambda r: criar_selo(r, "Home"), axis=1)
+df["Selo_Estrategia_Away"] = df.apply(lambda r: criar_selo(r, "Away"), axis=1)
+
+# =========================================================
+# 🎨 VISUALIZAÇÃO NO STREAMLIT
+# =========================================================
+st.markdown("### 🎯 Recomendação de Estratégia por Time")
+st.dataframe(
+    df[
+        [
+            "League", "Home", "Away",
+            "M_H", "MT_H", "Indicacao_Forma_Home", "Classificacao_Valor_Home", "Selo_Estrategia_Home",
+            "M_A", "MT_A", "Indicacao_Forma_Away", "Classificacao_Valor_Away", "Selo_Estrategia_Away",
+            "Profit_Quadrante"
+        ]
+    ]
+    .style.format({
+        "M_H": "{:.2f}", "MT_H": "{:.2f}",
+        "M_A": "{:.2f}", "MT_A": "{:.2f}",
+        "Profit_Quadrante": "{:.2f}"
+    })
+    .applymap(lambda v: "background-color: #006400; color: white" if "Sustainable" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"])
+    .applymap(lambda v: "background-color: #9ACD32" if "Undervalued" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"])
+    .applymap(lambda v: "background-color: #FF6347; color: white" if "Overhyped" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"])
+    .applymap(lambda v: "background-color: #1E90FF; color: white" if "Hidden" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"]),
+    use_container_width=True
+)
+
+# =========================================================
+# 💾 EXPORTAR RESULTADO COM NOVAS INDICAÇÕES
+# =========================================================
+csv_path = os.path.join(BASE_DIR, "GamesDay", f"Estrategia_Forma_{datetime.now().strftime('%Y-%m-%d')}.csv")
+df.to_csv(csv_path, index=False)
+st.success(f"✅ Estratégias salvas com sucesso em: {csv_path}")
+st.download_button(
+    "📥 Baixar CSV com Estratégias",
+    data=open(csv_path, "rb").read(),
+    file_name=os.path.basename(csv_path),
+    mime="text/csv"
+)
+
+
 
 # ---------------- RESUMO EXECUTIVO 3D ----------------
 def resumo_3d_16_quadrantes_hoje(df):
