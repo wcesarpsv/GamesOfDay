@@ -1794,7 +1794,6 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # =========================================================
     # 🧠 4 NOVAS INDICAÇÕES DE FORMA (HOME & AWAY)
     # =========================================================
-        
     st.subheader("🧩 Indicadores de Forma e Valor (MT_ + M_)")
     
     def definir_indicacao_forma(df, prefix):
@@ -1805,7 +1804,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         M_col = f"M_{prefix}"
         MT_col = f"MT_{prefix}"
     
-        condicoes = [            
+        condicoes = [
             (df[MT_col] >= 0.5) & (df[M_col].between(-0.5, 0.5)),   # 🟩 Sustainable Form
             (df[MT_col].between(0, 0.5)) & (df[M_col] <= -0.5),     # 🟨 Undervalued Recovery
             (df[MT_col] >= 0.5) & (df[M_col] >= 0.5),               # 🟥 Overhyped Risk
@@ -1819,9 +1818,9 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         ]
         return np.select(condicoes, resultados, default="⚪ Neutra")
     
-    # Aplicar regras
-    df["Indicacao_Forma_Home"] = definir_indicacao_forma(ranking_3d, "H")
-    df["Indicacao_Forma_Away"] = definir_indicacao_forma(ranking_3d, "A")
+    # Aplicar regras no DataFrame principal
+    ranking_3d["Indicacao_Forma_Home"] = definir_indicacao_forma(ranking_3d, "H")
+    ranking_3d["Indicacao_Forma_Away"] = definir_indicacao_forma(ranking_3d, "A")
     
     # =========================================================
     # 🏷️ CRIAR SELO FINAL COMBINANDO CLASSIFICAÇÃO + FORMA
@@ -1838,15 +1837,15 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         else:
             return val
     
-    df["Selo_Estrategia_Home"] = ranking_3d.apply(lambda r: criar_selo(r, "Home"), axis=1)
-    df["Selo_Estrategia_Away"] = ranking_3d.apply(lambda r: criar_selo(r, "Away"), axis=1)
+    ranking_3d["Selo_Estrategia_Home"] = ranking_3d.apply(lambda r: criar_selo(r, "Home"), axis=1)
+    ranking_3d["Selo_Estrategia_Away"] = ranking_3d.apply(lambda r: criar_selo(r, "Away"), axis=1)
     
     # =========================================================
     # 🎨 VISUALIZAÇÃO NO STREAMLIT
     # =========================================================
     st.markdown("### 🎯 Recomendação de Estratégia por Time")
     st.dataframe(
-        df[
+        ranking_3d[
             [
                 "League", "Home", "Away",
                 "M_H", "MT_H", "Indicacao_Forma_Home", "Classificacao_Valor_Home", "Selo_Estrategia_Home",
@@ -1865,6 +1864,20 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         .applymap(lambda v: "background-color: #1E90FF; color: white" if "Hidden" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"]),
         use_container_width=True
     )
+    
+    # =========================================================
+    # 💾 EXPORTAR RESULTADO COM NOVAS INDICAÇÕES
+    # =========================================================
+    csv_path = os.path.join(BASE_DIR, "GamesDay", f"Estrategia_Forma_{datetime.now().strftime('%Y-%m-%d')}.csv")
+    ranking_3d.to_csv(csv_path, index=False)
+    st.success(f"✅ Estratégias salvas com sucesso em: {csv_path}")
+    st.download_button(
+        "📥 Baixar CSV com Estratégias",
+        data=open(csv_path, "rb").read(),
+        file_name=os.path.basename(csv_path),
+        mime="text/csv"
+    )
+
     
     # =========================================================
     # 💾 EXPORTAR RESULTADO COM NOVAS INDICAÇÕES
