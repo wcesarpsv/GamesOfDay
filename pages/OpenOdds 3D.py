@@ -1913,7 +1913,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         'Score_Final_3D', 'Classificacao_Potencial_3D',
         'Classificacao_Valor_Home', 'Classificacao_Valor_Away',
         # Colunas 3D
-        'M_H', 'M_A', 'Quadrant_Dist_3D', 'Momentum_Diff',
+        'M_H', 'M_A', 'MT_H', 'MT_A', 'Quadrant_Dist_3D', 'Momentum_Diff',
         # Colunas Live Score
         'Asian_Line_Decimal', 'Handicap_Result',
         'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
@@ -1969,6 +1969,8 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             'Score_Final_3D': '{:.1f}',
             'M_H': '{:.2f}',
             'M_A': '{:.2f}',
+            'MT_H': '{:.2f}',
+            'MT_A': '{:.2f}',
             'Quadrant_Dist_3D': '{:.2f}',
             'Momentum_Diff': '{:.2f}'
         }, na_rep="-"),
