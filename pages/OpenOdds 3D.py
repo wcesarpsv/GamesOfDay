@@ -1805,11 +1805,11 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         M_col = f"M_{prefix}"
         MT_col = f"MT_{prefix}"
     
-        condicoes = [
-            (df[MT_col] >= 0.5) & (df[M_col].between(-0.5, 0.5)),   # Sustainable Form
-            (df[MT_col].between(0, 0.5)) & (df[M_col] <= -0.5),     # Undervalued Recovery
-            (df[MT_col] >= 0.5) & (df[M_col] >= 0.5)),              # Overhyped Risk
-            (df[MT_col] <= -0.5) & (df[M_col] <= -0.5)),            # Hidden Bounce
+        condicoes = [            
+            (df[MT_col] >= 0.5) & (df[M_col].between(-0.5, 0.5)),   # 🟩 Sustainable Form
+            (df[MT_col].between(0, 0.5)) & (df[M_col] <= -0.5),     # 🟨 Undervalued Recovery
+            (df[MT_col] >= 0.5) & (df[M_col] >= 0.5),               # 🟥 Overhyped Risk
+            (df[MT_col] <= -0.5) & (df[M_col] <= -0.5),             # 🟦 Hidden Bounce
         ]
         resultados = [
             "🟩 Sustainable Form",
