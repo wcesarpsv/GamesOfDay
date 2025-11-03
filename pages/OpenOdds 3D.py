@@ -1794,6 +1794,9 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # =========================================================
     # 🧠 4 NOVAS INDICAÇÕES DE FORMA (HOME & AWAY)
     # =========================================================
+    import numpy as np
+    import pandas as pd
+    
     st.subheader("🧩 Indicadores de Forma e Valor (MT_ + M_)")
     
     def definir_indicacao_forma(df, prefix):
@@ -1837,46 +1840,57 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         else:
             return val
     
+    # Garantir que colunas de valor existam
+    for c in ["Classificacao_Valor_Home", "Classificacao_Valor_Away", "Profit_Quadrante"]:
+        if c not in ranking_3d.columns:
+            ranking_3d[c] = np.nan
+    
     ranking_3d["Selo_Estrategia_Home"] = ranking_3d.apply(lambda r: criar_selo(r, "Home"), axis=1)
     ranking_3d["Selo_Estrategia_Away"] = ranking_3d.apply(lambda r: criar_selo(r, "Away"), axis=1)
     
     # =========================================================
-    # 🎨 VISUALIZAÇÃO NO STREAMLIT
+    # 🎨 VISUALIZAÇÃO NO STREAMLIT (TEMA ESCURO SEGURO)
     # =========================================================
     st.markdown("### 🎯 Recomendação de Estratégia por Time")
+    
+    cols_show = [c for c in [
+        "League", "Home", "Away",
+        "M_H", "MT_H", "Indicacao_Forma_Home",
+        "Classificacao_Valor_Home", "Selo_Estrategia_Home",
+        "M_A", "MT_A", "Indicacao_Forma_Away",
+        "Classificacao_Valor_Away", "Selo_Estrategia_Away",
+        "Profit_Quadrante"
+    ] if c in ranking_3d.columns]
+    
     st.dataframe(
-        ranking_3d[
-            [
-                "League", "Home", "Away",
-                "M_H", "MT_H", "Indicacao_Forma_Home", "Classificacao_Valor_Home", "Selo_Estrategia_Home",
-                "M_A", "MT_A", "Indicacao_Forma_Away", "Classificacao_Valor_Away", "Selo_Estrategia_Away",
-                "Profit_Quadrante"
-            ]
-        ]
+        ranking_3d[cols_show]
         .style.format({
             "M_H": "{:.2f}", "MT_H": "{:.2f}",
             "M_A": "{:.2f}", "MT_A": "{:.2f}",
             "Profit_Quadrante": "{:.2f}"
         })
+        # Cores otimizadas para fundo escuro
         .applymap(lambda v: "background-color: #006400; color: white" if "Sustainable" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"])
-        .applymap(lambda v: "background-color: #9ACD32" if "Undervalued" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"])
-        .applymap(lambda v: "background-color: #FF6347; color: white" if "Overhyped" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"])
+        .applymap(lambda v: "background-color: #9ACD32; color: black" if "Undervalued" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"])
+        .applymap(lambda v: "background-color: #B22222; color: white" if "Overhyped" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"])
         .applymap(lambda v: "background-color: #1E90FF; color: white" if "Hidden" in str(v) else None, subset=["Indicacao_Forma_Home", "Indicacao_Forma_Away"]),
         use_container_width=True
     )
-    
-    # =========================================================
-    # 💾 EXPORTAR RESULTADO COM NOVAS INDICAÇÕES
-    # =========================================================
-    csv_path = os.path.join(BASE_DIR, "GamesDay", f"Estrategia_Forma_{datetime.now().strftime('%Y-%m-%d')}.csv")
-    ranking_3d.to_csv(csv_path, index=False)
-    st.success(f"✅ Estratégias salvas com sucesso em: {csv_path}")
-    st.download_button(
-        "📥 Baixar CSV com Estratégias",
-        data=open(csv_path, "rb").read(),
-        file_name=os.path.basename(csv_path),
-        mime="text/csv"
-    )
+
+# =========================================================
+# 💾 EXPORTAR RESULTADO COM NOVAS INDICAÇÕES
+# =========================================================
+csv_path = os.path.join(BASE_DIR, "GamesDay", f"Estrategia_Forma_{datetime.now().strftime('%Y-%m-%d')}.csv")
+ranking_3d.to_csv(csv_path, index=False)
+
+st.success(f"✅ Estratégias salvas com sucesso em: {csv_path}")
+st.download_button(
+    "📥 Baixar CSV com Estratégias",
+    data=open(csv_path, "rb").read(),
+    file_name=os.path.basename(csv_path),
+    mime="text/csv"
+)
+
 
     
     # =========================================================
