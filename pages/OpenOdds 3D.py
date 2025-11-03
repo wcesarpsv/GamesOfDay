@@ -1625,7 +1625,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     st.markdown("### 🎯 Recomendação de Estratégia por Time")
     
     cols_show = [c for c in [
-        "League", "Home", "Away",
+        "League", "Home", "Away",'Goals_H_Today','Goals_A_Today',
         "M_H", "MT_H", "Indicacao_Forma_Home",
         "Classificacao_Valor_Home", "Selo_Estrategia_Home",
         "M_A", "MT_A", "Indicacao_Forma_Away",
@@ -1636,6 +1636,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     st.dataframe(
         ranking_3d[cols_show]
         .style.format({
+            "Goals_H_Today": "{:.0f}", "Goals_A_Today": "{:.0f}",
             "M_H": "{:.2f}", "MT_H": "{:.2f}",
             "M_A": "{:.2f}", "MT_A": "{:.2f}",
             "Profit_Quadrante": "{:.2f}"
