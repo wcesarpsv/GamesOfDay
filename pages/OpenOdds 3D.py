@@ -1389,6 +1389,43 @@ def gerar_estrategias_3d_16_quadrantes(df):
                 high_value = len(jogos_categoria[jogos_categoria['Quadrante_ML_Score_Main'] >= 0.60])
                 st.metric("Alto Valor", high_value)
 
+                # 👉 Mostrar tabela de jogos da categoria (expandível)
+            if not jogos_categoria.empty:
+                with st.expander("🔍 Mostrar Jogos desta Categoria"):
+                    # Ordenar pelos melhores scores
+                    jogos_categoria = jogos_categoria.sort_values(
+                        'Score_Final_3D', ascending=False
+                    )
+    
+                    # Selecionar colunas principais existentes
+                    cols_to_show = [
+                        'League', 'Home', 'Away','Goals_H_Today','Goals_A_Today',
+                        'Recomendacao',                        
+                        'Quadrante_ML_Score_Main',
+                        'Score_Final_3D',
+                        'Classificacao_Potencial_3D',
+                        'M_H', 'M_A'                       
+                        
+                    ]
+                    cols_to_show = [c for c in cols_to_show if c in jogos_categoria.columns]
+    
+                    # Exibir apenas os 10 principais por score
+                    top_jogos = jogos_categoria.head(50)
+    
+                    st.dataframe(
+                        top_jogos[cols_to_show]
+                        .style.format({
+                            'Goals_H_Today': '{:.0f}', 'Goals_A_Today': '{:.0f}',
+                            'M_H': '{:.2f}', 'M_A': '{:.2f}',
+                            'Quadrante_ML_Score_Main': '{:.1%}',
+                            'Score_Final_3D': '{:.1f}'
+                        })
+                        .background_gradient(subset=['Quadrante_ML_Score_Main'], cmap='RdYlGn')
+                        .background_gradient(subset=['M_H', 'M_A'], cmap='coolwarm'),
+                        use_container_width=True
+                    )
+
+
         st.write("---")
 
 # ---------------- SISTEMA DE SCORING 3D PARA 16 QUADRANTES ----------------
