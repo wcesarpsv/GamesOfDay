@@ -136,7 +136,7 @@ from sklearn.cluster import KMeans
 # 🧩 BLOCO – CLUSTERIZAÇÃO 3D (KMEANS)
 # ==============================================================
 
-def aplicar_clusterizacao_3d(df, n_clusters=2, random_state=42):
+def aplicar_clusterizacao_3d(df, n_clusters=8, random_state=42):
     """
     Cria clusters espaciais com base em Aggression, Momentum Liga e Momentum Time.
     Retorna o DataFrame com a nova coluna 'Cluster3D_Label'.
