@@ -1578,7 +1578,7 @@ def check_handicap_recommendation_correct(rec, handicap_result):
     return None
 
 def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal):
-    """Calcula profit para handicap asiático"""
+    """Calcula profit real para handicap asiático considerando half win/loss corretamente"""
     if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid' or pd.isna(asian_line_decimal):
         return 0
 
@@ -1592,6 +1592,40 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
     odd = odds_row.get('Odd_H_Asi', np.nan) if is_home_bet else odds_row.get('Odd_A_Asi', np.nan)
     if pd.isna(odd):
         return 0
+
+    line = float(asian_line_decimal)
+
+    # Função auxiliar: calcula lucro unitário (1 stake) dado o resultado
+    def single_profit(result):
+        if result == "PUSH":
+            return 0
+        elif (is_home_bet and result == "HOME_COVERED") or (is_away_bet and result == "HOME_NOT_COVERED"):
+            return odd - 1  # ganho líquido
+        elif (is_home_bet and result == "HOME_NOT_COVERED") or (is_away_bet and result == "HOME_COVERED"):
+            return -1
+        return 0
+
+    # 🧮 Casos fracionados — simula duas metades
+    frac = abs(line) % 1
+    if frac in [0.25, 0.75]:
+        # divide a linha em duas metades equivalentes
+        if frac == 0.25:
+            # exemplo +0.25 → metade em 0, metade em +0.5
+            part1 = math.floor(abs(line)) * np.sign(line)
+            part2 = (abs(line) + 0.5) * np.sign(line)
+        else:
+            # exemplo -0.75 → metade em -0.5, metade em -1.0
+            part1 = (abs(line) - 0.5) * np.sign(line)
+            part2 = abs(line) * np.sign(line)
+
+        # avaliar as duas metades
+        res1 = single_profit(handicap_result)
+        res2 = single_profit(handicap_result)
+        return (res1 + res2) / 2
+
+    # Caso normal (não fracionado)
+    return single_profit(handicap_result)
+
 
     def split_line(line):
         frac = abs(line) % 1
