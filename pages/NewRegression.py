@@ -1988,11 +1988,11 @@ if not games_today.empty and 'Classificacao_Potencial_3D' in games_today.columns
 st.markdown("## 🎯 Alta Confiança – Home Forte (Reforço Estatístico)")
 
 # Aplica o filtro inteligente
-df_alta_conf = df_export[
-    (df_export["eh_forte_melhora_home"] == 1) &
-    (df_export["score_confianca_composto"] > 0.90) &
-    (df_export["ML_Side"].str.upper() == "HOME") &
-    (df_export["Asian_Line_Decimal"] <= -0.5)
+df_alta_conf = ranking_3d[
+    (ranking_3d["eh_forte_melhora_home"] == 1) &
+    (ranking_3d["score_confianca_composto"] > 0.90) &
+    (ranking_3d["ML_Side"].str.upper() == "HOME") &
+    (ranking_3d["Asian_Line_Decimal"] <= -0.5)
 ].copy()
 
 # Ordena pelas previsões mais fortes e lucrativas
