@@ -1,7 +1,10 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
 
-# --- Funções de referência ---
+st.title("🧮 Teste de Cálculo de Handicap Asiático")
+
+# --- Funções ---
 
 def calc_handicap_result(margin, asian_line_decimal, invert=False):
     if pd.isna(asian_line_decimal) or pd.isna(margin):
@@ -66,12 +69,12 @@ def calculate_handicap_profit(rec, handicap_result, odd_home, odd_away, asian_li
 
 # --- Casos de teste ---
 df_test = pd.DataFrame([
-    ["+0.25", 1.0, 1.0, "AWAY", 1.95, 1.95, 0.25],   # Empate, linha +0.25 → away perde meia
-    ["+0.25", 2.0, 1.0, "AWAY", 1.95, 1.95, 0.25],   # Away perde, home vence → away perde full
-    ["+0.25", 1.0, 2.0, "AWAY", 1.95, 1.95, 0.25],   # Away vence → full win
-    ["+1.00", 2.0, 2.0, "AWAY", 1.90, 1.90, 1.00],   # Empate, linha +1.0 → away perde full
-    ["-0.75", 2.0, 1.0, "HOME", 1.90, 1.90, -0.75],  # Home vence por 1 → half win
-    ["-1.00", 3.0, 1.0, "HOME", 1.90, 1.90, -1.00],  # Home vence por 2 → full win
+    ["+0.25", 1.0, 1.0, "AWAY", 1.95, 1.95, 0.25],
+    ["+0.25", 2.0, 1.0, "AWAY", 1.95, 1.95, 0.25],
+    ["+0.25", 1.0, 2.0, "AWAY", 1.95, 1.95, 0.25],
+    ["+1.00", 2.0, 2.0, "AWAY", 1.90, 1.90, 1.00],
+    ["-0.75", 2.0, 1.0, "HOME", 1.90, 1.90, -0.75],
+    ["-1.00", 3.0, 1.0, "HOME", 1.90, 1.90, -1.00],
 ], columns=["Asian_Line", "Goals_H", "Goals_A", "Recomendacao", "Odd_H_Asi", "Odd_A_Asi", "Asian_Line_Decimal"])
 
 # --- Cálculos ---
@@ -81,4 +84,4 @@ df_test["Profit"] = df_test.apply(
     axis=1
 )
 
-print(df_test[["Asian_Line", "Goals_H", "Goals_A", "Recomendacao", "Handicap_Result", "Profit"]])
+st.dataframe(df_test)
