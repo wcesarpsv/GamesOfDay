@@ -19,7 +19,7 @@ def calc_handicap_result(margin, asian_line_decimal, invert=False):
         return 0.0
 
 def determine_handicap_result(row):
-    """Determina se o HOME cobriu o handicap asiático considerando frações corretamente."""
+    """Determina se o HOME cobriu o handicap asiático considerando frações e sinal da linha corretamente."""
     try:
         gh = float(row['Goals_H'])
         ga = float(row['Goals_A'])
@@ -28,15 +28,14 @@ def determine_handicap_result(row):
         return None
 
     margin = gh - ga
+    diff = margin + line  # ✅ usa soma para considerar o sinal correto da linha
 
-    # 🧮 Cálculo principal
-    diff = margin - line
-
+    # 🧮 Regras completas
     if diff > 0.5:
         return "HOME_COVERED"
     elif 0 < diff <= 0.5:
         return "HALF_HOME_COVERED"
-    elif diff == 0:
+    elif abs(diff) < 1e-6:  # empate exato com a linha
         return "PUSH"
     elif -0.5 < diff < 0:
         return "HALF_HOME_NOT_COVERED"
@@ -44,6 +43,7 @@ def determine_handicap_result(row):
         return "HOME_NOT_COVERED"
     else:
         return None
+
 
 
 def calculate_handicap_profit(rec, handicap_result, odd_home, odd_away, asian_line_decimal):
