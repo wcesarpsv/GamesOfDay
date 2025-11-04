@@ -1685,8 +1685,16 @@ def update_real_time_data_3d(df):
     )
 
     # Detecta colunas de odds automaticamente
-    odd_home_col = next((c for c in df.columns if "Odd_H" in c), None)
-    odd_away_col = next((c for c in df.columns if "Odd_A" in c), None)
+    # Usa explicitamente as odds do Handicap Asiático
+    odd_home_col = "Odd_H_Asi"
+    odd_away_col = "Odd_A_Asi"
+    
+    # Se não existirem, tenta fallback automático
+    if odd_home_col not in df.columns or odd_away_col not in df.columns:
+        st.warning("⚠️ Odds asiáticas não encontradas (Odd_H_Asi / Odd_A_Asi). Usando fallback genérico.")
+        odd_home_col = next((c for c in df.columns if "Odd_H" in c), None)
+        odd_away_col = next((c for c in df.columns if "Odd_A" in c), None)
+
 
     if odd_home_col and odd_away_col:
         df['Profit_Quadrante'] = df.apply(
