@@ -1582,7 +1582,12 @@ def check_handicap_recommendation_correct(rec, handicap_result):
     return None
 
 def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal):
-    """Calcula profit real para handicap asiático considerando half win/loss corretamente"""
+    """
+    Calcula profit real para handicap asiático.
+    - Odds já estão líquidas (sem subtrair 1)
+    - Considera half-win e half-loss corretamente
+    - Trata tanto apostas Home quanto Away
+    """
     if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid' or pd.isna(asian_line_decimal):
         return 0
 
@@ -1593,9 +1598,37 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
     if not (is_home_bet or is_away_bet):
         return 0
 
+    # Odd líquida (lucro líquido, não precisa subtrair 1)
     odd = odds_row.get('Odd_H_Asi', np.nan) if is_home_bet else odds_row.get('Odd_A_Asi', np.nan)
     if pd.isna(odd):
         return 0
+
+    result = str(handicap_result).upper()
+
+    # 🧮 Regras principais
+    if result == "PUSH":
+        return 0
+    elif result == "HALF_HOME_COVERED":
+        # meia vitória para Home, meia derrota para Away
+        if is_home_bet:
+            return odd / 2
+        elif is_away_bet:
+            return -0.5
+    elif result == "HOME_COVERED":
+        if is_home_bet:
+            return odd
+        elif is_away_bet:
+            return -1
+    elif result == "HOME_NOT_COVERED":
+        if is_home_bet:
+            return -1
+        elif is_away_bet:
+            return odd
+    else:
+        return 0
+
+    return 0
+
 
     line = float(asian_line_decimal)
 
