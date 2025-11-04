@@ -1678,78 +1678,66 @@ def calculate_handicap_profit(rec, handicap_result, odd_home, odd_away, asian_li
         return single_profit(handicap_result)
 
 def update_real_time_data_3d(df):
-    """Atualiza resultados de handicap e calcula lucros reais (com filtro dinâmico por score_home/away)."""
+    """
+    Atualiza resultados e lucro considerando APENAS linhas com Score_Final_3D acima do limite.
+    Usa odds asiáticas Odd_H_Asi / Odd_A_Asi.
+    """
+    df = df.copy()
 
-    # =====================================================
-    # 🎯 SLIDER DE CONFIANÇA MÍNIMA
-    # =====================================================
-    min_conf = st.slider(
-        "📈 Confiança mínima (score_home / score_away) para considerar no cálculo:",
-        0.0, 1.0, 0.70, 0.05,
-        help="Somente previsões cuja confiança (score_home/score_away) for ≥ ao limite serão consideradas."
+    # ---------------------------------------
+    # 🎯 Filtro por Score_Final_3D (0–100)
+    # ---------------------------------------
+    if "Score_Final_3D" not in df.columns:
+        st.error("❌ 'Score_Final_3D' não encontrado – gere o score antes de filtrar.")
+        return df
+
+    min_sf3d = st.slider(
+        "📈 Score_Final_3D mínimo para considerar (0–100):",
+        0, 100, 70, 1,
+        help="Somente recomendações com Score_Final_3D ≥ este valor serão consideradas."
     )
+    df = df[df["Score_Final_3D"] >= min_sf3d].copy()
+    st.info(f"✅ Considerando {len(df)} jogos com Score_Final_3D ≥ {min_sf3d}")
 
-    # =====================================================
-    # 🧮 IDENTIFICA SCORE RELEVANTE POR RECOMENDAÇÃO
-    # =====================================================
-    if "score_home" in df.columns and "score_away" in df.columns:
-        df["score_usado"] = np.where(
-            df["Recomendacao"].str.upper().str.contains("HOME"),
-            df["score_home"],
-            np.where(
-                df["Recomendacao"].str.upper().str.contains("AWAY"),
-                df["score_away"],
-                np.nan
-            )
-        )
-
-        # Aplica filtro de confiança
-        df = df[df["score_usado"] >= min_conf].copy()
-        st.info(f"📊 Considerando apenas apostas com confiança ≥ {min_conf:.0%} ({len(df)} jogos).")
-    else:
-        st.warning("⚠️ Colunas 'score_home' / 'score_away' não encontradas — sem filtro de confiança aplicado.")
-
-    # =====================================================
-    # 🧮 RESULTADO DO HANDICAP
-    # =====================================================
+    # ---------------------------------------
+    # 🧮 Resultado do handicap (usa Goals_H_Today / Goals_A_Today)
+    # ---------------------------------------
     df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
+
+    # Checagem de acerto (true/false/None)
     df['Quadrante_Correct'] = df.apply(
-        lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
+        lambda r: check_handicap_recommendation_correct(r.get('Recomendacao'), r.get('Handicap_Result')),
+        axis=1
     )
 
-    # =====================================================
-    # 💰 CÁLCULO DE PROFIT COM ODDS ASIÁTICAS
-    # =====================================================
+    # ---------------------------------------
+    # 💰 Profit com odds ASIÁTICAS
+    # ---------------------------------------
     odd_home_col = "Odd_H_Asi"
     odd_away_col = "Odd_A_Asi"
-
     if odd_home_col not in df.columns or odd_away_col not in df.columns:
-        st.warning("⚠️ Odds asiáticas não encontradas (Odd_H_Asi / Odd_A_Asi). Usando fallback genérico.")
-        odd_home_col = next((c for c in df.columns if "Odd_H" in c), None)
-        odd_away_col = next((c for c in df.columns if "Odd_A" in c), None)
+        st.warning("⚠️ Odd_H_Asi / Odd_A_Asi não encontradas. Ajuste os nomes das colunas de odds asiáticas.")
+        df["Profit_Quadrante"] = 0.0
+        return df
 
-    if odd_home_col and odd_away_col:
-        df['Profit_Quadrante'] = df.apply(
-            lambda r: calculate_handicap_profit(
-                r['Recomendacao'],
-                r['Handicap_Result'],
-                r[odd_home_col],
-                r[odd_away_col],
-                r['Asian_Line_Decimal']
-            ), axis=1
-        )
-    else:
-        st.warning("⚠️ Colunas de odds não encontradas — Profit_Quadrante zerado.")
-        df['Profit_Quadrante'] = 0
+    df['Profit_Quadrante'] = df.apply(
+        lambda r: calculate_handicap_profit(
+            r.get('Recomendacao'),
+            r.get('Handicap_Result'),
+            r.get(odd_home_col),
+            r.get(odd_away_col),
+            r.get('Asian_Line_Decimal')
+        ),
+        axis=1
+    )
 
-    # =====================================================
-    # 🏁 LABEL VISUAL (RESULTADO FINAL)
-    # =====================================================
+    # Rótulo visual
     df['Bet_Result_Label'] = df['Profit_Quadrante'].apply(
         lambda x: "✅ Win" if x > 0 else ("❌ Loss" if x < 0 else "⚖️ Push")
     )
 
     return df
+
 
 
 
