@@ -2015,7 +2015,7 @@ if not df_alta_conf.empty:
             "Recomendacao"
         ]].style.format({
             "Goals_H_Today": "{:.0f}",
-            "Goals_A_Today": "{:.Of}",
+            "Goals_A_Today": "{:.0f}",
             "score_confianca_composto": "{:.2f}",
             "Profit_Quadrante": "{:.2f}",
             "Asian_Line_Decimal": "{:.2f}"
