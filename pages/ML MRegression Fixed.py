@@ -1684,10 +1684,37 @@ def update_real_time_data_3d(df):
     df['Quadrante_Correct'] = df.apply(
         lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
     )
-    df['Profit_Quadrante'] = df.apply(
-        lambda r: calculate_handicap_profit(r['Recomendacao'], r['Handicap_Result'], r, r['Asian_Line_Decimal']), axis=1
+
+    # ✅ Corrigido: agora passa as odds certas para cálculo do profit
+    odd_home_col = None
+    odd_away_col = None
+    for col in df.columns:
+        if "Odd_H" in col and odd_home_col is None:
+            odd_home_col = col
+        if "Odd_A" in col and odd_away_col is None:
+            odd_away_col = col
+
+    if odd_home_col and odd_away_col:
+        df['Profit_Quadrante'] = df.apply(
+            lambda r: calculate_handicap_profit(
+                r['Recomendacao'],
+                r['Handicap_Result'],
+                r[odd_home_col],
+                r[odd_away_col],
+                r['Asian_Line_Decimal']
+            ), axis=1
+        )
+    else:
+        st.warning("⚠️ Colunas de odds não encontradas para cálculo de lucro.")
+        df['Profit_Quadrante'] = 0
+
+    # 🔹 Novo rótulo de resultado visual (Win / Loss / Push)
+    df['Bet_Result_Label'] = df['Profit_Quadrante'].apply(
+        lambda x: "✅ Win" if x > 0 else ("❌ Loss" if x < 0 else "⚖️ Push")
     )
+
     return df
+
 
 # ---------------- RESUMO LIVE 3D ----------------
 def generate_live_summary_3d(df):
