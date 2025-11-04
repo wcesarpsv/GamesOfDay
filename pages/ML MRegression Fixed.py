@@ -1678,23 +1678,41 @@ def calculate_handicap_profit(rec, handicap_result, odd_home, odd_away, asian_li
         return single_profit(handicap_result)
 
 def update_real_time_data_3d(df):
-    """Atualiza resultados de handicap e calcula lucros reais."""
+    """Atualiza resultados de handicap e calcula lucros reais (com filtro dinâmico de confiança)."""
+
+    # =====================================================
+    # 🎯 SLIDER DE CONFIANÇA MÍNIMA
+    # =====================================================
+    if "score_confianca_composto" in df.columns:
+        min_conf = st.slider(
+            "📈 Confiança mínima para considerar no cálculo (score_confianca_composto):",
+            0.0, 1.0, 0.70, 0.05,
+            help="Somente previsões com essa confiança mínima serão incluídas nos cálculos de lucro."
+        )
+        df = df[df["score_confianca_composto"] >= min_conf].copy()
+        st.info(f"📊 Considerando apenas recomendações com confiança ≥ {min_conf:.0%} ({len(df)} jogos).")
+    else:
+        st.warning("⚠️ Coluna 'score_confianca_composto' não encontrada — sem filtro de confiança aplicado.")
+
+    # =====================================================
+    # 🧮 CÁLCULO DO RESULTADO DO HANDICAP
+    # =====================================================
     df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
     df['Quadrante_Correct'] = df.apply(
         lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
     )
 
-    # Detecta colunas de odds automaticamente
-    # Usa explicitamente as odds do Handicap Asiático
+    # =====================================================
+    # 💰 CÁLCULO DE PROFIT REAL COM ODDS ASIÁTICAS
+    # =====================================================
     odd_home_col = "Odd_H_Asi"
     odd_away_col = "Odd_A_Asi"
-    
-    # Se não existirem, tenta fallback automático
+
+    # Fallback automático caso as colunas não existam
     if odd_home_col not in df.columns or odd_away_col not in df.columns:
         st.warning("⚠️ Odds asiáticas não encontradas (Odd_H_Asi / Odd_A_Asi). Usando fallback genérico.")
         odd_home_col = next((c for c in df.columns if "Odd_H" in c), None)
         odd_away_col = next((c for c in df.columns if "Odd_A" in c), None)
-
 
     if odd_home_col and odd_away_col:
         df['Profit_Quadrante'] = df.apply(
@@ -1710,12 +1728,15 @@ def update_real_time_data_3d(df):
         st.warning("⚠️ Colunas de odds não encontradas — Profit_Quadrante zerado.")
         df['Profit_Quadrante'] = 0
 
-    # Label visual (Win / Loss / Push)
+    # =====================================================
+    # 🏁 LABEL VISUAL (RESULTADO FINAL DA APOSTA)
+    # =====================================================
     df['Bet_Result_Label'] = df['Profit_Quadrante'].apply(
         lambda x: "✅ Win" if x > 0 else ("❌ Loss" if x < 0 else "⚖️ Push")
     )
 
     return df
+
 
 
 # ---------------- RESUMO LIVE 3D ----------------
