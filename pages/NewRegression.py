@@ -1978,3 +1978,58 @@ def resumo_3d_16_quadrantes_hoje(df):
 # Aplicar resumo apenas se tiver dados
 if not games_today.empty and 'Classificacao_Potencial_3D' in games_today.columns:
     resumo_3d_16_quadrantes_hoje(games_today)
+
+
+
+# =====================================================
+# 🎯 FILTRO DE CONFRONTOS COM ALTA CONFIANÇA (HOME FORTE)
+# =====================================================
+
+st.markdown("## 🎯 Alta Confiança – Home Forte (Reforço Estatístico)")
+
+# Aplica o filtro inteligente
+df_alta_conf = df_export[
+    (df_export["eh_forte_melhora_home"] == 1) &
+    (df_export["score_confianca_composto"] > 0.90) &
+    (df_export["ML_Side"].str.upper() == "HOME") &
+    (df_export["Asian_Line_Decimal"] <= -0.5)
+].copy()
+
+# Ordena pelas previsões mais fortes e lucrativas
+df_alta_conf = df_alta_conf.sort_values(
+    by=["score_confianca_composto", "Profit_Quadrante"],
+    ascending=[False, False]
+)
+
+# Caso haja jogos filtrados
+if not df_alta_conf.empty:
+    st.success(f"{len(df_alta_conf)} confrontos encontrados com alta probabilidade de vitória 🎯")
+
+    # Exibe principais informações
+    st.dataframe(
+        df_alta_conf[[
+            "League", "Home", "Away",
+            "score_confianca_composto",
+            "Profit_Quadrante",
+            "Asian_Line_Decimal",
+            "Recomendacao"
+        ]].style.format({
+            "score_confianca_composto": "{:.2f}",
+            "Profit_Quadrante": "{:.2f}",
+            "Asian_Line_Decimal": "{:.2f}"
+        })
+        .applymap(lambda v: "background-color: #228B22; color: white" if isinstance(v, str) and "HOME" in v else None, subset=["Recomendacao"])
+    )
+
+    # Estatísticas rápidas
+    win_rate = (df_alta_conf["Profit_Quadrante"] > 0).mean() * 100
+    avg_profit = df_alta_conf["Profit_Quadrante"].mean()
+
+    st.markdown(f"""
+    **📈 Taxa de acerto:** {win_rate:.1f}%  
+    **💰 Lucro médio:** {avg_profit:.2f} por aposta  
+    **📊 Critérios:** Home forte • Confiança > 0.90 • Handicap ≤ -0.5
+    """)
+else:
+    st.warning("Nenhum confronto com todos os critérios de alta confiança encontrado hoje.")
+
