@@ -1541,7 +1541,7 @@ def gerar_estrategias_3d_16_quadrantes(df):
 
 # ---------------- ATUALIZAR COM DADOS LIVE 3D CORRIGIDOS ----------------
 def determine_handicap_result(row):
-    """Determina se o HOME cobriu o handicap"""
+    """Determina se o HOME cobriu o handicap asiático (considerando empates e frações corretamente)."""
     try:
         gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
         ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
@@ -1553,15 +1553,19 @@ def determine_handicap_result(row):
         return None
 
     margin = gh - ga
-    # ✅ AGORA usa a função CORRIGIDA com Asian_Line_Decimal já convertido
-    handicap_result = calc_handicap_result(margin, asian_line_decimal, invert=False)
+    # Calcula resultado numérico (1 = win, 0.5 = half win, 0 = loss)
+    res = calc_handicap_result(margin, asian_line_decimal, invert=False)
 
-    if handicap_result > 0.5:
+    # Traduz resultado para label
+    if res == 1.0:
         return "HOME_COVERED"
-    elif handicap_result == 0.5:
-        return "PUSH"
-    else:
+    elif res == 0.5:
+        return "HALF_HOME_COVERED"
+    elif res == 0.0:
         return "HOME_NOT_COVERED"
+    else:
+        return None
+
 
 def check_handicap_recommendation_correct(rec, handicap_result):
     """Verifica se a recomendação estava correta"""
