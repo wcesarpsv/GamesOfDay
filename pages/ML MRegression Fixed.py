@@ -113,19 +113,13 @@ def convert_asian_line_to_decimal(line_str):
         return None
 
 def calc_handicap_result(margin, asian_line_decimal, invert=False):
-    """Retorna média de pontos por linha (1 win, 0.5 push, 0 loss)"""
     if pd.isna(asian_line_decimal) or pd.isna(margin):
         return np.nan
-    
     if invert:
         margin = -margin
-    
-    # ✅ AGORA usa o decimal já convertido corretamente
-    line = asian_line_decimal
-    
-    if margin > line:
+    if margin > asian_line_decimal:
         return 1.0
-    elif margin == line:
+    elif margin == asian_line_decimal:
         return 0.5
     else:
         return 0.0
@@ -1541,27 +1535,27 @@ def gerar_estrategias_3d_16_quadrantes(df):
 
 # ---------------- ATUALIZAR COM DADOS LIVE 3D CORRIGIDOS ----------------
 def determine_handicap_result(row):
-    """Determina se o HOME cobriu o handicap asiático (considerando empates e frações corretamente)."""
+    """Determina se o HOME cobriu o handicap asiático considerando frações e sinal da linha corretamente."""
     try:
-        gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
-        ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
-        asian_line_decimal = row.get('Asian_Line_Decimal')
+        gh = float(row['Goals_H'])
+        ga = float(row['Goals_A'])
+        line = float(row['Asian_Line_Decimal'])
     except (ValueError, TypeError):
         return None
 
-    if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line_decimal):
-        return None
-
     margin = gh - ga
-    # Calcula resultado numérico (1 = win, 0.5 = half win, 0 = loss)
-    res = calc_handicap_result(margin, asian_line_decimal, invert=False)
+    diff = margin + line  # ✅ usa soma para considerar o sinal correto da linha
 
-    # Traduz resultado para label
-    if res == 1.0:
+    # 🧮 Regras completas
+    if diff > 0.5:
         return "HOME_COVERED"
-    elif res == 0.5:
+    elif 0 < diff <= 0.5:
         return "HALF_HOME_COVERED"
-    elif res == 0.0:
+    elif abs(diff) < 1e-6:  # empate exato com a linha
+        return "PUSH"
+    elif -0.5 < diff < 0:
+        return "HALF_HOME_NOT_COVERED"
+    elif diff <= -0.5:
         return "HOME_NOT_COVERED"
     else:
         return None
@@ -1581,13 +1575,7 @@ def check_handicap_recommendation_correct(rec, handicap_result):
 
     return None
 
-def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal):
-    """
-    Calcula profit real para handicap asiático.
-    - Odds já estão líquidas (sem subtrair 1)
-    - Considera half-win e half-loss corretamente
-    - Trata tanto apostas Home quanto Away
-    """
+def calculate_handicap_profit(rec, handicap_result, odd_home, odd_away, asian_line_decimal):
     if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid' or pd.isna(asian_line_decimal):
         return 0
 
@@ -1598,18 +1586,12 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
     if not (is_home_bet or is_away_bet):
         return 0
 
-    # Odd líquida (lucro líquido, não precisa subtrair 1)
-    odd = odds_row.get('Odd_H_Asi', np.nan) if is_home_bet else odds_row.get('Odd_A_Asi', np.nan)
-    if pd.isna(odd):
-        return 0
-
+    odd = odd_home if is_home_bet else odd_away
     result = str(handicap_result).upper()
 
-    # 🧮 Regras principais
     if result == "PUSH":
         return 0
     elif result == "HALF_HOME_COVERED":
-        # meia vitória para Home, meia derrota para Away
         if is_home_bet:
             return odd / 2
         elif is_away_bet:
@@ -1628,7 +1610,6 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
         return 0
 
     return 0
-
 
 
     # Função auxiliar: calcula lucro unitário (1 stake) dado o resultado
