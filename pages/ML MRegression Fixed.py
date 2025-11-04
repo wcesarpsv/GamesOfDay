@@ -1600,7 +1600,7 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
         if result == "PUSH":
             return 0
         elif (is_home_bet and result == "HOME_COVERED") or (is_away_bet and result == "HOME_NOT_COVERED"):
-            return odd - 1  # ganho líquido
+            return odd   # ganho líquido
         elif (is_home_bet and result == "HOME_NOT_COVERED") or (is_away_bet and result == "HOME_COVERED"):
             return -1
         return 0
