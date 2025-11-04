@@ -2008,12 +2008,14 @@ if not df_alta_conf.empty:
     # Exibe principais informações
     st.dataframe(
         df_alta_conf[[
-            "League", "Home", "Away",
+            "League", "Home", "Away",'Goals_H_Today','Goals_A_Today',
             "score_confianca_composto",
             "Profit_Quadrante",
             "Asian_Line_Decimal",
             "Recomendacao"
         ]].style.format({
+            "Goals_H_Today": "{:.0f}",
+            "Goals_A_Today": "{:.Of}",
             "score_confianca_composto": "{:.2f}",
             "Profit_Quadrante": "{:.2f}",
             "Asian_Line_Decimal": "{:.2f}"
