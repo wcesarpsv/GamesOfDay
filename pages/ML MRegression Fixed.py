@@ -1535,24 +1535,23 @@ def gerar_estrategias_3d_16_quadrantes(df):
 
 # ---------------- ATUALIZAR COM DADOS LIVE 3D CORRIGIDOS ----------------
 def determine_handicap_result(row):
-    """Determina se o HOME cobriu o handicap asiático considerando frações e sinal da linha corretamente."""
+    """Determina se o HOME cobriu o handicap asiático (perspectiva do Home)."""
     try:
-        gh = float(row['Goals_H'])
-        ga = float(row['Goals_A'])
+        gh = float(row['Goals_H_Today'])
+        ga = float(row['Goals_A_Today'])
         line = float(row['Asian_Line_Decimal'])
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, KeyError):
         return None
 
     margin = gh - ga
-    diff = margin + line  # ✅ usa soma para considerar o sinal correto da linha
+    diff = margin + line  # já considera o sinal da linha
 
-    # 🧮 Regras completas
-    if diff > 0.5:
+    if abs(margin + line) < 1e-6:
+        return "PUSH"
+    elif diff > 0.5:
         return "HOME_COVERED"
     elif 0 < diff <= 0.5:
         return "HALF_HOME_COVERED"
-    elif abs(diff) < 1e-6:  # empate exato com a linha
-        return "PUSH"
     elif -0.5 < diff < 0:
         return "HALF_HOME_NOT_COVERED"
     elif diff <= -0.5:
@@ -1562,25 +1561,29 @@ def determine_handicap_result(row):
 
 
 def check_handicap_recommendation_correct(rec, handicap_result):
-    """Verifica se a recomendação estava correta"""
-    if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid':
+    """Verifica se a recomendação bateu com o resultado do handicap."""
+    if pd.isna(rec) or handicap_result is None:
         return None
 
-    rec = str(rec)
+    rec = str(rec).upper()
 
-    if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME']):
-        return handicap_result == "HOME_COVERED"
-    elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY', 'MODELO CONFIA AWAY']):
-        return handicap_result in ["HOME_NOT_COVERED", "PUSH"]
+    # HOME bets
+    if any(k in rec for k in ['HOME', 'VALUE NO HOME', 'FAVORITO HOME', 'MODELO CONFIA HOME']):
+        return handicap_result in ["HOME_COVERED", "HALF_HOME_COVERED"]
+
+    # AWAY bets
+    if any(k in rec for k in ['AWAY', 'VALUE NO AWAY', 'FAVORITO AWAY', 'MODELO CONFIA AWAY']):
+        return handicap_result in ["HOME_NOT_COVERED", "HALF_HOME_NOT_COVERED"]
 
     return None
 
 def calculate_handicap_profit(rec, handicap_result, odd_home, odd_away, asian_line_decimal):
-    if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid' or pd.isna(asian_line_decimal):
+    """Calcula lucro unitário do handicap asiático (stake = 1, odds já líquidas)."""
+    if pd.isna(rec) or handicap_result is None:
         return 0
 
     rec = str(rec).upper()
-    is_home_bet = any(k in rec for k in ['HOME', 'FAVORITO HOME', 'VALUE NO HOME'])
+    is_home_bet = any(k in rec for k in ['HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
     is_away_bet = any(k in rec for k in ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
 
     if not (is_home_bet or is_away_bet):
@@ -1589,25 +1592,21 @@ def calculate_handicap_profit(rec, handicap_result, odd_home, odd_away, asian_li
     odd = odd_home if is_home_bet else odd_away
     result = str(handicap_result).upper()
 
+    # PUSH
     if result == "PUSH":
         return 0
-    elif result == "HALF_HOME_COVERED":
-        if is_home_bet:
-            return odd / 2
-        elif is_away_bet:
-            return -0.5
-    elif result == "HOME_COVERED":
-        if is_home_bet:
-            return odd
-        elif is_away_bet:
-            return -1
-    elif result == "HOME_NOT_COVERED":
-        if is_home_bet:
-            return -1
-        elif is_away_bet:
-            return odd
-    else:
-        return 0
+
+    # HALF WIN / HALF LOSS
+    if result == "HALF_HOME_COVERED":
+        return odd / 2 if is_home_bet else -0.5
+    if result == "HALF_HOME_NOT_COVERED":
+        return -0.5 if is_home_bet else odd / 2
+
+    # FULL WIN / LOSS
+    if result == "HOME_COVERED":
+        return odd if is_home_bet else -1
+    if result == "HOME_NOT_COVERED":
+        return -1 if is_home_bet else odd
 
     return 0
 
@@ -1679,20 +1678,15 @@ def calculate_handicap_profit(rec, handicap_result, odd_home, odd_away, asian_li
         return single_profit(handicap_result)
 
 def update_real_time_data_3d(df):
-    """Atualiza todos os dados em tempo real para sistema 3D"""
+    """Atualiza resultados de handicap e calcula lucros reais."""
     df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
     df['Quadrante_Correct'] = df.apply(
         lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
     )
 
-    # ✅ Corrigido: agora passa as odds certas para cálculo do profit
-    odd_home_col = None
-    odd_away_col = None
-    for col in df.columns:
-        if "Odd_H" in col and odd_home_col is None:
-            odd_home_col = col
-        if "Odd_A" in col and odd_away_col is None:
-            odd_away_col = col
+    # Detecta colunas de odds automaticamente
+    odd_home_col = next((c for c in df.columns if "Odd_H" in c), None)
+    odd_away_col = next((c for c in df.columns if "Odd_A" in c), None)
 
     if odd_home_col and odd_away_col:
         df['Profit_Quadrante'] = df.apply(
@@ -1705,10 +1699,10 @@ def update_real_time_data_3d(df):
             ), axis=1
         )
     else:
-        st.warning("⚠️ Colunas de odds não encontradas para cálculo de lucro.")
+        st.warning("⚠️ Colunas de odds não encontradas — Profit_Quadrante zerado.")
         df['Profit_Quadrante'] = 0
 
-    # 🔹 Novo rótulo de resultado visual (Win / Loss / Push)
+    # Label visual (Win / Loss / Push)
     df['Bet_Result_Label'] = df['Profit_Quadrante'].apply(
         lambda x: "✅ Win" if x > 0 else ("❌ Loss" if x < 0 else "⚖️ Push")
     )
