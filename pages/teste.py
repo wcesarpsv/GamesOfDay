@@ -19,17 +19,32 @@ def calc_handicap_result(margin, asian_line_decimal, invert=False):
         return 0.0
 
 def determine_handicap_result(row):
-    gh, ga, asian_line_decimal = row['Goals_H'], row['Goals_A'], row['Asian_Line_Decimal']
+    """Determina se o HOME cobriu o handicap asiático considerando frações corretamente."""
+    try:
+        gh = float(row['Goals_H'])
+        ga = float(row['Goals_A'])
+        line = float(row['Asian_Line_Decimal'])
+    except (ValueError, TypeError):
+        return None
+
     margin = gh - ga
-    res = calc_handicap_result(margin, asian_line_decimal, invert=False)
-    if res == 1.0:
+
+    # 🧮 Cálculo principal
+    diff = margin - line
+
+    if diff > 0.5:
         return "HOME_COVERED"
-    elif res == 0.5:
+    elif 0 < diff <= 0.5:
         return "HALF_HOME_COVERED"
-    elif res == 0.0:
+    elif diff == 0:
+        return "PUSH"
+    elif -0.5 < diff < 0:
+        return "HALF_HOME_NOT_COVERED"
+    elif diff <= -0.5:
         return "HOME_NOT_COVERED"
     else:
         return None
+
 
 def calculate_handicap_profit(rec, handicap_result, odd_home, odd_away, asian_line_decimal):
     if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid' or pd.isna(asian_line_decimal):
