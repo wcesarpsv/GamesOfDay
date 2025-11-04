@@ -1630,7 +1630,6 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
     return 0
 
 
-    line = float(asian_line_decimal)
 
     # Função auxiliar: calcula lucro unitário (1 stake) dado o resultado
     def single_profit(result):
