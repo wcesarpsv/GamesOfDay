@@ -1693,7 +1693,7 @@ def update_real_time_data_3d(df):
 
     min_sf3d = st.slider(
         "📈 Score_Final_3D mínimo para considerar (0–100):",
-        0, 100, 70, 1,
+        0, 70, 30, 1,
         help="Somente recomendações com Score_Final_3D ≥ este valor serão consideradas."
     )
     df = df[df["Score_Final_3D"] >= min_sf3d].copy()
