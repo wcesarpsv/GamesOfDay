@@ -176,12 +176,13 @@ def apply_handicap_results_v9(df):
     """Aplica a avaliação de Handicap Asiático e lucro (v9)"""
     df = df.copy()
     
+    # Definir odds padrão
+    odd_home = 1.9
+    odd_away = 1.9
 
     def process_row(row):
         """Processa cada linha para determinar outcome e profit"""
         rec = str(row.get('Recomendacao', '')).upper()
-        odd_home = row.get('Odd_H_Asi', np.nan)
-        odd_away = row.get('Odd_A_Asi', np.nan)
         
         # Pular se não há recomendação clara ou dados incompletos
         if pd.isna(row.get('Goals_H_Today')) or pd.isna(row.get('Goals_A_Today')) or pd.isna(row.get('Asian_Line_Decimal')):
