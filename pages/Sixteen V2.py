@@ -271,6 +271,55 @@ def generate_live_summary_v9(df):
         "Losses": int(losses)
     }
 
+
+
+
+##### BLOCO 15: FUNÇÃO CALC_HANDICAP_RESULT (COMPATIBILIDADE) #####
+
+def calc_handicap_result(margin, asian_line_decimal, invert=False):
+    """
+    Calcula resultado do handicap asiático usando linha já convertida para decimal.
+    Mantida para compatibilidade com código existente.
+    """
+    if pd.isna(asian_line_decimal):
+        return np.nan
+    
+    if invert:
+        margin = -margin
+    
+    # Para linhas fracionadas (0.25, 0.75, etc.), simulamos o split
+    line_abs = abs(asian_line_decimal)
+    fractional_part = line_abs - int(line_abs)
+    
+    if fractional_part == 0.25:
+        # Linha do tipo 0.25 (equivale a 0/0.5) - split em duas apostas
+        base_line = int(line_abs) if asian_line_decimal >= 0 else -int(line_abs)
+        line1 = base_line
+        line2 = base_line + 0.5 if asian_line_decimal >= 0 else base_line - 0.5
+        
+        result1 = 1.0 if margin > line1 else (0.5 if margin == line1 else 0.0)
+        result2 = 1.0 if margin > line2 else (0.5 if margin == line2 else 0.0)
+        
+        return (result1 + result2) / 2.0
+    
+    elif fractional_part == 0.75:
+        # Linha do tipo 0.75 (equivale a 0.5/1) - split em duas apostas
+        base_line = int(line_abs) if asian_line_decimal >= 0 else -int(line_abs)
+        line1 = base_line + 0.5 if asian_line_decimal >= 0 else base_line - 0.5
+        line2 = base_line + 1.0 if asian_line_decimal >= 0 else base_line - 1.0
+        
+        result1 = 1.0 if margin > line1 else (0.5 if margin == line1 else 0.0)
+        result2 = 1.0 if margin > line2 else (0.5 if margin == line2 else 0.0)
+        
+        return (result1 + result2) / 2.0
+    
+    else:
+        # Linha inteira ou meia (0, 0.5, 1.0, etc.) - aposta única
+        return 1.0 if margin > asian_line_decimal else (0.5 if margin == asian_line_decimal else 0.0)
+
+
+
+
 ##### BLOCO 4: CARREGAMENTO E PREPARAÇÃO DOS DADOS #####
 
 st.info("📂 Carregando dados para análise de 16 quadrantes...")
@@ -1157,49 +1206,6 @@ if not games_today.empty and 'Classificacao_Potencial' in games_today.columns:
     resumo_16_quadrantes_hoje(games_today)
 
 st.markdown("---")
-
-##### BLOCO 15: FUNÇÃO CALC_HANDICAP_RESULT (COMPATIBILIDADE) #####
-
-def calc_handicap_result(margin, asian_line_decimal, invert=False):
-    """
-    Calcula resultado do handicap asiático usando linha já convertida para decimal.
-    Mantida para compatibilidade com código existente.
-    """
-    if pd.isna(asian_line_decimal):
-        return np.nan
-    
-    if invert:
-        margin = -margin
-    
-    # Para linhas fracionadas (0.25, 0.75, etc.), simulamos o split
-    line_abs = abs(asian_line_decimal)
-    fractional_part = line_abs - int(line_abs)
-    
-    if fractional_part == 0.25:
-        # Linha do tipo 0.25 (equivale a 0/0.5) - split em duas apostas
-        base_line = int(line_abs) if asian_line_decimal >= 0 else -int(line_abs)
-        line1 = base_line
-        line2 = base_line + 0.5 if asian_line_decimal >= 0 else base_line - 0.5
-        
-        result1 = 1.0 if margin > line1 else (0.5 if margin == line1 else 0.0)
-        result2 = 1.0 if margin > line2 else (0.5 if margin == line2 else 0.0)
-        
-        return (result1 + result2) / 2.0
-    
-    elif fractional_part == 0.75:
-        # Linha do tipo 0.75 (equivale a 0.5/1) - split em duas apostas
-        base_line = int(line_abs) if asian_line_decimal >= 0 else -int(line_abs)
-        line1 = base_line + 0.5 if asian_line_decimal >= 0 else base_line - 0.5
-        line2 = base_line + 1.0 if asian_line_decimal >= 0 else base_line - 1.0
-        
-        result1 = 1.0 if margin > line1 else (0.5 if margin == line1 else 0.0)
-        result2 = 1.0 if margin > line2 else (0.5 if margin == line2 else 0.0)
-        
-        return (result1 + result2) / 2.0
-    
-    else:
-        # Linha inteira ou meia (0, 0.5, 1.0, etc.) - aposta única
-        return 1.0 if margin > asian_line_decimal else (0.5 if margin == asian_line_decimal else 0.0)
 
 st.success("🎯 **Sistema de 16 Quadrantes ML** implementado com sucesso!")
 st.info("""
