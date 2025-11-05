@@ -1159,11 +1159,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     st.json(live_summary)
 
 
-    # Exibir resumo live
-    st.markdown("## 📡 Live Score Monitor - 16 Quadrantes")
-    live_summary = generate_live_summary(ranking_quadrantes)
-    st.json(live_summary)
-    
+      
     # Ordenar por score final
     ranking_quadrantes = ranking_quadrantes.sort_values('Score_Final', ascending=False)
     
