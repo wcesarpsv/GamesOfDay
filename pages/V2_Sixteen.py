@@ -870,99 +870,95 @@ def adicionar_indicadores_explicativos_16_dual(df):
     
     return df
 
-##### BLOCO 11: ANÁLISE DE PADRÕES E ESTRATÉGIAS #####
-
-def analisar_padroes_quadrantes_16_dual(df):
-    """Analisa padrões recorrentes nas combinações de 16 quadrantes"""
-    st.markdown("### 🔍 Análise de Padrões por Combinação (16 Quadrantes)")
+def gerar_estrategias_16_quadrantes(df):
+    """Gera estratégias específicas baseadas nos 16 quadrantes"""
+    st.markdown("### 🎯 Estratégias por Categoria - 16 Quadrantes")
     
-    # Padrões prioritários para 16 quadrantes
-    padroes_16 = {
-        'Fav Forte Forte vs Under Forte Muito Forte': {
-            'descricao': '🎯 **MELHOR PADRÃO HOME** - Favorito forte contra underdog muito fraco',
-            'lado_recomendado': 'HOME',
-            'prioridade': 1,
-            'score_min': 0.65
+    estrategias = {
+        'Fav Forte': {
+            'descricao': '**Favoritos Fortes** - Times com alta aggression e handscore',
+            'quadrantes': [1, 2, 3, 4],
+            'estrategia': 'Apostar como favoritos, especialmente contra underdogs fracos',
+            'confianca': 'Alta'
         },
-        'Under Forte Muito Forte vs Fav Forte Forte': {
-            'descricao': '🎯 **MELHOR PADRÃO AWAY** - Underdog muito fraco contra favorito forte',
-            'lado_recomendado': 'AWAY', 
-            'prioridade': 1,
-            'score_min': 0.65
+        'Fav Moderado': {
+            'descricao': '**Favoritos Moderados** - Times com aggression positiva moderada', 
+            'quadrantes': [5, 6, 7, 8],
+            'estrategia': 'Buscar value, especialmente quando têm handscore forte',
+            'confianca': 'Média-Alta'
         },
-        'Fav Moderado Forte vs Under Moderado Forte': {
-            'descricao': '💪 **PADRÃO VALUE HOME** - Favorito moderado contra underdog moderado fraco',
-            'lado_recomendado': 'HOME',
-            'prioridade': 2,
-            'score_min': 0.58
+        'Under Moderado': {
+            'descricao': '**Underdogs Moderados** - Times com aggression negativa moderada',
+            'quadrantes': [9, 10, 11, 12],
+            'estrategia': 'Apostar contra quando enfrentam favoritos supervalorizados',
+            'confianca': 'Média'
         },
-        'Under Moderado Forte vs Fav Moderado Forte': {
-            'descricao': '💪 **PADRÃO VALUE AWAY** - Underdog moderado fraco contra favorito moderado',
-            'lado_recomendado': 'AWAY',
-            'prioridade': 2, 
-            'score_min': 0.58
-        },
-        'Fav Forte Neutro vs Under Forte Neutro': {
-            'descricao': '📊 **PADRÃO NEUTRO HOME** - Favorito forte neutro contra underdog neutro',
-            'lado_recomendado': 'HOME',
-            'prioridade': 3,
-            'score_min': 0.55
-        },
-        'Under Forte Neutro vs Fav Forte Neutro': {
-            'descricao': '📊 **PADRÃO NEUTRO AWAY** - Underdog neutro contra favorito forte neutro',
-            'lado_recomendado': 'AWAY',
-            'prioridade': 3,
-            'score_min': 0.55
+        'Under Forte': {
+            'descricao': '**Underdogs Fortes** - Times com aggression muito negativa',
+            'quadrantes': [13, 14, 15, 16], 
+            'estrategia': 'Evitar ou apostar contra, exceto em situações muito específicas',
+            'confianca': 'Baixa'
         }
     }
     
-    # Ordenar padrões por prioridade
-    padroes_ordenados = sorted(padroes_16.items(), key=lambda x: x[1]['prioridade'])
-    
-    for padrao, info in padroes_ordenados:
-        home_q, away_q = padrao.split(' vs ')
+    for categoria, info in estrategias.items():
+        st.subheader(f"**{categoria}**")
+        st.write(f"📋 {info['descricao']}")
+        st.write(f"🎯 Estratégia: {info['estrategia']}")
+        st.write(f"📊 Confiança: {info['confianca']}")
         
-        # Buscar jogos que correspondem ao padrão
-        jogos = df[
-            (df['Quadrante_Home_Label'] == home_q) & 
-            (df['Quadrante_Away_Label'] == away_q)
+        # Mostrar quadrantes específicos
+        quadrantes_str = ", ".join([f"Q{q}" for q in info['quadrantes']])
+        st.write(f"🔢 Quadrantes: {quadrantes_str}")
+        
+        # Estatísticas da categoria
+        jogos_categoria = df[
+            df['Quadrante_Home'].isin(info['quadrantes']) | 
+            df['Quadrante_Away'].isin(info['quadrantes'])
         ]
         
-        # Filtrar por score mínimo se especificado
-        if info['lado_recomendado'] == 'HOME':
-            score_col = 'Quadrante_ML_Score_Home'
+        if not jogos_categoria.empty:
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Jogos Encontrados", len(jogos_categoria))
+            with col2:
+                avg_score = jogos_categoria['Quadrante_ML_Score_Main'].mean()
+                st.metric("Score Médio", f"{avg_score:.1%}")
+            with col3:
+                high_value = len(jogos_categoria[jogos_categoria['Quadrante_ML_Score_Main'] >= 0.60])
+                st.metric("Alto Valor", high_value)
+
+            # 🔘 Botão para expandir / ocultar tabela
+            with st.expander(f"🔍 Ver confrontos da categoria {categoria}"):
+                cols_padrao = [
+                    'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today',
+                    'Quadrante_Home_Label', 'Quadrante_Away_Label',
+                    'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away',
+                    'Quadrante_ML_Score_Main', 'Recomendacao', 
+                    'Quadrant_Dist', 'Quadrant_Angle'
+                ]
+                cols_padrao = [c for c in cols_padrao if c in jogos_categoria.columns]
+                
+                st.dataframe(
+                    jogos_categoria[cols_padrao]
+                    .sort_values('Quadrante_ML_Score_Main', ascending=False)
+                    .style.format({
+                        'Goals_H_Today': '{:.0f}',
+                        'Goals_A_Today': '{:.0f}',
+                        'Quadrante_ML_Score_Home': '{:.1%}',
+                        'Quadrante_ML_Score_Away': '{:.1%}',
+                        'Quadrante_ML_Score_Main': '{:.1%}',
+                        'Quadrant_Dist': '{:.2f}',
+                        'Quadrant_Angle': '{:.1f}°'
+                    })
+                    .background_gradient(subset=['Quadrante_ML_Score_Main'], cmap='RdYlGn'),
+                    use_container_width=True
+                )
+
         else:
-            score_col = 'Quadrante_ML_Score_Away'
-            
-        if 'score_min' in info:
-            jogos = jogos[jogos[score_col] >= info['score_min']]
+            st.info("Nenhum jogo encontrado nesta categoria.")
         
-        if not jogos.empty:
-            st.write(f"**{padrao}**")
-            st.write(f"{info['descricao']}")
-            st.write(f"📈 **Score mínimo**: {info.get('score_min', 0.50):.1%}")
-            st.write(f"🎯 **Jogos encontrados**: {len(jogos)}")
-            
-            # Colunas para exibir
-            cols_padrao = ['League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', score_col, 'Recomendacao', 'Quadrant_Dist']
-            cols_padrao = [c for c in cols_padrao if c in jogos.columns]
-            
-            # Ordenar por score
-            jogos_ordenados = jogos.sort_values(score_col, ascending=False)
-            
-            st.dataframe(
-                jogos_ordenados[cols_padrao]
-                .head(10)
-                .style.format({
-                    'Goals_H_Today': '{:.0f}',
-                    'Goals_A_Today': '{:.0f}',
-                    score_col: '{:.1%}',
-                    'Quadrant_Dist': '{:.2f}'
-                })
-                .background_gradient(subset=[score_col], cmap='RdYlGn'),
-                use_container_width=True
-            )
-            st.write("---")
+        st.write("---")
 
 def analisar_padroes_quadrantes_16_dual(df):
     """Analisa padrões recorrentes nas combinações de 16 quadrantes"""
