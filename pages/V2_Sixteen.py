@@ -1025,7 +1025,7 @@ def gerar_estrategias_16_quadrantes(df):
             # 🔘 Botão para expandir / ocultar tabela
             with st.expander(f"🔍 Ver confrontos da categoria {categoria}"):
                 cols_padrao = [
-                    'League', 'Home', 'Away', 
+                    'League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today',
                     'Quadrante_Home_Label', 'Quadrante_Away_Label',
                     'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away',
                     'Quadrante_ML_Score_Main', 'Recomendacao', 
@@ -1037,6 +1037,8 @@ def gerar_estrategias_16_quadrantes(df):
                     jogos_categoria[cols_padrao]
                     .sort_values('Quadrante_ML_Score_Main', ascending=False)
                     .style.format({
+                        'Goals_H_Today': '{:.0f}',
+                        'Goals_A_Today': '{:.0f}',
                         'Quadrante_ML_Score_Home': '{:.1%}',
                         'Quadrante_ML_Score_Away': '{:.1%}',
                         'Quadrante_ML_Score_Main': '{:.1%}',
