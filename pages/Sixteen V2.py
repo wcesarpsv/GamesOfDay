@@ -184,6 +184,64 @@ selected_date_str = date_match.group(0) if date_match else datetime.now().strfti
 games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
 games_today = filter_leagues(games_today)
 
+
+# ---------------- VISUALIZAÇÃO INTERATIVA ----------------
+import plotly.graph_objects as go
+
+st.markdown("## 🎯 Visualização Interativa – Distância entre Times (Home × Away)")
+
+# Filtros interativos
+if "League" in games_today.columns and not games_today["League"].isna().all():
+    leagues = sorted(games_today["League"].dropna().unique())
+    selected_league = st.selectbox(
+        "Selecione a liga para análise:",
+        options=["⚽ Todas as ligas"] + leagues,
+        index=0
+    )
+
+    if selected_league != "⚽ Todas as ligas":
+        df_filtered = games_today[games_today["League"] == selected_league].copy()
+    else:
+        df_filtered = games_today.copy()
+else:
+    st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
+    df_filtered = games_today.copy()
+
+# 🔥 CORREÇÃO: Calcular distâncias com verificação
+try:
+    df_filtered = calcular_distancias_quadrantes(df_filtered)
+    
+    # Verificar se as colunas necessárias existem
+    required_cols = ['Aggression_Home', 'Aggression_Away', 'HandScore_Home', 'HandScore_Away']
+    missing_cols = [col for col in required_cols if col not in df_filtered.columns]
+    
+    if missing_cols:
+        st.error(f"❌ Colunas necessárias faltando: {missing_cols}")
+        st.info("⚠️ A visualização de distâncias não estará disponível")
+        # Criar uma coluna dummy para evitar erro
+        df_filtered['Quadrant_Dist'] = 0
+    else:
+        st.success("✅ Distâncias calculadas com sucesso")
+        
+except Exception as e:
+    st.error(f"❌ Erro ao calcular distâncias: {e}")
+    # Criar coluna dummy para evitar quebra
+    df_filtered['Quadrant_Dist'] = 0
+
+# Controle de número de confrontos
+max_n = len(df_filtered)
+n_to_show = st.slider("Quantos confrontos exibir (Top por distância):", 10, min(max_n, 200), 40, step=5)
+
+# Preparar dados - AGORA SEM ERRO
+df_plot = df_filtered.nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
+
+# Mostrar aviso se as distâncias não foram calculadas corretamente
+if df_plot['Quadrant_Dist'].sum() == 0:
+    st.warning("⚠️ As distâncias não puderam ser calculadas. Mostrando jogos aleatórios.")
+
+
+
+
 # ---------------- LIVE SCORE INTEGRATION ----------------
 def load_and_merge_livescore(games_today, selected_date_str):
     """Carrega e faz merge dos dados do Live Score"""
