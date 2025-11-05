@@ -1029,10 +1029,6 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # =====================================================
     # ⚙️ SEÇÃO 2 – APLICAR NOVO SISTEMA AO LIVE SCORE
     # =====================================================
-    
-    # Atualiza dados live (usa função reformulada acima)
-    ranking_quadrantes = apply_handicap_results(ranking_quadrantes)
-
     # =====================================================
     # 🧮 APLICAR HANDICAP ASIÁTICO v9 AOS JOGOS DO DIA
     # =====================================================
