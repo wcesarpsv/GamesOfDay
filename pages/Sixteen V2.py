@@ -184,64 +184,6 @@ selected_date_str = date_match.group(0) if date_match else datetime.now().strfti
 games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
 games_today = filter_leagues(games_today)
 
-
-# ---------------- VISUALIZAÇÃO INTERATIVA ----------------
-import plotly.graph_objects as go
-
-st.markdown("## 🎯 Visualização Interativa – Distância entre Times (Home × Away)")
-
-# Filtros interativos
-if "League" in games_today.columns and not games_today["League"].isna().all():
-    leagues = sorted(games_today["League"].dropna().unique())
-    selected_league = st.selectbox(
-        "Selecione a liga para análise:",
-        options=["⚽ Todas as ligas"] + leagues,
-        index=0
-    )
-
-    if selected_league != "⚽ Todas as ligas":
-        df_filtered = games_today[games_today["League"] == selected_league].copy()
-    else:
-        df_filtered = games_today.copy()
-else:
-    st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
-    df_filtered = games_today.copy()
-
-# 🔥 CORREÇÃO: Calcular distâncias com verificação
-try:
-    df_filtered = calcular_distancias_quadrantes(df_filtered)
-    
-    # Verificar se as colunas necessárias existem
-    required_cols = ['Aggression_Home', 'Aggression_Away', 'HandScore_Home', 'HandScore_Away']
-    missing_cols = [col for col in required_cols if col not in df_filtered.columns]
-    
-    if missing_cols:
-        st.error(f"❌ Colunas necessárias faltando: {missing_cols}")
-        st.info("⚠️ A visualização de distâncias não estará disponível")
-        # Criar uma coluna dummy para evitar erro
-        df_filtered['Quadrant_Dist'] = 0
-    else:
-        st.success("✅ Distâncias calculadas com sucesso")
-        
-except Exception as e:
-    st.error(f"❌ Erro ao calcular distâncias: {e}")
-    # Criar coluna dummy para evitar quebra
-    df_filtered['Quadrant_Dist'] = 0
-
-# Controle de número de confrontos
-max_n = len(df_filtered)
-n_to_show = st.slider("Quantos confrontos exibir (Top por distância):", 10, min(max_n, 200), 40, step=5)
-
-# Preparar dados - AGORA SEM ERRO
-df_plot = df_filtered.nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
-
-# Mostrar aviso se as distâncias não foram calculadas corretamente
-if df_plot['Quadrant_Dist'].sum() == 0:
-    st.warning("⚠️ As distâncias não puderam ser calculadas. Mostrando jogos aleatórios.")
-
-
-
-
 # ---------------- LIVE SCORE INTEGRATION ----------------
 def load_and_merge_livescore(games_today, selected_date_str):
     """Carrega e faz merge dos dados do Live Score"""
@@ -422,6 +364,78 @@ def calcular_distancias_quadrantes(df):
 
     return df
 
+
+# Aplicar ao games_today
+games_today = calcular_distancias_quadrantes(games_today)
+
+# # ---------------- VISUALIZAÇÃO DOS 16 QUADRANTES ----------------
+# def plot_quadrantes_16(df, side="Home"):
+#     """Plot dos 16 quadrantes com cores e anotações"""
+#     fig, ax = plt.subplots(figsize=(14, 10))
+    
+#     # Definir cores por categoria
+#     # cores_categorias = {
+#     #     'Fav Forte': 'blue',
+#     #     'Fav Moderado': 'black', 
+#     #     'Under Moderado': 'black',
+#     #     'Under Forte': 'red'
+#     # }
+#     # 🎨 Cores nomeadas por quadrante (tons claros = neutro / escuros = extremos)
+#     cores_quadrantes_16 = {
+#         1: 'blue', 2: 'deepskyblue', 3: 'blue', 4: 'red',          # Fav Forte
+#         5: 'lightgreen', 6: 'mediumseagreen', 7: 'green', 8: 'darkgreen',    # Fav Moderado
+#         9: 'moccasin', 10: 'gold', 11: 'orange', 12: 'chocolate',            # Under Moderado
+#         13: 'lightcoral', 14: 'indianred', 15: 'red', 16: 'darkred'          # Under Forte
+#     }
+
+    
+#     # Plotar cada ponto com cor da categoria
+#     for quadrante_id in range(1, 17):
+#         mask = df[f'Quadrante_{side}'] == quadrante_id
+#         if mask.any():
+#             categoria = QUADRANTES_16[quadrante_id]['nome'].split()[0] + ' ' + QUADRANTES_16[quadrante_id]['nome'].split()[1]
+#             # cor = cores_categorias.get(categoria, 'gray')
+#              cor = cores_quadrantes_16.get(quadrante_id, 'gray')
+            
+#             x = df.loc[mask, f'Aggression_{side}']
+#             y = df.loc[mask, f'HandScore_{side}']
+#             ax.scatter(x, y, c=cor, 
+#                       label=QUADRANTES_16[quadrante_id]['nome'],
+#                       alpha=0.7, s=50)
+    
+#     # Linhas divisórias dos quadrantes (Aggression)
+#     for x in [-0.75, -0.25, 0.25, 0.75]:
+#         ax.axvline(x=x, color='black', linestyle='--', alpha=0.3)
+#     ax.axvline(x=0, color='black', linestyle='-', alpha=0.5)
+    
+#     # Linhas divisórias dos quadrantes (HandScore)  
+#     for y in [-45, -30, -15, 15, 30, 45]:
+#         ax.axhline(y=y, color='black', linestyle='--', alpha=0.3)
+#     ax.axhline(y=0, color='black', linestyle='-', alpha=0.5)
+    
+#     # Anotações dos quadrantes
+#     annot_config = [
+#         (0.875, 52.5, "Fav Forte\nMuito Forte", 8), (0.875, 37.5, "Fav Forte\nForte", 8),
+#         (0.875, 22.5, "Fav Forte\nModerado", 8), (0.875, 0, "Fav Forte\nNeutro", 8),
+#         (0.5, 52.5, "Fav Moderado\nMuito Forte", 8), (0.5, 37.5, "Fav Moderado\nForte", 8),
+#         (0.5, 22.5, "Fav Moderado\nModerado", 8), (0.5, 0, "Fav Moderado\nNeutro", 8),
+#         (-0.5, 0, "Under Moderado\nNeutro", 8), (-0.5, -22.5, "Under Moderado\nModerado", 8),
+#         (-0.5, -37.5, "Under Moderado\nForte", 8), (-0.5, -52.5, "Under Moderado\nMuito Forte", 8),
+#         (-0.875, 0, "Under Forte\nNeutro", 8), (-0.875, -22.5, "Under Forte\nModerado", 8),
+#         (-0.875, -37.5, "Under Forte\nForte", 8), (-0.875, -52.5, "Under Forte\nMuito Forte", 8)
+#     ]
+    
+#     for x, y, text, fontsize in annot_config:
+#         ax.text(x, y, text, ha='center', fontsize=fontsize, weight='bold')
+    
+#     ax.set_xlabel(f'Aggression_{side} (-1 zebra ↔ +1 favorito)')
+#     ax.set_ylabel(f'HandScore_{side} (-60 a +60)')
+#     ax.set_title(f'16 Quadrantes - {side}')
+#     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+#     ax.grid(True, alpha=0.3)
+    
+#     plt.tight_layout()
+#     return fig
 
 ########################################
 #### 🎨 Função de Plotagem – 16 Quadrantes com Cores Nomeadas
@@ -974,159 +988,109 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     ranking_quadrantes = gerar_score_combinado_16(ranking_quadrantes)
     
     # ---------------- ATUALIZAR COM DADOS LIVE ----------------
-    # =====================================================
-    # ✅ FUNÇÕES DE HANDICAP ASIÁTICO – versão v9 (validada)
-    # =====================================================
+    def determine_handicap_result(row):
+        """Determina se o HOME cobriu o handicap usando linha convertida"""
+        try:
+            gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
+            ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
+            asian_line_decimal = row.get('Asian_Line_Decimal')  # ← Já convertida!
+        except (ValueError, TypeError):
+            return None
     
-    def asian_handicap_outcome_v9(margin, line):
-        diff = margin - line
-    
-        # Linhas inteiras
-        if line.is_integer():
-            if diff > 0:
-                return 1
-            elif diff == 0:
-                return 0
-            else:
-                return -1
-    
-        # Meias linhas
-        if abs(line * 2 % 2) == 1:
-            return 1 if diff > 0 else -1
-    
-        # Linhas -0.75 e +0.75
-        if line == -0.75:
-            if margin >= 2:
-                return 1
-            elif margin == 1:
-                return 0.5
-            else:
-                return -1
-        if line == 0.75:
-            if margin >= 1:
-                return 1
-            elif margin == 0:
-                return 1
-            elif margin == -1:
-                return -0.5
-            else:
-                return -1
-    
-        # Linhas ±0.25
-        half = 0.25 if line > 0 else -0.25
-        res1 = asian_handicap_outcome_v9(margin, line - half)
-        res2 = asian_handicap_outcome_v9(margin, line + half)
-        return np.mean([res1, res2])
-    
-    
-    def adjust_draw_cases(val, margin, line):
-        """Ajusta empates conforme a tabela oficial"""
-        if margin == 0:
-            if line == -0.25: return -0.5
-            if line == +0.25: return 0.5
-            if line == -0.5:  return -1
-            if line == +0.5:  return 1
-        return val
-    
-    
-    def handicap_home_v9(row):
-        margin = row['Goals_H_Today'] - row['Goals_A_Today']
-        line = row['Asian_Line_Decimal']
-        val = asian_handicap_outcome_v9(margin, line)
-        return adjust_draw_cases(val, margin, line)
-    
-    
-    def handicap_away_v9(row):
-        margin = row['Goals_A_Today'] - row['Goals_H_Today']
-        line = -row['Asian_Line_Decimal']
-        val = asian_handicap_outcome_v9(margin, line)
-        return adjust_draw_cases(val, margin, line)
-    
-    
-    def apply_handicap_results(df):
-        """Aplica a avaliação de Handicap Asiático e lucro (v9) usando odds reais do dataset"""
+        if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line_decimal):
+            return None
         
-        def process(row):
-            rec = str(row['Recomendacao']).upper()
-            odd_home = row.get('Odd_H_Asi', np.nan)
-            odd_away = row.get('Odd_A_Asi', np.nan)
-    
-            if 'HOME' in rec:
-                val = handicap_home_v9(row)
-                odd = odd_home
-            elif 'AWAY' in rec:
-                val = handicap_away_v9(row)
-                odd = odd_away
+        margin = gh - ga
+        handicap_result = calc_handicap_result(margin, asian_line_decimal, invert=False)
+        
+        if handicap_result > 0.5:
+            return "HOME_COVERED"
+        elif handicap_result == 0.5:
+            return "PUSH"
+        else:
+            return "HOME_NOT_COVERED"
+
+    def check_handicap_recommendation_correct(rec, handicap_result):
+        """Verifica se a recomendação estava correta"""
+        if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid':
+            return None
+        
+        rec = str(rec)
+        
+        if any(keyword in rec for keyword in ['HOME', 'Home', 'VALUE NO HOME', 'FAVORITO HOME']):
+            return handicap_result == "HOME_COVERED"
+        elif any(keyword in rec for keyword in ['AWAY', 'Away', 'VALUE NO AWAY', 'FAVORITO AWAY', 'MODELO CONFIA AWAY']):
+            return handicap_result in ["HOME_NOT_COVERED", "PUSH"]
+        
+        return None
+
+    def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal):
+        """Calcula profit para handicap asiático"""
+        if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid' or pd.isna(asian_line_decimal):
+            return 0
+
+        rec = str(rec).upper()
+        is_home_bet = any(k in rec for k in ['HOME', 'FAVORITO HOME', 'VALUE NO HOME'])
+        is_away_bet = any(k in rec for k in ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+
+        if not (is_home_bet or is_away_bet):
+            return 0
+
+        odd = odds_row.get('Odd_H_Asi', np.nan) if is_home_bet else odds_row.get('Odd_A_Asi', np.nan)
+        if pd.isna(odd):
+            return 0
+
+        def split_line(line):
+            frac = abs(line) % 1
+            if frac == 0.25:
+                base = math.floor(abs(line))
+                base = base if line > 0 else -base
+                return [base, base + (0.5 if line > 0 else -0.5)]
+            elif frac == 0.75:
+                base = math.floor(abs(line))
+                base = base if line > 0 else -base
+                return [base + (0.5 if line > 0 else -0.5), base + (1.0 if line > 0 else -1.0)]
             else:
-                return pd.Series([np.nan, np.nan, np.nan])
-    
-            if pd.isna(val) or pd.isna(odd):
-                return pd.Series([np.nan, np.nan, np.nan])
-    
-            # 🧮 Resultado final
-            if val == 1:
-                return pd.Series([1, "FULL WIN", odd - 1])
-            elif val == 0.5:
-                return pd.Series([0.5, "HALF WIN", (odd - 1) / 2])
-            elif val == 0:
-                return pd.Series([0, "PUSH", 0])
-            elif val == -0.5:
-                return pd.Series([-0.5, "HALF LOSS", -0.5])
-            elif val == -1:
-                return pd.Series([-1, "LOSS", -1])
-            else:
-                return pd.Series([np.nan, np.nan, np.nan])
-    
-        # Aplicar linha por linha
-        df[['Outcome_Final', 'Handicap_Result_Final', 'Profit_Final']] = df.apply(process, axis=1)
+                return [line]
+
+        asian_line_for_eval = -asian_line_decimal if is_home_bet else asian_line_decimal
+        lines = split_line(asian_line_for_eval)
+
+        def single_profit(result):
+            if result == "PUSH":
+                return 0
+            elif (is_home_bet and result == "HOME_COVERED") or (is_away_bet and result == "HOME_NOT_COVERED"):
+                return odd
+            elif (is_home_bet and result == "HOME_NOT_COVERED") or (is_away_bet and result == "HOME_COVERED"):
+                return -1
+            return 0
+
+        if len(lines) == 2:
+            p1 = single_profit(handicap_result)
+            p2 = single_profit(handicap_result)
+            return (p1 + p2) / 2
+        else:
+            return single_profit(handicap_result)
+
+    def update_real_time_data(df):
+        """Atualiza todos os dados em tempo real"""
+        df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
+        df['Quadrante_Correct'] = df.apply(
+            lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
+        )
+        df['Profit_Quadrante'] = df.apply(
+            lambda r: calculate_handicap_profit(r['Recomendacao'], r['Handicap_Result'], r, r['Asian_Line_Decimal']), axis=1
+        )
         return df
 
-
-    
-
-    # =====================================================
-    # ⚙️ SEÇÃO 2 – APLICAR NOVO SISTEMA AO LIVE SCORE
-    # =====================================================
-    # =====================================================
-    # 🧮 APLICAR HANDICAP ASIÁTICO v9 AOS JOGOS DO DIA
-    # =====================================================
-    ranking_quadrantes = apply_handicap_results(ranking_quadrantes)
-    
-    st.markdown("### ⚖️ Resultados Handicap Asiático (v9)")
-    st.dataframe(
-        ranking_quadrantes[
-            ['Home', 'Away', 'Asian_Line_Decimal', 'Recomendacao',
-             'Goals_H_Today', 'Goals_A_Today',
-             'Handicap_Result_Final', 'Profit_Final']
-        ]
-    )
-    
-    # Resumo de performance
-    total_profit = ranking_quadrantes['Profit_Final'].sum()
-    winrate = (ranking_quadrantes['Profit_Final'] > 0).mean() * 100
-    st.metric("WinRate (%)", f"{winrate:.1f}%")
-    st.metric("Lucro Total (unid.)", f"{total_profit:.2f}")
-
-    st.success("✅ Dados de Live Score atualizados com novo sistema asiático!")
-    
-    # Mostrar resultados de debug rápidos
-    if 'Handicap_Result' in ranking_quadrantes.columns:
-        resumo_handicap = ranking_quadrantes['Handicap_Result'].value_counts(dropna=False)
-        st.markdown("### 📊 Distribuição dos Resultados Handicap")
-        st.dataframe(resumo_handicap.to_frame('Contagem'), use_container_width=True)
-
-
-
+    # Aplicar atualização em tempo real
+    ranking_quadrantes = update_real_time_data(ranking_quadrantes)
     
     # ---------------- RESUMO LIVE ----------------
-    # =====================================================
-    # 📈 SEÇÃO 3 – RESUMO LIVE ATUALIZADO
-    # =====================================================
-    
     def generate_live_summary(df):
-        """Resumo atualizado de performance do modelo em tempo real"""
-        finished_games = df.dropna(subset=['Outcome_Final'])
-    
+        """Gera resumo em tempo real"""
+        finished_games = df.dropna(subset=['Handicap_Result'])
+        
         if finished_games.empty:
             return {
                 "Total Jogos": len(df),
@@ -1134,18 +1098,17 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
                 "Apostas Quadrante": 0,
                 "Acertos Quadrante": 0,
                 "Winrate Quadrante": "0%",
-                "Profit Quadrante": "0.00u",
+                "Profit Quadrante": 0,
                 "ROI Quadrante": "0%"
             }
-    
-        valid_bets = finished_games[finished_games['Profit_Final'].notna()]
-        total_bets = len(valid_bets)
-        correct_bets = (valid_bets['Outcome_Final'] > 0).sum()
-    
+        
+        quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
+        total_bets = len(quadrante_bets)
+        correct_bets = quadrante_bets['Quadrante_Correct'].sum()
         winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
-        total_profit = valid_bets['Profit_Final'].sum()
+        total_profit = quadrante_bets['Profit_Quadrante'].sum()
         roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
-    
+        
         return {
             "Total Jogos": len(df),
             "Jogos Finalizados": len(finished_games),
@@ -1156,14 +1119,11 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             "ROI Quadrante": f"{roi:.1f}%"
         }
 
-    
-    # Exibir resumo Live atualizado
-    st.markdown("## 📡 Live Score Monitor (Sistema Reformulado)")
+    # Exibir resumo live
+    st.markdown("## 📡 Live Score Monitor - 16 Quadrantes")
     live_summary = generate_live_summary(ranking_quadrantes)
     st.json(live_summary)
-
-
-      
+    
     # Ordenar por score final
     ranking_quadrantes = ranking_quadrantes.sort_values('Score_Final', ascending=False)
     
