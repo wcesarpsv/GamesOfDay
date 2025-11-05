@@ -989,113 +989,114 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
     # ---------------- ATUALIZAR COM DADOS LIVE ----------------
     # =====================================================
-    # ✅ SEÇÃO 1 – NOVO SISTEMA DE CÁLCULO DE HANDICAP E PROFIT
+    # ✅ FUNÇÕES DE HANDICAP ASIÁTICO – versão v9 (validada)
     # =====================================================
     
-    import math
+    def asian_handicap_outcome_v9(margin, line):
+        diff = margin - line
     
-    def asian_handicap_outcome(margin, line):
-        """
-        Calcula o resultado do ponto de vista do time apostado:
-          +1.0 → vitória total
-          +0.5 → meia vitória
-          0.0  → push
-          -0.5 → meia derrota
-          -1.0 → derrota total
-        """
-        if pd.isna(line) or pd.isna(margin):
-            return np.nan
-    
-        # Identifica linhas fracionadas
-        frac = abs(line) % 1
-        base = math.floor(abs(line))
-    
-        if frac == 0.25:
-            parts = [base, base + 0.5]
-        elif frac == 0.75:
-            parts = [base + 0.5, base + 1.0]
-        else:
-            parts = [abs(line)]
-    
-        # Ajusta sinal (positivo → recebe gols)
-        parts = [p if line > 0 else -p for p in parts]
-    
-        results = []
-        for p in parts:
-            diff = margin - p
+        # Linhas inteiras
+        if line.is_integer():
             if diff > 0:
-                results.append(1)
+                return 1
             elif diff == 0:
-                results.append(0)
+                return 0
             else:
-                results.append(-1)
-        return np.mean(results)
+                return -1
+    
+        # Meias linhas
+        if abs(line * 2 % 2) == 1:
+            return 1 if diff > 0 else -1
+    
+        # Linhas -0.75 e +0.75
+        if line == -0.75:
+            if margin >= 2:
+                return 1
+            elif margin == 1:
+                return 0.5
+            else:
+                return -1
+        if line == 0.75:
+            if margin >= 1:
+                return 1
+            elif margin == 0:
+                return 1
+            elif margin == -1:
+                return -0.5
+            else:
+                return -1
+    
+        # Linhas ±0.25
+        half = 0.25 if line > 0 else -0.25
+        res1 = asian_handicap_outcome_v9(margin, line - half)
+        res2 = asian_handicap_outcome_v9(margin, line + half)
+        return np.mean([res1, res2])
     
     
-    def asian_profit(outcome, odd):
-        """Calcula o lucro da aposta asiática em unidades"""
-        if pd.isna(outcome) or pd.isna(odd):
-            return 0
-        if outcome == 1:
-            return odd
-        elif outcome == 0.5:
-            return odd / 2
-        elif outcome == 0:
-            return 0
-        elif outcome == -0.5:
-            return -0.5
-        elif outcome == -1:
-            return -1
-        else:
-            return 0
+    def adjust_draw_cases(val, margin, line):
+        """Ajusta empates conforme a tabela oficial"""
+        if margin == 0:
+            if line == -0.25: return -0.5
+            if line == +0.25: return 0.5
+            if line == -0.5:  return -1
+            if line == +0.5:  return 1
+        return val
     
     
-    def evaluate_bet(row):
-        """
-        Avalia aposta com base na recomendação e gols reais.
-        Retorna Outcome (resultado asiático) e Profit_Quadrante.
-        """
-        try:
-            margin = float(row['Goals_H_Today']) - float(row['Goals_A_Today'])
-            line = float(row['Asian_Line_Decimal'])
-            rec = str(row.get('Recomendacao', '')).upper()
+    def handicap_home_v9(row):
+        margin = row['Goals_H_Today'] - row['Goals_A_Today']
+        line = row['Asian_Line_Decimal']
+        val = asian_handicap_outcome_v9(margin, line)
+        return adjust_draw_cases(val, margin, line)
+    
+    
+    def handicap_away_v9(row):
+        margin = row['Goals_A_Today'] - row['Goals_H_Today']
+        line = -row['Asian_Line_Decimal']
+        val = asian_handicap_outcome_v9(margin, line)
+        return adjust_draw_cases(val, margin, line)
+    
+    
+    def apply_handicap_results(df):
+        """Aplica a avaliação de Handicap Asiático e lucro (v9) usando odds reais do dataset"""
+        
+        def process(row):
+            rec = str(row['Recomendacao']).upper()
             odd_home = row.get('Odd_H_Asi', np.nan)
             odd_away = row.get('Odd_A_Asi', np.nan)
-        except Exception:
-            return pd.Series({'Outcome': np.nan, 'Profit_Quadrante': 0})
     
-        # Identificar lado da aposta
-        if any(k in rec for k in ['HOME', 'VALUE NO HOME', 'FAVORITO HOME']):
-            line_used = line
-            odd_used = odd_home
-        elif any(k in rec for k in ['AWAY', 'VALUE NO AWAY', 'FAVORITO AWAY']):
-            line_used = -line
-            odd_used = odd_away
-        else:
-            return pd.Series({'Outcome': np.nan, 'Profit_Quadrante': 0})
+            if 'HOME' in rec:
+                val = handicap_home_v9(row)
+                odd = odd_home
+            elif 'AWAY' in rec:
+                val = handicap_away_v9(row)
+                odd = odd_away
+            else:
+                return pd.Series([np.nan, np.nan, np.nan])
     
-        # Avaliar resultado
-        outcome = asian_handicap_outcome(margin, line_used)
-        profit = asian_profit(outcome, odd_used)
-        return pd.Series({'Outcome': outcome, 'Profit_Quadrante': profit})
+            if pd.isna(val) or pd.isna(odd):
+                return pd.Series([np.nan, np.nan, np.nan])
     
+            # 🧮 Resultado final
+            if val == 1:
+                return pd.Series([1, "FULL WIN", odd - 1])
+            elif val == 0.5:
+                return pd.Series([0.5, "HALF WIN", (odd - 1) / 2])
+            elif val == 0:
+                return pd.Series([0, "PUSH", 0])
+            elif val == -0.5:
+                return pd.Series([-0.5, "HALF LOSS", -0.5])
+            elif val == -1:
+                return pd.Series([-1, "LOSS", -1])
+            else:
+                return pd.Series([np.nan, np.nan, np.nan])
     
-    def label_outcome(v):
-        if pd.isna(v): return None
-        if v == 1: return "FULL WIN"
-        if v == 0.5: return "HALF WIN"
-        if v == 0: return "PUSH"
-        if v == -0.5: return "HALF LOSS"
-        if v == -1: return "LOSS"
-        return None
-    
-    
-    def update_real_time_data(df):
-        """Atualiza em tempo real os resultados e lucros"""
-        df[['Outcome', 'Profit_Quadrante']] = df.apply(evaluate_bet, axis=1)
-        df['Quadrante_Correct'] = df['Outcome'] > 0
-        df['Handicap_Result'] = df['Outcome'].apply(label_outcome)
+        # Aplicar linha por linha
+        df[['Outcome_Final', 'Handicap_Result_Final', 'Profit_Final']] = df.apply(process, axis=1)
         return df
+
+
+    
 
     # =====================================================
     # ⚙️ SEÇÃO 2 – APLICAR NOVO SISTEMA AO LIVE SCORE
@@ -1103,7 +1104,26 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
     # Atualiza dados live (usa função reformulada acima)
     ranking_quadrantes = update_real_time_data(ranking_quadrantes)
+    # =====================================================
+    # 🧮 APLICAR HANDICAP ASIÁTICO v9 AOS JOGOS DO DIA
+    # =====================================================
+    ranking_quadrantes = apply_handicap_results(ranking_quadrantes)
     
+    st.markdown("### ⚖️ Resultados Handicap Asiático (v9)")
+    st.dataframe(
+        ranking_quadrantes[
+            ['Home', 'Away', 'Asian_Line_Decimal', 'Recomendacao',
+             'Goals_H_Today', 'Goals_A_Today',
+             'Handicap_Result_Final', 'Profit_Final']
+        ]
+    )
+    
+    # Resumo de performance
+    total_profit = ranking_quadrantes['Profit_Final'].sum()
+    winrate = (ranking_quadrantes['Profit_Final'] > 0).mean() * 100
+    st.metric("WinRate (%)", f"{winrate:.1f}%")
+    st.metric("Lucro Total (unid.)", f"{total_profit:.2f}")
+
     st.success("✅ Dados de Live Score atualizados com novo sistema asiático!")
     
     # Mostrar resultados de debug rápidos
