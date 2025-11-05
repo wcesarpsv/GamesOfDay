@@ -497,7 +497,7 @@ def calcular_distancias_quadrantes(df):
   required_cols = ['M_H', 'M_A', 'MT_H', 'MT_A', 'HandScore_Home', 'HandScore_Away']
   if not all(col in df.columns for col in required_cols):
       st.warning(f"⚠️ Colunas ausentes para V2: {[c for c in required_cols if c not in df.columns]}")
-      df[['Quadrant_Dist_V2', 'Quadrant_Separation_V2', 'Quadrant_Sin_V2', 'Quadrant_Cos_V2']] = np.nan
+      df[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 'Quadrant_Cos']] = np.nan
       return df
 
   # 🧭 Vetores Home → Away
@@ -505,20 +505,20 @@ def calcular_distancias_quadrantes(df):
   dy = df['MT_A'] - df['MT_H']     # Forma relativa ao próprio time
 
   # 📏 Distância euclidiana base
-  df['Quadrant_Dist_V2'] = np.sqrt(dx**2 + dy**2)
+  df['Quadrant_Dist'] = np.sqrt(dx**2 + dy**2)
 
   # 🎯 Separação linear combinada
-  df['Quadrant_Separation_V2'] = 0.5 * (dy + dx)
+  df['Quadrant_Separation'] = 0.5 * (dy + dx)
 
   # 🧮 Ângulo direcional e projeções trigonométricas
   angle = np.arctan2(dy, dx)
-  df['Quadrant_Sin_V2'] = np.sin(angle)
-  df['Quadrant_Cos_V2'] = np.cos(angle)
+  df['Quadrant_Sin'] = np.sin(angle)
+  df['Quadrant_Cos'] = np.cos(angle)
 
   # ⚖️ Ponderação de confiança usando HandScore médio
   mean_hs = (df['HandScore_Home'].fillna(0) + df['HandScore_Away'].fillna(0)) / 2
   weight = 1 + (mean_hs / 60).clip(-0.5, 0.5)  # Limita impacto extremo
-  df['Quadrant_Dist_V2'] = df['Quadrant_Dist_V2'] * weight
+  df['Quadrant_Dist'] = df['Quadrant_Dist'] * weight
 
   return df
 
