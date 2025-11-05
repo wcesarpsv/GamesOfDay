@@ -944,7 +944,7 @@ def analisar_padroes_quadrantes_16_dual(df):
             st.write(f"🎯 **Jogos encontrados**: {len(jogos)}")
             
             # Colunas para exibir
-            cols_padrao = ['League', 'Home', 'Away', 'Goals_H_Today', 'Goals_H_Today', score_col, 'Recomendacao', 'Quadrant_Dist']
+            cols_padrao = ['League', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', score_col, 'Recomendacao', 'Quadrant_Dist']
             cols_padrao = [c for c in cols_padrao if c in jogos.columns]
             
             # Ordenar por score
@@ -954,6 +954,8 @@ def analisar_padroes_quadrantes_16_dual(df):
                 jogos_ordenados[cols_padrao]
                 .head(10)
                 .style.format({
+                    'Goals_H_Today': '{:.0f}',
+                    'Goals_A_Today': '{:.0f}',
                     score_col: '{:.1%}',
                     'Quadrant_Dist': '{:.2f}'
                 })
