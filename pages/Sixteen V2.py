@@ -1037,9 +1037,9 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         if pd.isna(outcome) or pd.isna(odd):
             return 0
         if outcome == 1:
-            return odd - 1
+            return odd
         elif outcome == 0.5:
-            return (odd - 1) / 2
+            return odd / 2
         elif outcome == 0:
             return 0
         elif outcome == -0.5:
