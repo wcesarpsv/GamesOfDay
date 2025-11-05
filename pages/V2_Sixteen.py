@@ -487,40 +487,45 @@ history['Quadrante_Away'] = history.apply(
 ##### BLOCO 6: CÁLCULO DE DISTÂNCIAS E VETORES #####
 
 def calcular_distancias_quadrantes(df):
-  """
-  V2 - Calcula distâncias e ângulos entre Home e Away considerando:
-    - Eixo X: z-score na liga (M_H, M_A)
-    - Eixo Y: z-score relativo ao próprio time (MT_H, MT_A)
-    - Ponderação de magnitude pelo HandScore médio
-  """
-  df = df.copy()
-  required_cols = ['M_H', 'M_A', 'MT_H', 'MT_A', 'HandScore_Home', 'HandScore_Away']
-  if not all(col in df.columns for col in required_cols):
-      st.warning(f"⚠️ Colunas ausentes para V2: {[c for c in required_cols if c not in df.columns]}")
-      df[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 'Quadrant_Cos']] = np.nan
-      return df
+    """
+    V2 - Calcula distâncias e ângulos entre Home e Away considerando:
+      - Eixo X: z-score na liga (M_H, M_A)
+      - Eixo Y: z-score relativo ao próprio time (MT_H, MT_A)
+      - Ponderação de magnitude pelo HandScore médio
+    """
+    df = df.copy()
+    required_cols = ['M_H', 'M_A', 'MT_H', 'MT_A', 'HandScore_Home', 'HandScore_Away']
+    if not all(col in df.columns for col in required_cols):
+        st.warning(f"⚠️ Colunas ausentes para V2: {[c for c in required_cols if c not in df.columns]}")
+        df[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 'Quadrant_Cos']] = np.nan
+        return df
 
-  # 🧭 Vetores Home → Away
-  dx = df['M_A'] - df['M_H']       # Força relativa na liga
-  dy = df['MT_A'] - df['MT_H']     # Forma relativa ao próprio time
+    # 🧭 Vetores Home → Away
+    dx = df['M_A'] - df['M_H']       # Força relativa na liga
+    dy = df['MT_A'] - df['MT_H']     # Forma relativa ao próprio time
 
-  # 📏 Distância euclidiana base
-  df['Quadrant_Dist'] = np.sqrt(dx**2 + dy**2)
+    # 📏 Distância euclidiana base
+    df['Quadrant_Dist'] = np.sqrt(dx**2 + dy**2)
 
-  # 🎯 Separação linear combinada
-  df['Quadrant_Separation'] = 0.5 * (dy + dx)
+    # 🎯 Separação linear combinada
+    df['Quadrant_Separation'] = 0.5 * (dy + dx)
 
-  # 🧮 Ângulo direcional e projeções trigonométricas
-  angle = np.arctan2(dy, dx)
-  df['Quadrant_Sin'] = np.sin(angle)
-  df['Quadrant_Cos'] = np.cos(angle)
+    # 🧮 Ângulo direcional e projeções trigonométricas
+    angle = np.arctan2(dy, dx)
+    df['Quadrant_Sin'] = np.sin(angle)
+    df['Quadrant_Cos'] = np.cos(angle)
 
-  # ⚖️ Ponderação de confiança usando HandScore médio
-  mean_hs = (df['HandScore_Home'].fillna(0) + df['HandScore_Away'].fillna(0)) / 2
-  weight = 1 + (mean_hs / 60).clip(-0.5, 0.5)  # Limita impacto extremo
-  df['Quadrant_Dist'] = df['Quadrant_Dist'] * weight
+    # 🎚️ Ângulo absoluto em graus (0°–90°)
+    df['Quadrant_Angle'] = np.degrees(np.abs(angle))
+    df['Quadrant_Angle'] = df['Quadrant_Angle'].apply(lambda x: x if x <= 90 else 180 - x)
 
-  return df
+    # ⚖️ Ponderação de confiança usando HandScore médio
+    mean_hs = (df['HandScore_Home'].fillna(0) + df['HandScore_Away'].fillna(0)) / 2
+    weight = 1 + (mean_hs / 60).clip(-0.5, 0.5)  # Limita impacto extremo
+    df['Quadrant_Dist'] = df['Quadrant_Dist'] * weight
+
+    return df
+
 
 # Aplicar ao games_today
 games_today = calcular_distancias_quadrantes(games_today)
@@ -742,7 +747,7 @@ def treinar_modelo_quadrantes_16_dual(history, games_today):
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
 
     # Features contínuas
-    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 'Quadrant_Cos']].fillna(0)
+    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 'Quadrant_Cos','Quadrant_Angle']].fillna(0)
 
     # Combinar todas as features
     X = pd.concat([quadrantes_home, quadrantes_away, ligas_dummies, extras], axis=1)
