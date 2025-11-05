@@ -1176,7 +1176,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         return styler
 
     st.dataframe(
-        estilo_tabela_16_quadrantes(ranking_quadrantes[cols_finais].head(25))
+        estilo_tabela_16_quadrantes(ranking_quadrantes[cols_finais])
         .format({
             'Goals_H_Today': '{:.0f}',
             'Goals_A_Today': '{:.0f}',
