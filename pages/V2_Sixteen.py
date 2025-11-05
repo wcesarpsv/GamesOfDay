@@ -996,7 +996,7 @@ def gerar_estrategias_16_quadrantes(df):
     }
     
     for categoria, info in estrategias.items():
-        st.write(f"**{categoria}**")
+        st.subheader(f"**{categoria}**")
         st.write(f"📋 {info['descricao']}")
         st.write(f"🎯 Estratégia: {info['estrategia']}")
         st.write(f"📊 Confiança: {info['confianca']}")
@@ -1006,8 +1006,10 @@ def gerar_estrategias_16_quadrantes(df):
         st.write(f"🔢 Quadrantes: {quadrantes_str}")
         
         # Estatísticas da categoria
-        jogos_categoria = df[df['Quadrante_Home'].isin(info['quadrantes']) | 
-                            df['Quadrante_Away'].isin(info['quadrantes'])]
+        jogos_categoria = df[
+            df['Quadrante_Home'].isin(info['quadrantes']) | 
+            df['Quadrante_Away'].isin(info['quadrantes'])
+        ]
         
         if not jogos_categoria.empty:
             col1, col2, col3 = st.columns(3)
@@ -1019,8 +1021,37 @@ def gerar_estrategias_16_quadrantes(df):
             with col3:
                 high_value = len(jogos_categoria[jogos_categoria['Quadrante_ML_Score_Main'] >= 0.60])
                 st.metric("Alto Valor", high_value)
+
+            # 🔘 Botão para expandir / ocultar tabela
+            with st.expander(f"🔍 Ver confrontos da categoria {categoria}"):
+                cols_padrao = [
+                    'League', 'Home', 'Away', 
+                    'Quadrante_Home_Label', 'Quadrante_Away_Label',
+                    'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away',
+                    'Quadrante_ML_Score_Main', 'Recomendacao', 
+                    'Quadrant_Dist', 'Quadrant_Angle'
+                ]
+                cols_padrao = [c for c in cols_padrao if c in jogos_categoria.columns]
+                
+                st.dataframe(
+                    jogos_categoria[cols_padrao]
+                    .sort_values('Quadrante_ML_Score_Main', ascending=False)
+                    .style.format({
+                        'Quadrante_ML_Score_Home': '{:.1%}',
+                        'Quadrante_ML_Score_Away': '{:.1%}',
+                        'Quadrante_ML_Score_Main': '{:.1%}',
+                        'Quadrant_Dist': '{:.2f}',
+                        'Quadrant_Angle': '{:.1f}°'
+                    })
+                    .background_gradient(subset=['Quadrante_ML_Score_Main'], cmap='RdYlGn'),
+                    use_container_width=True
+                )
+
+        else:
+            st.info("Nenhum jogo encontrado nesta categoria.")
         
         st.write("---")
+
 
 ##### BLOCO 12: SISTEMA DE SCORING COMBINADO #####
 
