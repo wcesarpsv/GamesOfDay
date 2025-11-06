@@ -321,10 +321,10 @@ def apply_handicap_results_v9(df):
 
         # Mapear outcome para resultado e profit
         if val == 1: 
-            profit = odd - 1 if not pd.isna(odd) else 1
+            profit = odd  if not pd.isna(odd) else 1
             return pd.Series([1, "FULL WIN", profit, side_bet])
         elif val == 0.5: 
-            profit = (odd - 1) / 2 if not pd.isna(odd) else 0.5
+            profit = odd / 2 if not pd.isna(odd) else 0.5
             return pd.Series([0.5, "HALF WIN", profit, side_bet])
         elif val == 0: 
             return pd.Series([0, "PUSH", 0, side_bet])
