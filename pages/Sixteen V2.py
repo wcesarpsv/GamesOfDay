@@ -109,74 +109,193 @@ def convert_asian_line_to_home(value):
     except ValueError:
         return np.nan
 
-##### BLOCO 3: FUNÇÕES HANDICAP ASIÁTICO V9 (VALIDADAS) #####
+##### BLOCO 3: FUNÇÕES HANDICAP ASIÁTICO V9 CORRIGIDAS (TABELAS OFICIAIS) #####
 
-def asian_handicap_outcome_v9(margin, line):
-    diff = margin - line
-
-    # Linhas inteiras
-    if line.is_integer():
-        if diff > 0:
-            return 1
-        elif diff == 0:
-            return 0
+def handicap_favorito_v9(margin, line):
+    """
+    Calcula handicap para FAVORITOS (linhas negativas)
+    margin: gols_home - gols_away
+    line: linha negativa (ex: -0.25, -1.25, etc)
+    """
+    line_abs = abs(line)
+    
+    # Linhas inteiras (-1, -2, etc)
+    if line_abs.is_integer():
+        if margin > line_abs:
+            return 1      # Win
+        elif margin == line_abs:
+            return 0      # Push
         else:
-            return -1
-
-    # Meias linhas
-    if abs(line * 2 % 2) == 1:
-        return 1 if diff > 0 else -1
-
-    # Linhas -0.75 e +0.75
-    if line == -0.75:
-        if margin >= 2:
-            return 1
-        elif margin == 1:
-            return 0.5
-        else:
-            return -1
-    if line == 0.75:
-        if margin >= 1:
-            return 1
+            return -1     # Lose
+    
+    # Linha -0.25
+    elif line == -0.25:
+        if margin > 0:
+            return 1      # Win
         elif margin == 0:
-            return 1
-        elif margin == -1:
-            return -0.5
+            return -0.5   # Half lose
         else:
-            return -1
+            return -1     # Lose
+    
+    # Linha -0.50
+    elif line == -0.50:
+        if margin > 0:
+            return 1      # Win
+        else:
+            return -1     # Lose
+    
+    # Linha -0.75
+    elif line == -0.75:
+        if margin >= 2:
+            return 1      # Win by 2+
+        elif margin == 1:
+            return 0.5    # Half win
+        else:
+            return -1     # Lose
+    
+    # Linha -1.25
+    elif line == -1.25:
+        if margin >= 2:
+            return 1      # Win by 2+
+        elif margin == 1:
+            return -0.5   # Half lose
+        else:
+            return -1     # Lose
+    
+    # Linha -1.50
+    elif line == -1.50:
+        if margin >= 2:
+            return 1      # Win by 2+
+        else:
+            return -1     # Lose
+    
+    # Linha -1.75
+    elif line == -1.75:
+        if margin >= 3:
+            return 1      # Win by 3+
+        elif margin == 2:
+            return 0.5    # Half win
+        else:
+            return -1     # Lose
+    
+    # Linha -2.00
+    elif line == -2.00:
+        if margin > 2:
+            return 1      # Win by 3+
+        elif margin == 2:
+            return 0      # Push
+        else:
+            return -1     # Lose
+    
+    return np.nan
 
-    # Linhas ±0.25
-    half = 0.25 if line > 0 else -0.25
-    res1 = asian_handicap_outcome_v9(margin, line - half)
-    res2 = asian_handicap_outcome_v9(margin, line + half)
-    return np.mean([res1, res2])
-
-def adjust_draw_cases(val, margin, line):
-    """Ajusta empates conforme a tabela oficial"""
-    if margin == 0:
-        if line == -0.25: return -0.5
-        if line == +0.25: return 0.5
-        if line == -0.5:  return -1
-        if line == +0.5:  return 1
-    return val
+def handicap_underdog_v9(margin, line):
+    """
+    Calcula handicap para UNDERDOGS (linhas positivas)
+    margin: gols_home - gols_away  
+    line: linha positiva (ex: +0.25, +1.25, etc)
+    """
+    # Linhas inteiras (0, +1, +2, etc)
+    if line.is_integer():
+        if margin >= -line:
+            return 1      # Win ou empate
+        elif margin == -(line + 1):
+            return 0      # Push (perde por exatamente line+1)
+        else:
+            return -1     # Lose
+    
+    # Linha +0.25
+    elif line == 0.25:
+        if margin > 0:
+            return 1      # Win
+        elif margin == 0:
+            return 0.5    # Half win
+        else:
+            return -1     # Lose
+    
+    # Linha +0.50
+    elif line == 0.50:
+        if margin >= 0:
+            return 1      # Win ou Draw
+        else:
+            return -1     # Lose
+    
+    # Linha +0.75
+    elif line == 0.75:
+        if margin >= 0:
+            return 1      # Win ou Draw
+        elif margin == -1:
+            return -0.5   # Half lose (lose by 1)
+        else:
+            return -1     # Lose
+    
+    # Linha +1.00
+    elif line == 1.00:
+        if margin >= -1:
+            return 1      # Win, Draw ou Lose by 1
+        else:
+            return -1     # Lose by 2+
+    
+    # Linha +1.25
+    elif line == 1.25:
+        if margin >= -1:
+            return 1      # Win, Draw ou Lose by 1
+        elif margin == -2:
+            return 0.5    # Half win (lose by 2)
+        else:
+            return -1     # Lose by 3+
+    
+    # Linha +1.50
+    elif line == 1.50:
+        if margin >= -1:
+            return 1      # Win, Draw ou Lose by 1
+        else:
+            return -1     # Lose by 2+
+    
+    # Linha +1.75
+    elif line == 1.75:
+        if margin >= -1:
+            return 1      # Win, Draw ou Lose by 1
+        elif margin == -2:
+            return -0.5   # Half lose (lose by 2)
+        else:
+            return -1     # Lose by 3+
+    
+    # Linha +2.00
+    elif line == 2.00:
+        if margin >= -2:
+            return 1      # Win, Draw ou Lose by 1-2
+        elif margin == -3:
+            return 0      # Push (lose by 3)
+        else:
+            return -1     # Lose by 4+
+    
+    return np.nan
 
 def handicap_home_v9(row):
+    """Calcula handicap para apostas no HOME"""
     margin = row['Goals_H_Today'] - row['Goals_A_Today']
     line = row['Asian_Line_Decimal']
-    val = asian_handicap_outcome_v9(margin, line)
-    return adjust_draw_cases(val, margin, line)
+    
+    if line < 0:  # Home é favorito
+        return handicap_favorito_v9(margin, line)
+    else:  # Home é underdog
+        return handicap_underdog_v9(margin, line)
 
 def handicap_away_v9(row):
-    margin = row['Goals_A_Today'] - row['Goals_H_Today']
-    line = -row['Asian_Line_Decimal']
-    val = asian_handicap_outcome_v9(margin, line)
-    return adjust_draw_cases(val, margin, line)
+    """Calcula handicap para apostas no AWAY"""
+    margin = row['Goals_A_Today'] - row['Goals_H_Today']  
+    line = -row['Asian_Line_Decimal']  # Inverte a linha
+    
+    if line < 0:  # Away é favorito
+        return handicap_favorito_v9(margin, line)
+    else:  # Away é underdog
+        return handicap_underdog_v9(margin, line)
 
 def apply_handicap_results_v9(df):
-    """Aplica a avaliação de Handicap Asiático e lucro (v9)"""
+    """Aplica a avaliação de Handicap Asiático e lucro (v9 CORRIGIDO)"""
     df = df.copy()
     
-
     def process_row(row):
         """Processa cada linha para determinar outcome e profit"""
         rec = str(row.get('Recomendacao', '')).upper()
@@ -189,11 +308,11 @@ def apply_handicap_results_v9(df):
         
         # Determinar qual lado apostar baseado na recomendação
         if 'HOME' in rec:
-            val = handicap_home_v9(row)
+            val = handicap_home_v9(row)  # ← NOVA FUNÇÃO
             odd = odd_home
             side_bet = 'HOME'
         elif 'AWAY' in rec:
-            val = handicap_away_v9(row)
+            val = handicap_away_v9(row)  # ← NOVA FUNÇÃO
             odd = odd_away  
             side_bet = 'AWAY'
         else:
@@ -201,9 +320,11 @@ def apply_handicap_results_v9(df):
 
         # Mapear outcome para resultado e profit
         if val == 1: 
-            return pd.Series([1, "FULL WIN", odd , side_bet])
+            profit = odd  if not pd.isna(odd) else 1
+            return pd.Series([1, "FULL WIN", profit, side_bet])
         elif val == 0.5: 
-            return pd.Series([0.5, "HALF WIN", odd  / 2, side_bet])
+            profit = odd / 2 if not pd.isna(odd) else 0.5
+            return pd.Series([0.5, "HALF WIN", profit, side_bet])
         elif val == 0: 
             return pd.Series([0, "PUSH", 0, side_bet])
         elif val == -0.5: 
@@ -222,7 +343,7 @@ def apply_handicap_results_v9(df):
     return df
 
 def generate_live_summary_v9(df):
-    """Gera resumo em tempo real usando o sistema v9"""
+    """Gera resumo em tempo real usando o sistema v9 CORRIGIDO"""
     finished_games = df.dropna(subset=['Outcome_Final'])
     
     if finished_games.empty:
@@ -269,8 +390,6 @@ def generate_live_summary_v9(df):
         "Half Losses": int(half_losses),
         "Losses": int(losses)
     }
-
-
 
 
 ##### BLOCO 15: FUNÇÃO CALC_HANDICAP_RESULT (COMPATIBILIDADE) #####
