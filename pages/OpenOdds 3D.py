@@ -2150,7 +2150,45 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
                           .highlight_min(axis=1, color='#ffb3b3'),
             use_container_width=True
         )
-
+    # ================================================================
+    # 📡 CHAMAR O LIVE SCORE MONITOR - SISTEMA ATUALIZADO V9
+    # ================================================================
+    
+    # Aplicar atualização em tempo real 3D (Handicap Asiático)
+    ranking_3d = update_real_time_data_3d(ranking_3d)
+    
+    # Aplicar atualização em tempo real 1x2
+    ranking_3d = update_real_time_data_1x2(ranking_3d)
+    
+    # Exibir resumo live 3D
+    st.markdown("## 📡 Live Score Monitor - Sistema 3D (Handicap Asiático)")
+    live_summary_3d = generate_live_summary_3d(ranking_3d)
+    st.json(live_summary_3d)
+    
+    # Exibir resumo 1x2
+    st.markdown("## 📡 Live Score Monitor - Sistema 3D (1x2)")
+    finished_1x2 = ranking_3d[ranking_3d['Result_1x2'].notna()]
+    if not finished_1x2.empty:
+        total_bets = finished_1x2['Quadrante_Correct_1x2'].notna().sum()
+        correct_bets = finished_1x2['Quadrante_Correct_1x2'].sum()
+        total_profit = finished_1x2['Profit_1x2'].sum()
+        winrate = correct_bets / total_bets if total_bets > 0 else 0
+        roi = total_profit / total_bets if total_bets > 0 else 0
+    
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Apostas (1x2)", total_bets)
+        with col2:
+            st.metric("Winrate (1x2)", f"{winrate:.1%}")
+        with col3:
+            st.metric("Lucro Total (1x2)", f"{total_profit:.2f}u")
+        with col4:
+            st.metric("ROI (1x2)", f"{roi:.1%}")
+    else:
+        st.info("⚠️ Nenhum jogo finalizado ainda para o sistema 1x2.")
+    
+    # Exibir comparativo de sistemas
+    compare_systems_summary(ranking_3d)
 
 
     #####################################################################
