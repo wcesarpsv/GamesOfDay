@@ -1246,6 +1246,128 @@ if not games_today.empty and 'Classificacao_Potencial' in games_today.columns:
 
 st.markdown("---")
 
+##### BLOCO EXTRA: ANÁLISE DETALHADA DAS DISTÂNCIAS #####
+
+st.markdown("## 📐 Análise Detalhada das Distâncias Euclidianas")
+
+if 'Quadrant_Dist' in games_today.columns:
+    distancias = games_today['Quadrant_Dist'].dropna()
+    
+    if not distancias.empty:
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Média", f"{distancias.mean():.2f}")
+        with col2:
+            st.metric("Mediana", f"{distancias.median():.2f}")
+        with col3:
+            st.metric("Máxima", f"{distancias.max():.2f}")
+        with col4:
+            st.metric("Mínima", f"{distancias.min():.2f}")
+        
+        # Análise de distribuição
+        st.markdown("### 📈 Distribuição das Distâncias")
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+        
+        # Histograma
+        ax1.hist(distancias, bins=20, alpha=0.7, color='skyblue', edgecolor='black')
+        ax1.axvline(distancias.mean(), color='red', linestyle='--', label=f'Média: {distancias.mean():.2f}')
+        ax1.axvline(distancias.median(), color='green', linestyle='--', label=f'Mediana: {distancias.median():.2f}')
+        ax1.set_xlabel('Distância Euclidiana')
+        ax1.set_ylabel('Frequência')
+        ax1.set_title('Distribuição das Distâncias entre Times')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+        
+        # Box plot
+        ax2.boxplot(distancias, vert=False)
+        ax2.set_xlabel('Distância Euclidiana')
+        ax2.set_title('Box Plot - Dispersão das Distâncias')
+        ax2.grid(True, alpha=0.3)
+        
+        st.pyplot(fig)
+        
+        # Classificação por percentis
+        st.markdown("### 🎯 Classificação por Níveis de Distância")
+        
+        p25 = distancias.quantile(0.25)
+        p50 = distancias.quantile(0.50)
+        p75 = distancias.quantile(0.75)
+        
+        st.write(f"**Percentis:**")
+        st.write(f"- 25% (Baixa): ≤ {p25:.2f}")
+        st.write(f"- 50% (Média): ≤ {p50:.2f}") 
+        st.write(f"- 75% (Alta): ≤ {p75:.2f}")
+        st.write(f"- Máxima: {distancias.max():.2f}")
+        
+        # Exemplos práticos
+        st.markdown("### 🔍 Exemplos Práticos do Dataset")
+        
+        # Encontrar exemplos reais
+        exemplos = {
+            "Muito Baixa": distancias[distancias <= p25].head(3),
+            "Média": distancias[(distancias > p25) & (distancias <= p75)].head(3),
+            "Alta": distancias[distancias > p75].head(3)
+        }
+        
+        for categoria, valores in exemplos.items():
+            if not valores.empty:
+                st.write(f"**{categoria} Distância** ({valores.min():.2f} - {valores.max():.2f}):")
+                
+                for dist_val in valores.index:
+                    if dist_val in games_today.index:
+                        jogo = games_today.loc[dist_val]
+                        st.write(
+                            f"- **{jogo.get('Home', 'N/A')} vs {jogo.get('Away', 'N/A')}**: "
+                            f"Dist = {jogo['Quadrant_Dist']:.2f} | "
+                            f"M_H = {jogo.get('M_H', 'N/A'):.2f} | " 
+                            f"M_A = {jogo.get('M_A', 'N/A'):.2f} | "
+                            f"MT_H = {jogo.get('MT_H', 'N/A'):.2f} | "
+                            f"MT_A = {jogo.get('MT_A', 'N/A'):.2f}"
+                        )
+
+
+# Adicione isto também:
+st.markdown("### 📖 Guia de Interpretação das Distâncias")
+
+interpretacao_data = {
+    "Faixa": ["0.0 - 0.5", "0.5 - 1.0", "1.0 - 1.5", "1.5 - 2.0", "2.0+"],
+    "Nível": ["MUITO BAIXO", "BAIXO", "MODERADO", "ALTO", "MUITO ALTO"],
+    "Significado": [
+        "Times praticamente iguais em força e forma",
+        "Pequeno desequilíbrio - jogo equilibrado", 
+        "Desequilíbrio claro - favorito definido",
+        "Desequilíbrio significativo - oportunidade potencial",
+        "Desequilíbrio extremo - alta confiança no favorito"
+    ],
+    "Recomendação": [
+        "⚖️ EVITAR - Muito incerto",
+        "🤔 ANALISAR - Buscar outros fatores",
+        "📊 CONSIDERAR - Bom para análise",
+        "🎯 PRIORIZAR - Potencial valor", 
+        "⭐ FOCAR - Alto potencial"
+    ]
+}
+
+interpretacao_df = pd.DataFrame(interpretacao_data)
+st.table(interpretacao_df)
+
+# Mostrar os TOP confrontos por distância
+st.markdown("### 🏆 Top 10 Confrontos Mais Desequilibrados")
+top_distancias = games_today.nlargest(10, 'Quadrant_Dist')[
+    ['Home', 'Away', 'League', 'Quadrant_Dist', 'M_H', 'M_A', 'MT_H', 'MT_A', 'Quadrant_Angle']
+].copy()
+
+st.dataframe(
+    top_distancias.style.format({
+        'Quadrant_Dist': '{:.2f}',
+        'M_H': '{:.2f}', 'M_A': '{:.2f}',
+        'MT_H': '{:.2f}', 'MT_A': '{:.2f}',
+        'Quadrant_Angle': '{:.1f}°'
+    }).background_gradient(subset=['Quadrant_Dist'], cmap='Reds'),
+    use_container_width=True
+)
+
 st.success("🎯 **Sistema de 16 Quadrantes ML** implementado com sucesso!")
 st.info("""
 **Resumo das melhorias:**
