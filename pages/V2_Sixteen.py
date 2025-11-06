@@ -589,8 +589,8 @@ def plot_quadrantes_16(df, side="Home"):
         ax.text(x, y, text, ha='center', fontsize=fontsize, weight='bold')
 
     # 🔧 Configurações gerais
-    ax.set_xlabel(f"Aggression_{side} (-1 zebra ↔ +1 favorito)", fontsize=11)
-    ax.set_ylabel(f"HandScore_{side} (-60 ↔ +60)", fontsize=11)
+    ax.set_xlabel(f"Performance na Liga (M_{side})", fontsize=11)
+    ax.set_ylabel(f"Forma vs Próprio Padrão (MT_{side})", fontsize=11)
     ax.set_title(f"🎯 16 Quadrantes – {side}", fontsize=14, weight='bold')
 
     # 🔖 Legenda agrupada por família
@@ -666,6 +666,8 @@ for _, row in df_plot.iterrows():
         hovertext=(
             f"<b>{row['Home']} vs {row['Away']}</b><br>"
             f"🏆 {row.get('League','N/A')}<br>"
+            f"📊 Home M: {row.get('M_H','N/A'):.2f} | MT: {row.get('MT_H','N/A'):.2f}<br>"  # NOVO
+            f"📊 Away M: {row.get('M_A','N/A'):.2f} | MT: {row.get('MT_A','N/A'):.2f}<br>"  # NOVO
             f"🎯 Home: {QUADRANTES_16.get(row['Quadrante_Home'], {}).get('nome', 'N/A')}<br>"
             f"🎯 Away: {QUADRANTES_16.get(row['Quadrante_Away'], {}).get('nome', 'N/A')}<br>"
             f"📏 Distância: {row['Quadrant_Dist']:.2f}"
@@ -721,8 +723,8 @@ if selected_league != "⚽ Todas as ligas":
 
 fig.update_layout(
     title=titulo,
-    xaxis_title="Aggression (-1 zebra ↔ +1 favorito)",
-    yaxis_title="HandScore (-60 ↔ +60)",
+    xaxis_title="Performance na Liga (M)",
+    yaxis_title="Forma vs Próprio Padrão (MT)",
     template="plotly_white",
     height=700,
     hovermode="closest",
