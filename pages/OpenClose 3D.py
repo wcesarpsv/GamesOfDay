@@ -696,7 +696,6 @@ def treinar_ml_mercado(history, games_today):
 ##############################
 # Bloco 10 - Sistema Híbrido e Recomendações
 
-
 def gerar_recomendacao_3d_16_dual(row):
     home_q = row['Quadrante_Home_Label']
     away_q = row['Quadrante_Away_Label']
