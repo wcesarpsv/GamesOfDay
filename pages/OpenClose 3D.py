@@ -2525,7 +2525,7 @@ def combinar_modelos_ml1_ml2(games_today, lim_conf_modelo=0.65, lim_conf_mercado
 
     df_exibir = df[
         [
-            "League", "Home", "Away",
+            "League", "Home", "Away",'Goals_H_Today','Goals_A_Today'
             "ML_Side", "Market_Pred_Side",
             "Score_Model_Chosen", "Market_Pred_Confidence",
             "Consensus_Score", "Consensus_Label"
@@ -2538,6 +2538,8 @@ def combinar_modelos_ml1_ml2(games_today, lim_conf_modelo=0.65, lim_conf_mercado
                       ("background-color:#ff8c00; color:white;" if v == "⚠️ Divergente Value" else None),
             subset=["Consensus_Label"]
         ).format({
+            "Goals_H_Today": "{:.0f}",
+            "Goals_A_Today": "{:.0f}",
             "Score_Model_Chosen": "{:.2f}",
             "Market_Pred_Confidence": "{:.2f}",
             "Consensus_Score": "{:.2f}"
