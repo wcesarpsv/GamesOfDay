@@ -2582,6 +2582,59 @@ def combinar_modelos_ml1_ml2(games_today, lim_conf_modelo=0.65, lim_conf_mercado
 games_today = combinar_modelos_ml1_ml2(games_today)
 
 
+# =====================================================
+# 📊 ANÁLISE DE MOVIMENTO DE ODDS (Abertura → Fecho)
+# =====================================================
+
+if {"Odd_H", "Odd_D", "Odd_A", "Odd_H_OP", "Odd_D_OP", "Odd_A_OP"}.issubset(games_today.columns):
+
+    # Diferenças absolutas e percentuais
+    games_today["ΔOdd_H_%"] = ((games_today["Odd_H"] - games_today["Odd_H_OP"]) / games_today["Odd_H_OP"] * 100).round(2)
+    games_today["ΔOdd_D_%"] = ((games_today["Odd_D"] - games_today["Odd_D_OP"]) / games_today["Odd_D_OP"] * 100).round(2)
+    games_today["ΔOdd_A_%"] = ((games_today["Odd_A"] - games_today["Odd_A_OP"]) / games_today["Odd_A_OP"] * 100).round(2)
+
+    # Label interpretativo
+    def interpretar_movimento(r):
+        movimentos = []
+        if r["ΔOdd_H_%"] < -2:
+            movimentos.append("📉 Home caiu")
+        elif r["ΔOdd_H_%"] > 2:
+            movimentos.append("📈 Home subiu")
+
+        if r["ΔOdd_A_%"] < -2:
+            movimentos.append("📉 Away caiu")
+        elif r["ΔOdd_A_%"] > 2:
+            movimentos.append("📈 Away subiu")
+
+        if r["ΔOdd_D_%"] < -2:
+            movimentos.append("📉 Draw caiu")
+        elif r["ΔOdd_D_%"] > 2:
+            movimentos.append("📈 Draw subiu")
+
+        return ", ".join(movimentos) if movimentos else "⚖️ Estável"
+
+    games_today["Market_Move_Label"] = games_today.apply(interpretar_movimento, axis=1)
+
+    # Mostra tabela resumida no Streamlit
+    st.markdown("## 📊 Movimento de Odds – Abertura → Fecho")
+    st.dataframe(
+        games_today[
+            ["League", "Home", "Away", "ML_Side", "Market_Pred_Side",
+             "Odd_H_OP", "Odd_H", "ΔOdd_H_%",
+             "Odd_D_OP", "Odd_D", "ΔOdd_D_%",
+             "Odd_A_OP", "Odd_A", "ΔOdd_A_%",
+             "Market_Move_Label"]
+        ].sort_values("ΔOdd_H_%", ascending=True)
+        .style.format({
+            "Odd_H_OP": "{:.2f}", "Odd_H": "{:.2f}", "ΔOdd_H_%": "{:+.2f}%",
+            "Odd_D_OP": "{:.2f}", "Odd_D": "{:.2f}", "ΔOdd_D_%": "{:+.2f}%",
+            "Odd_A_OP": "{:.2f}", "Odd_A": "{:.2f}", "ΔOdd_A_%": "{:+.2f}%"
+        })
+        .applymap(lambda v: "background-color:#228B22; color:white" if isinstance(v, float) and v < -2 else None, subset=["ΔOdd_H_%", "ΔOdd_D_%", "ΔOdd_A_%"])
+        .applymap(lambda v: "background-color:#B22222; color:white" if isinstance(v, float) and v > 2 else None, subset=["ΔOdd_H_%", "ΔOdd_D_%", "ΔOdd_A_%"])
+    )
+else:
+    st.warning("⚠️ Colunas de odds de abertura/fecho não encontradas para análise de movimento.")
 
 
 
