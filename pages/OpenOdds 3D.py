@@ -2160,12 +2160,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         else:
             st.info("⚖️ **Sistemas com performance similar**")
     
-        st.markdown("### ⚖️ Comparativo de Performance – AH vs 1x2")
-        st.dataframe(
-            resumo.style.highlight_max(axis=1, color='lightgreen')
-                          .highlight_min(axis=1, color='#ffb3b3'),
-            use_container_width=True
-        )
+
     # ================================================================
     # 📡 CHAMAR O LIVE SCORE MONITOR - SISTEMA ATUALIZADO V9
     # ================================================================
