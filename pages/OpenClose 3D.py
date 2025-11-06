@@ -2465,7 +2465,7 @@ else:
 # -------------------------------------------------
 # ⚙️ 2️⃣ Função principal de fusão ML1+ML2
 # -------------------------------------------------
-def combinar_modelos_ml1_ml2(games_today, lim_conf_modelo=0.65, lim_conf_mercado=0.60):
+def combinar_modelos_ml1_ml2(games_today, lim_conf_modelo=0.55, lim_conf_mercado=0.50):
     """
     Integra previsões da ML1 (modelo 3D) e ML2 (movimento de mercado),
     calculando sinergia e consenso probabilístico.
