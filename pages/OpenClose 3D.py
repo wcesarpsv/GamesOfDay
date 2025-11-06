@@ -1,3 +1,6 @@
+#####################################
+# BLOCO 1 
+
 from __future__ import annotations
 import streamlit as st
 import pandas as pd
