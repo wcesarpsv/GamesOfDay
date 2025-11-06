@@ -2621,13 +2621,15 @@ if {"Odd_H", "Odd_D", "Odd_A", "Odd_H_OP", "Odd_D_OP", "Odd_A_OP"}.issubset(game
     st.markdown("## 📊 Movimento de Odds – Abertura → Fecho")
     st.dataframe(
         games_today[
-            ["League", "Home", "Away", "ML_Side", "Market_Pred_Side",
+            ["League", "Home", "Away", "ML_Side", "Market_Pred_Side",'Goals_H_Today','Goals_A_Today',
              "Odd_H_OP", "Odd_H", "ΔOdd_H_%",
              "Odd_D_OP", "Odd_D", "ΔOdd_D_%",
              "Odd_A_OP", "Odd_A", "ΔOdd_A_%",
              "Market_Move_Label"]
         ].sort_values("ΔOdd_H_%", ascending=True)
         .style.format({
+            "Goals_H_Today": "{:.0f}",
+            "Goals_A_Today": "{:.0f}",
             "Odd_H_OP": "{:.2f}", "Odd_H": "{:.2f}", "ΔOdd_H_%": "{:+.2f}%",
             "Odd_D_OP": "{:.2f}", "Odd_D": "{:.2f}", "ΔOdd_D_%": "{:+.2f}%",
             "Odd_A_OP": "{:.2f}", "Odd_A": "{:.2f}", "ΔOdd_A_%": "{:+.2f}%"
