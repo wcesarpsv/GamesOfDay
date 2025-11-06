@@ -113,61 +113,6 @@ def calculate_ah_home_target(margin, asian_line_str):
 
 from sklearn.cluster import KMeans
 
-# ==============================================================
-# 🧩 BLOCO – CLUSTERIZAÇÃO 3D (KMEANS)
-# ==============================================================
-
-# def aplicar_clusterizacao_3d(df, n_clusters=2, random_state=42):
-#     """
-#     Cria clusters espaciais com base em Aggression, Momentum Liga e Momentum Time.
-#     Retorna o DataFrame com a nova coluna 'Cluster3D_Label'.
-#     """
-
-#     df = df.copy()
-
-#     # Garante as colunas necessárias
-#     required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
-#     missing = [c for c in required_cols if c not in df.columns]
-#     if missing:
-#         st.warning(f"⚠️ Colunas ausentes para clusterização 3D: {missing}")
-#         df['Cluster3D_Label'] = -1
-#         return df
-
-#     # Diferenças espaciais (vetor 3D)
-#     df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
-#     df['dy'] = df['M_H'] - df['M_A']
-#     df['dz'] = df['MT_H'] - df['MT_A']
-
-#     X_cluster = df[['dx', 'dy', 'dz']].fillna(0).to_numpy()
-
-#     # KMeans 3D
-#     kmeans = KMeans(
-#         n_clusters=n_clusters,
-#         random_state=random_state,
-#         init='k-means++',   # garante convergência estável
-#         n_init=10           # mais robusto
-#     )
-#     df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
-
-#     # 🧠 Calcular centroide de cada cluster para diagnóstico
-#     centroids = pd.DataFrame(kmeans.cluster_centers_, columns=['dx', 'dy', 'dz'])
-#     centroids['Cluster'] = range(n_clusters)
-
-#     st.markdown("### 🧭 Clusters 3D Criados (KMeans)")
-#     st.dataframe(centroids.style.format({'dx': '{:.2f}', 'dy': '{:.2f}', 'dz': '{:.2f}'}))
-
-#     # Adicionar também uma descrição textual leve (para visualização)
-#     df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
-#         0: '⚡ Agressivos + Momentum Positivo',
-#         1: '💤 Reativos + Momentum Negativo',
-#         2: '⚖️ Equilibrados',
-#         3: '🔥 Alta Variância',
-#         4: '🌪️ Caóticos / Transição'
-#     }).fillna('🌀 Outro')
-
-#     return df
-
-
 def aplicar_clusterizacao_3d_segura(history, games_today, n_clusters=5):
     """
     Clusterização temporalmente segura:
@@ -2596,6 +2541,14 @@ def combinar_modelos_ml1_ml2(games_today, lim_conf_modelo=0.65, lim_conf_mercado
     """)
 
     return df
+
+
+
+# 🔧 Garantia de colunas antes da fusão ML1+ML2
+for col in ["ML_Side", "Score_Final_3D", "Market_Pred_Side", "Market_Pred_Confidence"]:
+    if col not in games_today.columns:
+        games_today[col] = np.nan
+
 
 
 # -------------------------------------------------
