@@ -85,6 +85,47 @@ def calculate_ah_home_target(margin, asian_line_str):
 
 
 
+#############################################
+# 🧮 Funções auxiliares para ML de Mercado
+#############################################
+
+def handicap_result_from_ft(margin, line):
+    """
+    Simplificação do resultado do handicap asiático apenas para ML de mercado.
+    Retorna:
+      1  → Vitória clara (FT margin > line)
+      0  → Empate com a linha (push)
+     -1  → Derrota (FT margin < line)
+    """
+    if pd.isna(margin) or pd.isna(line):
+        return np.nan
+    if margin > line:
+        return 1
+    elif margin == line:
+        return 0
+    else:
+        return -1
+
+
+def profit_from_outcome(outcome, odd):
+    """
+    Calcula lucro esperado com base no resultado do handicap.
+    Exemplo: odd=1.90, outcome=1 → +0.90u; outcome=-1 → -1u.
+    """
+    if pd.isna(outcome) or pd.isna(odd):
+        return np.nan
+    if outcome == 1:
+        return odd
+    elif outcome == 0:
+        return 0
+    elif outcome == -1:
+        return -1
+    else:
+        return np.nan
+
+
+
+
 ###############################################
 # BLOCO 3
 
