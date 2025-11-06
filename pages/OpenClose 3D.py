@@ -2443,32 +2443,44 @@ modelo_mercado, games_today = treinar_ml_movimento_mercado(history, games_today)
 
 
 # =====================================================
-# 🔄 FUSÃO DE INSIGHTS – ML1 (Modelo 3D) + ML2 (Movimento de Mercado)
+# 🧩 BLOCO FINAL – SINERGIA ML1 + ML2
 # =====================================================
 
+import plotly.express as px
+
+# -------------------------------------------------
+# ⚙️ 1️⃣ Cria Score_Model_Chosen com base no lado previsto pela ML1
+# -------------------------------------------------
+if {"Quadrante_ML_Score_Home", "Quadrante_ML_Score_Away", "ML_Side"}.issubset(games_today.columns):
+    games_today["Score_Model_Chosen"] = np.where(
+        games_today["ML_Side"].str.upper() == "HOME",
+        games_today["Quadrante_ML_Score_Home"],
+        games_today["Quadrante_ML_Score_Away"]
+    )
+else:
+    st.warning("⚠️ Colunas de score 3D não encontradas para gerar Score_Model_Chosen.")
+    games_today["Score_Model_Chosen"] = np.nan
+
+
+# -------------------------------------------------
+# ⚙️ 2️⃣ Função principal de fusão ML1+ML2
+# -------------------------------------------------
 def combinar_modelos_ml1_ml2(games_today, lim_conf_modelo=0.65, lim_conf_mercado=0.60):
+    """
+    Integra previsões da ML1 (modelo 3D) e ML2 (movimento de mercado),
+    calculando sinergia e consenso probabilístico.
+    """
     df = games_today.copy()
 
     # -------------------------------------------------
-    # ⚙️ 1️⃣ Cria score consolidado com base no lado escolhido
-    # -------------------------------------------------
-    if "Score_Model_Chosen" not in df.columns and \
-       {"Quadrante_ML_Score_Home", "Quadrante_ML_Score_Away", "ML_Side"}.issubset(df.columns):
-        df["Score_Model_Chosen"] = np.where(
-            df["ML_Side"].str.upper() == "HOME",
-            df["Quadrante_ML_Score_Home"],
-            df["Quadrante_ML_Score_Away"]
-        )
-
-    # -------------------------------------------------
-    # ⚙️ 2️⃣ Verificação mínima
+    # ⚙️ 3️⃣ Verificação mínima
     # -------------------------------------------------
     if not {"ML_Side", "Score_Model_Chosen", "Market_Pred_Side", "Market_Pred_Confidence"}.issubset(df.columns):
         st.warning("⚠️ Fusão ML1+ML2: colunas necessárias não encontradas.")
         return df
 
     # -------------------------------------------------
-    # ⚙️ 3️⃣ Concordância e divergência
+    # ⚙️ 4️⃣ Concordância e divergência
     # -------------------------------------------------
     df["ML_Agree_Market"] = np.where(
         (df["ML_Side"].str.upper() == df["Market_Pred_Side"]) &
@@ -2485,14 +2497,14 @@ def combinar_modelos_ml1_ml2(games_today, lim_conf_modelo=0.65, lim_conf_mercado
     )
 
     # -------------------------------------------------
-    # ⚙️ 4️⃣ Consensus Score
+    # ⚙️ 5️⃣ Consensus Score
     # -------------------------------------------------
     df["Consensus_Score"] = (
         df["Score_Model_Chosen"] * 0.5 + df["Market_Pred_Confidence"] * 0.5
     ).round(3)
 
     # -------------------------------------------------
-    # ⚙️ 5️⃣ Classificação do sinal
+    # ⚙️ 6️⃣ Classificação do sinal
     # -------------------------------------------------
     df["Consensus_Label"] = np.select(
         [
@@ -2507,9 +2519,10 @@ def combinar_modelos_ml1_ml2(games_today, lim_conf_modelo=0.65, lim_conf_mercado
     )
 
     # -------------------------------------------------
-    # ⚙️ 6️⃣ Visualização no Streamlit
+    # ⚙️ 7️⃣ Painel Streamlit – Tabela
     # -------------------------------------------------
     st.markdown("## 🔄 Sinergia entre Modelo 3D e Mercado (ML1 + ML2)")
+
     df_exibir = df[
         [
             "League", "Home", "Away",
@@ -2532,7 +2545,7 @@ def combinar_modelos_ml1_ml2(games_today, lim_conf_modelo=0.65, lim_conf_mercado
     )
 
     # -------------------------------------------------
-    # ⚙️ 7️⃣ Estatísticas rápidas
+    # ⚙️ 8️⃣ Estatísticas e gráfico de proporção
     # -------------------------------------------------
     total = len(df)
     n_agree = df["ML_Agree_Market"].sum()
@@ -2545,18 +2558,26 @@ def combinar_modelos_ml1_ml2(games_today, lim_conf_modelo=0.65, lim_conf_mercado
     - Divergentes (value bets potenciais): **{n_div} ({n_div/total:.1%})**
     """)
 
+    # Gráfico de proporção
+    counts = df["Consensus_Label"].value_counts().reset_index()
+    counts.columns = ["Tipo", "Qtd"]
+    fig = px.bar(
+        counts, x="Tipo", y="Qtd",
+        color="Tipo",
+        color_discrete_map={
+            "✅ Full Agreement": "#1e90ff",
+            "⚠️ Divergente Value": "#ff8c00",
+            "❕ Indefinido": "#808080"
+        },
+        title="Distribuição de Concordância ML1 vs ML2"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
     return df
 
 
-# 🔧 Garantia de colunas antes da fusão ML1+ML2
-for col in ["ML_Side", "Market_Pred_Side", "Score_Model_Chosen", "Market_Pred_Confidence","Consensus_Score", "Consensus_Label"]:
-    if col not in games_today.columns:
-        games_today[col] = np.nan
-
-
-
 # -------------------------------------------------
-# ⚙️ 7️⃣ Execução pós-ML2
+# ⚙️ 9️⃣ Execução final
 # -------------------------------------------------
 games_today = combinar_modelos_ml1_ml2(games_today)
 
