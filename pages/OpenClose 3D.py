@@ -2525,7 +2525,7 @@ def combinar_modelos_ml1_ml2(games_today, lim_conf_modelo=0.65, lim_conf_mercado
 
     df_exibir = df[
         [
-            "League", "Home", "Away",'Goals_H_Today','Goals_A_Today'
+            "League", "Home", "Away",'Goals_H_Today','Goals_A_Today',
             "ML_Side", "Market_Pred_Side",
             "Score_Model_Chosen", "Market_Pred_Confidence",
             "Consensus_Score", "Consensus_Label"
