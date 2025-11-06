@@ -1938,9 +1938,9 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
         # Calcular profit baseado no resultado
         if handicap_result == "FULL_WIN":
-            return odd - 1  # Profit líquido
+            return odd  # Odd líquida
         elif handicap_result == "HALF_WIN":
-            return (odd - 1) / 2
+            return odd / 2 # Odd líquida
         elif handicap_result == "PUSH":
             return 0
         elif handicap_result == "HALF_LOSS":
