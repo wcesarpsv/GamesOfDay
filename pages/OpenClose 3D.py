@@ -29,7 +29,7 @@ os.makedirs(MODELS_FOLDER, exist_ok=True)
 
 
 #################################
-
+# Bloco 2
 
 
 def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -83,7 +83,7 @@ def calculate_ah_home_target(margin, asian_line_str):
 
 
 ###############################################
-
+# BLOCO 3
 
 
 def setup_livescore_columns(df):
@@ -140,7 +140,7 @@ def load_and_merge_livescore(games_today, selected_date_str):
 
 
 ###########################################
-
+# BLOCO 4
 
 
 
@@ -172,7 +172,7 @@ games_today = load_and_merge_livescore(games_today, selected_date_str)
 
 
 ###########################################
-
+BLOCO 5
 
 
 
@@ -221,11 +221,33 @@ history['Quadrante_Away'] = history.apply(
 )
 
 
+################################
+# BLOCO 5.1 
+# ---------------- CRIAR LABELS DOS QUADRANTES ----------------
+def criar_labels_quadrantes(df):
+    """
+    Cria as labels descritivas para os quadrantes
+    """
+    df = df.copy()
+    
+    # Mapear quadrantes para labels
+    df['Quadrante_Home_Label'] = df['Quadrante_Home'].map(
+        lambda x: QUADRANTES_16.get(x, {}).get('nome', 'Neutro') if pd.notna(x) else 'Neutro'
+    )
+    df['Quadrante_Away_Label'] = df['Quadrante_Away'].map(
+        lambda x: QUADRANTES_16.get(x, {}).get('nome', 'Neutro') if pd.notna(x) else 'Neutro'
+    )
+    
+    return df
+
+# Aplicar criação de labels
+games_today = criar_labels_quadrantes(games_today)
+history = criar_labels_quadrantes(history)
 
 
 
 ##############################
-
+# BLOCO 6 
 
 
 def calcular_momentum_time(df, window=6):
@@ -672,8 +694,7 @@ def treinar_ml_mercado(history, games_today):
 
 
 ##############################
-
-#Bloco 10 - Sistema Híbrido e Recomendações
+# Bloco 10 - Sistema Híbrido e Recomendações
 
 
 def gerar_recomendacao_3d_16_dual(row):
@@ -932,7 +953,7 @@ def determine_handicap_result_3d(row):
 
 
 #####################################
-#Bloco 12 - Sistema de Monitoramento e Execução Final
+# Bloco 12 - Sistema de Monitoramento e Execução Final
 
 def check_handicap_recommendation_correct_3d(recomendacao, handicap_result):
     if pd.isna(recomendacao) or handicap_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
@@ -1044,6 +1065,9 @@ st.markdown("## 🧠 Sistema Híbrido: 2 MLs Especializadas")
 # Executar ambas as MLs
 modelo_esportivo, games_today = treinar_modelo_3d_clusters_single(history, games_today)
 modelo_mercado, games_today = treinar_ml_mercado(history, games_today)
+
+# ✅ ADICIONAR AQUI: Criar labels dos quadrantes ANTES de gerar recomendações
+games_today = criar_labels_quadrantes(games_today)
 
 # Gerar recomendações iniciais
 games_today['Recomendacao_Original'] = games_today.apply(gerar_recomendacao_3d_16_dual, axis=1)
