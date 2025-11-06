@@ -1084,22 +1084,3 @@ else:
 games_today = update_real_time_data_3d(games_today)
 
 st.success("🎯 Sistema completo executado com sucesso!")
-
-
-
-##########################################
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
