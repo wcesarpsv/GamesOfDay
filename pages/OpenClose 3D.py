@@ -2497,6 +2497,114 @@ def treinar_ml_movimento_mercado(history, games_today):
 modelo_mercado, games_today = treinar_ml_movimento_mercado(history, games_today)
 
 
+# =====================================================
+# 🔄 FUSÃO DE INSIGHTS – ML1 (Modelo 3D) + ML2 (Movimento de Mercado)
+# =====================================================
+
+def combinar_modelos_ml1_ml2(games_today, lim_conf_modelo=0.65, lim_conf_mercado=0.60):
+    """
+    Integra previsões da ML1 (modelo 3D) e ML2 (movimento de mercado),
+    calculando sinergia e consenso probabilístico.
+    """
+
+    df = games_today.copy()
+
+    # -------------------------------------------------
+    # ⚙️ 1️⃣ Validação básica
+    # -------------------------------------------------
+    if not {"ML_Side", "Score_Final_3D", "Market_Pred_Side", "Market_Pred_Confidence"}.issubset(df.columns):
+        st.warning("⚠️ Fusão ML1+ML2: colunas necessárias não encontradas.")
+        return df
+
+    # -------------------------------------------------
+    # ⚙️ 2️⃣ Concordância e divergência
+    # -------------------------------------------------
+    df["ML_Agree_Market"] = np.where(
+        (df["ML_Side"].str.upper() == df["Market_Pred_Side"]) &
+        (df["Score_Final_3D"] >= lim_conf_modelo) &
+        (df["Market_Pred_Confidence"] >= lim_conf_mercado),
+        True, False
+    )
+
+    df["ML_Diverge_Market"] = np.where(
+        (df["ML_Side"].str.upper() != df["Market_Pred_Side"]) &
+        (df["Score_Final_3D"] >= lim_conf_modelo) &
+        (df["Market_Pred_Confidence"] >= lim_conf_mercado),
+        True, False
+    )
+
+    # -------------------------------------------------
+    # ⚙️ 3️⃣ Consensus Score – sinergia ponderada
+    # -------------------------------------------------
+    df["Consensus_Score"] = (
+        df["Score_Final_3D"] * 0.5 + df["Market_Pred_Confidence"] * 0.5
+    ).round(3)
+
+    # -------------------------------------------------
+    # ⚙️ 4️⃣ Classificação de sinal
+    # -------------------------------------------------
+    df["Consensus_Label"] = np.select(
+        [
+            df["ML_Agree_Market"],
+            df["ML_Diverge_Market"]
+        ],
+        [
+            "✅ Full Agreement",
+            "⚠️ Divergente Value"
+        ],
+        default="❕ Indefinido"
+    )
+
+    # -------------------------------------------------
+    # ⚙️ 5️⃣ Exibição principal no Streamlit
+    # -------------------------------------------------
+    st.markdown("## 🔄 Sinergia entre Modelo 3D e Mercado (ML1 + ML2)")
+
+    df_exibir = df[
+        [
+            "League", "Home", "Away",
+            "ML_Side", "Market_Pred_Side",
+            "Score_Final_3D", "Market_Pred_Confidence",
+            "Consensus_Score", "Consensus_Label"
+        ]
+    ].sort_values("Consensus_Score", ascending=False)
+
+    st.dataframe(
+        df_exibir.style.applymap(
+            lambda v: "background-color:#1e90ff; color:white;" if v == "✅ Full Agreement" else
+                      ("background-color:#ff8c00; color:white;" if v == "⚠️ Divergente Value" else None),
+            subset=["Consensus_Label"]
+        ).format({
+            "Score_Final_3D": "{:.2f}",
+            "Market_Pred_Confidence": "{:.2f}",
+            "Consensus_Score": "{:.2f}"
+        })
+    )
+
+    # -------------------------------------------------
+    # ⚙️ 6️⃣ Estatísticas resumidas
+    # -------------------------------------------------
+    total = len(df)
+    n_agree = df["ML_Agree_Market"].sum()
+    n_div = df["ML_Diverge_Market"].sum()
+
+    st.markdown(f"""
+    ### 📈 Estatísticas de Sinergia
+    - Total de jogos: **{total}**
+    - Convergentes (modelo + mercado): **{n_agree} ({n_agree/total:.1%})**
+    - Divergentes (value bets potenciais): **{n_div} ({n_div/total:.1%})**
+    """)
+
+    return df
+
+
+# -------------------------------------------------
+# ⚙️ 7️⃣ Execução pós-ML2
+# -------------------------------------------------
+games_today = combinar_modelos_ml1_ml2(games_today)
+
+
+
 
 
 st.markdown("---")
