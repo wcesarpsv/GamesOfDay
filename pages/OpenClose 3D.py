@@ -2374,7 +2374,7 @@ def treinar_ml_movimento_mercado(history, games_today):
     # ⚙️ 6️⃣ Treina RandomForest
     # -------------------------------------------------
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
-    model_market = RandomForestClassifier(n_estimators=250, max_depth=10, random_state=42)
+    model_market = RandomForestClassifier(n_estimators=450, max_depth=10, class_weight='balanced', random_state=42)
     model_market.fit(X_train, y_train)
 
     y_pred = model_market.predict(X_test)
