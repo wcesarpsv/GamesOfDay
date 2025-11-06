@@ -245,7 +245,6 @@ games_today = criar_labels_quadrantes(games_today)
 history = criar_labels_quadrantes(history)
 
 
-
 ##############################
 # BLOCO 6 
 
