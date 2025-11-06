@@ -812,12 +812,19 @@ def sistema_hibrido_final(row):
 
 
 
-##############################################
-#Bloco 11 - Sistema Live Score e Handicap
+#########################################################
+# 🧮 BLOCO 11 – SISTEMA DE HANDICAP ASIÁTICO V9 CORRIGIDO
+#########################################################
 
 def handicap_favorito_v9(margin, line):
+    """
+    Calcula handicap para FAVORITOS (linhas negativas)
+    margin: gols_home - gols_away
+    line: linha negativa (ex: -0.25, -1.25, etc)
+    """
     line_abs = abs(line)
     
+    # Linhas inteiras (-1, -2, etc)
     if line_abs.is_integer():
         if margin > line_abs:
             return 1
@@ -825,6 +832,8 @@ def handicap_favorito_v9(margin, line):
             return 0
         else:
             return -1
+    
+    # Linha -0.25
     elif line == -0.25:
         if margin > 0:
             return 1
@@ -832,11 +841,15 @@ def handicap_favorito_v9(margin, line):
             return -0.5
         else:
             return -1
+    
+    # Linha -0.50
     elif line == -0.50:
         if margin > 0:
             return 1
         else:
             return -1
+    
+    # Linha -0.75
     elif line == -0.75:
         if margin >= 2:
             return 1
@@ -844,6 +857,8 @@ def handicap_favorito_v9(margin, line):
             return 0.5
         else:
             return -1
+    
+    # Linha -1.25
     elif line == -1.25:
         if margin >= 2:
             return 1
@@ -851,11 +866,15 @@ def handicap_favorito_v9(margin, line):
             return -0.5
         else:
             return -1
+    
+    # Linha -1.50
     elif line == -1.50:
         if margin >= 2:
             return 1
         else:
             return -1
+    
+    # Linha -1.75
     elif line == -1.75:
         if margin >= 3:
             return 1
@@ -863,6 +882,8 @@ def handicap_favorito_v9(margin, line):
             return 0.5
         else:
             return -1
+    
+    # Linha -2.00
     elif line == -2.00:
         if margin > 2:
             return 1
@@ -870,9 +891,17 @@ def handicap_favorito_v9(margin, line):
             return 0
         else:
             return -1
+    
     return np.nan
 
+
 def handicap_underdog_v9(margin, line):
+    """
+    Calcula handicap para UNDERDOGS (linhas positivas)
+    margin: gols_home - gols_away  
+    line: linha positiva (ex: +0.25, +1.25, etc)
+    """
+    # Linhas inteiras (0, +1, +2, etc)
     if line.is_integer():
         if margin >= -line:
             return 1
@@ -880,6 +909,8 @@ def handicap_underdog_v9(margin, line):
             return 0
         else:
             return -1
+    
+    # Linha +0.25
     elif line == 0.25:
         if margin > 0:
             return 1
@@ -887,11 +918,15 @@ def handicap_underdog_v9(margin, line):
             return 0.5
         else:
             return -1
+    
+    # Linha +0.50
     elif line == 0.50:
         if margin >= 0:
             return 1
         else:
             return -1
+    
+    # Linha +0.75
     elif line == 0.75:
         if margin >= 0:
             return 1
@@ -899,11 +934,15 @@ def handicap_underdog_v9(margin, line):
             return -0.5
         else:
             return -1
+    
+    # Linha +1.00
     elif line == 1.00:
         if margin >= -1:
             return 1
         else:
             return -1
+    
+    # Linha +1.25
     elif line == 1.25:
         if margin >= -1:
             return 1
@@ -911,11 +950,15 @@ def handicap_underdog_v9(margin, line):
             return 0.5
         else:
             return -1
+    
+    # Linha +1.50
     elif line == 1.50:
         if margin >= -1:
             return 1
         else:
             return -1
+    
+    # Linha +1.75
     elif line == 1.75:
         if margin >= -1:
             return 1
@@ -923,6 +966,8 @@ def handicap_underdog_v9(margin, line):
             return -0.5
         else:
             return -1
+    
+    # Linha +2.00
     elif line == 2.00:
         if margin >= -2:
             return 1
@@ -930,175 +975,131 @@ def handicap_underdog_v9(margin, line):
             return 0
         else:
             return -1
+    
     return np.nan
 
+
 def handicap_home_v9(row):
+    """Calcula handicap para apostas no HOME"""
     margin = row['Goals_H_Today'] - row['Goals_A_Today']
     line = row['Asian_Line_Decimal']
     
-    if line < 0:
+    if line < 0:  # Home é favorito
         return handicap_favorito_v9(margin, line)
-    else:
+    else:  # Home é underdog
         return handicap_underdog_v9(margin, line)
+
 
 def handicap_away_v9(row):
+    """Calcula handicap para apostas no AWAY"""
     margin = row['Goals_A_Today'] - row['Goals_H_Today']
-    line = -row['Asian_Line_Decimal']
+    line = -row['Asian_Line_Decimal']  # Inverte a linha
     
-    if line < 0:
+    if line < 0:  # Away é favorito
         return handicap_favorito_v9(margin, line)
-    else:
+    else:  # Away é underdog
         return handicap_underdog_v9(margin, line)
 
-def determine_handicap_result_3d(row):
-    try:
-        gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
-        ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
-        asian_line = float(row['Asian_Line_Decimal'])
-        recomendacao = str(row.get('Recomendacao', '')).upper()
-    except (ValueError, TypeError):
-        return None
 
-    if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line):
-        return None
-
-    is_home_bet = any(k in recomendacao for k in [
-        'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
-        'MODELO CONFIA HOME', 'H:', 'HOME)'
-    ])
-    is_away_bet = any(k in recomendacao for k in [
-        'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
-        'MODELO CONFIA AWAY', 'A:', 'AWAY)'
-    ])
-
-    if not is_home_bet and not is_away_bet:
-        return None
-
-    if is_home_bet:
-        outcome = handicap_home_v9(row)
-    else:
-        outcome = handicap_away_v9(row)
-
-    if outcome == 1:
-        return "FULL_WIN"
-    elif outcome == 0.5:
-        return "HALF_WIN" 
-    elif outcome == 0:
-        return "PUSH"
-    elif outcome == -0.5:
-        return "HALF_LOSS"
-    elif outcome == -1:
-        return "LOSS"
-    else:
-        return None
-
-
-#####################################
-# Bloco 12 - Sistema de Monitoramento e Execução Final
-
-def check_handicap_recommendation_correct_3d(recomendacao, handicap_result):
-    if pd.isna(recomendacao) or handicap_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
-        return None
-    return handicap_result in ["FULL_WIN", "HALF_WIN"]
-
-def calculate_handicap_profit_3d(recomendacao, handicap_result, odds_row):
-    if pd.isna(recomendacao) or handicap_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
-        return 0
-
-    recomendacao_str = str(recomendacao).upper()
-    is_home_bet = any(k in recomendacao_str for k in [
-        'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
-        'MODELO CONFIA HOME', 'H:', 'HOME)'
-    ])
-    is_away_bet = any(k in recomendacao_str for k in [
-        'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 
-        'MODELO CONFIA AWAY', 'A:', 'AWAY)'
-    ])
-
-    if is_home_bet:
-        odd = odds_row.get('Odd_H_Asi', np.nan)
-    elif is_away_bet:
-        odd = odds_row.get('Odd_A_Asi', np.nan)
-    else:
-        return 0
-
-    if pd.isna(odd):
-        return 0
-
-    if handicap_result == "FULL_WIN":
-        return odd - 1
-    elif handicap_result == "HALF_WIN":
-        return (odd - 1) / 2
-    elif handicap_result == "PUSH":
-        return 0
-    elif handicap_result == "HALF_LOSS":
-        return -0.5
-    elif handicap_result == "LOSS":
-        return -1
-    else:
-        return 0
-
-def update_real_time_data_3d(df):
+def apply_handicap_results_v9(df):
+    """Aplica a avaliação de Handicap Asiático e lucro (v9 CORRIGIDO)"""
     df = df.copy()
-    df['Handicap_Result'] = df.apply(determine_handicap_result_3d, axis=1)
-    df['Quadrante_Correct'] = df.apply(
-        lambda r: check_handicap_recommendation_correct_3d(
-            r['Recomendacao'], r['Handicap_Result']
-        ), axis=1
-    )
-    df['Profit_Quadrante'] = df.apply(
-        lambda r: calculate_handicap_profit_3d(
-            r['Recomendacao'], r['Handicap_Result'], r
-        ), axis=1
-    )
+    
+    def process_row(row):
+        rec = str(row.get('Recomendacao', '')).upper()
+        odd_home = row.get('Odd_H_Asi', np.nan)
+        odd_away = row.get('Odd_A_Asi', np.nan)
+        
+        # Ignorar se não há dados ou recomendação
+        if pd.isna(row.get('Goals_H_Today')) or pd.isna(row.get('Goals_A_Today')) or pd.isna(row.get('Asian_Line_Decimal')):
+            return pd.Series([np.nan, np.nan, np.nan, np.nan])
+        
+        if 'HOME' in rec:
+            val = handicap_home_v9(row)
+            odd = odd_home
+            side_bet = 'HOME'
+        elif 'AWAY' in rec:
+            val = handicap_away_v9(row)
+            odd = odd_away
+            side_bet = 'AWAY'
+        else:
+            return pd.Series([np.nan, np.nan, np.nan, np.nan])
+        
+        # Mapeamento de resultados
+        if val == 1:
+            profit = odd - 1 if not pd.isna(odd) else 1
+            return pd.Series([1, "FULL WIN", profit, side_bet])
+        elif val == 0.5:
+            profit = (odd - 1) / 2 if not pd.isna(odd) else 0.5
+            return pd.Series([0.5, "HALF WIN", profit, side_bet])
+        elif val == 0:
+            return pd.Series([0, "PUSH", 0, side_bet])
+        elif val == -0.5:
+            return pd.Series([-0.5, "HALF LOSS", -0.5, side_bet])
+        elif val == -1:
+            return pd.Series([-1, "LOSS", -1, side_bet])
+        else:
+            return pd.Series([np.nan, np.nan, np.nan, side_bet])
+
+    df[['Outcome_Final', 'Handicap_Result_Final', 'Profit_Final', 'Side_Bet']] = df.apply(process_row, axis=1)
+    df['Quadrante_Correct'] = df['Outcome_Final'] > 0
+    
     return df
 
-def generate_live_summary_3d(df):
-    finished_games = df[df['Handicap_Result'].notna()]
+
+#########################################################
+# 📊 BLOCO 12 – RESUMO LIVE SCORE V9 CORRIGIDO
+#########################################################
+
+def generate_live_summary_v9(df):
+    """Gera resumo em tempo real usando o sistema v9 CORRIGIDO"""
+    finished_games = df.dropna(subset=['Outcome_Final'])
     
     if finished_games.empty:
         return {
             "Total Jogos": len(df),
             "Jogos Finalizados": 0,
-            "Apostas Quadrante 3D": 0,
-            "Acertos Quadrante 3D": 0,
-            "Winrate Quadrante 3D": "0%",
-            "Profit Quadrante 3D": "0.00u",
-            "ROI Quadrante 3D": "0%",
+            "Apostas Quadrante": 0,
+            "Acertos Quadrante": 0,
+            "Winrate Quadrante": "0%",
+            "Profit Quadrante": 0,
+            "ROI Quadrante": "0%",
             "Full Wins": 0,
-            "Half Wins": 0, 
+            "Half Wins": 0,
             "Pushes": 0,
             "Half Losses": 0,
             "Losses": 0
         }
     
-    quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
+    quadrante_bets = finished_games[finished_games['Outcome_Final'].notna()]
     total_bets = len(quadrante_bets)
-    correct_bets = quadrante_bets['Quadrante_Correct'].sum()
+    correct_bets = (quadrante_bets['Outcome_Final'] > 0).sum()
     winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
-    total_profit = quadrante_bets['Profit_Quadrante'].sum()
+    total_profit = quadrante_bets['Profit_Final'].sum()
     roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
     
-    full_wins = (finished_games['Handicap_Result'] == 'FULL_WIN').sum()
-    half_wins = (finished_games['Handicap_Result'] == 'HALF_WIN').sum()
-    pushes = (finished_games['Handicap_Result'] == 'PUSH').sum()
-    half_losses = (finished_games['Handicap_Result'] == 'HALF_LOSS').sum()
-    losses = (finished_games['Handicap_Result'] == 'LOSS').sum()
+    # Estatísticas detalhadas
+    full_wins = (quadrante_bets['Outcome_Final'] == 1).sum()
+    half_wins = (quadrante_bets['Outcome_Final'] == 0.5).sum()
+    pushes = (quadrante_bets['Outcome_Final'] == 0).sum()
+    half_losses = (quadrante_bets['Outcome_Final'] == -0.5).sum()
+    losses = (quadrante_bets['Outcome_Final'] == -1).sum()
     
     return {
         "Total Jogos": len(df),
         "Jogos Finalizados": len(finished_games),
-        "Apostas Quadrante 3D": total_bets,
-        "Acertos Quadrante 3D": int(correct_bets),
-        "Winrate Quadrante 3D": f"{winrate:.1f}%",
-        "Profit Quadrante 3D": f"{total_profit:.2f}u",
-        "ROI Quadrante 3D": f"{roi:.1f}%",
+        "Apostas Quadrante": total_bets,
+        "Acertos Quadrante": int(correct_bets),
+        "Winrate Quadrante": f"{winrate:.1f}%",
+        "Profit Quadrante": f"{total_profit:.2f}u",
+        "ROI Quadrante": f"{roi:.1f}%",
         "Full Wins": int(full_wins),
         "Half Wins": int(half_wins),
         "Pushes": int(pushes),
         "Half Losses": int(half_losses),
         "Losses": int(losses)
     }
+
 
 # EXECUÇÃO PRINCIPAL
 st.markdown("## 🧠 Sistema Híbrido: 2 MLs Especializadas")
@@ -1122,7 +1123,10 @@ else:
     games_today['Recomendacao'] = games_today['Recomendacao_Original']
     st.info("ℹ️ Usando apenas ML Esportiva (ML Mercado não treinada)")
 
-# Aplicar sistema live score
-games_today = update_real_time_data_3d(games_today)
+# ✅ Avaliação final com Handicap V9
+games_today = apply_handicap_results_v9(games_today)
+summary = generate_live_summary_v9(games_today)
 
 st.success("🎯 Sistema completo executado com sucesso!")
+st.markdown("### 📊 Resumo de Performance Atual")
+st.json(summary)
