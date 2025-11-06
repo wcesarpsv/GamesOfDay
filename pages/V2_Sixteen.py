@@ -1368,6 +1368,276 @@ st.dataframe(
     use_container_width=True
 )
 
+
+
+#########################
+##### BLOCO EXTRA: ANÁLISE ESTRATÉGICA DISTÂNCIA vs ÂNGULO #####
+
+st.markdown("## 🎯 Análise Estratégica: Distância vs Ângulo")
+
+def analise_distancia_angulo(df):
+    """Análise completa da relação entre distância e ângulo"""
+    
+    # Criar gráfico de dispersão distância vs ângulo
+    fig, ax = plt.subplots(figsize=(14, 10))
+    
+    # Classificar por tipo de desequilíbrio
+    def classificar_tipo_desequilibrio(angle, dist):
+        if dist < 1.0:
+            return 'EQUILIBRADO'
+        elif 15 <= angle <= 75:  # Ângulo entre 15° e 75°
+            return 'CONSISTENTE'
+        elif angle < 15:  # Predominância do eixo X (M)
+            return 'FORÇA-LIGA'
+        else:  # angle > 75 - Predominância do eixo Y (MT)
+            return 'FORMA-RECENTE'
+    
+    df_analise = df.copy()
+    df_analise['Tipo_Desequilibrio'] = df_analise.apply(
+        lambda x: classificar_tipo_desequilibrio(x.get('Quadrant_Angle', 0), x.get('Quadrant_Dist', 0)), axis=1
+    )
+    
+    # Cores por tipo
+    cores = {
+        'CONSISTENTE': '#2E8B57',  # Verde
+        'FORÇA-LIGA': '#1E90FF',   # Azul
+        'FORMA-RECENTE': '#FF8C00', # Laranja
+        'EQUILIBRADO': '#A9A9A9'   # Cinza
+    }
+    
+    # Plotar cada tipo
+    for tipo, cor in cores.items():
+        mask = df_analise['Tipo_Desequilibrio'] == tipo
+        if mask.any():
+            ax.scatter(
+                df_analise.loc[mask, 'Quadrant_Dist'],
+                df_analise.loc[mask, 'Quadrant_Angle'], 
+                c=cor, s=80, label=tipo, alpha=0.8, 
+                edgecolors='black', linewidth=0.5
+            )
+    
+    # Linhas de referência
+    ax.axhline(y=45, color='red', linestyle='--', alpha=0.7, label='Ângulo Ideal (45°)', linewidth=2)
+    ax.axvline(x=1.5, color='purple', linestyle='--', alpha=0.7, label='Distância Mínima (1.5)', linewidth=2)
+    
+    # Áreas estratégicas
+    ax.axhspan(15, 75, alpha=0.1, color='green', label='Zona Consistente')
+    ax.axvspan(1.5, 4.5, alpha=0.1, color='yellow', label='Zona de Oportunidade')
+    
+    # Configurações do gráfico
+    ax.set_xlabel('Distância Euclidiana', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Ângulo (graus)', fontsize=14, fontweight='bold')
+    ax.set_title('🎯 Mapa Estratégico: Tipo de Desequilíbrio entre Times', fontsize=16, fontweight='bold')
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    ax.grid(True, alpha=0.3)
+    
+    # Adicionar anotações para os pontos mais importantes
+    top_jogos = df_analise.nlargest(8, 'Quadrant_Dist')
+    for idx, row in top_jogos.iterrows():
+        ax.annotate(
+            f"{row['Home'][:8]} vs {row['Away'][:8]}",
+            (row['Quadrant_Dist'], row['Quadrant_Angle']),
+            xytext=(8, 8), textcoords='offset points',
+            fontsize=9, fontweight='bold', alpha=0.9,
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7)
+        )
+    
+    plt.tight_layout()
+    return fig, df_analise
+
+# Aplicar análise
+if not games_today.empty and 'Quadrant_Dist' in games_today.columns and 'Quadrant_Angle' in games_today.columns:
+    fig_analise, games_today_analisado = analise_distancia_angulo(games_today)
+    st.pyplot(fig_analise)
+    
+    # Estatísticas por tipo
+    st.markdown("### 📊 Estatísticas por Tipo de Desequilíbrio")
+    
+    stats_tipo = games_today_analisado['Tipo_Desequilibrio'].value_counts()
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("CONSISTENTE", stats_tipo.get('CONSISTENTE', 0))
+    with col2:
+        st.metric("FORÇA-LIGA", stats_tipo.get('FORÇA-LIGA', 0))
+    with col3:
+        st.metric("FORMA-RECENTE", stats_tipo.get('FORMA-RECENTE', 0))
+    with col4:
+        st.metric("EQUILIBRADO", stats_tipo.get('EQUILIBRADO', 0))
+    
+    # Tabela de análise detalhada
+    st.markdown("### 📋 Classificação Estratégica dos Confrontos")
+    
+    cols_tabela = ['Home', 'Away', 'League', 'Quadrant_Dist', 'Quadrant_Angle', 'Tipo_Desequilibrio']
+    if 'Recomendacao' in games_today_analisado.columns:
+        cols_tabela.append('Recomendacao')
+    if 'Quadrante_ML_Score_Main' in games_today_analisado.columns:
+        cols_tabela.append('Quadrante_ML_Score_Main')
+    
+    tabela_analise = games_today_analisado[cols_tabela].copy()
+    tabela_analise = tabela_analise.sort_values(['Tipo_Desequilibrio', 'Quadrant_Dist'], ascending=[True, False])
+    
+    # Função de estilo para a tabela
+    def estilo_tabela_estrategica(df):
+        def cor_tipo(valor):
+            if valor == 'CONSISTENTE': return 'background-color: #90EE90; font-weight: bold'
+            elif valor == 'FORÇA-LIGA': return 'background-color: #87CEFA; font-weight: bold'
+            elif valor == 'FORMA-RECENTE': return 'background-color: #FFD700; font-weight: bold'
+            elif valor == 'EQUILIBRADO': return 'background-color: #D3D3D3'
+            else: return ''
+        
+        styler = df.style.applymap(cor_tipo, subset=['Tipo_Desequilibrio'])
+        
+        if 'Quadrant_Dist' in df.columns:
+            styler = styler.background_gradient(subset=['Quadrant_Dist'], cmap='YlOrRd')
+        if 'Quadrante_ML_Score_Main' in df.columns:
+            styler = styler.background_gradient(subset=['Quadrante_ML_Score_Main'], cmap='RdYlGn')
+            
+        return styler
+    
+    st.dataframe(
+        estilo_tabela_estrategica(tabela_analise).format({
+            'Quadrant_Dist': '{:.2f}',
+            'Quadrant_Angle': '{:.1f}°',
+            'Quadrante_ML_Score_Main': '{:.1%}' if 'Quadrante_ML_Score_Main' in tabela_analise.columns else None
+        }),
+        use_container_width=True
+    )
+    
+    # Guia de interpretação
+    st.markdown("### 📖 Guia Estratégico de Interpretação")
+    
+    with st.expander("🎯 **CLIQUE AQUI para ver o guia completo de estratégias**", expanded=True):
+        col_estr1, col_estr2 = st.columns(2)
+        
+        with col_estr1:
+            st.markdown("""
+            #### ⭐ **CONSISTENTE** (Ângulo 15°-75°)
+            **Característica**: Desequilíbrio balanceado entre força na liga e forma recente
+            
+            **🎯 ESTRATÉGIA**: 
+            - **PRIORITÁRIO** para apostas
+            - Modelo ML tem alta confiança
+            - Melhor relação sinal/ruído
+            
+            **📊 Ação**: Apostar conforme recomendação do modelo
+            """)
+            
+            st.markdown("""
+            #### 📊 **FORÇA-LIGA** (Ângulo 0°-15°)
+            **Característica**: Desequilíbrio vem principalmente da força no campeonato
+            
+            **🎯 ESTRATÉGIA**: 
+            - **ANALISAR** cuidadosamente
+            - Verificar se a forma recente confirma
+            - Cuidado com times em crise mas historicamente fortes
+            
+            **📊 Ação**: Validar com outros indicadores antes de apostar
+            """)
+        
+        with col_estr2:
+            st.markdown("""
+            #### 🎯 **FORMA-RECENTE** (Ângulo 75°-90°)
+            **Característica**: Desequilíbrio vem principalmente da forma recente
+            
+            **🎯 ESTRATÉGIA**: 
+            - **OPORTUNIDADE** potencial
+            - Mercado pode subestimar a forma
+            - Bom para contra-apostas
+            
+            **📊 Ação**: Buscar value se odds estiverem favoráveis
+            """)
+            
+            st.markdown("""
+            #### 🤔 **EQUILIBRADO** (Distância < 1.0)
+            **Característica**: Times muito similares em força e forma
+            
+            **🎯 ESTRATÉGIA**: 
+            - **EVITAR** apostas
+            - Alta incerteza
+            - Menor edge do modelo
+            
+            **📊 Ação**: Focar em outros jogos mais definidos
+            """)
+    
+    # Análise dos melhores oportunidades
+    st.markdown("### 🏆 Melhores Oportunidades do Dia")
+    
+    melhores_oportunidades = games_today_analisado[
+        (games_today_analisado['Tipo_Desequilibrio'] == 'CONSISTENTE') &
+        (games_today_analisado['Quadrant_Dist'] >= 1.5)
+    ]
+    
+    if not melhores_oportunidades.empty:
+        st.success(f"🎉 **ENCONTRADOS {len(melhores_oportunidades)} JOGOS DE ALTA QUALIDADE!**")
+        
+        cols_melhores = ['Home', 'Away', 'League', 'Quadrant_Dist', 'Quadrant_Angle']
+        if 'Recomendacao' in melhores_oportunidades.columns:
+            cols_melhores.append('Recomendacao')
+        if 'Quadrante_ML_Score_Main' in melhores_oportunidades.columns:
+            cols_melhores.append('Quadrante_ML_Score_Main')
+        if 'ML_Side' in melhores_oportunidades.columns:
+            cols_melhores.append('ML_Side')
+            
+        st.dataframe(
+            melhores_oportunidades[cols_melhores]
+            .sort_values('Quadrant_Dist', ascending=False)
+            .style.format({
+                'Quadrant_Dist': '{:.2f}',
+                'Quadrant_Angle': '{:.1f}°',
+                'Quadrante_ML_Score_Main': '{:.1%}' if 'Quadrante_ML_Score_Main' in cols_melhores else None
+            })
+            .background_gradient(subset=['Quadrant_Dist'], cmap='YlOrRd'),
+            use_container_width=True
+        )
+    else:
+        st.warning("⚠️ Nenhum jogo na categoria 'CONSISTENTE' com distância > 1.5 encontrado.")
+    
+    # Análise específica dos conflitos
+    st.markdown("### ⚠️ Análise de Conflitos (Alta Distância + Ângulo Extremo)")
+    
+    conflitos = games_today_analisado[
+        (games_today_analisado['Quadrant_Dist'] >= 2.0) &
+        (games_today_analisado['Tipo_Desequilibrio'].isin(['FORÇA-LIGA', 'FORMA-RECENTE']))
+    ]
+    
+    if not conflitos.empty:
+        st.warning(f"🔍 **ENCONTRADOS {len(conflitos)} JOGOS COM CONFLITO DE SINAIS**")
+        
+        for idx, row in conflitos.iterrows():
+            with st.expander(f"🔎 {row['Home']} vs {row['Away']} - {row['League']}"):
+                col_conf1, col_conf2 = st.columns(2)
+                
+                with col_conf1:
+                    st.write("**📊 Dados do Confronto:**")
+                    st.write(f"- Distância: {row['Quadrant_Dist']:.2f}")
+                    st.write(f"- Ângulo: {row['Quadrant_Angle']:.1f}°")
+                    st.write(f"- Tipo: {row['Tipo_Desequilibrio']}")
+                    st.write(f"- M_H: {row.get('M_H', 'N/A'):.2f}")
+                    st.write(f"- M_A: {row.get('M_A', 'N/A'):.2f}")
+                
+                with col_conf2:
+                    st.write("**🎯 Análise do Conflito:**")
+                    if row['Tipo_Desequilibrio'] == 'FORÇA-LIGA':
+                        st.write("**CONFLITO**: Away é mais forte na liga, mas formas são similares")
+                        st.write("**RISCO**: Mercado pode supervalorizar histórico")
+                    else:  # FORMA-RECENTE
+                        st.write("**CONFLITO**: Home está em forma melhor, mas Away é mais forte")
+                        st.write("**OPORTUNIDADE**: Possível value se forma for subestimada")
+                
+                if 'Recomendacao' in row:
+                    st.write(f"**🤖 RECOMENDAÇÃO ML**: {row['Recomendacao']}")
+
+else:
+    st.warning("⚠️ Dados insuficientes para análise estratégica")
+
+st.markdown("---")
+
+
+
+
+##########################
+
 st.success("🎯 **Sistema de 16 Quadrantes ML** implementado com sucesso!")
 st.info("""
 **Resumo das melhorias:**
