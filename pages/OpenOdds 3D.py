@@ -1203,6 +1203,11 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
             return f'🔄 AWAY EM NEUTRO (+Momentum) ({score_away:.1%})'
         elif 'Neutro' in away_q and score_home >= 0.58 and momentum_h > 0:
             return f'🔄 HOME EM NEUTRO (+Momentum) ({score_home:.1%})'
+            # ADICIONAR ESTA CONDIÇÃO ANTES DO "else":
+        elif score_home >= 0.75 and momentum_h >= -0.5:  # Score alto, momentum não muito negativo
+            return f'🎯 VALUE HOME (Score Alto) ({score_home:.1%})'
+        elif score_away >= 0.75 and momentum_a >= -0.5:
+            return f'🎯 VALUE AWAY (Score Alto) ({score_away:.1%})'
         else:
             return f'⚖️ ANALISAR (H:{score_home:.1%} A:{score_away:.1%})'
 
