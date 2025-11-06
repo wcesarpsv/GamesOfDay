@@ -1217,154 +1217,11 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
     df['Ranking'] = df['Quadrante_ML_Score_Main'].rank(ascending=False, method='dense').astype(int)
 
     return df
-########################################
-# =====================================================
-# 🧠 ML2 – MOVIMENTO DE MERCADO (Market Bias Model)
-# =====================================================
-
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, roc_auc_score
-
-def treinar_ml_movimento_mercado(history, games_today):
-    """
-    Treina modelo secundário para prever se o movimento de odds (open→close)
-    indica corretamente o lado vencedor e detecta divergências modelo x mercado.
-    """
-
-    df = history.copy()
-
-    # -------------------------------------------------
-    # ⚙️ 1️⃣ Cria probabilidades implícitas normalizadas
-    # -------------------------------------------------
-    for prefix in ["OP", ""]:
-        df[f"Imp_H_{prefix}_Norm"] = 1 / df[f"Odd_H{('_' + prefix) if prefix else ''}"]
-        df[f"Imp_D_{prefix}_Norm"] = 1 / df[f"Odd_D{('_' + prefix) if prefix else ''}"]
-        df[f"Imp_A_{prefix}_Norm"] = 1 / df[f"Odd_A{('_' + prefix) if prefix else ''}"]
-        soma = df[[f"Imp_H_{prefix}_Norm", f"Imp_D_{prefix}_Norm", f"Imp_A_{prefix}_Norm"]].sum(axis=1)
-        df[[f"Imp_H_{prefix}_Norm", f"Imp_D_{prefix}_Norm", f"Imp_A_{prefix}_Norm"]] = df[[f"Imp_H_{prefix}_Norm", f"Imp_D_{prefix}_Norm", f"Imp_A_{prefix}_Norm"]].div(soma, axis=0)
-
-    # -------------------------------------------------
-    # ⚙️ 2️⃣ Cria variáveis de movimento (Δ)
-    # -------------------------------------------------
-    df["Δ_Imp_H"] = df["Imp_H_Norm"] - df["Imp_H_OP_Norm"]
-    df["Δ_Imp_A"] = df["Imp_A_Norm"] - df["Imp_A_OP_Norm"]
-    df["Δ_Spread_HA"] = df["Δ_Imp_H"] - df["Δ_Imp_A"]
-
-    # Movimento de linha (Home já convertido)
-    if "Asian_Line_OP_Decimal" in df.columns:
-        df["Δ_Asian_Line"] = df["Asian_Line_Decimal"] - df["Asian_Line_OP_Decimal"]
-    else:
-        df["Δ_Asian_Line"] = np.nan
-
-    # -------------------------------------------------
-    # ⚙️ 3️⃣ Define Target: se movimento do mercado foi "certo"
-    # -------------------------------------------------
-    # Usa seu target principal (ex: handicap real)
-    if "Outcome_Home_FT" not in df.columns:
-        st.warning("⚠️ Coluna 'Outcome_Home_FT' não encontrada no histórico — ML2 será ignorada.")
-        return None, games_today
-
-    df = df.dropna(subset=["Δ_Imp_H", "Δ_Imp_A", "Outcome_Home_FT"])
-    df["Target_Market_Correct"] = np.where(
-        ((df["Δ_Imp_H"] > 0) & (df["Outcome_Home_FT"] == 1)) | ((df["Δ_Imp_H"] < 0) & (df["Outcome_Home_FT"] == -1)),
-        1, 0
-    )
-
-    # -------------------------------------------------
-    # ⚙️ 4️⃣ Seleciona Features para ML2
-    # -------------------------------------------------
-    features = [
-        "Δ_Imp_H", "Δ_Imp_A", "Δ_Spread_HA",
-        "Imp_H_OP_Norm", "Imp_A_OP_Norm",
-        "Imp_H_Norm", "Imp_A_Norm",
-        "Δ_Asian_Line",
-        "Asian_Line_Decimal",
-        "M_H", "M_A", "MT_H", "MT_A",
-        "Diff_Power"
-    ]
-
-    df = df.dropna(subset=features)
-
-    X = df[features]
-    y = df["Target_Market_Correct"]
-
-    # -------------------------------------------------
-    # ⚙️ 5️⃣ Treina RandomForest simples
-    # -------------------------------------------------
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
-    model_market = RandomForestClassifier(n_estimators=200, max_depth=8, random_state=42)
-    model_market.fit(X_train, y_train)
-
-    y_pred = model_market.predict(X_test)
-    y_prob = model_market.predict_proba(X_test)[:, 1]
-    acc = accuracy_score(y_test, y_pred)
-    auc = roc_auc_score(y_test, y_prob)
-
-    st.markdown(f"""
-    ### 📊 ML2 – Market Movement Model
-    - Accuracy: **{acc:.3f}**
-    - ROC-AUC: **{auc:.3f}**
-    - Registros Treinados: {len(df)}
-    """)
-
-    # -------------------------------------------------
-    # ⚙️ 6️⃣ Aplica o modelo aos jogos do dia
-    # -------------------------------------------------
-    if not games_today.empty:
-        temp = games_today.copy()
-
-        # Cria mesmas features Δ_Imp_ e Δ_Line com base em odds de hoje
-        for prefix in ["OP", ""]:
-            temp[f"Imp_H_{prefix}_Norm"] = 1 / temp[f"Odd_H{('_' + prefix) if prefix else ''}"]
-            temp[f"Imp_D_{prefix}_Norm"] = 1 / temp[f"Odd_D{('_' + prefix) if prefix else ''}"]
-            temp[f"Imp_A_{prefix}_Norm"] = 1 / temp[f"Odd_A{('_' + prefix) if prefix else ''}"]
-            soma = temp[[f"Imp_H_{prefix}_Norm", f"Imp_D_{prefix}_Norm", f"Imp_A_{prefix}_Norm"]].sum(axis=1)
-            temp[[f"Imp_H_{prefix}_Norm", f"Imp_D_{prefix}_Norm", f"Imp_A_{prefix}_Norm"]] = temp[[f"Imp_H_{prefix}_Norm", f"Imp_D_{prefix}_Norm", f"Imp_A_{prefix}_Norm"]].div(soma, axis=0)
-
-        temp["Δ_Imp_H"] = temp["Imp_H_Norm"] - temp["Imp_H_OP_Norm"]
-        temp["Δ_Imp_A"] = temp["Imp_A_Norm"] - temp["Imp_A_OP_Norm"]
-        temp["Δ_Spread_HA"] = temp["Δ_Imp_H"] - temp["Δ_Imp_A"]
-
-        if "Asian_Line_OP_Decimal" in temp.columns:
-            temp["Δ_Asian_Line"] = temp["Asian_Line_Decimal"] - temp["Asian_Line_OP_Decimal"]
-        else:
-            temp["Δ_Asian_Line"] = np.nan
-
-        temp = temp.fillna(0)
-        X_today = temp[features]
-
-        temp["Market_Pred_Confidence"] = model_market.predict_proba(X_today)[:, 1]
-        temp["Market_Pred_Side"] = np.where(temp["Δ_Imp_H"] > 0, "HOME", "AWAY")
-
-        # -------------------------------------------------
-        # ⚙️ 7️⃣ Detecta divergência com ML principal
-        # -------------------------------------------------
-        if "ML_Side" in temp.columns:
-            temp["Market_Model_Divergence"] = np.where(
-                temp["ML_Side"].str.upper() == temp["Market_Pred_Side"], 1, -1
-            )
-        else:
-            temp["Market_Model_Divergence"] = np.nan
-
-        # Marca Value Bets (alta confiança + divergência)
-        temp["Value_Bet_MarketBias"] = np.where(
-            (temp["Market_Model_Divergence"] == -1) & (temp["Market_Pred_Confidence"] >= 0.60),
-            True, False
-        )
-
-        # Junta de volta ao games_today
-        games_today = temp.copy()
-
-    return model_market, games_today
-
-################
 
 # ---------------- EXECUÇÃO PRINCIPAL 3D ----------------
 # Executar treinamento 3D
 if not history.empty:
     modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today)
-    modelo_mercado, games_today = treinar_ml_movimento_mercado(history, games_today)
     st.success("✅ Modelo 3D dual com 16 quadrantes treinado com sucesso!")
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D")
@@ -2482,6 +2339,163 @@ def resumo_3d_16_quadrantes_hoje(df):
 
 if not games_today.empty and 'Classificacao_Potencial_3D' in games_today.columns:
     resumo_3d_16_quadrantes_hoje(games_today)
+
+
+
+
+# =====================================================
+# 🧠 ML2 – MOVIMENTO DE MERCADO (Market Bias Model)
+# =====================================================
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, roc_auc_score
+
+def treinar_ml_movimento_mercado(history, games_today):
+    """
+    Treina modelo secundário para prever se o movimento de odds (open→close)
+    indica corretamente o lado vencedor e detecta divergências modelo x mercado.
+    """
+
+    df = history.copy()
+
+    # -------------------------------------------------
+    # ⚙️ 1️⃣ Cria Outcome e linha de abertura (Home)
+    # -------------------------------------------------
+    if "Outcome_Home_FT" not in df.columns:
+        if {"Goals_H_FT", "Goals_A_FT"}.issubset(df.columns):
+            df["Outcome_Home_FT"] = np.sign(df["Goals_H_FT"] - df["Goals_A_FT"]).astype("Int64")
+        else:
+            st.warning("⚠️ ML2: sem FT no histórico — modelo ignorado.")
+            return None, games_today
+
+    for df_tmp in (df, games_today):
+        if "Asian_Line_OP" in df_tmp.columns and "Asian_Line_OP_Decimal" not in df_tmp.columns:
+            df_tmp["Asian_Line_OP_Decimal"] = df_tmp["Asian_Line_OP"].apply(convert_asian_line_to_decimal)
+
+    # -------------------------------------------------
+    # ⚙️ 2️⃣ Probabilidades implícitas normalizadas
+    # -------------------------------------------------
+    for prefix in ["OP", ""]:
+        suffix = f"_{prefix}" if prefix else ""
+        df[f"Imp_H{suffix}_Norm"] = 1 / df[f"Odd_H{suffix}"]
+        df[f"Imp_D{suffix}_Norm"] = 1 / df[f"Odd_D{suffix}"]
+        df[f"Imp_A{suffix}_Norm"] = 1 / df[f"Odd_A{suffix}"]
+        soma = df[[f"Imp_H{suffix}_Norm", f"Imp_D{suffix}_Norm", f"Imp_A{suffix}_Norm"]].sum(axis=1).replace(0, np.nan)
+        df[[f"Imp_H{suffix}_Norm", f"Imp_D{suffix}_Norm", f"Imp_A{suffix}_Norm"]] = (
+            df[[f"Imp_H{suffix}_Norm", f"Imp_D{suffix}_Norm", f"Imp_A{suffix}_Norm"]].div(soma, axis=0).fillna(0)
+        )
+
+    # -------------------------------------------------
+    # ⚙️ 3️⃣ Cria variações (Δ)
+    # -------------------------------------------------
+    df["Δ_Imp_H"] = df["Imp_H_Norm"] - df["Imp_H_OP_Norm"]
+    df["Δ_Imp_A"] = df["Imp_A_Norm"] - df["Imp_A_OP_Norm"]
+    df["Δ_Spread_HA"] = df["Δ_Imp_H"] - df["Δ_Imp_A"]
+    if "Asian_Line_OP_Decimal" in df.columns:
+        df["Δ_Asian_Line"] = df["Asian_Line_Decimal"] - df["Asian_Line_OP_Decimal"]
+    else:
+        df["Δ_Asian_Line"] = 0.0
+
+    # -------------------------------------------------
+    # ⚙️ 4️⃣ Target: movimento certo?
+    # -------------------------------------------------
+    df = df.dropna(subset=["Δ_Imp_H", "Δ_Imp_A", "Outcome_Home_FT"])
+    df["Target_Market_Correct"] = np.where(
+        ((df["Δ_Imp_H"] > 0) & (df["Outcome_Home_FT"] == 1)) |
+        ((df["Δ_Imp_H"] < 0) & (df["Outcome_Home_FT"] == -1)),
+        1, 0
+    )
+
+    # -------------------------------------------------
+    # ⚙️ 5️⃣ Features dinâmicas
+    # -------------------------------------------------
+    base_features = [
+        "Δ_Imp_H", "Δ_Imp_A", "Δ_Spread_HA",
+        "Imp_H_OP_Norm", "Imp_A_OP_Norm",
+        "Imp_H_Norm", "Imp_A_Norm",
+        "Δ_Asian_Line", "Asian_Line_Decimal",
+        "M_H", "M_A", "MT_H", "MT_A", "Diff_Power"
+    ]
+    features = [f for f in base_features if f in df.columns]
+    if not features:
+        st.warning("⚠️ ML2: nenhuma feature encontrada.")
+        return None, games_today
+
+    X = df[features].fillna(0)
+    y = df["Target_Market_Correct"]
+
+    # -------------------------------------------------
+    # ⚙️ 6️⃣ Treina RandomForest
+    # -------------------------------------------------
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
+    model_market = RandomForestClassifier(n_estimators=250, max_depth=10, random_state=42)
+    model_market.fit(X_train, y_train)
+
+    y_pred = model_market.predict(X_test)
+    y_prob = model_market.predict_proba(X_test)[:, 1]
+    acc = accuracy_score(y_test, y_pred)
+    auc = roc_auc_score(y_test, y_prob)
+
+    st.markdown(f"""
+    ### 📊 ML2 – Market Movement Model
+    - Accuracy: **{acc:.3f}**
+    - ROC-AUC: **{auc:.3f}**
+    - Amostras: {len(df)}
+    """)
+
+    # -------------------------------------------------
+    # ⚙️ 7️⃣ Aplica aos jogos do dia
+    # -------------------------------------------------
+    if not games_today.empty:
+        temp = games_today.copy()
+
+        for prefix in ["OP", ""]:
+            suffix = f"_{prefix}" if prefix else ""
+            temp[f"Imp_H{suffix}_Norm"] = 1 / temp[f"Odd_H{suffix}"]
+            temp[f"Imp_D{suffix}_Norm"] = 1 / temp[f"Odd_D{suffix}"]
+            temp[f"Imp_A{suffix}_Norm"] = 1 / temp[f"Odd_A{suffix}"]
+            soma = temp[[f"Imp_H{suffix}_Norm", f"Imp_D{suffix}_Norm", f"Imp_A{suffix}_Norm"]].sum(axis=1).replace(0, np.nan)
+            temp[[f"Imp_H{suffix}_Norm", f"Imp_D{suffix}_Norm", f"Imp_A{suffix}_Norm"]] = (
+                temp[[f"Imp_H{suffix}_Norm", f"Imp_D{suffix}_Norm", f"Imp_A{suffix}_Norm"]].div(soma, axis=0).fillna(0)
+            )
+
+        temp["Δ_Imp_H"] = temp["Imp_H_Norm"] - temp["Imp_H_OP_Norm"]
+        temp["Δ_Imp_A"] = temp["Imp_A_Norm"] - temp["Imp_A_OP_Norm"]
+        temp["Δ_Spread_HA"] = temp["Δ_Imp_H"] - temp["Δ_Imp_A"]
+        if "Asian_Line_OP_Decimal" in temp.columns:
+            temp["Δ_Asian_Line"] = temp["Asian_Line_Decimal"] - temp["Asian_Line_OP_Decimal"]
+        else:
+            temp["Δ_Asian_Line"] = 0.0
+
+        temp = temp.fillna(0)
+        X_today = temp[[f for f in features if f in temp.columns]]
+        preds = model_market.predict_proba(X_today)[:, 1]
+        temp["Market_Pred_Confidence"] = preds
+        temp["Market_Pred_Side"] = np.where(temp["Δ_Imp_H"] > 0, "HOME", "AWAY")
+
+        # -------------------------------------------------
+        # ⚙️ 8️⃣ Divergência modelo x mercado
+        # -------------------------------------------------
+        if "ML_Side" in temp.columns:
+            temp["Market_Model_Divergence"] = np.where(
+                temp["ML_Side"].str.upper() == temp["Market_Pred_Side"], 1, -1
+            )
+        else:
+            temp["Market_Model_Divergence"] = np.nan
+
+        temp["Value_Bet_MarketBias"] = np.where(
+            (temp["Market_Model_Divergence"] == -1) & (temp["Market_Pred_Confidence"] >= 0.60),
+            True, False
+        )
+
+        games_today = temp.copy()
+
+    return model_market, games_today
+
+
+modelo_mercado, games_today = treinar_ml_movimento_mercado(history, games_today)
+
 
 
 
