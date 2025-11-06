@@ -2145,6 +2145,22 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         })
     
         st.markdown("### ⚖️ Comparativo de Performance – AH vs 1x2")
+        
+        # Apenas exibir sem highlight para evitar o erro
+        st.dataframe(resumo, use_container_width=True)
+        
+        # Adicionar análise textual simples
+        ah_profit = float(ah["Profit"].replace('u', ''))
+        x12_profit = float(x12["Profit"].replace('u', ''))
+        
+        if ah_profit > x12_profit:
+            st.success(f"✅ **Sistema Asiático performou melhor**: {ah['Profit']} vs {x12['Profit']}")
+        elif x12_profit > ah_profit:
+            st.success(f"✅ **Sistema 1x2 performou melhor**: {x12['Profit']} vs {ah['Profit']}")
+        else:
+            st.info("⚖️ **Sistemas com performance similar**")
+    
+        st.markdown("### ⚖️ Comparativo de Performance – AH vs 1x2")
         st.dataframe(
             resumo.style.highlight_max(axis=1, color='lightgreen')
                           .highlight_min(axis=1, color='#ffb3b3'),
