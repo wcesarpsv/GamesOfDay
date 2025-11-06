@@ -2640,6 +2640,111 @@ else:
 
 
 
+
+
+
+# =====================================================
+# 🧮 ANÁLISE DE DIVERGÊNCIAS – MERCADO VS MODELO (HANDICAP)
+# =====================================================
+
+def avaliar_divergencias_handicap(history):
+    """
+    Analisa divergências entre o modelo (ML1) e o mercado (ML2),
+    comparando qual lado acerta mais o Handicap Asiático.
+    """
+    if history.empty or not {"ML_Side", "Market_Pred_Side", "Asian_Line_Decimal", "Goals_H_FT", "Goals_A_FT"}.issubset(history.columns):
+        st.warning("⚠️ Colunas insuficientes em 'history' para análise de divergências (necessário ML_Side, Market_Pred_Side, Asian_Line_Decimal, Goals_H_FT, Goals_A_FT).")
+        return
+
+    st.markdown("## ⚖️ Análise de Divergências – Mercado vs Modelo (Handicap Asiático)")
+
+    # -------------------------------------------
+    # ⚙️ 1️⃣ Seleciona apenas jogos com divergência
+    # -------------------------------------------
+    df_div = history[history["ML_Side"].str.upper() != history["Market_Pred_Side"].str.upper()].copy()
+
+    if df_div.empty:
+        st.info("✅ Nenhuma divergência encontrada entre modelo e mercado.")
+        return
+
+    # -------------------------------------------
+    # ⚙️ 2️⃣ Calcula resultado do handicap para cada lado
+    # -------------------------------------------
+    def avaliar_handicap(r, lado):
+        margin = r["Goals_H_FT"] - r["Goals_A_FT"]
+        line = r["Asian_Line_Decimal"]
+        # para o lado AWAY, invertemos a linha
+        if lado == "AWAY":
+            line = -line
+        try:
+            return handicap_result_from_ft(margin, line)
+        except Exception:
+            return np.nan
+
+    # Resultado do mercado (lado favorecido pelas odds)
+    df_div["Result_Market"] = df_div.apply(lambda r: avaliar_handicap(r, r["Market_Pred_Side"]), axis=1)
+    # Resultado do modelo (lado previsto pelo ML1)
+    df_div["Result_Model"] = df_div.apply(lambda r: avaliar_handicap(r, r["ML_Side"]), axis=1)
+
+    # -------------------------------------------
+    # ⚙️ 3️⃣ Determina acertos (win = 1, half-win = 0.5, push = 0, loss = 0)
+    # -------------------------------------------
+    def converter_resultado(v):
+        if pd.isna(v): return np.nan
+        if v > 0: return 1
+        if v == 0: return 0
+        return 0
+
+    df_div["Market_Correct"] = df_div["Result_Market"].apply(converter_resultado)
+    df_div["Model_Correct"] = df_div["Result_Model"].apply(converter_resultado)
+
+    # -------------------------------------------
+    # ⚙️ 4️⃣ Estatísticas
+    # -------------------------------------------
+    winrate_market = df_div["Market_Correct"].mean(skipna=True)
+    winrate_model = df_div["Model_Correct"].mean(skipna=True)
+    total_games = len(df_div)
+
+    st.markdown(f"""
+    ### 📊 Resultados em Jogos com Divergência
+    - Total de jogos analisados: **{total_games}**
+    - ✅ Winrate do Mercado: **{winrate_market:.1%}**
+    - 🎯 Winrate do Modelo (3D): **{winrate_model:.1%}**
+    """)
+
+    # -------------------------------------------
+    # ⚙️ 5️⃣ Gráfico comparativo
+    # -------------------------------------------
+    import plotly.graph_objects as go
+    fig = go.Figure(data=[
+        go.Bar(name="Mercado (ML2)", x=["Mercado"], y=[winrate_market*100], marker_color="#ff8c00"),
+        go.Bar(name="Modelo 3D (ML1)", x=["Modelo 3D"], y=[winrate_model*100], marker_color="#1e90ff")
+    ])
+    fig.update_layout(
+        title="Comparativo de Acertos – Mercado vs Modelo (Handicap Asiático)",
+        yaxis_title="Winrate (%)",
+        xaxis_title="Lado",
+        showlegend=True
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # -------------------------------------------
+    # ⚙️ 6️⃣ Tabela de divergências
+    # -------------------------------------------
+    df_mostrar = df_div[[
+        "League", "Home", "Away", "ML_Side", "Market_Pred_Side",
+        "Asian_Line_Decimal", "Goals_H_FT", "Goals_A_FT",
+        "Result_Model", "Result_Market", "Market_Correct", "Model_Correct"
+    ]].sort_values("League")
+
+    st.markdown("### 🔍 Detalhes dos Jogos com Divergência")
+    st.dataframe(
+        df_mostrar.style.format({
+            "Asian_Line_Decimal": "{:+.2f}",
+            "Goals_H_FT": "{:.0f}", "Goals_A_FT": "{:.
+
+
+
 st.markdown("---")
 st.success("🎯 **Sistema 3D de 16 Quadrantes ML** implementado com sucesso!")
 st.info("""
