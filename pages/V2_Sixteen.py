@@ -1561,7 +1561,8 @@ if not games_today.empty and 'Quadrant_Dist' in games_today.columns and 'Quadran
             """)
     
     # Análise dos melhores oportunidades
-    # NO FINAL DO BLOCO EXTRA, substitua a seção "Melhores Oportunidades" por:
+
+# NO FINAL DO BLOCO EXTRA, substitua a seção "Melhores Oportunidades" por:
 
 st.markdown("### 🏆 Melhores Oportunidades do Dia - COM LADO DA APOSTA")
 
@@ -1648,53 +1649,56 @@ if not melhores_oportunidades.empty:
 else:
     st.warning("⚠️ Nenhum jogo na categoria 'CONSISTENTE' com distância > 1.5 encontrado.")
 
-    # Adicionar também análise específica dos conflitos com lado
-    st.markdown("### ⚠️ Análise de Conflitos - COM RECOMENDAÇÃO")
+# Adicionar também análise específica dos conflitos com lado
+st.markdown("### ⚠️ Análise de Conflitos - COM RECOMENDAÇÃO")
+
+conflitos = games_today_analisado[
+    (games_today_analisado['Quadrant_Dist'] >= 2.0) &
+    (games_today_analisado['Tipo_Desequilibrio'].isin(['FORÇA-LIGA', 'FORMA-RECENTE']))
+].copy()
+
+if not conflitos.empty:
+    # Determinar lado para conflitos também
+    conflitos[['Lado_Aposta', 'Score_Aposta']] = conflitos.apply(
+        lambda x: pd.Series(determinar_lado_aposta(x)), axis=1
+    )
     
-    conflitos = games_today_analisado[
-        (games_today_analisado['Quadrant_Dist'] >= 2.0) &
-        (games_today_analisado['Tipo_Desequilibrio'].isin(['FORÇA-LIGA', 'FORMA-RECENTE']))
-    ].copy()
+    st.warning(f"🔍 **ENCONTRADOS {len(conflitos)} JOGOS COM CONFLITO DE SINAIS**")
     
-    if not conflitos.empty:
-        # Determinar lado para conflitos também
-        conflitos[['Lado_Aposta', 'Score_Aposta']] = conflitos.apply(
-            lambda x: pd.Series(determinar_lado_aposta(x)), axis=1
-        )
-        
-        st.warning(f"🔍 **ENCONTRADOS {len(conflitos)} JOGOS COM CONFLITO DE SINAIS**")
-        
-        for idx, row in conflitos.iterrows():
-            with st.expander(f"🔎 {row['Home']} vs {row['Away']} - {row['League']} | APOSTA: {row['Lado_Aposta']}"):
-                col_conf1, col_conf2 = st.columns(2)
-                
-                with col_conf1:
-                    st.write("**📊 Dados do Confronto:**")
-                    st.write(f"- **Lado Aposta**: {row['Lado_Aposta']}")
-                    st.write(f"- **Score**: {row['Score_Aposta']:.1%}")
-                    st.write(f"- Distância: {row['Quadrant_Dist']:.2f}")
-                    st.write(f"- Ângulo: {row['Quadrant_Angle']:.1f}°")
-                    st.write(f"- Tipo: {row['Tipo_Desequilibrio']}")
-                    st.write(f"- M_H: {row.get('M_H', 'N/A'):.2f}")
-                    st.write(f"- M_A: {row.get('M_A', 'N/A'):.2f}")
-                
-                with col_conf2:
-                    st.write("**🎯 Análise do Conflito:**")
-                    if row['Tipo_Desequilibrio'] == 'FORÇA-LIGA':
-                        st.write("**CONFLITO**: Desequilíbrio vem principalmente da FORÇA NA LIGA")
-                        if row['Lado_Aposta'] == 'AWAY':
-                            st.success("✅ **AWAY é mais forte na liga** - aposta alinhada com o sinal principal")
-                        else:
-                            st.warning("⚠️ **HOME apostado mas AWAY é mais forte** - analisar cuidadosamente")
-                    else:  # FORMA-RECENTE
-                        st.write("**CONFLITO**: Desequilíbrio vem principalmente da FORMA RECENTE")
-                        if row['Lado_Aposta'] == 'HOME':
-                            st.success("✅ **HOME em melhor forma** - aposta alinhada com o sinal principal")
-                        else:
-                            st.warning("⚠️ **AWAY apostado mas HOME em melhor forma** - analisar cuidadosamente")
-                
-                if 'Recomendacao' in row:
-                    st.write(f"**🤖 RECOMENDAÇÃO ML**: {row['Recomendacao']}")
+    for idx, row in conflitos.iterrows():
+        with st.expander(f"🔎 {row['Home']} vs {row['Away']} - {row['League']} | APOSTA: {row['Lado_Aposta']}"):
+            col_conf1, col_conf2 = st.columns(2)
+            
+            with col_conf1:
+                st.write("**📊 Dados do Confronto:**")
+                st.write(f"- **Lado Aposta**: {row['Lado_Aposta']}")
+                st.write(f"- **Score**: {row['Score_Aposta']:.1%}")
+                st.write(f"- Distância: {row['Quadrant_Dist']:.2f}")
+                st.write(f"- Ângulo: {row['Quadrant_Angle']:.1f}°")
+                st.write(f"- Tipo: {row['Tipo_Desequilibrio']}")
+                st.write(f"- M_H: {row.get('M_H', 'N/A'):.2f}")
+                st.write(f"- M_A: {row.get('M_A', 'N/A'):.2f}")
+            
+            with col_conf2:
+                st.write("**🎯 Análise do Conflito:**")
+                if row['Tipo_Desequilibrio'] == 'FORÇA-LIGA':
+                    st.write("**CONFLITO**: Desequilíbrio vem principalmente da FORÇA NA LIGA")
+                    if row['Lado_Aposta'] == 'AWAY':
+                        st.success("✅ **AWAY é mais forte na liga** - aposta alinhada com o sinal principal")
+                    else:
+                        st.warning("⚠️ **HOME apostado mas AWAY é mais forte** - analisar cuidadosamente")
+                else:  # FORMA-RECENTE
+                    st.write("**CONFLITO**: Desequilíbrio vem principalmente da FORMA RECENTE")
+                    if row['Lado_Aposta'] == 'HOME':
+                        st.success("✅ **HOME em melhor forma** - aposta alinhada com o sinal principal")
+                    else:
+                        st.warning("⚠️ **AWAY apostado mas HOME em melhor forma** - analisar cuidadosamente")
+            
+            if 'Recomendacao' in row:
+                st.write(f"**🤖 RECOMENDAÇÃO ML**: {row['Recomendacao']}")
+
+
+
 
 else:
     st.warning("⚠️ Dados insuficientes para análise estratégica")
