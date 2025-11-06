@@ -631,22 +631,46 @@ def gerar_recomendacao_mercado(row):
 def treinar_ml_mercado(history, games_today):
     st.markdown("### 📊 ML de Análise de Mercado")
     
-    # Preparar dados históricos para ML de mercado
+    # Preparar dados históricos
     history_mercado = history.copy()
     
-    # Garantir colunas de odds
-    for col in ['Odd_H_OP', 'Odd_A_OP', 'Odd_H', 'Odd_A', 'Odd_H_Asi', 'Odd_A_Asi']:
+    # Garantir colunas essenciais
+    for col in ['Odd_H_OP', 'Odd_A_OP', 'Odd_H', 'Odd_A', 'Odd_H_Asi', 'Odd_A_Asi', 'Asian_Line']:
         if col not in history_mercado.columns:
             history_mercado[col] = np.nan
-    
+
+    # Converter linha asiática e calcular margem FT
+    history_mercado['Asian_Line_Decimal'] = history_mercado['Asian_Line'].apply(convert_asian_line_to_decimal)
+    history_mercado['Margin_FT'] = history_mercado['Goals_H_FT'] - history_mercado['Goals_A_FT']
+
+    # Resultados FT por lado (HOME e AWAY)
+    history_mercado['Outcome_Home_FT'] = history_mercado.apply(
+        lambda r: handicap_result_from_ft(r['Margin_FT'], r['Asian_Line_Decimal']), axis=1
+    )
+    history_mercado['Outcome_Away_FT'] = history_mercado.apply(
+        lambda r: handicap_result_from_ft(-r['Margin_FT'], -r['Asian_Line_Decimal']), axis=1
+    )
+
+    # Lucros por lado
+    history_mercado['Profit_Home_Asi'] = history_mercado.apply(
+        lambda r: profit_from_outcome(r['Outcome_Home_FT'], r['Odd_H_Asi']), axis=1
+    )
+    history_mercado['Profit_Away_Asi'] = history_mercado.apply(
+        lambda r: profit_from_outcome(r['Outcome_Away_FT'], r['Odd_A_Asi']), axis=1
+    )
+
+    # Target binário de "value"
+    history_mercado['Target_Value'] = (
+        np.nanmax(np.vstack([
+            history_mercado['Profit_Home_Asi'].fillna(-1).values,
+            history_mercado['Profit_Away_Asi'].fillna(-1).values
+        ]), axis=0) > 0
+    ).astype(int)
+
     # Calcular features de mercado
     history_mercado = calcular_features_mercado(history_mercado)
-    
-    # Target: Profit real obtido
-    history_mercado['Target_Profit'] = history_mercado.apply(calcular_target_profit, axis=1)
-    history_mercado['Target_Value'] = (history_mercado['Target_Profit'] > 0).astype(int)
-    
-    # Features para ML de mercado
+
+    # Features usadas
     features_mercado = [
         'Var_Odd_H', 'Var_Odd_A', 'Volatilidade_Odd_H', 'Volatilidade_Odd_A',
         'Odd_H_OP', 'Odd_A_OP', 'Gap_Prob_Odd_H', 'Gap_Prob_Odd_A',
@@ -659,36 +683,52 @@ def treinar_ml_mercado(history, games_today):
     if len(valid_data) < 50:
         st.warning("⚠️ Dados insuficientes para treinar ML de mercado")
         return None, games_today
-    
+
     X_mercado = valid_data[features_mercado]
     y_mercado = valid_data['Target_Value']
-    
-    # Treinar ML de mercado
+
+    if y_mercado.nunique() < 2:
+        st.warning("⚠️ Target do modelo de mercado ficou com uma única classe. Verifique se Odds/FT/Asian_Line estão completos.")
+        games_today = calcular_features_mercado(games_today)
+        games_today['Prob_Value_Mercado'] = 0.5
+        games_today['Confianca_Mercado'] = 0.5
+        games_today['Recomendacao_Mercado'] = "⚖️ MERCADO NEUTRO (histórico insuficiente)"
+        return None, games_today
+
+    # Treinar modelo de mercado
     model_mercado = RandomForestClassifier(
         n_estimators=200,
         max_depth=10,
         random_state=42,
         class_weight='balanced'
     )
-    
     model_mercado.fit(X_mercado, y_mercado)
-    
+
     # Aplicar nos jogos de hoje
     games_today = calcular_features_mercado(games_today)
     X_today_mercado = games_today[features_mercado].fillna(0)
-    
-    # Previsões de value
+
+    if X_today_mercado.empty:
+        st.warning("⚠️ Nenhum dado válido encontrado em X_today_mercado para prever.")
+        return model_mercado, games_today
+
     proba_value = model_mercado.predict_proba(X_today_mercado)[:, 1]
     games_today['Prob_Value_Mercado'] = proba_value
-    games_today['Confianca_Mercado'] = np.maximum(proba_value, 1-proba_value)
-    
-    # Recomendações da ML de mercado
+    games_today['Confianca_Mercado'] = np.maximum(proba_value, 1 - proba_value)
+
+    # Recomendações
     games_today['Recomendacao_Mercado'] = games_today.apply(gerar_recomendacao_mercado, axis=1)
-    
+
     st.success(f"✅ ML de Mercado treinada: {len(valid_data)} amostras")
     st.metric("Acurácia (Treino)", f"{model_mercado.score(X_mercado, y_mercado):.1%}")
-    
+
+    # Exibir features mais importantes
+    importances = pd.Series(model_mercado.feature_importances_, index=X_mercado.columns).sort_values(ascending=False)
+    st.markdown("#### 🔍 Importância das Features (Mercado)")
+    st.dataframe(importances.head(20).to_frame("Importância"), width='stretch')
+
     return model_mercado, games_today
+
 
 
 
