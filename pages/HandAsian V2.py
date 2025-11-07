@@ -356,18 +356,18 @@ else:
 max_n = len(df_filtered)
 
 if max_n < 10:
-        n_min, n_max, n_default = 1, max_n, max_n
-    else:
-        n_min, n_max, n_default = 10, min(max_n, 200), min(40, max_n)
-    
-    n_to_show = st.slider(
-        "Quantos confrontos exibir (Top por distância):",
-        min_value=n_min,
-        max_value=n_max,
-        value=n_default,
-        step=1,
-        key="slider_n_to_show"
-    )
+    n_min, n_max, n_default = 1, max_n, max_n
+else:
+    n_min, n_max, n_default = 10, min(max_n, 200), min(40, max_n)
+
+n_to_show = st.slider(
+    "Quantos confrontos exibir (Top por distância):",
+    min_value=n_min,
+    max_value=n_max,
+    value=n_default,
+    step=1,
+    key="slider_n_to_show"
+)
 
 
 angle_min, angle_max = st.slider(
