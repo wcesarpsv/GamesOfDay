@@ -1382,7 +1382,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
                 "Recomendacao"
             ]
         ].style.format({
-            "Goals_H_Today": "{:.0f}","Goals_H_Today": "{:.0f}",
+            "Goals_H_Today": "{:.0f}","Goals_A_Today": "{:.0f}",
             "Quadrante_ML_Score_Home": "{:.2f}",
             "Quadrante_ML_Score_Away": "{:.2f}",
         }),
