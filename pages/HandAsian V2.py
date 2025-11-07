@@ -1292,72 +1292,72 @@ else:
     st.info("⚠️ Aguardando dados para gerar ranking dual")
     
 
-# ============================================================
-# 🧭 BLOCO – Índice de Convergência Total (Confidence_Score)
-# ============================================================
+# # ============================================================
+# # 🧭 BLOCO – Índice de Convergência Total (Confidence_Score)
+# # ============================================================
 
-def calc_convergencia(row):
-    """
-    Mede o grau de convergência entre modelo, contexto tático e separação visual.
-    Valores mais altos indicam cenários 'redondos' (tudo coerente).
-    Retorna escore entre 0 e 1.
-    """
+# def calc_convergencia(row):
+#     """
+#     Mede o grau de convergência entre modelo, contexto tático e separação visual.
+#     Valores mais altos indicam cenários 'redondos' (tudo coerente).
+#     Retorna escore entre 0 e 1.
+#     """
 
-    try:
-        score_home = float(row.get('Quadrante_ML_Score_Home', 0))
-        score_away = float(row.get('Quadrante_ML_Score_Away', 0))
-        dist = float(row.get('Quadrant_Dist', 0))
-        ml_side = "HOME" if score_home > score_away else "AWAY"
-        diff = abs(score_home - score_away)
-    except Exception:
-        return 0.0
+#     try:
+#         score_home = float(row.get('Quadrante_ML_Score_Home', 0))
+#         score_away = float(row.get('Quadrante_ML_Score_Away', 0))
+#         dist = float(row.get('Quadrant_Dist', 0))
+#         ml_side = "HOME" if score_home > score_away else "AWAY"
+#         diff = abs(score_home - score_away)
+#     except Exception:
+#         return 0.0
 
-    # 1️⃣ Peso da confiança do modelo (diferença H-A)
-    w_ml = min(diff * 2, 1.0)  # diferença de 0.5 já é força máxima
+#     # 1️⃣ Peso da confiança do modelo (diferença H-A)
+#     w_ml = min(diff * 2, 1.0)  # diferença de 0.5 já é força máxima
 
-    # 2️⃣ Peso da separação tática (distância entre quadrantes)
-    w_dist = min(dist / 0.8, 1.0)
+#     # 2️⃣ Peso da separação tática (distância entre quadrantes)
+#     w_dist = min(dist / 0.8, 1.0)
 
-    # 3️⃣ Peso da coerência entre padrão e lado do modelo
-    home_q = str(row.get('Quadrante_Home_Label', ''))
-    away_q = str(row.get('Quadrante_Away_Label', ''))
+#     # 3️⃣ Peso da coerência entre padrão e lado do modelo
+#     home_q = str(row.get('Quadrante_Home_Label', ''))
+#     away_q = str(row.get('Quadrante_Away_Label', ''))
 
-    # Coerência tática → quando padrão e lado do modelo apontam juntos
-    padrao_favoravel = (
-        ('Underdog Value' in home_q and ml_side == 'HOME') or
-        ('Market Overrates' in away_q and ml_side == 'HOME') or
-        ('Favorite Reliable' in home_q and ml_side == 'HOME') or
-        ('Weak Underdog' in away_q and ml_side == 'AWAY')
-    )
-    w_pattern = 1.0 if padrao_favoravel else 0.0
+#     # Coerência tática → quando padrão e lado do modelo apontam juntos
+#     padrao_favoravel = (
+#         ('Underdog Value' in home_q and ml_side == 'HOME') or
+#         ('Market Overrates' in away_q and ml_side == 'HOME') or
+#         ('Favorite Reliable' in home_q and ml_side == 'HOME') or
+#         ('Weak Underdog' in away_q and ml_side == 'AWAY')
+#     )
+#     w_pattern = 1.0 if padrao_favoravel else 0.0
 
-    # 4️⃣ Convergência total (ponderada)
-    confidence_score = round((0.5 * w_ml + 0.3 * w_dist + 0.2 * w_pattern), 3)
-    return confidence_score
+#     # 4️⃣ Convergência total (ponderada)
+#     confidence_score = round((0.5 * w_ml + 0.3 * w_dist + 0.2 * w_pattern), 3)
+#     return confidence_score
 
 
-# Aplicar cálculo
-ranking_quadrantes['Confidence_Score'] = ranking_quadrantes.apply(calc_convergencia, axis=1)
+# # Aplicar cálculo
+# ranking_quadrantes['Confidence_Score'] = ranking_quadrantes.apply(calc_convergencia, axis=1)
 
-# Exibir os 'Gold Matches' – cenários com tudo coerente
-st.markdown("### 🥇 Gold Matches – Convergência Máxima")
-gold_matches = ranking_quadrantes[ranking_quadrantes['Confidence_Score'] >= 0.75]
+# # Exibir os 'Gold Matches' – cenários com tudo coerente
+# st.markdown("### 🥇 Gold Matches – Convergência Máxima")
+# gold_matches = ranking_quadrantes[ranking_quadrantes['Confidence_Score'] >= 0.75]
 
-if not gold_matches.empty:
-    st.dataframe(
-        gold_matches[['League', 'Home', 'Away', 'Recomendacao', 
-                      'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 'Confidence_Score']]
-        .sort_values('Confidence_Score', ascending=False)
-        .style.format({
-            'Quadrante_ML_Score_Home': '{:.1%}',
-            'Quadrante_ML_Score_Away': '{:.1%}',
-            'Confidence_Score': '{:.2f}'
-        })
-        .background_gradient(subset=['Confidence_Score'], cmap='YlGn'),
-        use_container_width=True
-    )
-else:
-    st.info("Nenhum confronto atingiu nível de convergência 🥇 Gold hoje.")
+# if not gold_matches.empty:
+#     st.dataframe(
+#         gold_matches[['League', 'Home', 'Away', 'Recomendacao', 
+#                       'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 'Confidence_Score']]
+#         .sort_values('Confidence_Score', ascending=False)
+#         .style.format({
+#             'Quadrante_ML_Score_Home': '{:.1%}',
+#             'Quadrante_ML_Score_Away': '{:.1%}',
+#             'Confidence_Score': '{:.2f}'
+#         })
+#         .background_gradient(subset=['Confidence_Score'], cmap='YlGn'),
+#         use_container_width=True
+#     )
+# else:
+#     st.info("Nenhum confronto atingiu nível de convergência 🥇 Gold hoje.")
 
 
 
