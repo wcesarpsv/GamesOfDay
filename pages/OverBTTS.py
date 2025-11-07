@@ -220,7 +220,7 @@ def train_overunder_btts_models(history, games_today):
         'Quadrant_Dist_3D','Quadrant_Separation_3D',
         'Quadrant_Sin_XY','Quadrant_Cos_XY','Quadrant_Sin_XZ','Quadrant_Cos_XZ',
         'Quadrant_Sin_YZ','Quadrant_Cos_YZ',
-        'Quadrant_Sin_Combo','Quadrant_Cos_Combo','Vector_Sign','Magnitude_3D','OverScore_Home','OverScore_Away'
+        'Quadrant_Sin_Combo','Quadrant_Cos_Combo','Vector_Sign','Magnitude_3D','OverScore_Home','OverScore_Away','OU_Total'
     ]
     extras = history[feat3d].fillna(0)
 
