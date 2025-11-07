@@ -1147,9 +1147,10 @@ def treinar_ml2_handicap_integrada_pro(history, games_today, model_home, model_a
     # =====================================================
     st.success("✅ ML2 Pro treinada com sucesso (target contínuo + integração ML1)")
     st.dataframe(
-        games_today[["Home", "Away", "Asian_Line_Decimal", "ML2_Prob_Home_Cover", "Meta_Confidence"]]
+        games_today[["Home", "Away", 'Goals_H_Today', 'Goals_A_Today', "Asian_Line_Decimal", "ML2_Prob_Home_Cover", "Meta_Confidence"]]
         .sort_values("Meta_Confidence", ascending=False)
         .style.format({
+            "Goals_H_Today": "{:.0f}","Goals_A_Today": "{:.0f}",
             "Asian_Line_Decimal": "{:.2f}",
             "ML2_Prob_Home_Cover": "{:.1%}",
             "Meta_Confidence": "{:.1%}"
@@ -1168,13 +1169,6 @@ def treinar_ml2_handicap_integrada_pro(history, games_today, model_home, model_a
         st.warning(f"Não foi possível calcular importâncias: {e}")
 
     return model_handicap, games_today
-
-
-
-if not history.empty:
-    model_handicap, games_today = treinar_ml2_handicap_integrada_pro(history, games_today, modelo_home, modelo_away)
-else:
-    st.warning("⚠️ Histórico vazio – não foi possível treinar a ML2 Pro.")
 
 
 
@@ -1290,115 +1284,14 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
 else:
     st.info("⚠️ Aguardando dados para gerar ranking dual")
+
+
+if not history.empty:
+    model_handicap, games_today = treinar_ml2_handicap_integrada_pro(history, games_today, modelo_home, modelo_away)
+else:
+    st.warning("⚠️ Histórico vazio – não foi possível treinar a ML2 Pro.")
     
 
-# # ============================================================
-# # 🧭 BLOCO – Índice de Convergência Total (Confidence_Score)
-# # ============================================================
-
-# def calc_convergencia(row):
-#     """
-#     Mede o grau de convergência entre modelo, contexto tático e separação visual.
-#     Valores mais altos indicam cenários 'redondos' (tudo coerente).
-#     Retorna escore entre 0 e 1.
-#     """
-
-#     try:
-#         score_home = float(row.get('Quadrante_ML_Score_Home', 0))
-#         score_away = float(row.get('Quadrante_ML_Score_Away', 0))
-#         dist = float(row.get('Quadrant_Dist', 0))
-#         ml_side = "HOME" if score_home > score_away else "AWAY"
-#         diff = abs(score_home - score_away)
-#     except Exception:
-#         return 0.0
-
-#     # 1️⃣ Peso da confiança do modelo (diferença H-A)
-#     w_ml = min(diff * 2, 1.0)  # diferença de 0.5 já é força máxima
-
-#     # 2️⃣ Peso da separação tática (distância entre quadrantes)
-#     w_dist = min(dist / 0.8, 1.0)
-
-#     # 3️⃣ Peso da coerência entre padrão e lado do modelo
-#     home_q = str(row.get('Quadrante_Home_Label', ''))
-#     away_q = str(row.get('Quadrante_Away_Label', ''))
-
-#     # Coerência tática → quando padrão e lado do modelo apontam juntos
-#     padrao_favoravel = (
-#         ('Underdog Value' in home_q and ml_side == 'HOME') or
-#         ('Market Overrates' in away_q and ml_side == 'HOME') or
-#         ('Favorite Reliable' in home_q and ml_side == 'HOME') or
-#         ('Weak Underdog' in away_q and ml_side == 'AWAY')
-#     )
-#     w_pattern = 1.0 if padrao_favoravel else 0.0
-
-#     # 4️⃣ Convergência total (ponderada)
-#     confidence_score = round((0.5 * w_ml + 0.3 * w_dist + 0.2 * w_pattern), 3)
-#     return confidence_score
-
-
-# # Aplicar cálculo
-# ranking_quadrantes['Confidence_Score'] = ranking_quadrantes.apply(calc_convergencia, axis=1)
-
-# # Exibir os 'Gold Matches' – cenários com tudo coerente
-# st.markdown("### 🥇 Gold Matches – Convergência Máxima")
-# gold_matches = ranking_quadrantes[ranking_quadrantes['Confidence_Score'] >= 0.75]
-
-# if not gold_matches.empty:
-#     st.dataframe(
-#         gold_matches[['League', 'Home', 'Away', 'Recomendacao', 
-#                       'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 'Confidence_Score']]
-#         .sort_values('Confidence_Score', ascending=False)
-#         .style.format({
-#             'Quadrante_ML_Score_Home': '{:.1%}',
-#             'Quadrante_ML_Score_Away': '{:.1%}',
-#             'Confidence_Score': '{:.2f}'
-#         })
-#         .background_gradient(subset=['Confidence_Score'], cmap='YlGn'),
-#         use_container_width=True
-#     )
-# else:
-#     st.info("Nenhum confronto atingiu nível de convergência 🥇 Gold hoje.")
-
-
-
-
-# # ---------------- RESUMO EXECUTIVO DUAL ----------------
-# def resumo_quadrantes_hoje_dual(df):
-#     """Resumo executivo dos quadrantes de hoje com perspectiva dual"""
-    
-#     st.markdown("### 📋 Resumo Executivo - Quadrantes Hoje (Dual)")
-    
-#     if df.empty:
-#         st.info("Nenhum dado disponível para resumo")
-#         return
-    
-#     total_jogos = len(df)
-#     alto_valor_home = len(df[df['Classificacao_Valor_Home'] == '🏆 ALTO VALOR'])
-#     bom_valor_home = len(df[df['Classificacao_Valor_Home'] == '✅ BOM VALOR'])
-#     alto_valor_away = len(df[df['Classificacao_Valor_Away'] == '🏆 ALTO VALOR'])
-#     bom_valor_away = len(df[df['Classificacao_Valor_Away'] == '✅ BOM VALOR'])
-    
-#     home_recomendado = len(df[df['ML_Side'] == 'HOME'])
-#     away_recomendado = len(df[df['ML_Side'] == 'AWAY'])
-    
-#     col1, col2, col3, col4 = st.columns(4)
-    
-#     with col1:
-#         st.metric("Total Jogos", total_jogos)
-#     with col2:
-#         st.metric("🎯 Alto Valor Home", alto_valor_home)
-#     with col3:
-#         st.metric("🎯 Alto Valor Away", alto_valor_away)
-#     with col4:
-#         st.metric("📊 Home vs Away", f"{home_recomendado} : {away_recomendado}")
-    
-#     # Distribuição de recomendações
-#     st.markdown("#### 📊 Distribuição de Recomendações")
-#     dist_recomendacoes = df['Recomendacao'].value_counts()
-#     st.dataframe(dist_recomendacoes, use_container_width=True)
-
-# if not games_today.empty and 'Classificacao_Valor_Home' in games_today.columns:
-#     resumo_quadrantes_hoje_dual(games_today)
 
 st.markdown("---")
 st.info("🎯 **Análise de Quadrantes ML Dual** - Sistema avançado para identificação de value bets em Home e Away baseado em Aggression × HandScore")
