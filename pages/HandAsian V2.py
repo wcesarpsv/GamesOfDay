@@ -373,6 +373,8 @@ else:
     st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
     df_filtered = games_today.copy()
 
+
+
 # 🎛️ Filtros interativos (com multiseleção de ligas)
 if "League" in games_today.columns and not games_today["League"].isna().all():
     leagues = sorted(games_today["League"].dropna().unique())
@@ -381,7 +383,8 @@ if "League" in games_today.columns and not games_today["League"].isna().all():
         "Selecione uma ou mais ligas para análise:",
         options=leagues,
         default=[],
-        help="Deixe vazio para exibir todas as ligas"
+        help="Deixe vazio para exibir todas as ligas",
+        key="multiselect_leagues"
     )
 
     # Se nenhuma liga for selecionada → mostra todas
