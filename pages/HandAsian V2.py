@@ -321,32 +321,6 @@ history['Quadrante_Away'] = history.apply(
 
 
 ########################################
-#### 🧮 BLOCO – Cálculo das Distâncias Home ↔ Away
-########################################
-def calcular_distancias_quadrantes(df):
-    """Calcula distância, separação média e ângulo entre os pontos Home e Away."""
-    df = df.copy()
-    if all(col in df.columns for col in ['Aggression_Home', 'Aggression_Away', 'HandScore_Home', 'HandScore_Away']):
-        dx = df['Aggression_Home'] - df['Aggression_Away']
-        dy = df['HandScore_Home'] - df['HandScore_Away']
-        df['Quadrant_Dist'] = np.sqrt(dx**2 + (dy/60)**2 * 2.5) * 10  # escala visual ajustada
-        df['Quadrant_Separation'] = 0.5 * (dy + 60 * dx)
-        df['Quadrant_Angle_Geometric'] = np.degrees(np.arctan2(dy, dx))
-        df['Quadrant_Angle_Normalized'] = np.degrees(np.arctan2((dy / 60), dx))
-    else:
-        st.warning("⚠️ Colunas Aggression/HandScore não encontradas para calcular as distâncias.")
-        df['Quadrant_Dist'] = np.nan
-        df['Quadrant_Separation'] = np.nan
-        df['Quadrant_Angle_Geometric'] = np.nan
-    return df
-
-# Aplicar ao games_today
-games_today = calcular_distancias_quadrantes(games_today)
-
-
-st.dataframe(games_today[['Home','Away','Quadrant_Dist','Quadrant_Separation','Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized']].head(10))
-
-
 ########################################
 #### 🎯 BLOCO – Visualização Interativa com Filtro por Liga e Ângulo
 ########################################
@@ -354,28 +328,9 @@ import plotly.graph_objects as go
 
 st.markdown("## 🎯 Visualização Interativa – Distância entre Times (Home × Away)")
 
-# 🎛️ Filtros interativos (agora com multiseleção)
-if "League" in games_today.columns and not games_today["League"].isna().all():
-    leagues = sorted(games_today["League"].dropna().unique())
-
-    selected_leagues = st.multiselect(
-        "Selecione uma ou mais ligas para análise:",
-        options=leagues,
-        default=[],
-        help="Deixe vazio para exibir todas as ligas"
-    )
-
-    if selected_leagues:
-        df_filtered = games_today[games_today["League"].isin(selected_leagues)].copy()
-    else:
-        df_filtered = games_today.copy()
-else:
-    st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
-    df_filtered = games_today.copy()
-
-
-
-# 🎛️ Filtros interativos (com multiseleção de ligas)
+# ==========================
+# 🎛️ Filtros interativos
+# ==========================
 if "League" in games_today.columns and not games_today["League"].isna().all():
     leagues = sorted(games_today["League"].dropna().unique())
 
@@ -387,35 +342,58 @@ if "League" in games_today.columns and not games_today["League"].isna().all():
         key="multiselect_leagues"
     )
 
-    # Se nenhuma liga for selecionada → mostra todas
     if selected_leagues:
         df_filtered = games_today[games_today["League"].isin(selected_leagues)].copy()
     else:
         df_filtered = games_today.copy()
-
 else:
     st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
     df_filtered = games_today.copy()
 
+# ==========================
+# 🎚️ Filtros adicionais
+# ==========================
+max_n = len(df_filtered)
+n_to_show = st.slider(
+    "Quantos confrontos exibir (Top por distância):",
+    min_value=10,
+    max_value=min(max_n, 200) if max_n > 0 else 10,
+    value=min(40, max_n) if max_n > 0 else 10,
+    step=5,
+    key="slider_n_to_show"
+)
+
+angle_min, angle_max = st.slider(
+    "Filtrar por Ângulo (posição Home vs Away):",
+    min_value=-180,
+    max_value=180,
+    value=(-180, 180),
+    step=5,
+    help="Ângulos positivos → Home acima | Ângulos negativos → Away acima",
+    key="slider_angle_range"
+)
+
+use_combined_filter = st.checkbox(
+    "Usar filtro combinado (Distância + Ângulo)",
+    value=True,
+    help="Se desmarcado, exibirá apenas confrontos dentro do intervalo de ângulo.",
+    key="checkbox_combined_filter"
+)
 
 # ==========================
-# 📊 Preparar dados
+# 📊 Aplicar filtros
 # ==========================
 if "Quadrant_Dist" not in df_filtered.columns:
     df_filtered = calcular_distancias_quadrantes(df_filtered)
 
-# Aplicar filtro de ângulo
 df_angle = df_filtered[
-    (df_filtered['Quadrant_Angle_Normalized'] >= angle_min) &
-    (df_filtered['Quadrant_Angle_Normalized'] <= angle_max)
+    (df_filtered["Quadrant_Angle_Normalized"] >= angle_min)
+    & (df_filtered["Quadrant_Angle_Normalized"] <= angle_max)
 ]
 
-# Aplicar lógica conforme modo selecionado
 if use_combined_filter:
-    # Filtro combinado: aplicar ângulo + top por distância
     df_plot = df_angle.nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
 else:
-    # Filtro somente por ângulo
     df_plot = df_angle.reset_index(drop=True)
 
 # ==========================
@@ -478,11 +456,11 @@ fig.add_trace(go.Scatter(
 ))
 
 # Layout final
-titulo = f"Confrontos – Aggression × HandScore"
+titulo = "Confrontos – Aggression × HandScore"
 if use_combined_filter:
     titulo += f" | Top {n_to_show} Distâncias"
-if selected_league != "⚽ Todas as ligas":
-    titulo += f" | {selected_league}"
+if selected_leagues:
+    titulo += " | " + ", ".join(selected_leagues)
 
 fig.update_layout(
     title=titulo,
@@ -493,7 +471,9 @@ fig.update_layout(
     hovermode="closest",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
 )
+
 st.plotly_chart(fig, use_container_width=True)
+
 
 
 
