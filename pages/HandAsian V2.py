@@ -334,13 +334,19 @@ st.markdown("## 🎯 Visualização Interativa – Distância entre Times (Home 
 if "League" in games_today.columns and not games_today["League"].isna().all():
     leagues = sorted(games_today["League"].dropna().unique())
 
-    selected_leagues = st.multiselect(
-        "Selecione uma ou mais ligas para análise:",
-        options=leagues,
-        default=[],
-        help="Deixe vazio para exibir todas as ligas",
-        key="multiselect_leagues"
-    )
+    # ✅ Botão para selecionar todas as ligas
+    col_select_all, col_multiselect = st.columns([0.25, 0.75])
+    with col_select_all:
+        select_all = st.checkbox("Selecionar todas as ligas", key="checkbox_select_all_leagues")
+
+    with col_multiselect:
+        selected_leagues = st.multiselect(
+            "Selecione uma ou mais ligas para análise:",
+            options=leagues,
+            default=leagues if select_all else [],
+            help="Marque 'Selecionar todas as ligas' para incluir todas automaticamente.",
+            key="multiselect_leagues"
+        )
 
     if selected_leagues:
         df_filtered = games_today[games_today["League"].isin(selected_leagues)].copy()
@@ -355,8 +361,9 @@ else:
 # ==========================
 max_n = len(df_filtered)
 
+# ✅ Slider seguro mesmo com poucos jogos
 if max_n < 10:
-    n_min, n_max, n_default = 1, max_n, max_n
+    n_min, n_max, n_default = 1, max_n if max_n > 0 else 1, max_n if max_n > 0 else 1
 else:
     n_min, n_max, n_default = 10, min(max_n, 200), min(40, max_n)
 
@@ -368,7 +375,6 @@ n_to_show = st.slider(
     step=1,
     key="slider_n_to_show"
 )
-
 
 angle_min, angle_max = st.slider(
     "Filtrar por Ângulo (posição Home vs Away):",
@@ -468,6 +474,8 @@ if use_combined_filter:
     titulo += f" | Top {n_to_show} Distâncias"
 if selected_leagues:
     titulo += " | " + ", ".join(selected_leagues)
+elif select_all:
+    titulo += " | Todas as ligas"
 
 fig.update_layout(
     title=titulo,
@@ -480,7 +488,6 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
-
 
 
 
