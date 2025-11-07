@@ -1362,43 +1362,43 @@ else:
 
 
 
-# ---------------- RESUMO EXECUTIVO DUAL ----------------
-def resumo_quadrantes_hoje_dual(df):
-    """Resumo executivo dos quadrantes de hoje com perspectiva dual"""
+# # ---------------- RESUMO EXECUTIVO DUAL ----------------
+# def resumo_quadrantes_hoje_dual(df):
+#     """Resumo executivo dos quadrantes de hoje com perspectiva dual"""
     
-    st.markdown("### 📋 Resumo Executivo - Quadrantes Hoje (Dual)")
+#     st.markdown("### 📋 Resumo Executivo - Quadrantes Hoje (Dual)")
     
-    if df.empty:
-        st.info("Nenhum dado disponível para resumo")
-        return
+#     if df.empty:
+#         st.info("Nenhum dado disponível para resumo")
+#         return
     
-    total_jogos = len(df)
-    alto_valor_home = len(df[df['Classificacao_Valor_Home'] == '🏆 ALTO VALOR'])
-    bom_valor_home = len(df[df['Classificacao_Valor_Home'] == '✅ BOM VALOR'])
-    alto_valor_away = len(df[df['Classificacao_Valor_Away'] == '🏆 ALTO VALOR'])
-    bom_valor_away = len(df[df['Classificacao_Valor_Away'] == '✅ BOM VALOR'])
+#     total_jogos = len(df)
+#     alto_valor_home = len(df[df['Classificacao_Valor_Home'] == '🏆 ALTO VALOR'])
+#     bom_valor_home = len(df[df['Classificacao_Valor_Home'] == '✅ BOM VALOR'])
+#     alto_valor_away = len(df[df['Classificacao_Valor_Away'] == '🏆 ALTO VALOR'])
+#     bom_valor_away = len(df[df['Classificacao_Valor_Away'] == '✅ BOM VALOR'])
     
-    home_recomendado = len(df[df['ML_Side'] == 'HOME'])
-    away_recomendado = len(df[df['ML_Side'] == 'AWAY'])
+#     home_recomendado = len(df[df['ML_Side'] == 'HOME'])
+#     away_recomendado = len(df[df['ML_Side'] == 'AWAY'])
     
-    col1, col2, col3, col4 = st.columns(4)
+#     col1, col2, col3, col4 = st.columns(4)
     
-    with col1:
-        st.metric("Total Jogos", total_jogos)
-    with col2:
-        st.metric("🎯 Alto Valor Home", alto_valor_home)
-    with col3:
-        st.metric("🎯 Alto Valor Away", alto_valor_away)
-    with col4:
-        st.metric("📊 Home vs Away", f"{home_recomendado} : {away_recomendado}")
+#     with col1:
+#         st.metric("Total Jogos", total_jogos)
+#     with col2:
+#         st.metric("🎯 Alto Valor Home", alto_valor_home)
+#     with col3:
+#         st.metric("🎯 Alto Valor Away", alto_valor_away)
+#     with col4:
+#         st.metric("📊 Home vs Away", f"{home_recomendado} : {away_recomendado}")
     
-    # Distribuição de recomendações
-    st.markdown("#### 📊 Distribuição de Recomendações")
-    dist_recomendacoes = df['Recomendacao'].value_counts()
-    st.dataframe(dist_recomendacoes, use_container_width=True)
+#     # Distribuição de recomendações
+#     st.markdown("#### 📊 Distribuição de Recomendações")
+#     dist_recomendacoes = df['Recomendacao'].value_counts()
+#     st.dataframe(dist_recomendacoes, use_container_width=True)
 
-if not games_today.empty and 'Classificacao_Valor_Home' in games_today.columns:
-    resumo_quadrantes_hoje_dual(games_today)
+# if not games_today.empty and 'Classificacao_Valor_Home' in games_today.columns:
+#     resumo_quadrantes_hoje_dual(games_today)
 
 st.markdown("---")
 st.info("🎯 **Análise de Quadrantes ML Dual** - Sistema avançado para identificação de value bets em Home e Away baseado em Aggression × HandScore")
