@@ -373,25 +373,27 @@ else:
     st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
     df_filtered = games_today.copy()
 
-# ==========================
-# 🎚️ Filtros adicionais
-# ==========================
-max_n = len(df_filtered)
-n_to_show = st.slider("Quantos confrontos exibir (Top por distância):", 10, min(max_n, 200), 40, step=5)
+# 🎛️ Filtros interativos (com multiseleção de ligas)
+if "League" in games_today.columns and not games_today["League"].isna().all():
+    leagues = sorted(games_today["League"].dropna().unique())
 
-# 🔹 Novo filtro de ângulo
-angle_min, angle_max = st.slider(
-    "Filtrar por Ângulo (posição Home vs Away):",
-    min_value=-180, max_value=180, value=(-180, 180), step=5,
-    help="Ângulos positivos → Home acima | Ângulos negativos → Away acima"
-)
+    selected_leagues = st.multiselect(
+        "Selecione uma ou mais ligas para análise:",
+        options=leagues,
+        default=[],
+        help="Deixe vazio para exibir todas as ligas"
+    )
 
-# 🔘 Checkbox de modo combinado
-use_combined_filter = st.checkbox(
-    "Usar filtro combinado (Distância + Ângulo)",
-    value=True,
-    help="Se desmarcado, exibirá apenas confrontos dentro do intervalo de ângulo, ignorando o filtro de distância."
-)
+    # Se nenhuma liga for selecionada → mostra todas
+    if selected_leagues:
+        df_filtered = games_today[games_today["League"].isin(selected_leagues)].copy()
+    else:
+        df_filtered = games_today.copy()
+
+else:
+    st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
+    df_filtered = games_today.copy()
+
 
 # ==========================
 # 📊 Preparar dados
