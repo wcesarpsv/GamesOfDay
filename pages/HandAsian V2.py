@@ -62,19 +62,30 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
     return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
 
 def convert_asian_line(line_str):
-    """Converte string de linha asiática em média numérica"""
+    """Converte string de linha asiática (ex: '-0.5/1') para valor decimal médio"""
     try:
-        if pd.isna(line_str) or line_str == "":
+        if pd.isna(line_str) or str(line_str).strip() == "":
             return None
+
         line_str = str(line_str).strip()
+
+        # Se não tem "/", apenas converte direto
         if "/" not in line_str:
             val = float(line_str)
             return 0.0 if abs(val) < 1e-10 else val
-        parts = [float(x) for x in line_str.split("/")]
+
+        # Se tiver "/", precisamos preservar o sinal
+        sign = -1 if line_str.strip().startswith("-") else 1
+
+        # Remove o sinal para fazer o split
+        parts = [abs(float(x)) for x in line_str.replace("-", "").split("/")]
         avg = sum(parts) / len(parts)
-        return 0.0 if abs(avg) < 1e-10 else avg
+
+        val = sign * avg
+        return 0.0 if abs(val) < 1e-10 else val
     except:
         return None
+
 
 def calc_handicap_result(margin, asian_line_str, invert=False):
     """Retorna média de pontos por linha (1 win, 0.5 push, 0 loss)"""
