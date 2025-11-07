@@ -614,24 +614,27 @@ import plotly.graph_objects as go
 st.markdown("## 🎯 Visualização Interativa – Distância entre Times (Home × Away)")
 
 # ==========================
-# 🎛️ Filtros interativos
+# 🎚️ Filtros adicionais
 # ==========================
-if "League" in games_today.columns and not games_today["League"].isna().all():
-    leagues = sorted(games_today["League"].dropna().unique())
+max_n = len(df_filtered)
 
-    # ✅ Botão para selecionar todas as ligas
-    col_select_all, col_multiselect = st.columns([0.25, 0.75])
-    with col_select_all:
-        select_all = st.checkbox("Selecionar todas as ligas", key="checkbox_select_all_leagues")
+if max_n == 0:
+    st.warning("⚠️ Nenhum confronto disponível nesta seleção de ligas.")
+    st.stop()
 
-    with col_multiselect:
-        selected_leagues = st.multiselect(
-            "Selecione uma ou mais ligas para análise:",
-            options=leagues,
-            default=leagues if select_all else [],
-            help="Marque 'Selecionar todas as ligas' para incluir todas automaticamente.",
-            key="multiselect_leagues"
-        )
+elif max_n == 1:
+    st.info("⚠️ Apenas um confronto disponível nesta seleção de ligas.")
+    n_to_show = 1  # ✅ Evita erro do slider
+else:
+    n_min, n_max, n_default = 1, min(max_n, 200), min(40, max_n)
+    n_to_show = st.slider(
+        "Quantos confrontos exibir (Top por distância):",
+        min_value=n_min,
+        max_value=n_max,
+        value=n_default,
+        step=1,
+        key="slider_n_to_show"
+    )
 
     if selected_leagues:
         df_filtered = games_today[games_today["League"].isin(selected_leagues)].copy()
