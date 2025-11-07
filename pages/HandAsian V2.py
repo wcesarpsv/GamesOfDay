@@ -646,11 +646,12 @@ else:
 # ==========================
 max_n = len(df_filtered)
 
-# ✅ Slider seguro mesmo com poucos jogos
-if max_n < 10:
-    n_min, n_max, n_default = 1, max_n if max_n > 0 else 1, max_n if max_n > 0 else 1
+# ✅ Ajuste robusto para o slider funcionar mesmo com 1 jogo
+if max_n <= 1:
+    n_min, n_max, n_default = 1, 1, 1
+    st.info("⚠️ Apenas um confronto disponível nesta seleção de ligas.")
 else:
-    n_min, n_max, n_default = 10, min(max_n, 200), min(40, max_n)
+    n_min, n_max, n_default = 1, min(max_n, 200), min(40, max_n)
 
 n_to_show = st.slider(
     "Quantos confrontos exibir (Top por distância):",
@@ -660,6 +661,7 @@ n_to_show = st.slider(
     step=1,
     key="slider_n_to_show"
 )
+
 
 angle_min, angle_max = st.slider(
     "Filtrar por Ângulo (posição Home vs Away):",
