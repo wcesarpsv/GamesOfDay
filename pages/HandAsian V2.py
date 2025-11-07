@@ -580,6 +580,32 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
         return single_profit(handicap_result)
 
 
+
+########################################
+#### 🧮 BLOCO – Cálculo das Distâncias Home ↔ Away
+########################################
+def calcular_distancias_quadrantes(df):
+    """Calcula distância, separação média e ângulo entre os pontos Home e Away."""
+    df = df.copy()
+    if all(col in df.columns for col in ['Aggression_Home', 'Aggression_Away', 'HandScore_Home', 'HandScore_Away']):
+        dx = df['Aggression_Home'] - df['Aggression_Away']
+        dy = df['HandScore_Home'] - df['HandScore_Away']
+        df['Quadrant_Dist'] = np.sqrt(dx**2 + (dy / 60)**2 * 2.5) * 10  # escala visual ajustada
+        df['Quadrant_Separation'] = 0.5 * (dy + 60 * dx)
+        df['Quadrant_Angle_Geometric'] = np.degrees(np.arctan2(dy, dx))
+        df['Quadrant_Angle_Normalized'] = np.degrees(np.arctan2((dy / 60), dx))
+    else:
+        st.warning("⚠️ Colunas Aggression/HandScore não encontradas para calcular as distâncias.")
+        df['Quadrant_Dist'] = np.nan
+        df['Quadrant_Separation'] = np.nan
+        df['Quadrant_Angle_Geometric'] = np.nan
+        df['Quadrant_Angle_Normalized'] = np.nan
+    return df
+
+
+
+
+
 ########################################
 #### 🎯 BLOCO – Visualização Interativa com Filtro por Liga e Ângulo
 ########################################
