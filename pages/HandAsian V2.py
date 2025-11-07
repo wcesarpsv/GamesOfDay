@@ -1637,11 +1637,8 @@ def compare_systems_summary(df):
     })
 
     st.markdown("### ⚖️ Comparativo de Performance – AH vs 1x2")
-    st.dataframe(
-        resumo.style.highlight_max(axis=1, color='lightgreen')
-                      .highlight_min(axis=1, color='#ffb3b3'),
-        use_container_width=True
-    )
+    st.dataframe(resumo, use_container_width=True)
+
 
 
 # Executar comparativo final
