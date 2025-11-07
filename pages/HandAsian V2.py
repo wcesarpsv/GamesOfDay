@@ -941,8 +941,6 @@ def estilo_tabela_quadrantes_dual(df):
 
 
 
-
-
 # ---------------- ANÁLISE DE PADRÕES DUAL ----------------
 def analisar_padroes_quadrantes_dual(df):
     """Analisa padrões recorrentes nas combinações de quadrantes com perspectiva dual"""
@@ -1352,7 +1350,10 @@ def treinar_ml2_handicap_away_pro(history, games_today, model_home, model_away):
 
 
 
+# ============================================================
 # ---------------- EXIBIÇÃO DOS RESULTADOS DUAL ----------------
+# ============================================================
+
 st.markdown("## 🏆 Melhores Confrontos por Quadrantes ML (Home & Away)")
 
 if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
@@ -1365,17 +1366,36 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         lambda x: QUADRANTES_8.get(x, {}).get('nome', 'Neutro') if x != 0 else 'Neutro'
     )
 
-    # Aplicar indicadores explicativos dual
+    # Aplicar indicadores explicativos dual (gera a coluna 'Recomendacao')
     ranking_quadrantes = adicionar_indicadores_explicativos_dual(ranking_quadrantes)
 
     # 🔄 Garante que games_today tenha as mesmas colunas e recomendações
     games_today = ranking_quadrantes.copy()
 
+    # Exibir tabela principal
+    st.dataframe(
+        ranking_quadrantes[
+            [
+                "Home", "Away",
+                "Quadrante_Home_Label", "Quadrante_Away_Label",
+                "Quadrante_ML_Score_Home", "Quadrante_ML_Score_Away",
+                "Recomendacao"
+            ]
+        ].style.format({
+            "Quadrante_ML_Score_Home": "{:.2f}",
+            "Quadrante_ML_Score_Away": "{:.2f}",
+        }),
+        use_container_width=True
+    )
+else:
+    st.warning("⚠️ Dados insuficientes para exibir os resultados dual.")
+
+
 # ============================================================
 # 📡 LIVE SCORE MONITOR – SISTEMA 3D (HANDICAP + 1X2)
 # ============================================================
 
-# --- 🔧 Compatibilidade (garante coluna 'Recomendacao') ---
+# 🔧 Compatibilidade: garante que a coluna 'Recomendacao' exista
 if 'Recomendacao' not in games_today.columns:
     if 'Recomendacao_Handicap' in games_today.columns:
         games_today['Recomendacao'] = games_today['Recomendacao_Handicap']
@@ -1385,6 +1405,7 @@ if 'Recomendacao' not in games_today.columns:
         games_today['Recomendacao'] = games_today['Indicacao_Final']
     else:
         games_today['Recomendacao'] = ""
+
 
 # ============================================================
 # ⚽ RESULTADO 1X2
@@ -1565,6 +1586,7 @@ games_today = update_real_time_data_1x2(games_today)
 
 st.markdown("## 📡 Live Score Monitor – Sistema 3D (AH + 1x2)")
 
+# --- Handicap (AH)
 finished_ah = games_today[games_today['Handicap_Result'].notna()]
 if not finished_ah.empty:
     bets = finished_ah['Quadrante_Correct'].notna().sum()
@@ -1578,6 +1600,7 @@ if not finished_ah.empty:
 else:
     st.info("⚠️ Nenhum jogo finalizado ainda para o sistema Handicap.")
 
+# --- 1x2
 finished_1x2 = games_today[games_today['Result_1x2'].notna()]
 if not finished_1x2.empty:
     bets = finished_1x2['Quadrante_Correct_1x2'].notna().sum()
@@ -1592,6 +1615,9 @@ else:
     st.info("⚠️ Nenhum jogo finalizado ainda para o sistema 1x2.")
 
 
+# ============================================================
+# ⚖️ COMPARATIVO – AH x 1x2
+# ============================================================
 def compare_systems_summary(df):
     def calc(correct_col, profit_col):
         valid = df[correct_col].notna().sum()
@@ -1618,7 +1644,9 @@ def compare_systems_summary(df):
     )
 
 
+# Executar comparativo final
 compare_systems_summary(games_today)
+
 
 
 if not history.empty:
