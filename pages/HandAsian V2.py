@@ -1323,7 +1323,7 @@ def treinar_ml2_handicap_away_pro(history, games_today, model_home, model_away):
     # =====================================================
     st.success("✅ ML2 Pro (Away) treinada com sucesso (target contínuo + integração ML1)")
     st.dataframe(
-        games_today[["Home", "Away", 'Goals_H_Today', 'Goals_A_Today', "Asian_Line_Decimal", "ML2_Prob_Away_Cover", "Meta_Confidence_Away"]]
+        games_today[["Time", "Home", "Away", 'Goals_H_Today', 'Goals_A_Today', "Asian_Line_Decimal", "ML2_Prob_Away_Cover", "Meta_Confidence_Away"]]
         .sort_values("Meta_Confidence_Away", ascending=False)
         .style.format({
             "Goals_H_Today": "{:.0f}",
