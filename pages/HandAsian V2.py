@@ -1357,9 +1357,34 @@ def treinar_ml2_handicap_away_pro(history, games_today, model_home, model_away):
 
 
 
+# =====================================================
+# 🔹 1. Treinamento da ML1 (Dual)
+# =====================================================
+if not history.empty:
+    modelo_home, modelo_away, games_today = treinar_modelo_quadrantes_dual(history, games_today)
+    st.success("✅ Modelo dual (Home/Away) treinado com sucesso!")
+else:
+    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
+    st.stop()
+
+# =====================================================
+# 🔹 2. Geração das recomendações (necessário antes da ML2 e Live Score)
+# =====================================================
+games_today = adicionar_indicadores_explicativos_dual(games_today)
+st.success("✅ Recomendações adicionadas com sucesso!")
+
+# (opcional) visualizar para checar
+st.dataframe(games_today[['Home','Away','Recomendacao','Quadrante_ML_Score_Home','Quadrante_ML_Score_Away']].head(10))
+
+# =====================================================
+# 🔹 3. Treinamento da ML2 Pro (Home e Away)
+# =====================================================
 if not history.empty:
     model_handicap, games_today = treinar_ml2_handicap_integrada_pro(history, games_today, modelo_home, modelo_away)
     model_handicap_away, games_today = treinar_ml2_handicap_away_pro(history, games_today, modelo_home, modelo_away)
+else:
+    st.warning("⚠️ Histórico vazio – não foi possível treinar a ML2 Pro.")
+    st.stop()
 
 else:
     st.warning("⚠️ Histórico vazio – não foi possível treinar a ML2 Pro.")
