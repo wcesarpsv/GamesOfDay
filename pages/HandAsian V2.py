@@ -1560,15 +1560,15 @@ def update_real_time_data_3d(df):
 
 
 # ============================================================
-# 🔄 EXECUÇÃO DO LIVE SCORE COMPARATIVO
+# 🔄 EXECUÇÃO DO LIVE SCORE COMPARATIVO (games_today)
 # ============================================================
-ranking_quadrantes = update_real_time_data_3d(ranking_quadrantes)
-ranking_quadrantes = update_real_time_data_1x2(ranking_quadrantes)
+games_today = update_real_time_data_3d(games_today)
+games_today = update_real_time_data_1x2(games_today)
 
 st.markdown("## 📡 Live Score Monitor – Sistema 3D (AH + 1x2)")
 
 # --- Resumo Handicap (AH)
-finished_ah = ranking_quadrantes[ranking_quadrantes['Handicap_Result'].notna()]
+finished_ah = games_today[games_today['Handicap_Result'].notna()]
 if not finished_ah.empty:
     bets = finished_ah['Quadrante_Correct'].notna().sum()
     correct = finished_ah['Quadrante_Correct'].sum()
@@ -1582,7 +1582,7 @@ else:
     st.info("⚠️ Nenhum jogo finalizado ainda para o sistema Handicap.")
 
 # --- Resumo 1x2
-finished_1x2 = ranking_quadrantes[ranking_quadrantes['Result_1x2'].notna()]
+finished_1x2 = games_today[games_today['Result_1x2'].notna()]
 if not finished_1x2.empty:
     bets = finished_1x2['Quadrante_Correct_1x2'].notna().sum()
     correct = finished_1x2['Quadrante_Correct_1x2'].sum()
@@ -1594,6 +1594,7 @@ if not finished_1x2.empty:
     st.metric("ROI (1x2)", f"{roi:.1%}")
 else:
     st.info("⚠️ Nenhum jogo finalizado ainda para o sistema 1x2.")
+
 
 # --- Comparativo AH x 1x2
 def compare_systems_summary(df):
@@ -1624,7 +1625,8 @@ def compare_systems_summary(df):
 
 
 # Exibir comparativo final
-compare_systems_summary(ranking_quadrantes)
+compare_systems_summary(games_today)
+
 
 
     
