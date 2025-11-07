@@ -320,176 +320,6 @@ history['Quadrante_Away'] = history.apply(
 )
 
 
-########################################
-########################################
-#### 🎯 BLOCO – Visualização Interativa com Filtro por Liga e Ângulo
-########################################
-import plotly.graph_objects as go
-
-st.markdown("## 🎯 Visualização Interativa – Distância entre Times (Home × Away)")
-
-# ==========================
-# 🎛️ Filtros interativos
-# ==========================
-if "League" in games_today.columns and not games_today["League"].isna().all():
-    leagues = sorted(games_today["League"].dropna().unique())
-
-    # ✅ Botão para selecionar todas as ligas
-    col_select_all, col_multiselect = st.columns([0.25, 0.75])
-    with col_select_all:
-        select_all = st.checkbox("Selecionar todas as ligas", key="checkbox_select_all_leagues")
-
-    with col_multiselect:
-        selected_leagues = st.multiselect(
-            "Selecione uma ou mais ligas para análise:",
-            options=leagues,
-            default=leagues if select_all else [],
-            help="Marque 'Selecionar todas as ligas' para incluir todas automaticamente.",
-            key="multiselect_leagues"
-        )
-
-    if selected_leagues:
-        df_filtered = games_today[games_today["League"].isin(selected_leagues)].copy()
-    else:
-        df_filtered = games_today.copy()
-else:
-    st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
-    df_filtered = games_today.copy()
-
-# ==========================
-# 🎚️ Filtros adicionais
-# ==========================
-max_n = len(df_filtered)
-
-# ✅ Slider seguro mesmo com poucos jogos
-if max_n < 10:
-    n_min, n_max, n_default = 1, max_n if max_n > 0 else 1, max_n if max_n > 0 else 1
-else:
-    n_min, n_max, n_default = 10, min(max_n, 200), min(40, max_n)
-
-n_to_show = st.slider(
-    "Quantos confrontos exibir (Top por distância):",
-    min_value=n_min,
-    max_value=n_max,
-    value=n_default,
-    step=1,
-    key="slider_n_to_show"
-)
-
-angle_min, angle_max = st.slider(
-    "Filtrar por Ângulo (posição Home vs Away):",
-    min_value=-180,
-    max_value=180,
-    value=(-180, 180),
-    step=5,
-    help="Ângulos positivos → Home acima | Ângulos negativos → Away acima",
-    key="slider_angle_range"
-)
-
-use_combined_filter = st.checkbox(
-    "Usar filtro combinado (Distância + Ângulo)",
-    value=True,
-    help="Se desmarcado, exibirá apenas confrontos dentro do intervalo de ângulo.",
-    key="checkbox_combined_filter"
-)
-
-# ==========================
-# 📊 Aplicar filtros
-# ==========================
-if "Quadrant_Dist" not in df_filtered.columns:
-    df_filtered = calcular_distancias_quadrantes(df_filtered)
-
-df_angle = df_filtered[
-    (df_filtered["Quadrant_Angle_Normalized"] >= angle_min)
-    & (df_filtered["Quadrant_Angle_Normalized"] <= angle_max)
-]
-
-if use_combined_filter:
-    df_plot = df_angle.nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
-else:
-    df_plot = df_angle.reset_index(drop=True)
-
-# ==========================
-# 🎨 Criar gráfico Plotly
-# ==========================
-fig = go.Figure()
-
-for _, row in df_plot.iterrows():
-    xh, xa = row["Aggression_Home"], row["Aggression_Away"]
-    yh, ya = row["HandScore_Home"], row["HandScore_Away"]
-
-    fig.add_trace(go.Scatter(
-        x=[xh, xa],
-        y=[yh, ya],
-        mode="lines+markers",
-        line=dict(color="gray", width=1),
-        marker=dict(size=5),
-        hoverinfo="text",
-        hovertext=(
-            f"<b>{row['Home']} vs {row['Away']}</b><br>"
-            f"🏆 {row.get('League','N/A')}<br>"
-            f"📏 Distância: {row['Quadrant_Dist']:.2f}<br>"
-            f"📐 Ângulo: {row['Quadrant_Angle_Normalized']:.1f}°<br>"
-            f"↕️ {'Home acima' if row['Quadrant_Angle_Normalized'] > 0 else 'Away acima'}"
-        ),
-        showlegend=False
-    ))
-
-# Pontos Home e Away
-fig.add_trace(go.Scatter(
-    x=df_plot["Aggression_Home"],
-    y=df_plot["HandScore_Home"],
-    mode="markers+text",
-    name="Home",
-    marker=dict(color="royalblue", size=8, opacity=0.8),
-    text=df_plot["Home"],
-    textposition="top center",
-    hoverinfo="skip"
-))
-
-fig.add_trace(go.Scatter(
-    x=df_plot["Aggression_Away"],
-    y=df_plot["HandScore_Away"],
-    mode="markers+text",
-    name="Away",
-    marker=dict(color="orangered", size=8, opacity=0.8),
-    text=df_plot["Away"],
-    textposition="top center",
-    hoverinfo="skip"
-))
-
-# Eixos de referência
-fig.add_trace(go.Scatter(
-    x=[-1, 1], y=[0, 0],
-    mode="lines", line=dict(color="limegreen", width=2, dash="dash"), name="Eixo X"
-))
-fig.add_trace(go.Scatter(
-    x=[0, 0], y=[-60, 60],
-    mode="lines", line=dict(color="limegreen", width=2, dash="dash"), name="Eixo Y"
-))
-
-# Layout final
-titulo = "Confrontos – Aggression × HandScore"
-if use_combined_filter:
-    titulo += f" | Top {n_to_show} Distâncias"
-if selected_leagues:
-    titulo += " | " + ", ".join(selected_leagues)
-elif select_all:
-    titulo += " | Todas as ligas"
-
-fig.update_layout(
-    title=titulo,
-    xaxis_title="Aggression (-1 zebra ↔ +1 favorito)",
-    yaxis_title="HandScore (-60 ↔ +60)",
-    template="plotly_white",
-    height=700,
-    hovermode="closest",
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-
 
 
 # ---------------- VISUALIZAÇÃO DOS QUADRANTES ----------------
@@ -748,6 +578,175 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
         return (p1 + p2) / 2
     else:
         return single_profit(handicap_result)
+
+
+########################################
+#### 🎯 BLOCO – Visualização Interativa com Filtro por Liga e Ângulo
+########################################
+import plotly.graph_objects as go
+
+st.markdown("## 🎯 Visualização Interativa – Distância entre Times (Home × Away)")
+
+# ==========================
+# 🎛️ Filtros interativos
+# ==========================
+if "League" in games_today.columns and not games_today["League"].isna().all():
+    leagues = sorted(games_today["League"].dropna().unique())
+
+    # ✅ Botão para selecionar todas as ligas
+    col_select_all, col_multiselect = st.columns([0.25, 0.75])
+    with col_select_all:
+        select_all = st.checkbox("Selecionar todas as ligas", key="checkbox_select_all_leagues")
+
+    with col_multiselect:
+        selected_leagues = st.multiselect(
+            "Selecione uma ou mais ligas para análise:",
+            options=leagues,
+            default=leagues if select_all else [],
+            help="Marque 'Selecionar todas as ligas' para incluir todas automaticamente.",
+            key="multiselect_leagues"
+        )
+
+    if selected_leagues:
+        df_filtered = games_today[games_today["League"].isin(selected_leagues)].copy()
+    else:
+        df_filtered = games_today.copy()
+else:
+    st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
+    df_filtered = games_today.copy()
+
+# ==========================
+# 🎚️ Filtros adicionais
+# ==========================
+max_n = len(df_filtered)
+
+# ✅ Slider seguro mesmo com poucos jogos
+if max_n < 10:
+    n_min, n_max, n_default = 1, max_n if max_n > 0 else 1, max_n if max_n > 0 else 1
+else:
+    n_min, n_max, n_default = 10, min(max_n, 200), min(40, max_n)
+
+n_to_show = st.slider(
+    "Quantos confrontos exibir (Top por distância):",
+    min_value=n_min,
+    max_value=n_max,
+    value=n_default,
+    step=1,
+    key="slider_n_to_show"
+)
+
+angle_min, angle_max = st.slider(
+    "Filtrar por Ângulo (posição Home vs Away):",
+    min_value=-180,
+    max_value=180,
+    value=(-180, 180),
+    step=5,
+    help="Ângulos positivos → Home acima | Ângulos negativos → Away acima",
+    key="slider_angle_range"
+)
+
+use_combined_filter = st.checkbox(
+    "Usar filtro combinado (Distância + Ângulo)",
+    value=True,
+    help="Se desmarcado, exibirá apenas confrontos dentro do intervalo de ângulo.",
+    key="checkbox_combined_filter"
+)
+
+# ==========================
+# 📊 Aplicar filtros
+# ==========================
+if "Quadrant_Dist" not in df_filtered.columns:
+    df_filtered = calcular_distancias_quadrantes(df_filtered)
+
+df_angle = df_filtered[
+    (df_filtered["Quadrant_Angle_Normalized"] >= angle_min)
+    & (df_filtered["Quadrant_Angle_Normalized"] <= angle_max)
+]
+
+if use_combined_filter:
+    df_plot = df_angle.nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
+else:
+    df_plot = df_angle.reset_index(drop=True)
+
+# ==========================
+# 🎨 Criar gráfico Plotly
+# ==========================
+fig = go.Figure()
+
+for _, row in df_plot.iterrows():
+    xh, xa = row["Aggression_Home"], row["Aggression_Away"]
+    yh, ya = row["HandScore_Home"], row["HandScore_Away"]
+
+    fig.add_trace(go.Scatter(
+        x=[xh, xa],
+        y=[yh, ya],
+        mode="lines+markers",
+        line=dict(color="gray", width=1),
+        marker=dict(size=5),
+        hoverinfo="text",
+        hovertext=(
+            f"<b>{row['Home']} vs {row['Away']}</b><br>"
+            f"🏆 {row.get('League','N/A')}<br>"
+            f"📏 Distância: {row['Quadrant_Dist']:.2f}<br>"
+            f"📐 Ângulo: {row['Quadrant_Angle_Normalized']:.1f}°<br>"
+            f"↕️ {'Home acima' if row['Quadrant_Angle_Normalized'] > 0 else 'Away acima'}"
+        ),
+        showlegend=False
+    ))
+
+# Pontos Home e Away
+fig.add_trace(go.Scatter(
+    x=df_plot["Aggression_Home"],
+    y=df_plot["HandScore_Home"],
+    mode="markers+text",
+    name="Home",
+    marker=dict(color="royalblue", size=8, opacity=0.8),
+    text=df_plot["Home"],
+    textposition="top center",
+    hoverinfo="skip"
+))
+
+fig.add_trace(go.Scatter(
+    x=df_plot["Aggression_Away"],
+    y=df_plot["HandScore_Away"],
+    mode="markers+text",
+    name="Away",
+    marker=dict(color="orangered", size=8, opacity=0.8),
+    text=df_plot["Away"],
+    textposition="top center",
+    hoverinfo="skip"
+))
+
+# Eixos de referência
+fig.add_trace(go.Scatter(
+    x=[-1, 1], y=[0, 0],
+    mode="lines", line=dict(color="limegreen", width=2, dash="dash"), name="Eixo X"
+))
+fig.add_trace(go.Scatter(
+    x=[0, 0], y=[-60, 60],
+    mode="lines", line=dict(color="limegreen", width=2, dash="dash"), name="Eixo Y"
+))
+
+# Layout final
+titulo = "Confrontos – Aggression × HandScore"
+if use_combined_filter:
+    titulo += f" | Top {n_to_show} Distâncias"
+if selected_leagues:
+    titulo += " | " + ", ".join(selected_leagues)
+elif select_all:
+    titulo += " | Todas as ligas"
+
+fig.update_layout(
+    title=titulo,
+    xaxis_title="Aggression (-1 zebra ↔ +1 favorito)",
+    yaxis_title="HandScore (-60 ↔ +60)",
+    template="plotly_white",
+    height=700,
+    hovermode="closest",
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+)
+
+st.plotly_chart(fig, use_container_width=True)
 
 
     
