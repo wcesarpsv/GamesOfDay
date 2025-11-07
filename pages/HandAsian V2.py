@@ -1603,6 +1603,16 @@ else:
     st.info("⚠️ Nenhum jogo finalizado ainda para o sistema 1x2.")
 
 # ============================================================
+# ⚙️ TREINAMENTO DAS ML2 (ANTES DO LIVE SCORE)
+# ============================================================
+if not history.empty:
+    model_handicap, games_today = treinar_ml2_handicap_integrada_pro(history, games_today, modelo_home, modelo_away)
+    model_handicap_away, games_today = treinar_ml2_handicap_away_pro(history, games_today, modelo_home, modelo_away)
+else:
+    st.warning("⚠️ Histórico vazio – não foi possível treinar a ML2 Pro.")
+
+
+# ============================================================
 # ⚖️ COMPARATIVO – AH x 1x2
 # ============================================================
 def compare_systems_summary(df):
@@ -1625,6 +1635,7 @@ def compare_systems_summary(df):
     })
     return resumo
 
+
 st.markdown("### ⚖️ Comparativo de Performance – AH vs 1x2")
 st.dataframe(
     compare_systems_summary(ranking_quadrantes)
@@ -1632,17 +1643,6 @@ st.dataframe(
         .highlight_min(axis=1, color='#ffb3b3'),
     use_container_width=True
 )
-
-
-
-
-if not history.empty:
-    model_handicap, games_today = treinar_ml2_handicap_integrada_pro(history, games_today, modelo_home, modelo_away)
-    model_handicap_away, games_today = treinar_ml2_handicap_away_pro(history, games_today, modelo_home, modelo_away)
-
-else:
-    st.warning("⚠️ Histórico vazio – não foi possível treinar a ML2 Pro.")
-
 
 st.markdown("---")
 st.info("🎯 **Análise de Quadrantes ML Dual** - Sistema avançado para identificação de value bets em Home e Away baseado em Aggression × HandScore")
