@@ -1035,7 +1035,7 @@ def treinar_ml_handicap(history, games_today):
     quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
     quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
-    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized']].fillna(0)
+    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized','Asian_Line_Decimal']].fillna(0)
 
     X = pd.concat([ligas_dummies, extras, quadrantes_home, quadrantes_away], axis=1)
     y = history["Target_Cover"]
