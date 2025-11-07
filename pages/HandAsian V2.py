@@ -1138,9 +1138,13 @@ def treinar_ml2_handicap_integrada(history, games_today, model_home, model_away)
     # 3️⃣ Adicionar saídas da ML1 como features (meta learning)
     # =====================================================
     try:
+        # 🔒 Garante alinhamento entre features do treino e as atuais
+        X_base_aligned = X_base.reindex(columns=model_home.feature_names_in_, fill_value=0)
+    
         # Gerar probabilidades da ML1 (treinada anteriormente)
-        probas_home = model_home.predict_proba(X_base)[:, 1]
-        probas_away = model_away.predict_proba(X_base)[:, 1]
+        probas_home = model_home.predict_proba(X_base_aligned)[:, 1]
+        probas_away = model_away.predict_proba(X_base_aligned)[:, 1]
+        
         history["ML1_Prob_Home"] = probas_home
         history["ML1_Prob_Away"] = probas_away
         history["ML1_Diff"] = probas_home - probas_away
