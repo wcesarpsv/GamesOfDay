@@ -354,19 +354,19 @@ import plotly.graph_objects as go
 
 st.markdown("## 🎯 Visualização Interativa – Distância entre Times (Home × Away)")
 
-# ==========================
-# 🎛️ Filtros interativos
-# ==========================
+# 🎛️ Filtros interativos (agora com multiseleção)
 if "League" in games_today.columns and not games_today["League"].isna().all():
     leagues = sorted(games_today["League"].dropna().unique())
-    selected_league = st.selectbox(
-        "Selecione a liga para análise:",
-        options=["⚽ Todas as ligas"] + leagues,
-        index=0
+
+    selected_leagues = st.multiselect(
+        "Selecione uma ou mais ligas para análise:",
+        options=leagues,
+        default=[],
+        help="Deixe vazio para exibir todas as ligas"
     )
 
-    if selected_league != "⚽ Todas as ligas":
-        df_filtered = games_today[games_today["League"] == selected_league].copy()
+    if selected_leagues:
+        df_filtered = games_today[games_today["League"].isin(selected_leagues)].copy()
     else:
         df_filtered = games_today.copy()
 else:
