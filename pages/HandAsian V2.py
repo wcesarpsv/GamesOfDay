@@ -1013,267 +1013,6 @@ else:
 
 
 
-# ============================================================
-# 📡 LIVE SCORE MONITOR – SISTEMA 3D (HANDICAP + 1X2)
-# ============================================================
-
-# ----------------------------
-# ⚽ RESULTADO 1X2
-# ----------------------------
-def determine_match_result_1x2(row):
-    """Determina o resultado 1X2 com base nos gols finais."""
-    gh, ga = row.get('Goals_H_Today'), row.get('Goals_A_Today')
-    if pd.isna(gh) or pd.isna(ga):
-        return None
-    if gh > ga:
-        return "HOME_WIN"
-    elif gh < ga:
-        return "AWAY_WIN"
-    else:
-        return "DRAW"
-
-
-def check_recommendation_correct_1x2(recomendacao, match_result):
-    """Verifica se a recomendação acertou o resultado 1X2."""
-    if pd.isna(recomendacao) or match_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
-        return None
-
-    rec = str(recomendacao).upper()
-    is_home = any(k in rec for k in ['HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
-    is_away = any(k in rec for k in ['AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
-
-    if is_home and match_result == "HOME_WIN":
-        return True
-    elif is_away and match_result == "AWAY_WIN":
-        return True
-    else:
-        return False
-
-
-def calculate_profit_1x2(recomendacao, match_result, odds_row):
-    """Calcula o profit líquido para apostas 1X2 (odd - 1 se vitória, -1 se derrota)."""
-    if pd.isna(recomendacao) or match_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
-        return 0
-
-    rec = str(recomendacao).upper()
-    is_home = any(k in rec for k in ['HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
-    is_away = any(k in rec for k in ['AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
-
-    if is_home:
-        odd = odds_row.get('Odd_H', np.nan)
-        won = match_result == "HOME_WIN"
-    elif is_away:
-        odd = odds_row.get('Odd_A', np.nan)
-        won = match_result == "AWAY_WIN"
-    else:
-        return 0
-
-    if pd.isna(odd):
-        return 0
-
-    return (odd - 1) if won else -1
-
-
-def update_real_time_data_1x2(df):
-    """Atualiza colunas de resultado, acerto e lucro 1X2."""
-    df = df.copy()
-    df['Result_1x2'] = df.apply(determine_match_result_1x2, axis=1)
-    df['Quadrante_Correct_1x2'] = df.apply(
-        lambda r: check_recommendation_correct_1x2(r['Recomendacao'], r['Result_1x2']), axis=1)
-    df['Profit_1x2'] = df.apply(
-        lambda r: calculate_profit_1x2(r['Recomendacao'], r['Result_1x2'], r), axis=1)
-    return df
-
-
-# ----------------------------
-# ⚖️ RESULTADO HANDICAP ASIÁTICO
-# ----------------------------
-def determine_handicap_result_3d(row):
-    """Determina o resultado do handicap asiático com suporte a half-win / half-loss."""
-    try:
-        gh = float(row['Goals_H_Today'])
-        ga = float(row['Goals_A_Today'])
-        asian_line = float(row['Asian_Line_Decimal'])
-        rec = str(row.get('Recomendacao', '')).upper()
-    except:
-        return None
-
-    if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line):
-        return None
-
-    is_home = any(k in rec for k in ['HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
-    is_away = any(k in rec for k in ['AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
-    if not (is_home or is_away):
-        return None
-
-    side = "HOME" if is_home else "AWAY"
-    frac = abs(asian_line % 1)
-    is_quarter = frac in [0.25, 0.75]
-
-    def single_result(gh, ga, line, side):
-        if side == "HOME":
-            adj = (gh + line) - ga
-        else:
-            adj = (ga - line) - gh
-        if adj > 0:
-            return 1.0
-        elif adj == 0:
-            return 0.5
-        else:
-            return 0.0
-
-    if is_quarter:
-        if asian_line > 0:
-            line1 = math.floor(asian_line * 2) / 2
-            line2 = line1 + 0.5
-        else:
-            line1 = math.ceil(asian_line * 2) / 2
-            line2 = line1 - 0.5
-        r1, r2 = single_result(gh, ga, line1, side), single_result(gh, ga, line2, side)
-        avg = (r1 + r2) / 2
-        if avg == 1:
-            return f"{side}_COVERED"
-        elif avg == 0.75:
-            return "HALF_WIN"
-        elif avg == 0.5:
-            return "PUSH"
-        elif avg == 0.25:
-            return "HALF_LOSS"
-        else:
-            return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
-
-    if side == "HOME":
-        adj = (gh + asian_line) - ga
-    else:
-        adj = (ga - asian_line) - gh
-
-    if adj > 0:
-        return f"{side}_COVERED"
-    elif adj < 0:
-        return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
-    else:
-        return "PUSH"
-
-
-def check_handicap_recommendation_correct_3d(rec, result):
-    """Verifica se a recomendação de handicap foi correta."""
-    if pd.isna(rec) or result is None or '⚖️ ANALISAR' in str(rec).upper():
-        return None
-    rec = str(rec).upper()
-    is_home = any(k in rec for k in ['HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
-    is_away = any(k in rec for k in ['AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
-    if is_home and result in ["HOME_COVERED", "HALF_WIN"]:
-        return True
-    elif is_away and result in ["AWAY_COVERED", "HALF_WIN"]:
-        return True
-    elif result == "PUSH":
-        return None
-    else:
-        return False
-
-
-def calculate_handicap_profit_3d(rec, result, odds_row):
-    """Calcula o lucro líquido do handicap com suporte a half-win/half-loss."""
-    if pd.isna(rec) or result is None or '⚖️ ANALISAR' in str(rec).upper():
-        return 0
-    rec = str(rec).upper()
-    is_home = any(k in rec for k in ['HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
-    is_away = any(k in rec for k in ['AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
-
-    odd = odds_row.get('Odd_H_Asi', np.nan) if is_home else odds_row.get('Odd_A_Asi', np.nan)
-    if pd.isna(odd):
-        return 0
-
-    if (is_home and result == "HOME_COVERED") or (is_away and result == "AWAY_COVERED"):
-        return odd
-    elif result == "HALF_WIN":
-        return odd / 2
-    elif result == "HALF_LOSS":
-        return -0.5
-    elif result == "PUSH":
-        return 0
-    else:
-        return -1
-
-
-def update_real_time_data_3d(df):
-    """Atualiza Handicap_Result, Quadrante_Correct e Profit_Quadrante."""
-    df = df.copy()
-    df['Handicap_Result'] = df.apply(determine_handicap_result_3d, axis=1)
-    df['Quadrante_Correct'] = df.apply(
-        lambda r: check_handicap_recommendation_correct_3d(r['Recomendacao'], r['Handicap_Result']), axis=1)
-    df['Profit_Quadrante'] = df.apply(
-        lambda r: calculate_handicap_profit_3d(r['Recomendacao'], r['Handicap_Result'], r), axis=1)
-    return df
-
-
-# ============================================================
-# 🔄 EXECUÇÃO DO LIVE SCORE COMPARATIVO
-# ============================================================
-ranking_quadrantes = update_real_time_data_3d(ranking_quadrantes)
-ranking_quadrantes = update_real_time_data_1x2(ranking_quadrantes)
-
-st.markdown("## 📡 Live Score Monitor – Sistema 3D (AH + 1x2)")
-
-# --- Resumo Handicap (AH)
-finished_ah = ranking_quadrantes[ranking_quadrantes['Handicap_Result'].notna()]
-if not finished_ah.empty:
-    bets = finished_ah['Quadrante_Correct'].notna().sum()
-    correct = finished_ah['Quadrante_Correct'].sum()
-    profit = finished_ah['Profit_Quadrante'].sum()
-    roi = profit / bets if bets > 0 else 0
-    st.metric("Apostas (AH)", bets)
-    st.metric("Winrate (AH)", f"{correct/bets:.1%}")
-    st.metric("Lucro Total (AH)", f"{profit:.2f}u")
-    st.metric("ROI (AH)", f"{roi:.1%}")
-else:
-    st.info("⚠️ Nenhum jogo finalizado ainda para o sistema Handicap.")
-
-# --- Resumo 1x2
-finished_1x2 = ranking_quadrantes[ranking_quadrantes['Result_1x2'].notna()]
-if not finished_1x2.empty:
-    bets = finished_1x2['Quadrante_Correct_1x2'].notna().sum()
-    correct = finished_1x2['Quadrante_Correct_1x2'].sum()
-    profit = finished_1x2['Profit_1x2'].sum()
-    roi = profit / bets if bets > 0 else 0
-    st.metric("Apostas (1x2)", bets)
-    st.metric("Winrate (1x2)", f"{correct/bets:.1%}")
-    st.metric("Lucro Total (1x2)", f"{profit:.2f}u")
-    st.metric("ROI (1x2)", f"{roi:.1%}")
-else:
-    st.info("⚠️ Nenhum jogo finalizado ainda para o sistema 1x2.")
-
-# --- Comparativo AH x 1x2
-def compare_systems_summary(df):
-    """Compara o desempenho do sistema Handicap (AH) e 1x2."""
-    def calc(correct_col, profit_col):
-        valid = df[correct_col].notna().sum()
-        correct = df[correct_col].sum(skipna=True)
-        profit = df[profit_col].sum()
-        roi = profit / valid if valid > 0 else 0
-        winrate = correct / valid if valid > 0 else 0
-        return valid, winrate, profit, roi
-
-    ah_bets, ah_win, ah_profit, ah_roi = calc("Quadrante_Correct", "Profit_Quadrante")
-    x2_bets, x2_win, x2_profit, x2_roi = calc("Quadrante_Correct_1x2", "Profit_1x2")
-
-    resumo = pd.DataFrame({
-        "Métrica": ["Apostas", "Winrate", "Lucro Total", "ROI"],
-        "Sistema Handicap (AH)": [ah_bets, f"{ah_win:.1%}", f"{ah_profit:.2f}", f"{ah_roi:.1%}"],
-        "Sistema 1x2": [x2_bets, f"{x2_win:.1%}", f"{x2_profit:.2f}", f"{x2_roi:.1%}"]
-    })
-
-    st.markdown("### ⚖️ Comparativo de Performance – AH vs 1x2")
-    st.dataframe(
-        resumo.style.highlight_max(axis=1, color='lightgreen')
-                      .highlight_min(axis=1, color='#ffb3b3'),
-        use_container_width=True
-    )
-
-
-# Exibir comparativo final
-compare_systems_summary(ranking_quadrantes)
-
 
 
 
@@ -1626,6 +1365,266 @@ else:
     st.warning("⚠️ Histórico vazio – não foi possível treinar a ML2 Pro.")
 
 
+# ============================================================
+# 📡 LIVE SCORE MONITOR – SISTEMA 3D (HANDICAP + 1X2)
+# ============================================================
+
+# ----------------------------
+# ⚽ RESULTADO 1X2
+# ----------------------------
+def determine_match_result_1x2(row):
+    """Determina o resultado 1X2 com base nos gols finais."""
+    gh, ga = row.get('Goals_H_Today'), row.get('Goals_A_Today')
+    if pd.isna(gh) or pd.isna(ga):
+        return None
+    if gh > ga:
+        return "HOME_WIN"
+    elif gh < ga:
+        return "AWAY_WIN"
+    else:
+        return "DRAW"
+
+
+def check_recommendation_correct_1x2(recomendacao, match_result):
+    """Verifica se a recomendação acertou o resultado 1X2."""
+    if pd.isna(recomendacao) or match_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
+        return None
+
+    rec = str(recomendacao).upper()
+    is_home = any(k in rec for k in ['HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
+    is_away = any(k in rec for k in ['AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+
+    if is_home and match_result == "HOME_WIN":
+        return True
+    elif is_away and match_result == "AWAY_WIN":
+        return True
+    else:
+        return False
+
+
+def calculate_profit_1x2(recomendacao, match_result, odds_row):
+    """Calcula o profit líquido para apostas 1X2 (odd - 1 se vitória, -1 se derrota)."""
+    if pd.isna(recomendacao) or match_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
+        return 0
+
+    rec = str(recomendacao).upper()
+    is_home = any(k in rec for k in ['HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
+    is_away = any(k in rec for k in ['AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+
+    if is_home:
+        odd = odds_row.get('Odd_H', np.nan)
+        won = match_result == "HOME_WIN"
+    elif is_away:
+        odd = odds_row.get('Odd_A', np.nan)
+        won = match_result == "AWAY_WIN"
+    else:
+        return 0
+
+    if pd.isna(odd):
+        return 0
+
+    return (odd - 1) if won else -1
+
+
+def update_real_time_data_1x2(df):
+    """Atualiza colunas de resultado, acerto e lucro 1X2."""
+    df = df.copy()
+    df['Result_1x2'] = df.apply(determine_match_result_1x2, axis=1)
+    df['Quadrante_Correct_1x2'] = df.apply(
+        lambda r: check_recommendation_correct_1x2(r['Recomendacao'], r['Result_1x2']), axis=1)
+    df['Profit_1x2'] = df.apply(
+        lambda r: calculate_profit_1x2(r['Recomendacao'], r['Result_1x2'], r), axis=1)
+    return df
+
+
+# ----------------------------
+# ⚖️ RESULTADO HANDICAP ASIÁTICO
+# ----------------------------
+def determine_handicap_result_3d(row):
+    """Determina o resultado do handicap asiático com suporte a half-win / half-loss."""
+    try:
+        gh = float(row['Goals_H_Today'])
+        ga = float(row['Goals_A_Today'])
+        asian_line = float(row['Asian_Line_Decimal'])
+        rec = str(row.get('Recomendacao', '')).upper()
+    except:
+        return None
+
+    if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line):
+        return None
+
+    is_home = any(k in rec for k in ['HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
+    is_away = any(k in rec for k in ['AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+    if not (is_home or is_away):
+        return None
+
+    side = "HOME" if is_home else "AWAY"
+    frac = abs(asian_line % 1)
+    is_quarter = frac in [0.25, 0.75]
+
+    def single_result(gh, ga, line, side):
+        if side == "HOME":
+            adj = (gh + line) - ga
+        else:
+            adj = (ga - line) - gh
+        if adj > 0:
+            return 1.0
+        elif adj == 0:
+            return 0.5
+        else:
+            return 0.0
+
+    if is_quarter:
+        if asian_line > 0:
+            line1 = math.floor(asian_line * 2) / 2
+            line2 = line1 + 0.5
+        else:
+            line1 = math.ceil(asian_line * 2) / 2
+            line2 = line1 - 0.5
+        r1, r2 = single_result(gh, ga, line1, side), single_result(gh, ga, line2, side)
+        avg = (r1 + r2) / 2
+        if avg == 1:
+            return f"{side}_COVERED"
+        elif avg == 0.75:
+            return "HALF_WIN"
+        elif avg == 0.5:
+            return "PUSH"
+        elif avg == 0.25:
+            return "HALF_LOSS"
+        else:
+            return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
+
+    if side == "HOME":
+        adj = (gh + asian_line) - ga
+    else:
+        adj = (ga - asian_line) - gh
+
+    if adj > 0:
+        return f"{side}_COVERED"
+    elif adj < 0:
+        return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
+    else:
+        return "PUSH"
+
+
+def check_handicap_recommendation_correct_3d(rec, result):
+    """Verifica se a recomendação de handicap foi correta."""
+    if pd.isna(rec) or result is None or '⚖️ ANALISAR' in str(rec).upper():
+        return None
+    rec = str(rec).upper()
+    is_home = any(k in rec for k in ['HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
+    is_away = any(k in rec for k in ['AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+    if is_home and result in ["HOME_COVERED", "HALF_WIN"]:
+        return True
+    elif is_away and result in ["AWAY_COVERED", "HALF_WIN"]:
+        return True
+    elif result == "PUSH":
+        return None
+    else:
+        return False
+
+
+def calculate_handicap_profit_3d(rec, result, odds_row):
+    """Calcula o lucro líquido do handicap com suporte a half-win/half-loss."""
+    if pd.isna(rec) or result is None or '⚖️ ANALISAR' in str(rec).upper():
+        return 0
+    rec = str(rec).upper()
+    is_home = any(k in rec for k in ['HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
+    is_away = any(k in rec for k in ['AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+
+    odd = odds_row.get('Odd_H_Asi', np.nan) if is_home else odds_row.get('Odd_A_Asi', np.nan)
+    if pd.isna(odd):
+        return 0
+
+    if (is_home and result == "HOME_COVERED") or (is_away and result == "AWAY_COVERED"):
+        return odd
+    elif result == "HALF_WIN":
+        return odd / 2
+    elif result == "HALF_LOSS":
+        return -0.5
+    elif result == "PUSH":
+        return 0
+    else:
+        return -1
+
+
+def update_real_time_data_3d(df):
+    """Atualiza Handicap_Result, Quadrante_Correct e Profit_Quadrante."""
+    df = df.copy()
+    df['Handicap_Result'] = df.apply(determine_handicap_result_3d, axis=1)
+    df['Quadrante_Correct'] = df.apply(
+        lambda r: check_handicap_recommendation_correct_3d(r['Recomendacao'], r['Handicap_Result']), axis=1)
+    df['Profit_Quadrante'] = df.apply(
+        lambda r: calculate_handicap_profit_3d(r['Recomendacao'], r['Handicap_Result'], r), axis=1)
+    return df
+
+
+# ============================================================
+# 🔄 EXECUÇÃO DO LIVE SCORE COMPARATIVO
+# ============================================================
+ranking_quadrantes = update_real_time_data_3d(ranking_quadrantes)
+ranking_quadrantes = update_real_time_data_1x2(ranking_quadrantes)
+
+st.markdown("## 📡 Live Score Monitor – Sistema 3D (AH + 1x2)")
+
+# --- Resumo Handicap (AH)
+finished_ah = ranking_quadrantes[ranking_quadrantes['Handicap_Result'].notna()]
+if not finished_ah.empty:
+    bets = finished_ah['Quadrante_Correct'].notna().sum()
+    correct = finished_ah['Quadrante_Correct'].sum()
+    profit = finished_ah['Profit_Quadrante'].sum()
+    roi = profit / bets if bets > 0 else 0
+    st.metric("Apostas (AH)", bets)
+    st.metric("Winrate (AH)", f"{correct/bets:.1%}")
+    st.metric("Lucro Total (AH)", f"{profit:.2f}u")
+    st.metric("ROI (AH)", f"{roi:.1%}")
+else:
+    st.info("⚠️ Nenhum jogo finalizado ainda para o sistema Handicap.")
+
+# --- Resumo 1x2
+finished_1x2 = ranking_quadrantes[ranking_quadrantes['Result_1x2'].notna()]
+if not finished_1x2.empty:
+    bets = finished_1x2['Quadrante_Correct_1x2'].notna().sum()
+    correct = finished_1x2['Quadrante_Correct_1x2'].sum()
+    profit = finished_1x2['Profit_1x2'].sum()
+    roi = profit / bets if bets > 0 else 0
+    st.metric("Apostas (1x2)", bets)
+    st.metric("Winrate (1x2)", f"{correct/bets:.1%}")
+    st.metric("Lucro Total (1x2)", f"{profit:.2f}u")
+    st.metric("ROI (1x2)", f"{roi:.1%}")
+else:
+    st.info("⚠️ Nenhum jogo finalizado ainda para o sistema 1x2.")
+
+# --- Comparativo AH x 1x2
+def compare_systems_summary(df):
+    """Compara o desempenho do sistema Handicap (AH) e 1x2."""
+    def calc(correct_col, profit_col):
+        valid = df[correct_col].notna().sum()
+        correct = df[correct_col].sum(skipna=True)
+        profit = df[profit_col].sum()
+        roi = profit / valid if valid > 0 else 0
+        winrate = correct / valid if valid > 0 else 0
+        return valid, winrate, profit, roi
+
+    ah_bets, ah_win, ah_profit, ah_roi = calc("Quadrante_Correct", "Profit_Quadrante")
+    x2_bets, x2_win, x2_profit, x2_roi = calc("Quadrante_Correct_1x2", "Profit_1x2")
+
+    resumo = pd.DataFrame({
+        "Métrica": ["Apostas", "Winrate", "Lucro Total", "ROI"],
+        "Sistema Handicap (AH)": [ah_bets, f"{ah_win:.1%}", f"{ah_profit:.2f}", f"{ah_roi:.1%}"],
+        "Sistema 1x2": [x2_bets, f"{x2_win:.1%}", f"{x2_profit:.2f}", f"{x2_roi:.1%}"]
+    })
+
+    st.markdown("### ⚖️ Comparativo de Performance – AH vs 1x2")
+    st.dataframe(
+        resumo.style.highlight_max(axis=1, color='lightgreen')
+                      .highlight_min(axis=1, color='#ffb3b3'),
+        use_container_width=True
+    )
+
+
+# Exibir comparativo final
+compare_systems_summary(ranking_quadrantes)
 
 
     
