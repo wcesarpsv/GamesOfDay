@@ -1156,7 +1156,7 @@ def treinar_ml2_handicap_integrada_pro(history, games_today, model_home, model_a
     # =====================================================
     st.success("✅ ML2 Pro treinada com sucesso (target contínuo + integração ML1)")
     st.dataframe(
-        games_today[["Home", "Away", 'Goals_H_Today', 'Goals_A_Today', "Asian_Line_Decimal", "ML2_Prob_Home_Cover", "Meta_Confidence"]]
+        games_today[["Time", "Home", "Away", 'Goals_H_Today', 'Goals_A_Today', "Asian_Line_Decimal", "ML2_Prob_Home_Cover", "Meta_Confidence"]]
         .sort_values("Meta_Confidence", ascending=False)
         .style.format({
             "Goals_H_Today": "{:.0f}","Goals_A_Today": "{:.0f}",
@@ -1376,7 +1376,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     st.dataframe(
         ranking_quadrantes[
             [
-                "Home", "Away", 'Goals_H_Today', 'Goals_A_Today',
+                "Time","Home", "Away", 'Goals_H_Today', 'Goals_A_Today',
                 "Quadrante_Home_Label", "Quadrante_Away_Label",
                 "Quadrante_ML_Score_Home", "Quadrante_ML_Score_Away",
                 "Recomendacao"
