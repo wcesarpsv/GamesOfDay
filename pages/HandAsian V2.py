@@ -1001,48 +1001,159 @@ else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
 
 
+# ########################################
+# #### 🤖 BLOCO – Segunda ML: Previsão de Cobertura do Handicap (Binary)
+# ########################################
+# from sklearn.ensemble import RandomForestClassifier
+
+# def treinar_ml_handicap(history, games_today):
+#     """
+#     Segunda ML (ML2) para prever se o time da casa cobre o handicap asiático.
+#     Usa as MESMAS features da ML1, mas com target binário 1/0.
+#     1 = Home cobre o handicap
+#     0 = Home não cobre
+#     """
+
+#     st.markdown("## ⚙️ Treinando Segunda ML – Cobertura do Handicap (Binary Target)")
+
+#     # ===============================
+#     # 1️⃣ Criação do target binário
+#     # ===============================
+#     history = history.copy()
+#     history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line_Decimal"]).copy()
+#     history["Margin_FT"] = history["Goals_H_FT"] - history["Goals_A_FT"]
+
+#     # Target binário (sem push, sem 0.5)
+#     history["Target_Cover"] = np.where(history["Margin_FT"] > -history["Asian_Line_Decimal"], 1, 0)
+
+#     # ===============================
+#     # 2️⃣ Preparar features (mesmas da ML1)
+#     # ===============================
+#     history = calcular_distancias_quadrantes(history)
+#     games_today = calcular_distancias_quadrantes(games_today)
+
+#     quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
+#     quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
+#     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
+#     extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized','Asian_Line_Decimal']].fillna(0)
+
+#     X = pd.concat([ligas_dummies, extras, quadrantes_home, quadrantes_away], axis=1)
+#     y = history["Target_Cover"]
+
+#     # ===============================
+#     # 3️⃣ Treinamento do modelo
+#     # ===============================
+#     model_handicap = RandomForestClassifier(
+#         n_estimators=600,
+#         max_depth=10,
+#         random_state=42,
+#         class_weight='balanced_subsample',
+#         n_jobs=-1
+#     )
+#     model_handicap.fit(X, y)
+
+#     # ===============================
+#     # 4️⃣ Preparar dados para previsão (games_today)
+#     # ===============================
+#     qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
+#     qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
+#     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
+#     extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized','Asian_Line_Decimal']].fillna(0)
+
+#     X_today = pd.concat([ligas_today, extras_today, qh_today, qa_today], axis=1)
+
+#     # ===============================
+#     # 5️⃣ Previsões
+#     # ===============================
+#     games_today["ML2_Prob_Home_Cover"] = model_handicap.predict_proba(X_today)[:, 1]
+#     games_today["ML2_Pred_Cover"] = np.where(games_today["ML2_Prob_Home_Cover"] >= 0.5, 1, 0)
+
+#     # ===============================
+#     # 6️⃣ Exibir resultados
+#     # ===============================
+#     st.success("✅ Segunda ML (Handicap Cover) treinada com sucesso!")
+#     st.markdown("### 📊 Probabilidades de Cobertura (ML2)")
+#     st.dataframe(
+#         games_today[["Home", "Away", "Asian_Line_Decimal", "ML2_Prob_Home_Cover", "ML2_Pred_Cover"]]
+#         .sort_values("ML2_Prob_Home_Cover", ascending=False)
+#         .style.format({
+#             "Asian_Line_Decimal": "{:.2f}",
+#             "ML2_Prob_Home_Cover": "{:.1%}"
+#         })
+#         .background_gradient(subset=["ML2_Prob_Home_Cover"], cmap="YlGn"),
+#         use_container_width=True
+#     )
+
+#     return model_handicap, games_today
+
+
+# # =====================================================
+# # ⚙️ EXECUTAR A SEGUNDA ML (somente se houver histórico)
+# # =====================================================
+# if not history.empty:
+#     model_handicap, games_today = treinar_ml_handicap(history, games_today)
+# else:
+#     st.warning("⚠️ Histórico vazio – não foi possível treinar a ML2 de handicap.")
+
+
 ########################################
-#### 🤖 BLOCO – Segunda ML: Previsão de Cobertura do Handicap (Binary)
+#### 🤖 BLOCO – ML2 INTEGRADA (Meta Model: Handicap Cover)
 ########################################
 from sklearn.ensemble import RandomForestClassifier
 
-def treinar_ml_handicap(history, games_today):
+def treinar_ml2_handicap_integrada(history, games_today, model_home, model_away):
     """
-    Segunda ML (ML2) para prever se o time da casa cobre o handicap asiático.
-    Usa as MESMAS features da ML1, mas com target binário 1/0.
-    1 = Home cobre o handicap
-    0 = Home não cobre
+    ML2 remodelada: usa as saídas da ML1 (Quadrante_ML_Score_Home / Away)
+    como features adicionais para prever se o time da casa cobre o handicap.
+    
+    Target: 1 = Home cobre, 0 = Home não cobre.
     """
 
-    st.markdown("## ⚙️ Treinando Segunda ML – Cobertura do Handicap (Binary Target)")
+    st.markdown("## ⚙️ Treinando ML2 Integrada – Handicap Cover com contexto da ML1")
 
-    # ===============================
-    # 1️⃣ Criação do target binário
-    # ===============================
+    # =====================================================
+    # 1️⃣ Criação do target binário real (sem push)
+    # =====================================================
     history = history.copy()
     history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line_Decimal"]).copy()
     history["Margin_FT"] = history["Goals_H_FT"] - history["Goals_A_FT"]
-
-    # Target binário (sem push, sem 0.5)
     history["Target_Cover"] = np.where(history["Margin_FT"] > -history["Asian_Line_Decimal"], 1, 0)
 
-    # ===============================
-    # 2️⃣ Preparar features (mesmas da ML1)
-    # ===============================
+    # =====================================================
+    # 2️⃣ Recalcular features básicas
+    # =====================================================
     history = calcular_distancias_quadrantes(history)
     games_today = calcular_distancias_quadrantes(games_today)
 
     quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
     quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
-    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized','Asian_Line_Decimal']].fillna(0)
+    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric',
+                      'Quadrant_Angle_Normalized', 'Asian_Line_Decimal']].fillna(0)
 
-    X = pd.concat([ligas_dummies, extras, quadrantes_home, quadrantes_away], axis=1)
+    X_base = pd.concat([ligas_dummies, extras, quadrantes_home, quadrantes_away], axis=1)
     y = history["Target_Cover"]
 
-    # ===============================
-    # 3️⃣ Treinamento do modelo
-    # ===============================
+    # =====================================================
+    # 3️⃣ Adicionar saídas da ML1 como features (meta learning)
+    # =====================================================
+    try:
+        # Gerar probabilidades da ML1 (treinada anteriormente)
+        probas_home = model_home.predict_proba(X_base)[:, 1]
+        probas_away = model_away.predict_proba(X_base)[:, 1]
+        history["ML1_Prob_Home"] = probas_home
+        history["ML1_Prob_Away"] = probas_away
+        history["ML1_Diff"] = probas_home - probas_away
+
+        # Adicionar ao dataset final de treino
+        X_full = pd.concat([X_base, history[["ML1_Prob_Home", "ML1_Prob_Away", "ML1_Diff"]]], axis=1)
+    except Exception as e:
+        st.warning(f"⚠️ Não foi possível usar as saídas da ML1: {e}")
+        X_full = X_base.copy()
+
+    # =====================================================
+    # 4️⃣ Treinamento do modelo final (ML2)
+    # =====================================================
     model_handicap = RandomForestClassifier(
         n_estimators=600,
         max_depth=10,
@@ -1050,29 +1161,46 @@ def treinar_ml_handicap(history, games_today):
         class_weight='balanced_subsample',
         n_jobs=-1
     )
-    model_handicap.fit(X, y)
+    model_handicap.fit(X_full, y)
 
-    # ===============================
-    # 4️⃣ Preparar dados para previsão (games_today)
-    # ===============================
+    # =====================================================
+    # 5️⃣ Preparar dados de hoje (games_today)
+    # =====================================================
     qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
     qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized','Asian_Line_Decimal']].fillna(0)
+    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric',
+                                'Quadrant_Angle_Normalized', 'Asian_Line_Decimal']].fillna(0)
 
-    X_today = pd.concat([ligas_today, extras_today, qh_today, qa_today], axis=1)
+    X_today_base = pd.concat([ligas_today, extras_today, qh_today, qa_today], axis=1)
 
-    # ===============================
-    # 5️⃣ Previsões
-    # ===============================
-    games_today["ML2_Prob_Home_Cover"] = model_handicap.predict_proba(X_today)[:, 1]
+    # Adicionar as features da ML1 já disponíveis no games_today
+    if "Quadrante_ML_Score_Home" in games_today.columns:
+        X_today_full = pd.concat([
+            X_today_base,
+            games_today[["Quadrante_ML_Score_Home", "Quadrante_ML_Score_Away"]].rename(
+                columns={
+                    "Quadrante_ML_Score_Home": "ML1_Prob_Home",
+                    "Quadrante_ML_Score_Away": "ML1_Prob_Away"
+                }
+            )
+        ], axis=1)
+        X_today_full["ML1_Diff"] = X_today_full["ML1_Prob_Home"] - X_today_full["ML1_Prob_Away"]
+    else:
+        X_today_full = X_today_base.copy()
+
+    # =====================================================
+    # 6️⃣ Previsões finais
+    # =====================================================
+    games_today["ML2_Prob_Home_Cover"] = model_handicap.predict_proba(X_today_full)[:, 1]
     games_today["ML2_Pred_Cover"] = np.where(games_today["ML2_Prob_Home_Cover"] >= 0.5, 1, 0)
 
-    # ===============================
-    # 6️⃣ Exibir resultados
-    # ===============================
-    st.success("✅ Segunda ML (Handicap Cover) treinada com sucesso!")
-    st.markdown("### 📊 Probabilidades de Cobertura (ML2)")
+    # =====================================================
+    # 7️⃣ Exibir resultados
+    # =====================================================
+    st.success("✅ ML2 Integrada treinada com sucesso (com contexto da ML1).")
+    st.markdown("### 📊 Probabilidades de Cobertura (ML2 Integrada)")
+
     st.dataframe(
         games_today[["Home", "Away", "Asian_Line_Decimal", "ML2_Prob_Home_Cover", "ML2_Pred_Cover"]]
         .sort_values("ML2_Prob_Home_Cover", ascending=False)
@@ -1084,16 +1212,26 @@ def treinar_ml_handicap(history, games_today):
         use_container_width=True
     )
 
+    # =====================================================
+    # 8️⃣ Mostrar importância das features
+    # =====================================================
+    try:
+        importances = pd.Series(model_handicap.feature_importances_, index=X_full.columns).sort_values(ascending=False)
+        top_feats = importances.head(15)
+        st.markdown("### 🔍 Top Features mais importantes (ML2 Integrada)")
+        st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
+    except Exception as e:
+        st.warning(f"Não foi possível calcular importâncias: {e}")
+
     return model_handicap, games_today
 
-
 # =====================================================
-# ⚙️ EXECUTAR A SEGUNDA ML (somente se houver histórico)
+# ⚙️ EXECUTAR A NOVA ML2 INTEGRADA
 # =====================================================
 if not history.empty:
-    model_handicap, games_today = treinar_ml_handicap(history, games_today)
+    model_handicap, games_today = treinar_ml2_handicap_integrada(history, games_today, modelo_home, modelo_away)
 else:
-    st.warning("⚠️ Histórico vazio – não foi possível treinar a ML2 de handicap.")
+    st.warning("⚠️ Histórico vazio – não foi possível treinar a ML2 integrada.")
 
 
 
