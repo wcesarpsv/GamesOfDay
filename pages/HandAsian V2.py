@@ -1192,12 +1192,14 @@ def treinar_ml2_handicap_integrada(history, games_today, model_home, model_away)
     # =====================================================
     # 6️⃣ Previsões finais
     # =====================================================
-    # Garante que as colunas de previsão sejam idênticas às do treino
+    # 🔒 Garantir alinhamento entre colunas de treino e previsão
     X_today_full = X_today_full.reindex(columns=X_full.columns, fill_value=0)
     
+    # 🔮 Previsões seguras
     games_today["ML2_Prob_Home_Cover"] = model_handicap.predict_proba(X_today_full)[:, 1]
-
     games_today["ML2_Pred_Cover"] = np.where(games_today["ML2_Prob_Home_Cover"] >= 0.5, 1, 0)
+
+    
 
     # =====================================================
     # 7️⃣ Exibir resultados
