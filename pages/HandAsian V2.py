@@ -1003,20 +1003,6 @@ def analisar_padroes_quadrantes_dual(df):
             )
             st.write("---")
 
-# ---------------- EXECUÇÃO PRINCIPAL ----------------
-# Executar treinamento
-if not history.empty:
-    modelo_home, modelo_away, games_today = treinar_modelo_quadrantes_dual(history, games_today)
-    st.success("✅ Modelo dual (Home/Away) treinado com sucesso!")
-else:
-    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
-
-
-
-
-
-
-
 
 ########################################
 #### 🤖 BLOCO – ML2 PRO (Integrada + Target Contínuo + Meta Confidence)
