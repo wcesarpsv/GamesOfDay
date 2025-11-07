@@ -1172,6 +1172,175 @@ def treinar_ml2_handicap_integrada_pro(history, games_today, model_home, model_a
 
 
 
+########################################
+#### 🤖 BLOCO – ML2 PRO (Away Side)
+########################################
+from sklearn.ensemble import RandomForestRegressor
+
+def handicap_result_continuous_away(margin, line):
+    """
+    Calcula o escore contínuo (-1 a +1) do resultado do handicap
+    para o time visitante (AWAY). A linha recebida é do ponto de vista do HOME.
+    """
+    try:
+        if pd.isna(margin) or pd.isna(line):
+            return np.nan
+        
+        # Invertemos a perspectiva: se a linha é -0.5 para HOME → +0.5 para AWAY
+        diff = -margin - line
+        if diff > 0.5:
+            return 1.0       # Full Win (Away cobre)
+        elif 0 < diff <= 0.5:
+            return 0.5       # Half Win
+        elif diff == 0:
+            return 0.0       # Push
+        elif -0.5 < diff < 0:
+            return -0.5      # Half Loss
+        else:
+            return -1.0      # Full Loss
+    except:
+        return np.nan
+
+
+def treinar_ml2_handicap_away_pro(history, games_today, model_home, model_away):
+    """
+    ML2 Pro para o lado Away:
+    - Target contínuo baseado em cobertura do time visitante
+    - Integra saídas da ML1
+    - Gera meta-confiança específica para o Away
+    """
+
+    st.markdown("## ⚙️ Treinando ML2 Pro – Handicap Cover (Away Side)")
+
+    # =====================================================
+    # 1️⃣ Criar target contínuo do lado AWAY
+    # =====================================================
+    history = history.copy()
+    history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line_Decimal"]).copy()
+    history["Margin_FT"] = history["Goals_H_FT"] - history["Goals_A_FT"]
+    history["Target_Continuous_Away"] = history.apply(
+        lambda r: handicap_result_continuous_away(r["Margin_FT"], r["Asian_Line_Decimal"]),
+        axis=1
+    )
+
+    # Normaliza para [0,1]
+    history["Target_Continuous_Away"] = (history["Target_Continuous_Away"] + 1) / 2
+
+    # =====================================================
+    # 2️⃣ Features e integração ML1
+    # =====================================================
+    history = calcular_distancias_quadrantes(history)
+    games_today = calcular_distancias_quadrantes(games_today)
+
+    quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
+    quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
+    ligas_dummies = pd.get_dummies(history['League'], prefix='League')
+    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric',
+                      'Quadrant_Angle_Normalized', 'Asian_Line_Decimal']].fillna(0)
+    
+    X_base = pd.concat([ligas_dummies, extras, quadrantes_home, quadrantes_away], axis=1)
+
+    # =====================================================
+    # 3️⃣ Adicionar previsões da ML1 como features
+    # =====================================================
+    try:
+        X_base_aligned = X_base.reindex(columns=model_away.feature_names_in_, fill_value=0)
+        probas_home = model_home.predict_proba(X_base_aligned)[:, 1]
+        probas_away = model_away.predict_proba(X_base_aligned)[:, 1]
+        history["ML1_Prob_Home"] = probas_home
+        history["ML1_Prob_Away"] = probas_away
+        history["ML1_Diff"] = probas_home - probas_away
+        X_full = pd.concat([X_base, history[["ML1_Prob_Home", "ML1_Prob_Away", "ML1_Diff"]]], axis=1)
+    except Exception as e:
+        st.warning(f"⚠️ Não foi possível usar saídas da ML1: {e}")
+        X_full = X_base.copy()
+
+    y = history["Target_Continuous_Away"]
+
+    # =====================================================
+    # 4️⃣ Treinar modelo final (regressor)
+    # =====================================================
+    model_handicap_away = RandomForestRegressor(
+        n_estimators=700,
+        max_depth=10,
+        random_state=42,
+        n_jobs=-1
+    )
+    model_handicap_away.fit(X_full, y)
+
+    # =====================================================
+    # 5️⃣ Preparar dados de hoje
+    # =====================================================
+    qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
+    qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
+    ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
+    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric',
+                                'Quadrant_Angle_Normalized', 'Asian_Line_Decimal']].fillna(0)
+
+    X_today_base = pd.concat([ligas_today, extras_today, qh_today, qa_today], axis=1)
+
+    # Adicionar features da ML1
+    if "Quadrante_ML_Score_Home" in games_today.columns:
+        X_today_full = pd.concat([
+            X_today_base,
+            games_today[["Quadrante_ML_Score_Home", "Quadrante_ML_Score_Away"]].rename(
+                columns={
+                    "Quadrante_ML_Score_Home": "ML1_Prob_Home",
+                    "Quadrante_ML_Score_Away": "ML1_Prob_Away"
+                }
+            )
+        ], axis=1)
+        X_today_full["ML1_Diff"] = X_today_full["ML1_Prob_Home"] - X_today_full["ML1_Prob_Away"]
+    else:
+        X_today_full = X_today_base.copy()
+
+    X_today_full = X_today_full.reindex(columns=X_full.columns, fill_value=0)
+
+    # =====================================================
+    # 6️⃣ Previsões e Meta Confidence (Away)
+    # =====================================================
+    pred_continuous = model_handicap_away.predict(X_today_full)
+    games_today["ML2_Prob_Away_Cover"] = np.clip(pred_continuous, 0, 1)
+    games_today["ML2_Pred_Away_Cover"] = np.where(games_today["ML2_Prob_Away_Cover"] >= 0.5, 1, 0)
+
+    # Meta Confidence (Away)
+    games_today["Meta_Confidence_Away"] = (
+        0.6 * games_today["ML2_Prob_Away_Cover"] +
+        0.4 * games_today["Quadrante_ML_Score_Away"]
+    )
+
+    # =====================================================
+    # 7️⃣ Exibição
+    # =====================================================
+    st.success("✅ ML2 Pro (Away) treinada com sucesso (target contínuo + integração ML1)")
+    st.dataframe(
+        games_today[["Home", "Away", "Asian_Line_Decimal", "ML2_Prob_Away_Cover", "Meta_Confidence_Away"]]
+        .sort_values("Meta_Confidence_Away", ascending=False)
+        .style.format({
+            "Asian_Line_Decimal": "{:.2f}",
+            "ML2_Prob_Away_Cover": "{:.1%}",
+            "Meta_Confidence_Away": "{:.1%}"
+        })
+        .background_gradient(subset=["Meta_Confidence_Away"], cmap="RdYlGn"),
+        use_container_width=True
+    )
+
+    # Importância das features
+    try:
+        importances = pd.Series(model_handicap_away.feature_importances_, index=X_full.columns).sort_values(ascending=False)
+        top_feats = importances.head(15)
+        st.markdown("### 🔍 Top Features (ML2 Pro – Away)")
+        st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
+    except Exception as e:
+        st.warning(f"Não foi possível calcular importâncias: {e}")
+
+    return model_handicap_away, games_today
+
+
+
+
+
+
 
 # ---------------- EXIBIÇÃO DOS RESULTADOS DUAL ----------------
 st.markdown("## 🏆 Melhores Confrontos por Quadrantes ML (Home & Away)")
@@ -1288,8 +1457,13 @@ else:
 
 if not history.empty:
     model_handicap, games_today = treinar_ml2_handicap_integrada_pro(history, games_today, modelo_home, modelo_away)
+    model_handicap_away, games_today = treinar_ml2_handicap_away_pro(history, games_today, modelo_home, modelo_away)
+
 else:
     st.warning("⚠️ Histórico vazio – não foi possível treinar a ML2 Pro.")
+
+
+
     
 
 
