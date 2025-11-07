@@ -1556,6 +1556,7 @@ def update_real_time_data_3d(df):
 # ============================================================
 # ⚙️ Atualização em tempo real (AH + 1x2)
 # ============================================================
+ranking_quadrantes = games_today.copy()
 ranking_quadrantes = update_real_time_data_3d(ranking_quadrantes)
 ranking_quadrantes = update_real_time_data_1x2(ranking_quadrantes)
 
