@@ -1172,31 +1172,6 @@ def calc_convergencia(row):
     return confidence_score
 
 
-# Aplicar cálculo
-ranking_quadrantes['Confidence_Score'] = ranking_quadrantes.apply(calc_convergencia, axis=1)
-
-# Exibir os 'Gold Matches' – cenários com tudo coerente
-st.markdown("### 🥇 Gold Matches – Convergência Máxima")
-gold_matches = ranking_quadrantes[ranking_quadrantes['Confidence_Score'] >= 0.75]
-
-if not gold_matches.empty:
-    st.dataframe(
-        gold_matches[['League', 'Home', 'Away', 'Recomendacao', 
-                      'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 'Confidence_Score']]
-        .sort_values('Confidence_Score', ascending=False)
-        .style.format({
-            'Quadrante_ML_Score_Home': '{:.1%}',
-            'Quadrante_ML_Score_Away': '{:.1%}',
-            'Confidence_Score': '{:.2f}'
-        })
-        .background_gradient(subset=['Confidence_Score'], cmap='YlGn'),
-        use_container_width=True
-    )
-else:
-    st.info("Nenhum confronto atingiu nível de convergência 🥇 Gold hoje.")
-
-
-
 
 # ---------------- RESUMO EXECUTIVO DUAL ----------------
 def resumo_quadrantes_hoje_dual(df):
