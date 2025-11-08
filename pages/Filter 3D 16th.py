@@ -905,6 +905,76 @@ st.markdown("""
 # games_today = aplicar_clusterizacao_3d(games_today, n_clusters=4)
 
 
+def aplicar_clusterizacao_3d_por_liga(df, n_clusters=4, random_state=42):
+    """
+    🔧 Clusterização 3D contextual por liga.
+    Cada liga é clusterizada individualmente com base em:
+        dx = Aggression_Home - Aggression_Away
+        dy = M_H - M_A
+        dz = MT_H - MT_A
+    
+    Mantém compatibilidade com o formato atual:
+        - Cria coluna 'Cluster3D_Label'
+        - Gera colunas de descrição 'Cluster3D_Desc' e sin/cos derivados
+    """
+
+    df = df.copy()
+
+    # Garante colunas necessárias
+    required_cols = ["Aggression_Home", "Aggression_Away", "M_H", "M_A", "MT_H", "MT_A", "League"]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        st.warning(f"⚠️ Colunas ausentes para clusterização por liga: {missing}")
+        return df
+
+    # Coordenadas espaciais 3D
+    df["dx"] = df["Aggression_Home"] - df["Aggression_Away"]
+    df["dy"] = df["M_H"] - df["M_A"]
+    df["dz"] = df["MT_H"] - df["MT_A"]
+
+    df["Cluster3D_Label"] = np.nan
+
+    ligas_processadas = 0
+    for league, subdf in df.groupby("League"):
+        if len(subdf) < n_clusters * 2:
+            # Liga pequena — pula ou atribui 0
+            df.loc[subdf.index, "Cluster3D_Label"] = 0
+            continue
+
+        try:
+            kmeans = KMeans(n_clusters=n_clusters, random_state=random_state)
+            subdf["Cluster3D_Label"] = kmeans.fit_predict(subdf[["dx", "dy", "dz"]])
+            df.loc[subdf.index, "Cluster3D_Label"] = subdf["Cluster3D_Label"]
+            ligas_processadas += 1
+        except Exception as e:
+            st.warning(f"⚠️ Falha ao clusterizar {league}: {e}")
+            df.loc[subdf.index, "Cluster3D_Label"] = 0
+
+    # Converte tipo
+    df["Cluster3D_Label"] = df["Cluster3D_Label"].astype(int)
+
+    # Sin / Cos / ZScore (mesmo padrão da ML)
+    mean_c = df["Cluster3D_Label"].mean()
+    std_c = df["Cluster3D_Label"].std(ddof=0) or 1
+    df["C3D_ZScore"] = (df["Cluster3D_Label"] - mean_c) / std_c
+    df["C3D_Sin"] = np.sin(df["Cluster3D_Label"])
+    df["C3D_Cos"] = np.cos(df["Cluster3D_Label"])
+
+    # Descrições simbólicas opcionais
+    desc_map = {
+        0: "⚪ Equilibrado / Neutro",
+        1: "🟢 Fav Leve / Momentum Positivo",
+        2: "🔵 Agressivo / Dominante",
+        3: "🔴 Underdog / Momentum Negativo"
+    }
+    df["Cluster3D_Desc"] = df["Cluster3D_Label"].map(desc_map).fillna("🌀 Outro")
+
+    st.info(f"✅ Clusterização 3D por liga concluída ({ligas_processadas} ligas processadas).")
+    return df
+
+
+
+
 
 
 def treinar_modelo_3d_clusters_single(history, games_today):
