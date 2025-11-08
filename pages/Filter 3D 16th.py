@@ -1824,15 +1824,30 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     def calcular_confiabilidade_por_liga_cluster(df):
         """
         Resume para cada liga o cluster dominante e seu winrate médio.
+        Blindada contra colunas ausentes e nomes alternativos.
         """
-        # Verifica se as colunas necessárias existem
-        if not {"League", "Cluster3D_Label", "Target_AH_Home"}.issubset(df.columns):
-            st.warning("⚠️ Colunas necessárias ausentes para cálculo de confiabilidade por liga.")
-            return pd.DataFrame(columns=["League", "Liga_Cluster_Dom", "Liga_Cluster_WinRate", "Liga_Confiabilidade_Label"])
+        df = df.copy()
     
-        # Estatísticas por liga e cluster
+        # --- Detecta nome real da coluna de liga ---
+        possible_league_cols = ["League", "Leagues", "Liga", "League_Name"]
+        league_col = next((c for c in possible_league_cols if c in df.columns), None)
+        if league_col is None:
+            st.error("❌ Nenhuma coluna de liga encontrada no DataFrame.")
+            return pd.DataFrame(columns=["League", "Liga_Cluster_Dom", "Liga_Cluster_WinRate", "Liga_Confiabilidade_Label"])
+        df.rename(columns={league_col: "League"}, inplace=True)
+    
+        # --- Garante existência das colunas ---
+        if "Cluster3D_Label" not in df.columns:
+            st.warning("⚠️ Coluna 'Cluster3D_Label' não encontrada — atribuindo cluster neutro (0).")
+            df["Cluster3D_Label"] = 0
+    
+        if "Target_AH_Home" not in df.columns:
+            st.warning("⚠️ Coluna 'Target_AH_Home' não encontrada — criando temporariamente com zeros.")
+            df["Target_AH_Home"] = 0
+    
+        # --- Agrupa liga + cluster ---
         liga_cluster_stats = (
-            df.groupby(["League", "Cluster3D_Label"])
+            df.groupby(["League", "Cluster3D_Label"], dropna=False)
               .agg(
                   Jogos=("Target_AH_Home", "count"),
                   WinRate=("Target_AH_Home", "mean")
@@ -1840,12 +1855,16 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
               .reset_index()
         )
     
-        # Identifica o cluster dominante de cada liga (maior WinRate)
+        if liga_cluster_stats.empty:
+            st.warning("⚠️ Nenhum dado suficiente para calcular confiabilidade por liga.")
+            return pd.DataFrame(columns=["League", "Liga_Cluster_Dom", "Liga_Cluster_WinRate", "Liga_Confiabilidade_Label"])
+    
+        # --- Identifica o cluster dominante ---
         liga_dominante = liga_cluster_stats.loc[
             liga_cluster_stats.groupby("League")["WinRate"].idxmax()
         ].reset_index(drop=True)
     
-        # Classifica com base no WinRate dominante
+        # --- Classifica ---
         def rotular_confiabilidade(wr):
             if wr >= 0.63:
                 return "🟢 Confiável"
@@ -1855,14 +1874,13 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
                 return "🔴 Instável"
     
         liga_dominante["Liga_Confiabilidade_Label"] = liga_dominante["WinRate"].apply(rotular_confiabilidade)
-    
-        # Renomeia colunas para merge
         liga_dominante.rename(columns={
             "Cluster3D_Label": "Liga_Cluster_Dom",
             "WinRate": "Liga_Cluster_WinRate"
         }, inplace=True)
     
         return liga_dominante[["League", "Liga_Cluster_Dom", "Liga_Cluster_WinRate", "Liga_Confiabilidade_Label"]]
+
     
     
     # ============================================================
