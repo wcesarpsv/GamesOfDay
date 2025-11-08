@@ -1165,10 +1165,12 @@ def analisar_padroes_3d_quadrantes_16_dual(df):
             )
             st.write("---")
 
-# ---------------- ESTRATÉGIAS AVANÇADAS 3D PARA 16 QUADRANTES ----------------
+# ============================================================
+# 🎯 ESTRATÉGIAS 3D POR CATEGORIA (ATUALIZADA COM EXPANDER)
+# ============================================================
 def gerar_estrategias_3d_16_quadrantes(df):
-    """Gera estratégias específicas baseadas nos 16 quadrantes 3D"""
-    st.markdown("### 🎯 Estratégias 3D por Categoria")
+    """Gera estratégias específicas baseadas nos 16 quadrantes 3D, com expanders interativos."""
+    st.markdown("## 🎯 Estratégias 3D por Categoria (com Jogos)")
 
     estrategias_3d = {
         'Fav Forte + Momentum': {
@@ -1202,42 +1204,73 @@ def gerar_estrategias_3d_16_quadrantes(df):
     }
 
     for categoria, info in estrategias_3d.items():
-        st.write(f"**{categoria}**")
-        st.write(f"📋 {info['descricao']}")
-        st.write(f"🎯 Estratégia: {info['estrategia']}")
-        st.write(f"📊 Confiança: {info['confianca']}")
+        st.subheader(f"🎯 {categoria}")
+        st.markdown(f"📋 {info['descricao']}")
+        st.markdown(f"💡 Estratégia: {info['estrategia']}")
+        st.markdown(f"📊 Confiança: **{info['confianca']}**")
 
-        # Filtrar jogos da categoria
+        # Filtra jogos da categoria
         if 'momentum_min' in info:
             jogos_categoria = df[
-                (df['Quadrante_Home'].isin(info['quadrantes']) | 
+                (df['Quadrante_Home'].isin(info['quadrantes']) |
                  df['Quadrante_Away'].isin(info['quadrantes'])) &
-                ((df['M_H'] >= info['momentum_min']) | (df['M_A'] >= info['momentum_min']))
+                ((df['M_H'] >= info['momentum_min']) |
+                 (df['M_A'] >= info['momentum_min']))
             ]
         elif 'momentum_max' in info:
             jogos_categoria = df[
-                (df['Quadrante_Home'].isin(info['quadrantes']) | 
+                (df['Quadrante_Home'].isin(info['quadrantes']) |
                  df['Quadrante_Away'].isin(info['quadrantes'])) &
-                ((df['M_H'] <= info['momentum_max']) | (df['M_A'] <= info['momentum_max']))
+                ((df['M_H'] <= info['momentum_max']) |
+                 (df['M_A'] <= info['momentum_max']))
             ]
         else:
             jogos_categoria = df[
-                df['Quadrante_Home'].isin(info['quadrantes']) | 
+                df['Quadrante_Home'].isin(info['quadrantes']) |
                 df['Quadrante_Away'].isin(info['quadrantes'])
             ]
 
-        if not jogos_categoria.empty:
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Jogos Encontrados", len(jogos_categoria))
-            with col2:
-                avg_score = jogos_categoria['Quadrante_ML_Score_Main'].mean()
-                st.metric("Score Médio", f"{avg_score:.1%}")
-            with col3:
-                high_value = len(jogos_categoria[jogos_categoria['Quadrante_ML_Score_Main'] >= 0.60])
-                st.metric("Alto Valor", high_value)
+        # Mostrar estatísticas principais
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("🎯 Jogos Encontrados", len(jogos_categoria))
+        with col2:
+            st.metric("📈 Score Médio", f"{jogos_categoria['Quadrante_ML_Score_Main'].mean():.1%}")
+        with col3:
+            st.metric("💰 ROI Médio (simulado)", f"{jogos_categoria['Profit_Quadrante'].mean():.2f}")
 
-        st.write("---")
+        # Exibe tabela dos jogos em expander
+        if not jogos_categoria.empty:
+            with st.expander("📋 Ver jogos desta categoria", expanded=False):
+                cols_exibir = [
+                    'League', 'Home', 'Away', 'Recomendacao',
+                    'Quadrante_Home_Label', 'Quadrante_Away_Label',
+                    'Quadrante_ML_Score_Main', 'Score_Final_3D',
+                    'M_H', 'M_A', 'Asian_Line_Decimal',
+                    'Profit_Quadrante', 'Handicap_Result'
+                ]
+                cols_exibir = [c for c in cols_exibir if c in jogos_categoria.columns]
+
+                st.dataframe(
+                    jogos_categoria[cols_exibir]
+                    .sort_values('Quadrante_ML_Score_Main', ascending=False)
+                    .style.format({
+                        'Quadrante_ML_Score_Main': '{:.1%}',
+                        'Score_Final_3D': '{:.1f}',
+                        'M_H': '{:.2f}',
+                        'M_A': '{:.2f}',
+                        'Asian_Line_Decimal': '{:.2f}',
+                        'Profit_Quadrante': '{:.2f}'
+                    })
+                    .background_gradient(subset=['Quadrante_ML_Score_Main', 'Score_Final_3D'], cmap='RdYlGn')
+                    .background_gradient(subset=['M_H', 'M_A'], cmap='coolwarm'),
+                    use_container_width=True
+                )
+        else:
+            st.info("⚠️ Nenhum jogo nesta categoria no momento.")
+
+        st.divider()
+
 
 # ---------------- SISTEMA DE SCORING 3D PARA 16 QUADRANTES ----------------
 def calcular_pontuacao_3d_quadrante_16(quadrante_id, momentum=0):
