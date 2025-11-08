@@ -1059,47 +1059,47 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     st.markdown("### 🔍 Top Features (Modelo 3D com Clusters Otimizados)")
     st.dataframe(importances.head(25).to_frame("Importância"), use_container_width=True)
 
-    # ============================================================
-    # 🧭 PAINEL DE ANÁLISE DOS CLUSTERS 3D
-    # ============================================================
-    st.markdown("### 🧭 Análise de Distribuição e Performance por Cluster 3D")
+    # # ============================================================
+    # # 🧭 PAINEL DE ANÁLISE DOS CLUSTERS 3D
+    # # ============================================================
+    # st.markdown("### 🧭 Análise de Distribuição e Performance por Cluster 3D")
 
-    cluster_stats = (
-        history.groupby("Cluster3D_Label")
-        .agg(
-            Jogos=("Target_AH_Home", "count"),
-            WinRate=("Target_AH_Home", "mean"),
-            Média_Dist3D=("Quadrant_Dist_3D", "mean"),
-            Média_Magnitude=("Magnitude_3D", "mean")
-        )
-        .reset_index()
-        .sort_values("Cluster3D_Label")
-    )
+    # cluster_stats = (
+    #     history.groupby("Cluster3D_Label")
+    #     .agg(
+    #         Jogos=("Target_AH_Home", "count"),
+    #         WinRate=("Target_AH_Home", "mean"),
+    #         Média_Dist3D=("Quadrant_Dist_3D", "mean"),
+    #         Média_Magnitude=("Magnitude_3D", "mean")
+    #     )
+    #     .reset_index()
+    #     .sort_values("Cluster3D_Label")
+    # )
 
-    st.dataframe(
-        cluster_stats.style.format({
-            "WinRate": "{:.1%}",
-            "Média_Dist3D": "{:.2f}",
-            "Média_Magnitude": "{:.2f}"
-        }).background_gradient(subset=["WinRate"], cmap="RdYlGn"),
-        use_container_width=True
-    )
+    # st.dataframe(
+    #     cluster_stats.style.format({
+    #         "WinRate": "{:.1%}",
+    #         "Média_Dist3D": "{:.2f}",
+    #         "Média_Magnitude": "{:.2f}"
+    #     }).background_gradient(subset=["WinRate"], cmap="RdYlGn"),
+    #     use_container_width=True
+    # )
 
-    # Pequeno gráfico de barras de WinRate
-    try:
-        fig, ax = plt.subplots(figsize=(6, 3))
-        ax.bar(cluster_stats["Cluster3D_Label"], cluster_stats["WinRate"], width=0.5)
-        ax.set_xlabel("Cluster 3D")
-        ax.set_ylabel("WinRate (Home Cover)")
-        ax.set_title("📊 Performance média por Cluster 3D")
-        st.pyplot(fig)
-    except Exception as e:
-        st.warning(f"Não foi possível gerar o gráfico dos clusters: {e}")
+    # # Pequeno gráfico de barras de WinRate
+    # try:
+    #     fig, ax = plt.subplots(figsize=(6, 3))
+    #     ax.bar(cluster_stats["Cluster3D_Label"], cluster_stats["WinRate"], width=0.5)
+    #     ax.set_xlabel("Cluster 3D")
+    #     ax.set_ylabel("WinRate (Home Cover)")
+    #     ax.set_title("📊 Performance média por Cluster 3D")
+    #     st.pyplot(fig)
+    # except Exception as e:
+    #     st.warning(f"Não foi possível gerar o gráfico dos clusters: {e}")
 
-    # ============================================================
-    # ✅ Finalização
-    # ============================================================
-    st.success("✅ Modelo 3D treinado e clusters analisados com sucesso!")
+    # # ============================================================
+    # # ✅ Finalização
+    # # ============================================================
+    # st.success("✅ Modelo 3D treinado e clusters analisados com sucesso!")
     return model_home, games_today
 
 
