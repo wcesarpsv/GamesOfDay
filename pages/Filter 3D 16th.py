@@ -906,21 +906,8 @@ st.markdown("""
 
 
 def aplicar_clusterizacao_3d_por_liga(df, n_clusters=4, random_state=42):
-    """
-    🔧 Clusterização 3D contextual por liga.
-    Cada liga é clusterizada individualmente com base em:
-        dx = Aggression_Home - Aggression_Away
-        dy = M_H - M_A
-        dz = MT_H - MT_A
-    
-    Mantém compatibilidade com o formato atual:
-        - Cria coluna 'Cluster3D_Label'
-        - Gera colunas de descrição 'Cluster3D_Desc' e sin/cos derivados
-    """
-
     df = df.copy()
 
-    # Garante colunas necessárias
     required_cols = ["Aggression_Home", "Aggression_Away", "M_H", "M_A", "MT_H", "MT_A", "League"]
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
@@ -933,11 +920,13 @@ def aplicar_clusterizacao_3d_por_liga(df, n_clusters=4, random_state=42):
     df["dz"] = df["MT_H"] - df["MT_A"]
 
     df["Cluster3D_Label"] = np.nan
-
     ligas_processadas = 0
+
     for league, subdf in df.groupby("League"):
+        # Remove linhas com NaN em dx/dy/dz
+        subdf = subdf.dropna(subset=["dx", "dy", "dz"]).copy()
+
         if len(subdf) < n_clusters * 2:
-            # Liga pequena — pula ou atribui 0
             df.loc[subdf.index, "Cluster3D_Label"] = 0
             continue
 
@@ -951,16 +940,15 @@ def aplicar_clusterizacao_3d_por_liga(df, n_clusters=4, random_state=42):
             df.loc[subdf.index, "Cluster3D_Label"] = 0
 
     # Converte tipo
-    df["Cluster3D_Label"] = df["Cluster3D_Label"].astype(int)
+    df["Cluster3D_Label"] = df["Cluster3D_Label"].fillna(0).astype(int)
 
-    # Sin / Cos / ZScore (mesmo padrão da ML)
+    # Sin / Cos / ZScore
     mean_c = df["Cluster3D_Label"].mean()
     std_c = df["Cluster3D_Label"].std(ddof=0) or 1
     df["C3D_ZScore"] = (df["Cluster3D_Label"] - mean_c) / std_c
     df["C3D_Sin"] = np.sin(df["Cluster3D_Label"])
     df["C3D_Cos"] = np.cos(df["Cluster3D_Label"])
 
-    # Descrições simbólicas opcionais
     desc_map = {
         0: "⚪ Equilibrado / Neutro",
         1: "🟢 Fav Leve / Momentum Positivo",
