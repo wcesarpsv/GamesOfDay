@@ -1845,54 +1845,70 @@ if not games_today.empty and 'Classificacao_Potencial_3D' in games_today.columns
 
 
 # ============================================================
-# 📊 ANÁLISE DE PERFORMANCE – WINRATE E ROI POR RECOMENDAÇÃO
+# 📊 ANÁLISE DE PERFORMANCE – WINRATE E ROI POR TIPO DE RECOMENDAÇÃO (AGRUPADA)
 # ============================================================
-st.markdown("## 📊 Performance por Tipo de Recomendação (3D)")
+st.markdown("## 📊 Performance por Tipo de Recomendação (3D – Agrupada)")
 
-def analisar_performance_por_recomendacao(df):
-    """Calcula winrate, ROI e número de apostas por tipo de recomendação."""
+def analisar_performance_por_tipo_recomendacao(df):
+    """
+    Agrupa as recomendações por categoria-base (ex: 📈 MODELO CONFIA HOME),
+    calculando Winrate, ROI e Lucro médio de cada tipo.
+    """
+    if df.empty or 'Recomendacao' not in df.columns:
+        st.info("⚠️ Nenhuma recomendação disponível para análise.")
+        return pd.DataFrame()
+
     df_valid = df[df['Quadrante_Correct'].notna()].copy()
     if df_valid.empty:
         st.info("⚠️ Nenhuma aposta finalizada ainda para análise de performance.")
         return pd.DataFrame()
 
+    # Extrai o tipo base da recomendação (remove percentuais e valores entre parênteses)
+    df_valid['Tipo_Recomendacao'] = (
+        df_valid['Recomendacao']
+        .str.extract(r'([📈🔻💪🎯⚖️].*?)\s*\(')[0]   # captura até o primeiro "("
+        .str.strip()
+    )
+
+    # Agrupa e calcula estatísticas
     resumo = (
-        df_valid
-        .groupby('Recomendacao', dropna=False)
+        df_valid.groupby('Tipo_Recomendacao', dropna=False)
         .agg(
             Apostas=('Quadrante_Correct', 'count'),
             Acertos=('Quadrante_Correct', 'sum'),
+            Winrate_Médio=('Quadrante_Correct', 'mean'),
+            ROI_Médio=('Profit_Quadrante', lambda x: x.sum() / len(x) if len(x) > 0 else 0),
             Lucro_Total=('Profit_Quadrante', 'sum')
         )
         .reset_index()
+        .sort_values('ROI_Médio', ascending=False)
     )
 
-    resumo['Winrate'] = resumo['Acertos'] / resumo['Apostas']
-    resumo['ROI'] = resumo['Lucro_Total'] / resumo['Apostas']
-
-    resumo = resumo.sort_values('ROI', ascending=False)
-    resumo = resumo[['Recomendacao', 'Apostas', 'Winrate', 'ROI', 'Lucro_Total']]
-
+    # Formatação visual
     st.dataframe(
         resumo.style.format({
-            'Winrate': '{:.1%}',
-            'ROI': '{:.1%}',
-            'Lucro_Total': '{:.2f}'
+            'Winrate_Médio': '{:.1%}',
+            'ROI_Médio': '{:.1%}',
+            'Lucro_Total': '{:.2f}',
+            'Apostas': '{:.0f}',
+            'Acertos': '{:.0f}'
         })
-        .background_gradient(subset=['Winrate', 'ROI'], cmap='RdYlGn'),
+        .background_gradient(subset=['Winrate_Médio', 'ROI_Médio'], cmap='RdYlGn'),
         use_container_width=True
     )
 
     return resumo
 
-# Chamar análise se o ranking 3D estiver disponível
-if 'Quadrante_Correct' in locals() or 'ranking_3d' in locals():
+
+# Executar análise se o ranking_3d existir
+if 'ranking_3d' in locals() and not ranking_3d.empty:
     try:
-        perf_recomendacoes = analisar_performance_por_recomendacao(ranking_3d)
+        perf_recomendacoes_agrupadas = analisar_performance_por_tipo_recomendacao(ranking_3d)
     except Exception as e:
-        st.error(f"Erro ao calcular performance por recomendação: {e}")
+        st.error(f"Erro ao calcular performance agrupada: {e}")
 else:
-    st.info("⚠️ Dados de apostas (ranking_3d) ainda não disponíveis.")
+    st.info("⚠️ Dados do ranking 3D ainda não disponíveis para análise.")
+
 
 
 
