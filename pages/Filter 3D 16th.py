@@ -1878,6 +1878,11 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             "Cluster3D_Label": "Liga_Cluster_Dom",
             "WinRate": "Liga_Cluster_WinRate"
         }, inplace=True)
+        
+        # Substitui nulos por moderado (fallback visual)
+        liga_dominante["Liga_Cluster_WinRate"] = liga_dominante["Liga_Cluster_WinRate"].fillna(0.58)
+        liga_dominante["Liga_Confiabilidade_Label"] = liga_dominante["Liga_Confiabilidade_Label"].fillna("🔴 Liga Nova")
+
     
         return liga_dominante[["League", "Liga_Cluster_Dom", "Liga_Cluster_WinRate", "Liga_Confiabilidade_Label"]]
 
