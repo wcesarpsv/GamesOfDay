@@ -1844,6 +1844,58 @@ if not games_today.empty and 'Classificacao_Potencial_3D' in games_today.columns
 
 
 
+# ============================================================
+# 📊 ANÁLISE DE PERFORMANCE – WINRATE E ROI POR RECOMENDAÇÃO
+# ============================================================
+st.markdown("## 📊 Performance por Tipo de Recomendação (3D)")
+
+def analisar_performance_por_recomendacao(df):
+    """Calcula winrate, ROI e número de apostas por tipo de recomendação."""
+    df_valid = df[df['Quadrante_Correct'].notna()].copy()
+    if df_valid.empty:
+        st.info("⚠️ Nenhuma aposta finalizada ainda para análise de performance.")
+        return pd.DataFrame()
+
+    resumo = (
+        df_valid
+        .groupby('Recomendacao', dropna=False)
+        .agg(
+            Apostas=('Quadrante_Correct', 'count'),
+            Acertos=('Quadrante_Correct', 'sum'),
+            Lucro_Total=('Profit_Quadrante', 'sum')
+        )
+        .reset_index()
+    )
+
+    resumo['Winrate'] = resumo['Acertos'] / resumo['Apostas']
+    resumo['ROI'] = resumo['Lucro_Total'] / resumo['Apostas']
+
+    resumo = resumo.sort_values('ROI', ascending=False)
+    resumo = resumo[['Recomendacao', 'Apostas', 'Winrate', 'ROI', 'Lucro_Total']]
+
+    st.dataframe(
+        resumo.style.format({
+            'Winrate': '{:.1%}',
+            'ROI': '{:.1%}',
+            'Lucro_Total': '{:.2f}'
+        })
+        .background_gradient(subset=['Winrate', 'ROI'], cmap='RdYlGn'),
+        use_container_width=True
+    )
+
+    return resumo
+
+# Chamar análise se o ranking 3D estiver disponível
+if 'Quadrante_Correct' in locals() or 'ranking_3d' in locals():
+    try:
+        perf_recomendacoes = analisar_performance_por_recomendacao(ranking_3d)
+    except Exception as e:
+        st.error(f"Erro ao calcular performance por recomendação: {e}")
+else:
+    st.info("⚠️ Dados de apostas (ranking_3d) ainda não disponíveis.")
+
+
+
 st.markdown("---")
 st.success("🎯 **Sistema 3D de 16 Quadrantes ML** implementado com sucesso!")
 st.info("""
