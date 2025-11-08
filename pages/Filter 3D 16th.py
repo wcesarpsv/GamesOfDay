@@ -1815,6 +1815,32 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # Aplicar atualização em tempo real 3D
     ranking_3d = update_real_time_data_3d(ranking_3d)
 
+
+    # ============================================================
+    # 🧭 CONFIABILIDADE DAS LIGAS – INTEGRAÇÃO AO RANKING 3D
+    # ============================================================
+    st.markdown("### 🧭 Distribuição de Ligas por Nível de Confiabilidade")
+    
+    try:
+        liga_conf = calcular_confiabilidade_ligas(history)
+        st.dataframe(
+            liga_conf.style.format({
+                "Liga_Confiabilidade_Score": "{:.1f}"
+            }).background_gradient(subset=["Liga_Confiabilidade_Score"], cmap="RdYlGn"),
+            use_container_width=True
+        )
+    
+        # Merge da confiabilidade com os jogos do dia
+        if "League" in ranking_3d.columns:
+            ranking_3d = ranking_3d.merge(liga_conf, on="League", how="left")
+            st.success("✅ Confiabilidade de ligas integrada aos confrontos 3D.")
+        else:
+            st.warning("⚠️ Coluna 'League' não encontrada em ranking_3d — merge ignorado.")
+    
+    except Exception as e:
+        st.error(f"Erro ao calcular confiabilidade de ligas: {e}")
+
+
     # ---------------- RESUMO LIVE 3D ----------------
     def generate_live_summary_3d(df):
         """Gera resumo em tempo real para sistema 3D - CORRIGIDA"""
