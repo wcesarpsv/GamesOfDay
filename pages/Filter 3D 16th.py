@@ -1455,12 +1455,24 @@ def gerar_score_combinado_3d_16(df):
 
 def calcular_confiabilidade_ligas(df):
     """
-    Calcula o nível de confiabilidade por liga com base na estabilidade
-    dos resultados e variabilidade das distâncias 3D.
-    Retorna um DataFrame com score numérico e label textual.
+    Calcula o nível de confiabilidade por liga com base na estabilidade dos resultados
+    e variabilidade das distâncias 3D. Blindada contra colunas ausentes.
     """
+
+    df = df.copy()
+
+    # Garante que as colunas usadas existam
+    if "Target_AH_Home" not in df.columns:
+        st.warning("⚠️ Coluna 'Target_AH_Home' não encontrada — criando temporariamente com zeros.")
+        df["Target_AH_Home"] = 0
+
+    if "Quadrant_Dist_3D" not in df.columns:
+        st.warning("⚠️ Coluna 'Quadrant_Dist_3D' não encontrada — criando temporariamente com NaN.")
+        df["Quadrant_Dist_3D"] = np.nan
+
+    # Faz o agrupamento
     liga_stats = (
-        df.groupby("League")
+        df.groupby("League", dropna=False)
           .agg(
               Jogos=("Target_AH_Home", "count"),
               WinRate=("Target_AH_Home", "mean"),
@@ -1487,63 +1499,8 @@ def calcular_confiabilidade_ligas(df):
             return "🔴 Instável"
 
     liga_stats["Liga_Confiabilidade_Label"] = liga_stats["Liga_Confiabilidade_Score"].apply(rotular_confiabilidade)
+
     return liga_stats[["League", "Liga_Confiabilidade_Score", "Liga_Confiabilidade_Label"]]
-
-
-# ============================================================
-# 📊 INSERÇÃO NO PAINEL “Melhores Confrontos 3D por 16 Quadrantes ML”
-# ============================================================
-
-# Calcular a confiabilidade com base no histórico completo
-liga_conf = calcular_confiabilidade_ligas(history)
-
-# Inserir a informação no DataFrame dos jogos do dia
-games_today = games_today.merge(liga_conf, on="League", how="left")
-
-# Mostrar um mini-resumo das ligas por faixa de confiabilidade
-liga_summary = (
-    liga_conf.groupby("Liga_Confiabilidade_Label")
-             .agg(
-                 N_Ligas=("League", "count"),
-                 Média_Score=("Liga_Confiabilidade_Score", "mean")
-             )
-             .reset_index()
-             .sort_values("Média_Score", ascending=False)
-)
-
-st.markdown("### 🧭 Distribuição de Ligas por Nível de Confiabilidade")
-st.dataframe(
-    liga_summary.style.format({"Média_Score": "{:.1f}"}).background_gradient(
-        subset=["Média_Score"], cmap="RdYlGn"
-    ),
-    use_container_width=True
-)
-
-# ============================================================
-# 📋 EXIBIÇÃO NA TABELA PRINCIPAL (Melhores Confrontos 3D)
-# ============================================================
-
-st.markdown("### ⚽ Melhores Confrontos 3D por 16 Quadrantes ML (com Confiabilidade da Liga)")
-
-cols_to_show = [
-    "League",
-    "Liga_Confiabilidade_Label",
-    "Home",
-    "Away",
-    "Quadrant_Label",
-    "ML_Side",
-    "ML_Confidence",
-    "Quadrante_ML_Score_Main"
-]
-
-st.dataframe(
-    games_today[cols_to_show]
-    .sort_values("ML_Confidence", ascending=False)
-    .style.background_gradient(
-        subset=["ML_Confidence"], cmap="Greens"
-    ),
-    use_container_width=True
-)
 
 
 
