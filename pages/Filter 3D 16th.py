@@ -1816,6 +1816,72 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     ranking_3d = update_real_time_data_3d(ranking_3d)
 
 
+
+    # ============================================================
+    # 🧭 MAPA DE CONFIABILIDADE 3D POR LIGA (para anexar à tabela principal)
+    # ============================================================
+    
+    def calcular_confiabilidade_por_liga_cluster(df):
+        """
+        Resume para cada liga o cluster dominante e seu winrate médio.
+        """
+        # Verifica se as colunas necessárias existem
+        if not {"League", "Cluster3D_Label", "Target_AH_Home"}.issubset(df.columns):
+            st.warning("⚠️ Colunas necessárias ausentes para cálculo de confiabilidade por liga.")
+            return pd.DataFrame(columns=["League", "Liga_Cluster_Dom", "Liga_Cluster_WinRate", "Liga_Confiabilidade_Label"])
+    
+        # Estatísticas por liga e cluster
+        liga_cluster_stats = (
+            df.groupby(["League", "Cluster3D_Label"])
+              .agg(
+                  Jogos=("Target_AH_Home", "count"),
+                  WinRate=("Target_AH_Home", "mean")
+              )
+              .reset_index()
+        )
+    
+        # Identifica o cluster dominante de cada liga (maior WinRate)
+        liga_dominante = liga_cluster_stats.loc[
+            liga_cluster_stats.groupby("League")["WinRate"].idxmax()
+        ].reset_index(drop=True)
+    
+        # Classifica com base no WinRate dominante
+        def rotular_confiabilidade(wr):
+            if wr >= 0.63:
+                return "🟢 Confiável"
+            elif wr >= 0.56:
+                return "🟡 Moderada"
+            else:
+                return "🔴 Instável"
+    
+        liga_dominante["Liga_Confiabilidade_Label"] = liga_dominante["WinRate"].apply(rotular_confiabilidade)
+    
+        # Renomeia colunas para merge
+        liga_dominante.rename(columns={
+            "Cluster3D_Label": "Liga_Cluster_Dom",
+            "WinRate": "Liga_Cluster_WinRate"
+        }, inplace=True)
+    
+        return liga_dominante[["League", "Liga_Cluster_Dom", "Liga_Cluster_WinRate", "Liga_Confiabilidade_Label"]]
+    
+    
+    # ============================================================
+    # 📊 MERGE COM A TABELA PRINCIPAL
+    # ============================================================
+    
+    try:
+        liga_conf_cluster = calcular_confiabilidade_por_liga_cluster(history)
+    
+        if "League" in ranking_3d.columns:
+            ranking_3d = ranking_3d.merge(liga_conf_cluster, on="League", how="left")
+            st.success("✅ Colunas de confiabilidade 3D por liga adicionadas à tabela principal.")
+        else:
+            st.warning("⚠️ Coluna 'League' não encontrada em ranking_3d.")
+    except Exception as e:
+        st.error(f"Erro ao calcular confiabilidade 3D por liga: {e}")
+
+
+    
     
     # ---------------- RESUMO LIVE 3D ----------------
     def generate_live_summary_3d(df):
@@ -1929,14 +1995,14 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # Colunas para exibição 3D
     colunas_3d = [
         
-        'League', 'Time',
+        'League', "Liga_Confiabilidade_Label", 'Time',
         'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Recomendacao', 'ML_Side',
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
         'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
         'Score_Final_3D', 'Classificacao_Potencial_3D',
         'Classificacao_Valor_Home', 'Classificacao_Valor_Away',
         # Colunas 3D
-        'M_H', 'M_A', 'Quadrant_Dist_3D', 'Momentum_Diff',
+        'Quadrant_Dist_3D', 'Momentum_Diff',
         # Colunas Live Score
         'Asian_Line_Decimal', 'Handicap_Result',
         'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
@@ -1990,8 +2056,6 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             'Quadrante_ML_Score_Home': '{:.1%}',
             'Quadrante_ML_Score_Away': '{:.1%}',
             'Score_Final_3D': '{:.1f}',
-            'M_H': '{:.2f}',
-            'M_A': '{:.2f}',
             'Quadrant_Dist_3D': '{:.2f}',
             'Momentum_Diff': '{:.2f}'
         }, na_rep="-"),
