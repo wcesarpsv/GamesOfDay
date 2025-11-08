@@ -111,116 +111,6 @@ def calculate_ah_home_target(margin, asian_line_str):
     return 1 if margin > line_home else 0
 
 
-# ==============================================================
-# 🧩 BLOCO – CLUSTERIZAÇÃO 3D (KMEANS) COM WINRATE SUPERVISIONADO POR LIGA
-# ==============================================================
-
-from sklearn.cluster import KMeans
-
-def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
-    """
-    Cria clusters espaciais 3D (Aggression × Momentum Liga × Momentum Time) por liga,
-    e adiciona estatísticas supervisionadas de vitória Home (Target_AH_Home).
-
-    Mantém o mesmo nome da função original para compatibilidade total.
-    Retorna o DataFrame com as colunas:
-      - 'Cluster3D_Label'       → rótulo do cluster (0..n_clusters-1 por liga)
-      - 'Cluster3D_Desc'        → descrição textual leve
-      - 'Cluster3D_Winrate'     → taxa histórica média de vitórias Home por cluster/lig
-    """
-
-    df = df.copy()
-
-    # Garante colunas necessárias
-    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        st.warning(f"⚠️ Colunas ausentes para clusterização 3D: {missing}")
-        df['Cluster3D_Label'] = -1
-        df['Cluster3D_Winrate'] = np.nan
-        df['Cluster3D_Desc'] = '🌀 Outro'
-        return df
-
-    # Inicializa colunas padrão
-    df['Cluster3D_Label'] = -1
-    df['Cluster3D_Winrate'] = np.nan
-
-    # Clustering separado por liga
-    for league in df['League'].dropna().unique():
-        subset = df[df['League'] == league]
-        if len(subset) < n_clusters:
-            continue
-
-        X = subset[['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']].fillna(0)
-
-        try:
-            kmeans = KMeans(
-                n_clusters=n_clusters,
-                random_state=random_state,
-                init='k-means++',
-                n_init=10
-            )
-            labels = kmeans.fit_predict(X)
-            df.loc[subset.index, 'Cluster3D_Label'] = labels
-        except Exception as e:
-            st.error(f"Erro ao clusterizar liga {league}: {e}")
-            continue
-
-    # ===========================================================
-    # 🔹 Cálculo supervisionado de Winrate e merge limpo e seguro
-    # ===========================================================
-    if 'Target_AH_Home' in df.columns:
-        cluster_stats = (
-            df.groupby(['League', 'Cluster3D_Label'])['Target_AH_Home']
-            .mean()
-            .reset_index()
-            .rename(columns={'Target_AH_Home': 'Cluster3D_Winrate'})
-        )
-
-        # Remove colunas antigas (duplicadas) antes do merge
-        cols_to_remove = [
-            c for c in df.columns
-            if c.startswith('Cluster3D_Winrate')
-        ]
-        if cols_to_remove:
-            df = df.drop(columns=cols_to_remove, errors='ignore')
-
-        # Faz merge limpo e seguro
-        df = df.merge(cluster_stats, on=['League', 'Cluster3D_Label'], how='left')
-
-    else:
-        if 'Cluster3D_Winrate' not in df.columns:
-            df['Cluster3D_Winrate'] = np.nan
-
-    # ===========================================================
-    # 🔹 Descrição textual dos clusters
-    # ===========================================================
-    df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
-        0: '⚡ Zona 1',
-        1: '💤 Zona 2',
-        2: '⚖️ Zona 3',
-        3: '🔥 Zona 4',
-        4: '🌪️ Zona 5',
-    }).fillna('🌀 Outro')
-
-    # ===========================================================
-    # 🔹 Exibe resumo visual de winrates (opcional)
-    # ===========================================================
-    try:
-        resumo = (
-            df.groupby(['League', 'Cluster3D_Label'])['Cluster3D_Winrate']
-            .mean()
-            .reset_index()
-            .sort_values(['League', 'Cluster3D_Label'])
-        )
-        st.markdown("### 📊 Winrate Histórico por Cluster (Supervisionado por Liga)")
-        st.dataframe(resumo.style.format({'Cluster3D_Winrate': '{:.1%}'}), use_container_width=True)
-    except Exception:
-        pass
-
-    return df
-
-
 
 
 # ---------------- Carregar Dados ----------------
@@ -347,6 +237,121 @@ history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
 history["Target_AH_Home"] = history.apply(
     lambda r: calculate_ah_home_target(r["Margin"], r["Asian_Line"]), axis=1
 )
+
+
+
+
+# ==============================================================
+# 🧩 BLOCO – CLUSTERIZAÇÃO 3D (KMEANS) COM WINRATE SUPERVISIONADO POR LIGA
+# ==============================================================
+
+from sklearn.cluster import KMeans
+
+def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
+    """
+    Cria clusters espaciais 3D (Aggression × Momentum Liga × Momentum Time) por liga,
+    e adiciona estatísticas supervisionadas de vitória Home (Target_AH_Home).
+
+    Mantém o mesmo nome da função original para compatibilidade total.
+    Retorna o DataFrame com as colunas:
+      - 'Cluster3D_Label'       → rótulo do cluster (0..n_clusters-1 por liga)
+      - 'Cluster3D_Desc'        → descrição textual leve
+      - 'Cluster3D_Winrate'     → taxa histórica média de vitórias Home por cluster/lig
+    """
+
+    df = df.copy()
+
+    # Garante colunas necessárias
+    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        st.warning(f"⚠️ Colunas ausentes para clusterização 3D: {missing}")
+        df['Cluster3D_Label'] = -1
+        df['Cluster3D_Winrate'] = np.nan
+        df['Cluster3D_Desc'] = '🌀 Outro'
+        return df
+
+    # Inicializa colunas padrão
+    df['Cluster3D_Label'] = -1
+    df['Cluster3D_Winrate'] = np.nan
+
+    # Clustering separado por liga
+    for league in df['League'].dropna().unique():
+        subset = df[df['League'] == league]
+        if len(subset) < n_clusters:
+            continue
+
+        X = subset[['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']].fillna(0)
+
+        try:
+            kmeans = KMeans(
+                n_clusters=n_clusters,
+                random_state=random_state,
+                init='k-means++',
+                n_init=10
+            )
+            labels = kmeans.fit_predict(X)
+            df.loc[subset.index, 'Cluster3D_Label'] = labels
+        except Exception as e:
+            st.error(f"Erro ao clusterizar liga {league}: {e}")
+            continue
+
+    # ===========================================================
+    # 🔹 Cálculo supervisionado de Winrate e merge limpo e seguro
+    # ===========================================================
+    if 'Target_AH_Home' in df.columns:
+        cluster_stats = (
+            df.groupby(['League', 'Cluster3D_Label'])['Target_AH_Home']
+            .mean()
+            .reset_index()
+            .rename(columns={'Target_AH_Home': 'Cluster3D_Winrate'})
+        )
+
+        # Remove colunas antigas (duplicadas) antes do merge
+        cols_to_remove = [
+            c for c in df.columns
+            if c.startswith('Cluster3D_Winrate')
+        ]
+        if cols_to_remove:
+            df = df.drop(columns=cols_to_remove, errors='ignore')
+
+        # Faz merge limpo e seguro
+        df = df.merge(cluster_stats, on=['League', 'Cluster3D_Label'], how='left')
+
+    else:
+        if 'Cluster3D_Winrate' not in df.columns:
+            df['Cluster3D_Winrate'] = np.nan
+
+    # ===========================================================
+    # 🔹 Descrição textual dos clusters
+    # ===========================================================
+    df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
+        0: '⚡ Zona 1',
+        1: '💤 Zona 2',
+        2: '⚖️ Zona 3',
+        3: '🔥 Zona 4',
+        4: '🌪️ Zona 5',
+    }).fillna('🌀 Outro')
+
+    # ===========================================================
+    # 🔹 Exibe resumo visual de winrates (opcional)
+    # ===========================================================
+    try:
+        resumo = (
+            df.groupby(['League', 'Cluster3D_Label'])['Cluster3D_Winrate']
+            .mean()
+            .reset_index()
+            .sort_values(['League', 'Cluster3D_Label'])
+        )
+        st.markdown("### 📊 Winrate Histórico por Cluster (Supervisionado por Liga)")
+        st.dataframe(resumo.style.format({'Cluster3D_Winrate': '{:.1%}'}), use_container_width=True)
+    except Exception:
+        pass
+
+    return df
+
+
+
 
 # ---------------- SISTEMA 3D DE 16 QUADRANTES ----------------
 st.markdown("## 🎯 Sistema 3D de 16 Quadrantes")
