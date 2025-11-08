@@ -909,23 +909,40 @@ games_today = aplicar_clusterizacao_3d(games_today, n_clusters=5)
 
 def treinar_modelo_3d_clusters_single(history, games_today):
     """
-    Treina um único modelo ML 3D (lado Home) e deriva o lado Away por complemento.
-    Remove redundância do modelo dual, mantendo consistência probabilística.
+    🔧 Versão otimizada: os clusters são tratados como features contínuas (int + sin/cos/zscore),
+    preservando compatibilidade total com o código existente.
     """
-
     # ----------------------------
     # 🧩 Garantir features 3D e clusters
     # ----------------------------
     history = calcular_distancias_3d(history)
     games_today = calcular_distancias_3d(games_today)
-    history = aplicar_clusterizacao_3d(history)
-    games_today = aplicar_clusterizacao_3d(games_today)
+    history = aplicar_clusterizacao_3d(history, n_clusters=5)
+    games_today = aplicar_clusterizacao_3d(games_today, n_clusters=5)
 
     # ----------------------------
-    # 🧠 Feature Engineering
+    # 🧠 Feature Engineering – Clusters otimizados
+    # ----------------------------
+    # Cluster label numérico
+    history['Cluster3D_Label'] = history['Cluster3D_Label'].astype(float)
+    games_today['Cluster3D_Label'] = games_today['Cluster3D_Label'].astype(float)
+
+    # Z-score dos clusters (ajusta amplitude)
+    mean_c = history['Cluster3D_Label'].mean()
+    std_c = history['Cluster3D_Label'].std(ddof=0) or 1
+    history['C3D_ZScore'] = (history['Cluster3D_Label'] - mean_c) / std_c
+    games_today['C3D_ZScore'] = (games_today['Cluster3D_Label'] - mean_c) / std_c
+
+    # Transformações trigonométricas — capturam “ângulo espacial” entre clusters
+    history['C3D_Sin'] = np.sin(history['Cluster3D_Label'])
+    history['C3D_Cos'] = np.cos(history['Cluster3D_Label'])
+    games_today['C3D_Sin'] = np.sin(games_today['Cluster3D_Label'])
+    games_today['C3D_Cos'] = np.cos(games_today['Cluster3D_Label'])
+
+    # ----------------------------
+    # 🎯 Conjunto de features
     # ----------------------------
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
-    clusters_dummies = pd.get_dummies(history['Cluster3D_Label'], prefix='C3D')
 
     features_3d = [
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
@@ -936,8 +953,9 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         'Vector_Sign', 'Magnitude_3D'
     ]
 
-    extras_3d = history[features_3d].fillna(0)
-    X = pd.concat([ligas_dummies, clusters_dummies, extras_3d], axis=1)
+    # 🧩 Novo conjunto expandido com clusters numéricos
+    features_cluster = ['Cluster3D_Label', 'C3D_ZScore', 'C3D_Sin', 'C3D_Cos']
+    X = pd.concat([ligas_dummies, history[features_3d + features_cluster]], axis=1).fillna(0)
 
     # ----------------------------
     # 🎯 Target e Treinamento
@@ -949,19 +967,17 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         max_depth=12,
         random_state=42,
         class_weight='balanced_subsample',
+        max_features='log2',
         n_jobs=-1
     )
 
     model_home.fit(X, y_home)
 
     # ----------------------------
-    # 🔮 Previsões (complemento lógico)
+    # 🔮 Previsões (Home / Away)
     # ----------------------------
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    clusters_today = pd.get_dummies(games_today['Cluster3D_Label'], prefix='C3D').reindex(columns=clusters_dummies.columns, fill_value=0)
-    extras_today = games_today[features_3d].fillna(0)
-
-    X_today = pd.concat([ligas_today, clusters_today, extras_today], axis=1)
+    X_today = pd.concat([ligas_today, games_today[features_3d + features_cluster]], axis=1).fillna(0)
 
     proba_home = model_home.predict_proba(X_today)[:, 1]
     proba_away = 1 - proba_home
@@ -974,17 +990,17 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     games_today['Quadrante_ML_Score_Away'] = games_today['Prob_Away']
     games_today['Quadrante_ML_Score_Main'] = games_today['ML_Confidence']
 
-
     # ----------------------------
     # 📊 Importância de Features
     # ----------------------------
     importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
 
-    st.markdown("### 🔍 Top Features (Modelo Único – Home)")
-    st.dataframe(importances.head(20).to_frame("Importância"), use_container_width=True)
+    st.markdown("### 🔍 Top Features (Modelo Único – Home, Clusters Otimizados)")
+    st.dataframe(importances.head(25).to_frame("Importância"), use_container_width=True)
 
-    st.success("✅ Modelo 3D treinado apenas com lado HOME (sem redundância).")
+    st.success("✅ Modelo 3D treinado com clusters numéricos e meta-features (sin, cos, zscore).")
     return model_home, games_today
+
 
 
 
