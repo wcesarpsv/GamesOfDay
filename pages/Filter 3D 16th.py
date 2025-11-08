@@ -178,6 +178,7 @@ def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
     else:
         df['Cluster3D_Winrate'] = np.nan
 
+
     # 🧠 Descrição textual leve
     df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
         0: '⚡ Zona 1',
