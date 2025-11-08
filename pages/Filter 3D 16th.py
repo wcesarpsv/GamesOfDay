@@ -1086,15 +1086,15 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     )
 
     # Pequeno gráfico de barras de WinRate
-    try:
-        fig, ax = plt.subplots(figsize=(6, 3))
-        ax.bar(cluster_stats["Cluster3D_Label"], cluster_stats["WinRate"], width=0.5)
-        ax.set_xlabel("Cluster 3D")
-        ax.set_ylabel("WinRate (Home Cover)")
-        ax.set_title("📊 Performance média por Cluster 3D")
-        st.pyplot(fig)
-    except Exception as e:
-        st.warning(f"Não foi possível gerar o gráfico dos clusters: {e}")
+    # try:
+    #     fig, ax = plt.subplots(figsize=(6, 3))
+    #     ax.bar(cluster_stats["Cluster3D_Label"], cluster_stats["WinRate"], width=0.5)
+    #     ax.set_xlabel("Cluster 3D")
+    #     ax.set_ylabel("WinRate (Home Cover)")
+    #     ax.set_title("📊 Performance média por Cluster 3D")
+    #     st.pyplot(fig)
+    # except Exception as e:
+    #     st.warning(f"Não foi possível gerar o gráfico dos clusters: {e}")
 
     # ============================================================
     # ✅ Finalização
@@ -1816,31 +1816,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     ranking_3d = update_real_time_data_3d(ranking_3d)
 
 
-    # ============================================================
-    # 🧭 CONFIABILIDADE DAS LIGAS – INTEGRAÇÃO AO RANKING 3D
-    # ============================================================
-    st.markdown("### 🧭 Distribuição de Ligas por Nível de Confiabilidade")
     
-    try:
-        liga_conf = calcular_confiabilidade_ligas(history)
-        st.dataframe(
-            liga_conf.style.format({
-                "Liga_Confiabilidade_Score": "{:.1f}"
-            }).background_gradient(subset=["Liga_Confiabilidade_Score"], cmap="RdYlGn"),
-            use_container_width=True
-        )
-    
-        # Merge da confiabilidade com os jogos do dia
-        if "League" in ranking_3d.columns:
-            ranking_3d = ranking_3d.merge(liga_conf, on="League", how="left")
-            st.success("✅ Confiabilidade de ligas integrada aos confrontos 3D.")
-        else:
-            st.warning("⚠️ Coluna 'League' não encontrada em ranking_3d — merge ignorado.")
-    
-    except Exception as e:
-        st.error(f"Erro ao calcular confiabilidade de ligas: {e}")
-
-
     # ---------------- RESUMO LIVE 3D ----------------
     def generate_live_summary_3d(df):
         """Gera resumo em tempo real para sistema 3D - CORRIGIDA"""
