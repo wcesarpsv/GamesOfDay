@@ -1243,7 +1243,7 @@ def gerar_estrategias_3d_16_quadrantes(df):
         if not jogos_categoria.empty:
             with st.expander("📋 Ver jogos desta categoria", expanded=False):
                 cols_exibir = [
-                    'League', 'Home', 'Away', 'Recomendacao',
+                    'League', 'Time', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Recomendacao',
                     'Quadrante_Home_Label', 'Quadrante_Away_Label',
                     'Quadrante_ML_Score_Main', 'Score_Final_3D',
                     'M_H', 'M_A', 'Asian_Line_Decimal',
@@ -1255,6 +1255,8 @@ def gerar_estrategias_3d_16_quadrantes(df):
                     jogos_categoria[cols_exibir]
                     .sort_values('Quadrante_ML_Score_Main', ascending=False)
                     .style.format({
+                        'Goals_H_Today': '{:.0f}',
+                        'Goals_A_Today': '{:.0f}',
                         'Quadrante_ML_Score_Main': '{:.1%}',
                         'Score_Final_3D': '{:.1f}',
                         'M_H': '{:.2f}',
@@ -1339,8 +1341,6 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # Aplicar scoring combinado 3D
     ranking_3d = gerar_score_combinado_3d_16(ranking_3d)
 
-    
-    ########### ---------------- ATUALIZAR COM DADOS LIVE 3D ----------------
 
     ########### ---------------- LIVE SCORE MONITOR – SISTEMA 3D (1X2) ----------------
 
@@ -1439,8 +1439,6 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
         return df
 
-
-    ##################################################################
 
     
     
