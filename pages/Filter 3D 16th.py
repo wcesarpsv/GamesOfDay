@@ -977,7 +977,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     history = calcular_distancias_3d(history)
     games_today = calcular_distancias_3d(games_today)
     # Alterna facilmente entre global e por liga
-    USE_CLUSTER_POR_LIGA = False
+    USE_CLUSTER_POR_LIGA = True
     if USE_CLUSTER_POR_LIGA:
         history = aplicar_clusterizacao_3d_por_liga(history, n_clusters=4)
         games_today = aplicar_clusterizacao_3d_por_liga(games_today, n_clusters=4)
