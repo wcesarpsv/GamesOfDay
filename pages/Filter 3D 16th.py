@@ -909,8 +909,9 @@ games_today = aplicar_clusterizacao_3d(games_today, n_clusters=5)
 
 def treinar_modelo_3d_clusters_single(history, games_today):
     """
-    🔧 Versão otimizada: os clusters são tratados como features contínuas (int + sin/cos/zscore),
-    preservando compatibilidade total com o código existente.
+    🔧 Versão otimizada com análise de clusters 3D integrada:
+    - Clusters numéricos (int) + sin/cos/zscore
+    - Painel de diagnóstico visual dos clusters
     """
     # ----------------------------
     # 🧩 Garantir features 3D e clusters
@@ -923,17 +924,14 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     # ----------------------------
     # 🧠 Feature Engineering – Clusters otimizados
     # ----------------------------
-    # Cluster label numérico
     history['Cluster3D_Label'] = history['Cluster3D_Label'].astype(float)
     games_today['Cluster3D_Label'] = games_today['Cluster3D_Label'].astype(float)
 
-    # Z-score dos clusters (ajusta amplitude)
     mean_c = history['Cluster3D_Label'].mean()
     std_c = history['Cluster3D_Label'].std(ddof=0) or 1
     history['C3D_ZScore'] = (history['Cluster3D_Label'] - mean_c) / std_c
     games_today['C3D_ZScore'] = (games_today['Cluster3D_Label'] - mean_c) / std_c
 
-    # Transformações trigonométricas — capturam “ângulo espacial” entre clusters
     history['C3D_Sin'] = np.sin(history['Cluster3D_Label'])
     history['C3D_Cos'] = np.cos(history['Cluster3D_Label'])
     games_today['C3D_Sin'] = np.sin(games_today['Cluster3D_Label'])
@@ -953,7 +951,6 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         'Vector_Sign', 'Magnitude_3D'
     ]
 
-    # 🧩 Novo conjunto expandido com clusters numéricos
     features_cluster = ['Cluster3D_Label', 'C3D_ZScore', 'C3D_Sin', 'C3D_Cos']
     X = pd.concat([ligas_dummies, history[features_3d + features_cluster]], axis=1).fillna(0)
 
@@ -970,7 +967,6 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         max_features='log2',
         n_jobs=-1
     )
-
     model_home.fit(X, y_home)
 
     # ----------------------------
@@ -995,10 +991,50 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     # ----------------------------
     importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
 
-    st.markdown("### 🔍 Top Features (Modelo Único – Home, Clusters Otimizados)")
+    st.markdown("### 🔍 Top Features (Modelo 3D com Clusters Otimizados)")
     st.dataframe(importances.head(25).to_frame("Importância"), use_container_width=True)
 
-    st.success("✅ Modelo 3D treinado com clusters numéricos e meta-features (sin, cos, zscore).")
+    # ============================================================
+    # 🧭 PAINEL DE ANÁLISE DOS CLUSTERS 3D
+    # ============================================================
+    st.markdown("### 🧭 Análise de Distribuição e Performance por Cluster 3D")
+
+    cluster_stats = (
+        history.groupby("Cluster3D_Label")
+        .agg(
+            Jogos=("Target_AH_Home", "count"),
+            WinRate=("Target_AH_Home", "mean"),
+            Média_Dist3D=("Quadrant_Dist_3D", "mean"),
+            Média_Magnitude=("Magnitude_3D", "mean")
+        )
+        .reset_index()
+        .sort_values("Cluster3D_Label")
+    )
+
+    st.dataframe(
+        cluster_stats.style.format({
+            "WinRate": "{:.1%}",
+            "Média_Dist3D": "{:.2f}",
+            "Média_Magnitude": "{:.2f}"
+        }).background_gradient(subset=["WinRate"], cmap="RdYlGn"),
+        use_container_width=True
+    )
+
+    # Pequeno gráfico de barras de WinRate
+    try:
+        fig, ax = plt.subplots(figsize=(6, 3))
+        ax.bar(cluster_stats["Cluster3D_Label"], cluster_stats["WinRate"], width=0.5)
+        ax.set_xlabel("Cluster 3D")
+        ax.set_ylabel("WinRate (Home Cover)")
+        ax.set_title("📊 Performance média por Cluster 3D")
+        st.pyplot(fig)
+    except Exception as e:
+        st.warning(f"Não foi possível gerar o gráfico dos clusters: {e}")
+
+    # ============================================================
+    # ✅ Finalização
+    # ============================================================
+    st.success("✅ Modelo 3D treinado e clusters analisados com sucesso!")
     return model_home, games_today
 
 
