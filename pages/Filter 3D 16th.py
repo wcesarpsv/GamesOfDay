@@ -167,6 +167,7 @@ def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
             continue
 
     # Se houver a coluna de target, calcula winrate por liga/cluster
+    # Se houver a coluna de target, calcula winrate por liga/cluster
     if 'Target_AH_Home' in df.columns:
         cluster_stats = (
             df.groupby(['League', 'Cluster3D_Label'])['Target_AH_Home']
@@ -174,9 +175,16 @@ def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
             .reset_index()
             .rename(columns={'Target_AH_Home': 'Cluster3D_Winrate'})
         )
+    
+        # Evita duplicações da coluna antes do merge
+        if 'Cluster3D_Winrate' in df.columns:
+            df = df.drop(columns=['Cluster3D_Winrate'], errors='ignore')
+    
         df = df.merge(cluster_stats, on=['League', 'Cluster3D_Label'], how='left')
     else:
-        df['Cluster3D_Winrate'] = np.nan
+        if 'Cluster3D_Winrate' not in df.columns:
+            df['Cluster3D_Winrate'] = np.nan
+
 
 
     # 🧠 Descrição textual leve
