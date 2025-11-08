@@ -121,7 +121,7 @@ def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
     """
     Cria clusters espaciais 3D (Aggression × Momentum Liga × Momentum Time) por liga,
     e adiciona estatísticas supervisionadas de vitória Home (Target_AH_Home).
-    
+
     Mantém o mesmo nome da função original para compatibilidade total.
     Retorna o DataFrame com as colunas:
       - 'Cluster3D_Label'       → rótulo do cluster (0..n_clusters-1 por liga)
@@ -166,8 +166,9 @@ def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
             st.error(f"Erro ao clusterizar liga {league}: {e}")
             continue
 
-    # Se houver a coluna de target, calcula winrate por liga/cluster
-    # Se houver a coluna de target, calcula winrate por liga/cluster
+    # ===========================================================
+    # 🔹 Cálculo supervisionado de Winrate e merge limpo e seguro
+    # ===========================================================
     if 'Target_AH_Home' in df.columns:
         cluster_stats = (
             df.groupby(['League', 'Cluster3D_Label'])['Target_AH_Home']
@@ -175,19 +176,25 @@ def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
             .reset_index()
             .rename(columns={'Target_AH_Home': 'Cluster3D_Winrate'})
         )
-    
-        # Evita duplicações da coluna antes do merge
-        if 'Cluster3D_Winrate' in df.columns:
-            df = df.drop(columns=['Cluster3D_Winrate'], errors='ignore')
-    
+
+        # Remove colunas antigas (duplicadas) antes do merge
+        cols_to_remove = [
+            c for c in df.columns
+            if c.startswith('Cluster3D_Winrate')
+        ]
+        if cols_to_remove:
+            df = df.drop(columns=cols_to_remove, errors='ignore')
+
+        # Faz merge limpo e seguro
         df = df.merge(cluster_stats, on=['League', 'Cluster3D_Label'], how='left')
+
     else:
         if 'Cluster3D_Winrate' not in df.columns:
             df['Cluster3D_Winrate'] = np.nan
 
-
-
-    # 🧠 Descrição textual leve
+    # ===========================================================
+    # 🔹 Descrição textual dos clusters
+    # ===========================================================
     df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
         0: '⚡ Zona 1',
         1: '💤 Zona 2',
@@ -196,7 +203,9 @@ def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
         4: '🌪️ Zona 5',
     }).fillna('🌀 Outro')
 
-    # Exibe resumo visual (para debug / insights)
+    # ===========================================================
+    # 🔹 Exibe resumo visual de winrates (opcional)
+    # ===========================================================
     try:
         resumo = (
             df.groupby(['League', 'Cluster3D_Label'])['Cluster3D_Winrate']
@@ -210,6 +219,7 @@ def aplicar_clusterizacao_3d(df, n_clusters=5, random_state=42):
         pass
 
     return df
+
 
 
 
