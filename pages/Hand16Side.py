@@ -2280,6 +2280,10 @@ else:
     st.info("⚠️ Dados do ranking 3D ainda não disponíveis para análise.")
 
 
+st.write("📊 Faixa da linha AH:", history["Asian_Line_Decimal"].min(), "→", history["Asian_Line_Decimal"].max())
+st.write("📈 Distribuição:", history["Asian_Line_Decimal"].value_counts().head(10))
+st.write(history[["Asian_Line", "Asian_Line_Decimal"]].head())
+
 
 
 st.markdown("---")
