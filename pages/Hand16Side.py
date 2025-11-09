@@ -1213,9 +1213,9 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
         elif ml_side == 'AWAY' and score_away >= 0.60 and momentum_a > 0:
             return f'📈 MODELO CONFIA AWAY (+Momentum) ({score_away:.1%})'
         elif momentum_h < -1.0 and score_away >= 0.55:
-            return f'🔻 HOME EM MOMENTUM NEGATIVO → AWAY ({score_away:.1%})'
+            return f'AWAY → 🔻 HOME EM MOMENTUM NEGATIVO ({score_away:.1%})'
         elif momentum_a < -1.0 and score_home >= 0.55:
-            return f'🔻 AWAY EM MOMENTUM NEGATIVO → HOME ({score_home:.1%})'
+            return f'HOME → 🔻 AWAY EM MOMENTUM NEGATIVO ({score_home:.1%})'
         elif 'Neutro' in home_q and score_away >= 0.58 and momentum_a > 0:
             return f'🔄 AWAY EM NEUTRO (+Momentum) ({score_away:.1%})'
         elif 'Neutro' in away_q and score_home >= 0.58 and momentum_h > 0:
