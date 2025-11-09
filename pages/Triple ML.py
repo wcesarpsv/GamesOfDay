@@ -587,21 +587,62 @@ def criar_target_zona_risco(row):
 
 def treinar_modelo_personalizado(history_subset, games_today, target_col):
     """
-    Treina modelo com subconjunto específico de dados - CORRIGIDO
+    🚀 Versão aprimorada — Treina modelo customizado com:
+      - Balanceamento automático de classes
+      - Proteção contra fuga temporal (Date < selected_date)
+      - Clipping de probabilidades extremas (máx. 0.95)
+      - Logs visuais no Streamlit
     """
     try:
-        # Verificar se temos dados suficientes e balanceados
-        if history_subset[target_col].nunique() < 2:
-            st.warning(f"⚠️ Target {target_col} não tem variação")
-            return None, games_today
-            
-        if history_subset[target_col].sum() < 10:  # Mínimo de exemplos positivos
-            st.warning(f"⚠️ Target {target_col} tem poucos exemplos positivos: {history_subset[target_col].sum()}")
+        # ===============================
+        # 1️⃣ Verificações básicas
+        # ===============================
+        if target_col not in history_subset.columns:
+            st.warning(f"⚠️ Coluna {target_col} ausente do histórico.")
             return None, games_today
 
-        # Features base
-        ligas_dummies = pd.get_dummies(history_subset['League'], prefix='League')
-        
+        # Garantir variabilidade
+        if history_subset[target_col].nunique() < 2:
+            st.warning(f"⚠️ Target {target_col} não tem variação suficiente.")
+            return None, games_today
+
+        pos_count = history_subset[target_col].sum()
+        st.info(f"📊 Target {target_col}: {pos_count} positivos de {len(history_subset)} ({pos_count/len(history_subset):.1%})")
+
+        # ===============================
+        # 2️⃣ Filtro temporal (anti-leakage)
+        # ===============================
+        if "Date" in history_subset.columns and "Date" in games_today.columns:
+            try:
+                max_today = pd.to_datetime(games_today["Date"].iloc[0], errors="coerce")
+                history_subset["Date"] = pd.to_datetime(history_subset["Date"], errors="coerce")
+                history_subset = history_subset[history_subset["Date"] < max_today]
+                st.info(f"⏳ Treinando com {len(history_subset)} jogos anteriores a {max_today.date()}")
+            except:
+                st.warning("⚠️ Falha ao aplicar filtro temporal — prosseguindo com todos os dados.")
+
+        # ===============================
+        # 3️⃣ Balanceamento de classes
+        # ===============================
+        from sklearn.utils import resample
+        major = history_subset[history_subset[target_col] == 0]
+        minor = history_subset[history_subset[target_col] == 1]
+
+        if len(minor) < 5:
+            st.warning(f"⚠️ Target {target_col} tem poucos exemplos positivos ({len(minor)}).")
+            return None, games_today
+
+        # Reamostra minoria para equilibrar
+        minor_upsampled = resample(minor, replace=True, n_samples=len(major), random_state=42)
+        history_balanced = pd.concat([major, minor_upsampled])
+
+        st.info(f"⚖️ Balanceamento aplicado: {len(major)} x {len(minor_upsampled)} exemplos")
+
+        # ===============================
+        # 4️⃣ Preparar features
+        # ===============================
+        ligas_dummies = pd.get_dummies(history_balanced['League'], prefix='League')
+
         features_3d = [
             'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
             'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
@@ -610,48 +651,68 @@ def treinar_modelo_personalizado(history_subset, games_today, target_col):
             'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',
             'Vector_Sign', 'Magnitude_3D', "Asian_Line_Decimal"
         ]
-        
         features_cluster = ['Cluster3D_Label', 'C3D_ZScore', 'C3D_Sin', 'C3D_Cos']
-        
-        # Garantir que as colunas existem
-        available_features = []
-        for feature in features_3d + features_cluster:
-            if feature in history_subset.columns:
-                available_features.append(feature)
-        
-        X = pd.concat([ligas_dummies, history_subset[available_features]], axis=1).fillna(0)
-        y = history_subset[target_col].astype(int)
-        
-        # Modelo com balanceamento
+
+        available_features = [f for f in features_3d + features_cluster if f in history_balanced.columns]
+
+        X = pd.concat([ligas_dummies, history_balanced[available_features]], axis=1).fillna(0)
+        y = history_balanced[target_col].astype(int)
+
+        # ===============================
+        # 5️⃣ Modelo RandomForest balanceado
+        # ===============================
+        from sklearn.ensemble import RandomForestClassifier
         model = RandomForestClassifier(
-            n_estimators=150,
-            max_depth=10,
+            n_estimators=180,
+            max_depth=12,
             random_state=42,
-            class_weight='balanced',
+            class_weight='balanced_subsample',
             n_jobs=-1
         )
         model.fit(X, y)
-        
-        # Previsões para hoje
+
+        # ===============================
+        # 6️⃣ Previsões para jogos de hoje
+        # ===============================
         ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
         X_today = pd.concat([ligas_today, games_today[available_features]], axis=1).fillna(0)
-        
-        # Garantir mesma ordem de colunas
+
+        # Ajustar ordem
         missing_cols = set(X.columns) - set(X_today.columns)
         for col in missing_cols:
             X_today[col] = 0
         X_today = X_today[X.columns]
-        
+
         proba = model.predict_proba(X_today)[:, 1]
+
+        # Clipping para evitar extremos 0.0 ou 0.99
+        proba = np.clip(proba, 0.05, 0.95)
+
         games_today[f'Prob_{target_col}'] = proba
-        games_today[f'ML_Side_{target_col}'] = np.where(proba > 0.5, 'HOME', 'AWAY')
-        games_today[f'Confidence_{target_col}'] = np.maximum(proba, 1-proba)
-        
+        games_today[f'ML_Side_{target_col}'] = np.where(proba >= 0.5, 'HOME', 'AWAY')
+        games_today[f'Confidence_{target_col}'] = np.round(np.maximum(proba, 1 - proba), 3)
+
+        # ===============================
+        # 7️⃣ Diagnóstico visual
+        # ===============================
+        mean_conf = games_today[f'Confidence_{target_col}'].mean()
+        home_preds = (games_today[f'ML_Side_{target_col}'] == 'HOME').sum()
+        away_preds = (games_today[f'ML_Side_{target_col}'] == 'AWAY').sum()
+
+        st.success(f"✅ {target_col}: {len(games_today)} jogos | Média Conf: {mean_conf:.1%} | HOME={home_preds} / AWAY={away_preds}")
+
+        # Mostrar histograma das probabilidades
+        st.pyplot(
+            plt.hist(proba, bins=20, color='skyblue', edgecolor='black')
+        )
+        st.caption(f"Distribuição de probabilidades — {target_col}")
+
         return model, games_today
-        
+
     except Exception as e:
         st.error(f"❌ Erro no treinamento personalizado ({target_col}): {e}")
         return None, games_today
+
 
 def treinar_modelo_3d_clusters_single(history, games_today):
     """
