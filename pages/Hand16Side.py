@@ -2109,8 +2109,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             styler = styler.background_gradient(subset=['Quadrante_ML_Score_Away'], cmap='RdYlGn')
         if 'Score_Final_3D' in df.columns:
             styler = styler.background_gradient(subset=['Score_Final_3D'], cmap='RdYlGn')
-        if 'M_H' in df.columns:
-            styler = styler.background_gradient(subset=['M_H', 'M_A'], cmap='coolwarm')
+
 
         return styler
 
