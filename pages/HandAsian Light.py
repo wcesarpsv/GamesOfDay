@@ -820,7 +820,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
         elif adjusted < 0:
             return 0   # Home não cobre (Away vence o AH)
         else:
-            return np.nan  # Push
+            return 0 # Push
 
     history["Target_AH_Home"] = history.apply(calc_target_handicap_cover, axis=1)
     history = history.dropna(subset=["Target_AH_Home"]).copy()
