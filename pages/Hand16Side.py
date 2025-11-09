@@ -1600,11 +1600,11 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         recomendacao_str = str(recomendacao).upper()
     
         is_home_bet = any(k in recomendacao_str for k in [
-            'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+            'HOME', 'HOME →', 'FAVORITO HOME', 'VALUE NO HOME',
             'MODELO CONFIA HOME', 'H:', 'HOME)'
         ])
         is_away_bet = any(k in recomendacao_str for k in [
-            'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+            'AWAY', 'AWAY →', 'FAVORITO AWAY', 'VALUE NO AWAY',
             'MODELO CONFIA AWAY', 'A:', 'AWAY)'
         ])
     
