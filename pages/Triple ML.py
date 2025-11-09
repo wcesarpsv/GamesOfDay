@@ -587,57 +587,71 @@ def criar_target_zona_risco(row):
 
 def treinar_modelo_personalizado(history_subset, games_today, target_col):
     """
-    Treina modelo com subconjunto específico de dados
+    Treina modelo com subconjunto específico de dados - CORRIGIDO
     """
-    # Features base (mesmas do original)
-    ligas_dummies = pd.get_dummies(history_subset['League'], prefix='League')
-    
-    features_3d = [
-        'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
-        'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
-        'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ', 
-        'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
-        'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',
-        'Vector_Sign', 'Magnitude_3D', "Asian_Line_Decimal"
-    ]
-    
-    features_cluster = ['Cluster3D_Label', 'C3D_ZScore', 'C3D_Sin', 'C3D_Cos']
-    
-    # Garantir que as colunas existem
-    available_features = []
-    for feature in features_3d + features_cluster:
-        if feature in history_subset.columns:
-            available_features.append(feature)
-    
-    X = pd.concat([ligas_dummies, history_subset[available_features]], axis=1).fillna(0)
-    y = history_subset[target_col].astype(int)
-    
-    # Modelo
-    model = RandomForestClassifier(
-        n_estimators=200,
-        max_depth=12,
-        random_state=42,
-        class_weight='balanced_subsample',
-        n_jobs=-1
-    )
-    model.fit(X, y)
-    
-    # Previsões para hoje
-    ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    X_today = pd.concat([ligas_today, games_today[available_features]], axis=1).fillna(0)
-    
-    # Garantir mesma ordem de colunas
-    missing_cols = set(X.columns) - set(X_today.columns)
-    for col in missing_cols:
-        X_today[col] = 0
-    X_today = X_today[X.columns]
-    
-    proba = model.predict_proba(X_today)[:, 1]
-    games_today[f'Prob_{target_col}'] = proba
-    games_today[f'ML_Side_{target_col}'] = np.where(proba > 0.5, 'HOME', 'AWAY')
-    games_today[f'Confidence_{target_col}'] = np.maximum(proba, 1-proba)
-    
-    return model, games_today
+    try:
+        # Verificar se temos dados suficientes e balanceados
+        if history_subset[target_col].nunique() < 2:
+            st.warning(f"⚠️ Target {target_col} não tem variação")
+            return None, games_today
+            
+        if history_subset[target_col].sum() < 10:  # Mínimo de exemplos positivos
+            st.warning(f"⚠️ Target {target_col} tem poucos exemplos positivos: {history_subset[target_col].sum()}")
+            return None, games_today
+
+        # Features base
+        ligas_dummies = pd.get_dummies(history_subset['League'], prefix='League')
+        
+        features_3d = [
+            'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
+            'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
+            'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ', 
+            'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
+            'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',
+            'Vector_Sign', 'Magnitude_3D', "Asian_Line_Decimal"
+        ]
+        
+        features_cluster = ['Cluster3D_Label', 'C3D_ZScore', 'C3D_Sin', 'C3D_Cos']
+        
+        # Garantir que as colunas existem
+        available_features = []
+        for feature in features_3d + features_cluster:
+            if feature in history_subset.columns:
+                available_features.append(feature)
+        
+        X = pd.concat([ligas_dummies, history_subset[available_features]], axis=1).fillna(0)
+        y = history_subset[target_col].astype(int)
+        
+        # Modelo com balanceamento
+        model = RandomForestClassifier(
+            n_estimators=150,
+            max_depth=10,
+            random_state=42,
+            class_weight='balanced',
+            n_jobs=-1
+        )
+        model.fit(X, y)
+        
+        # Previsões para hoje
+        ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
+        X_today = pd.concat([ligas_today, games_today[available_features]], axis=1).fillna(0)
+        
+        # Garantir mesma ordem de colunas
+        missing_cols = set(X.columns) - set(X_today.columns)
+        for col in missing_cols:
+            X_today[col] = 0
+        X_today = X_today[X.columns]
+        
+        proba = model.predict_proba(X_today)[:, 1]
+        games_today[f'Prob_{target_col}'] = proba
+        games_today[f'ML_Side_{target_col}'] = np.where(proba > 0.5, 'HOME', 'AWAY')
+        games_today[f'Confidence_{target_col}'] = np.maximum(proba, 1-proba)
+        
+        return model, games_today
+        
+    except Exception as e:
+        st.error(f"❌ Erro no treinamento personalizado ({target_col}): {e}")
+        return None, games_today
 
 def treinar_modelo_3d_clusters_single(history, games_today):
     """
@@ -719,7 +733,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
 
 def treinar_modelos_multi_target(history, games_today):
     """
-    Treina modelos separados para cada target selecionado - CORRIGIDO
+    Treina modelos separados para cada target selecionado - CORREÇÃO COMPLETA
     """
     modelos = {}
     resultados = {}
@@ -732,41 +746,49 @@ def treinar_modelos_multi_target(history, games_today):
     history = aplicar_clusterizacao_3d(history, n_clusters=4)
     games_today = aplicar_clusterizacao_3d(games_today, n_clusters=4)
     
-    # 🎯 TARGET 1: ORIGINAL (AH Home)
+    # 🎯 TARGET 1: ORIGINAL (AH Home) - CORRIGIDO
     if use_target_original:
         st.markdown("### 🎯 Modelo 1: Target Original (AH Home)")
         try:
+            # Usar função original que sabemos que funciona
             modelo_original, games_original = treinar_modelo_3d_clusters_single(history, games_today)
             modelos['ORIGINAL'] = modelo_original
             resultados['ORIGINAL'] = games_original
-            st.success("✅ Modelo Original treinado")
+            
+            # Verificar se as colunas de confiança foram criadas
+            if 'ML_Confidence' in games_original.columns:
+                conf_media = games_original['ML_Confidence'].mean()
+                st.success(f"✅ Modelo Original treinado | Confiança: {conf_media:.1%}")
+            else:
+                st.success("✅ Modelo Original treinado")
+                
         except Exception as e:
             st.error(f"❌ Erro no modelo original: {e}")
-    
+
     # 🧭 TARGET 2: ESPACIAL INTELIGENTE - CORRIGIDO
     if use_target_espacial:
         st.markdown("### 🧭 Modelo 2: Target Espacial Inteligente")
         try:
-            # Criar target espacial DIFERENTE
+            # Criar target espacial
             history_espacial = history.copy()
             history_espacial['Target_Espacial'] = history_espacial.apply(criar_target_espacial_inteligente, axis=1)
             
-            # Filtrar apenas jogos espacialmente confiáveis
-            history_confiavel = history_espacial[history_espacial['Target_Espacial'] == 1]
+            st.info(f"📊 Distribuição Target Espacial: {history_espacial['Target_Espacial'].value_counts().to_dict()}")
             
-            if len(history_confiavel) > 10:
-                # ✅ USAR TARGET ESPECÍFICO, NÃO O ORIGINAL
+            # Verificar balanceamento
+            if history_espacial['Target_Espacial'].nunique() > 1:
                 modelo_espacial, games_espacial = treinar_modelo_personalizado(
-                    history_confiavel, games_today, 'Target_Espacial'  # ⬅️ TARGET CORRETO
+                    history_espacial, games_today, 'Target_Espacial'
                 )
                 modelos['ESPACIAL'] = modelo_espacial
                 resultados['ESPACIAL'] = games_espacial
-                st.success(f"✅ Modelo Espacial treinado com {len(history_confiavel)} jogos confiáveis")
+                st.success(f"✅ Modelo Espacial treinado com {len(history_espacial)} jogos")
             else:
-                st.warning("⚠️ Dados insuficientes para modelo espacial")
+                st.warning("⚠️ Target Espacial não tem variação (todas as classes iguais)")
+                
         except Exception as e:
             st.error(f"❌ Erro no modelo espacial: {e}")
-    
+
     # ⚠️ TARGET 3: ZONA DE RISCO - CORRIGIDO
     if use_target_zona_risco:
         st.markdown("### ⚠️ Modelo 3: Target Zona de Risco")
@@ -774,35 +796,28 @@ def treinar_modelos_multi_target(history, games_today):
             history_zona = history.copy()
             history_zona['Zona_Risco'] = history_zona.apply(criar_target_zona_risco, axis=1)
             
-            # Focar apenas na Zona Verde (alta confiança)
-            history_verde = history_zona[history_zona['Zona_Risco'] == 'ZONA_VERDE']
+            st.info(f"📊 Distribuição Zonas: {history_zona['Zona_Risco'].value_counts().to_dict()}")
             
-            if len(history_verde) > 10:
-                # ✅ CRIAR TARGET ESPECÍFICO PARA ZONA VERDE
-                # Jogos na zona verde que performaram bem no target original
-                history_verde_alvo = history_verde[history_verde['Target_AH_Home'] == 1].copy()
-                
-                if len(history_verde_alvo) > 5:
-                    # Target binário: 1 se está na zona verde E performou bem, 0 caso contrário
-                    history_verde['Target_Zona_Verde'] = 1
-                    history_fora_verde = history_zona[history_zona['Zona_Risco'] != 'ZONA_VERDE']
-                    history_fora_verde['Target_Zona_Verde'] = 0
-                    
-                    history_combinado = pd.concat([history_verde, history_fora_verde])
-                    
-                    modelo_zona, games_zona = treinar_modelo_personalizado(
-                        history_combinado, games_today, 'Target_Zona_Verde'
-                    )
-                    modelos['ZONA_RISCO'] = modelo_zona
-                    resultados['ZONA_RISCO'] = games_zona
-                    st.success(f"✅ Modelo Zona Risco treinado com {len(history_combinado)} jogos")
-                else:
-                    st.warning("⚠️ Poucos exemplos positivos na Zona Verde")
+            # Criar target binário: 1 para Zona Verde que performou bem, 0 para outros
+            history_zona['Target_Zona_Verde'] = 0
+            mask_zona_verde = (history_zona['Zona_Risco'] == 'ZONA_VERDE') & (history_zona['Target_AH_Home'] == 1)
+            history_zona.loc[mask_zona_verde, 'Target_Zona_Verde'] = 1
+            
+            st.info(f"🎯 Target Zona Verde: {history_zona['Target_Zona_Verde'].value_counts().to_dict()}")
+            
+            if history_zona['Target_Zona_Verde'].nunique() > 1 and history_zona['Target_Zona_Verde'].sum() > 5:
+                modelo_zona, games_zona = treinar_modelo_personalizado(
+                    history_zona, games_today, 'Target_Zona_Verde'
+                )
+                modelos['ZONA_RISCO'] = modelo_zona
+                resultados['ZONA_RISCO'] = games_zona
+                st.success(f"✅ Modelo Zona Risco treinado com {len(history_zona)} jogos")
             else:
                 st.warning("⚠️ Dados insuficientes para modelo zona risco")
+                
         except Exception as e:
             st.error(f"❌ Erro no modelo zona risco: {e}")
-    
+
     # 📊 TARGET 4: CONFIANÇA ESPACIAL - CORRIGIDO
     if use_target_confianca:
         st.markdown("### 📊 Modelo 4: Target Confiança Espacial")
@@ -810,34 +825,28 @@ def treinar_modelos_multi_target(history, games_today):
             history_confianca = history.copy()
             history_confianca['Confianca_Espacial'] = history_confianca.apply(calcular_confianca_espacial, axis=1)
             
-            # Focar apenas em alta confiança
-            history_alta_conf = history_confianca[history_confianca['Confianca_Espacial'] == 'ALTA_CONFIANCA']
+            st.info(f"📊 Distribuição Confiança: {history_confianca['Confianca_Espacial'].value_counts().to_dict()}")
             
-            if len(history_alta_conf) > 10:
-                # ✅ CRIAR TARGET PARA ALTA CONFIANÇA
-                # Jogos de alta confiança que performaram bem
-                history_alta_conf_alvo = history_alta_conf[history_alta_conf['Target_AH_Home'] == 1].copy()
-                
-                if len(history_alta_conf_alvo) > 5:
-                    history_alta_conf['Target_Alta_Confianca'] = 1
-                    history_baixa_conf = history_confianca[history_confianca['Confianca_Espacial'] != 'ALTA_CONFIANCA']
-                    history_baixa_conf['Target_Alta_Confianca'] = 0
-                    
-                    history_combinado_conf = pd.concat([history_alta_conf, history_baixa_conf])
-                    
-                    modelo_confianca, games_confianca = treinar_modelo_personalizado(
-                        history_combinado_conf, games_today, 'Target_Alta_Confianca'
-                    )
-                    modelos['CONFIANCA'] = modelo_confianca
-                    resultados['CONFIANCA'] = games_confianca
-                    st.success(f"✅ Modelo Confiança treinado com {len(history_combinado_conf)} jogos")
-                else:
-                    st.warning("⚠️ Poucos exemplos positivos de Alta Confiança")
+            # Criar target binário: 1 para Alta Confiança que performou bem
+            history_confianca['Target_Alta_Confianca'] = 0
+            mask_alta_conf = (history_confianca['Confianca_Espacial'] == 'ALTA_CONFIANCA') & (history_confianca['Target_AH_Home'] == 1)
+            history_confianca.loc[mask_alta_conf, 'Target_Alta_Confianca'] = 1
+            
+            st.info(f"🎯 Target Alta Confiança: {history_confianca['Target_Alta_Confianca'].value_counts().to_dict()}")
+            
+            if history_confianca['Target_Alta_Confianca'].nunique() > 1 and history_confianca['Target_Alta_Confianca'].sum() > 5:
+                modelo_confianca, games_confianca = treinar_modelo_personalizado(
+                    history_confianca, games_today, 'Target_Alta_Confianca'
+                )
+                modelos['CONFIANCA'] = modelo_confianca
+                resultados['CONFIANCA'] = games_confianca
+                st.success(f"✅ Modelo Confiança treinado com {len(history_confianca)} jogos")
             else:
                 st.warning("⚠️ Dados insuficientes para modelo confiança")
+                
         except Exception as e:
             st.error(f"❌ Erro no modelo confiança: {e}")
-    
+
     return modelos, resultados
 
 # ============================================================
