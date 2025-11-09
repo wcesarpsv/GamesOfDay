@@ -587,11 +587,11 @@ def criar_target_zona_risco(row):
 
 def treinar_modelo_personalizado(history_subset, games_today, target_col):
     """
-    🚀 Versão aprimorada — Treina modelo customizado com:
+    🚀 Versão final otimizada — Treina modelo customizado com:
       - Balanceamento automático de classes
       - Proteção contra fuga temporal (Date < selected_date)
       - Clipping de probabilidades extremas (máx. 0.95)
-      - Logs visuais no Streamlit
+      - Diagnóstico leve sem gráficos
     """
     try:
         # ===============================
@@ -693,7 +693,7 @@ def treinar_modelo_personalizado(history_subset, games_today, target_col):
         games_today[f'Confidence_{target_col}'] = np.round(np.maximum(proba, 1 - proba), 3)
 
         # ===============================
-        # 7️⃣ Diagnóstico visual
+        # 7️⃣ Diagnóstico leve no log
         # ===============================
         mean_conf = games_today[f'Confidence_{target_col}'].mean()
         home_preds = (games_today[f'ML_Side_{target_col}'] == 'HOME').sum()
@@ -701,17 +701,12 @@ def treinar_modelo_personalizado(history_subset, games_today, target_col):
 
         st.success(f"✅ {target_col}: {len(games_today)} jogos | Média Conf: {mean_conf:.1%} | HOME={home_preds} / AWAY={away_preds}")
 
-        # Mostrar histograma das probabilidades
-        st.pyplot(
-            plt.hist(proba, bins=20, color='skyblue', edgecolor='black')
-        )
-        st.caption(f"Distribuição de probabilidades — {target_col}")
-
         return model, games_today
 
     except Exception as e:
         st.error(f"❌ Erro no treinamento personalizado ({target_col}): {e}")
         return None, games_today
+
 
 
 def treinar_modelo_3d_clusters_single(history, games_today):
