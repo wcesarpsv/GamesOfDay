@@ -504,36 +504,6 @@ def calcular_distancias_3d(df):
 # 🎯 TARGET ESPACIAL INTELIGENTE (BALANCEADO)
 # ============================================================
 
-def criar_target_espacial_inteligente(row):
-    """
-    Nova versão balanceada do Target Espacial:
-    considera direção, momentum e estabilidade angular.
-    """
-    try:
-        dx = (row.get('Aggression_Home', 0) - row.get('Aggression_Away', 0)) / 2
-        dy = (row.get('M_H', 0) - row.get('M_A', 0)) / 2
-        dz = (row.get('MT_H', 0) - row.get('MT_A', 0)) / 2
-        dist = np.sqrt(dx**2 + dy**2 + dz**2)
-
-        distancia_ok = dist > 0.6
-        angulo_xy = np.degrees(np.arctan2(dy, dx))
-        angulo_estavel = abs(angulo_xy) < 40
-        cluster_val = row.get('Cluster3D_Label', 0)
-        cluster_confiavel = cluster_val in [0, 2]
-
-        # 🧠 Regras de valor com direção corrigida
-        if distancia_ok and cluster_confiavel:
-            # HOME favorito com momentum positivo
-            if dx > 0 and dz >= 0 and angulo_estavel:
-                return 1
-            # AWAY favorito (momentum negativo)
-            elif dx < 0 and dz < 0 and not angulo_estavel:
-                return 0
-        return 0
-    except:
-        return 0
-
-
 # Aplicar cálculo 3D ao games_today
 games_today = calcular_distancias_3d(games_today)
 
@@ -550,20 +520,91 @@ use_target_espacial = st.sidebar.checkbox("🧭 Target Espacial Inteligente", va
 use_target_zona_risco = st.sidebar.checkbox("⚠️ Target Zona de Risco", value=True)
 use_target_confianca = st.sidebar.checkbox("📊 Target Confiança Espacial", value=True)
 
-# Funções dos novos targets
+# ============================================================
+# 🎯 TARGETS BALANCEADOS E SIMÉTRICOS
+# ============================================================
+
+def criar_target_espacial_inteligente(row):
+    """
+    Versão balanceada e simétrica do Target Espacial.
+    Considera direção (dx), momentum (dz) e estabilidade angular.
+    Permite value bet tanto para HOME quanto AWAY.
+    """
+    try:
+        dx = row.get('Aggression_Home', 0) - row.get('Aggression_Away', 0)
+        dy = row.get('M_H', 0) - row.get('M_A', 0)
+        dz = row.get('MT_H', 0) - row.get('MT_A', 0)
+        dist = np.sqrt(dx**2 + dy**2 + dz**2)
+
+        if np.isnan(dx) or np.isnan(dy) or np.isnan(dz):
+            return 0
+
+        distancia_ok = dist > 0.6
+        angulo_xy = np.degrees(np.arctan2(dy, dx))
+        angulo_estavel = abs(angulo_xy) < 40
+        cluster_val = row.get('Cluster3D_Label', 0)
+        cluster_confiavel = cluster_val in [0, 2]
+
+        # --- Lógica de valor simétrica ---
+        if distancia_ok and cluster_confiavel:
+            if dx > 0 and dz >= 0 and angulo_estavel:
+                return 1  # HOME value
+            elif dx < 0 and dz < 0 and not angulo_estavel:
+                return 0  # AWAY value
+            else:
+                # fallback neutro → distribui randomicamente
+                return np.random.choice([0, 1])
+        else:
+            # fallback: usa apenas direção geral
+            if dx > 0:
+                return 1
+            elif dx < 0:
+                return 0
+            else:
+                return np.random.choice([0, 1])
+    except:
+        return 0
+
+
+def criar_target_zona_risco(row):
+    """
+    Versão balanceada do Target Zona de Risco.
+    Define 'zona verde' ou 'zona vermelha' conforme a posição 3D,
+    permitindo valor tanto para HOME quanto AWAY.
+    """
+    try:
+        dist_3d = row.get('Quadrant_Dist_3D', 0)
+        vector_sign = row.get('Vector_Sign', 0)
+        angulo_xy = row.get('Quadrant_Angle_XY', 0)
+
+        # Zona Verde – previsibilidade alta
+        if dist_3d > 1.0 and vector_sign > 0 and abs(angulo_xy) < 30:
+            return "ZONA_VERDE"
+        # Zona Vermelha – instabilidade
+        elif dist_3d < 0.5 or abs(angulo_xy) > 60:
+            return "ZONA_VERMELHA"
+        # Zona Amarela – risco moderado
+        else:
+            return "ZONA_AMARELA"
+    except:
+        return "ZONA_AMARELA"
+
+
 def calcular_confianca_espacial(row):
-    """Calcula nível de confiança baseado na disposição espacial"""
+    """
+    Versão balanceada da Confiança Espacial.
+    Alta confiança quando o vetor tem boa separação e ângulo estável,
+    independente de ser HOME ou AWAY.
+    """
     try:
         dx = row.get('Aggression_Home', 0) - row.get('Aggression_Away', 0)
         dy = row.get('M_H', 0) - row.get('M_A', 0)
         dz = row.get('MT_H', 0) - row.get('MT_A', 0)
         distancia_3d = np.sqrt(dx**2 + dy**2 + dz**2)
-        
-        # Ângulo de instabilidade
+
         angulo_xy = np.degrees(np.arctan2(dy, dx)) % 360 if dx != 0 else 0
         angulo_instavel = ((45 <= angulo_xy <= 135) or (225 <= angulo_xy <= 315))
-        
-        # Classificação de confiança
+
         if distancia_3d > 1.2 and not angulo_instavel:
             return "ALTA_CONFIANCA"
         elif angulo_instavel and distancia_3d < 0.6:
@@ -573,50 +614,39 @@ def calcular_confianca_espacial(row):
     except:
         return "MEDIA_CONFIANCA"
 
-def criar_target_espacial_inteligente(row):
-    """
-    Versão refinada: considera também a direção do vetor (dx) e momentum dominante.
-    """
-    try:
-        dx = row.get('Aggression_Home', 0) - row.get('Aggression_Away', 0)
-        dy = row.get('M_H', 0) - row.get('M_A', 0)
-        dz = row.get('MT_H', 0) - row.get('MT_A', 0)
-        dist = np.sqrt(dx**2 + dy**2 + dz**2)
 
-        distancia_ok = dist > 0.7
-        angulo_estavel = abs(np.degrees(np.arctan2(dy, dx))) < 40 if dx != 0 else True
-        cluster_val = row.get('Cluster3D_Label', 0)
-        cluster_confiavel = cluster_val in [0, 2]
+# ============================================================
+# 🧩 APLICAÇÃO DOS TARGETS BALANCEADOS
+# ============================================================
 
-        # 🧠 nova condição — só marca 1 se for favoritismo da casa e estabilidade
-        if distancia_ok and angulo_estavel and cluster_confiavel and dx > 0:
-            return 1
-        else:
-            return 0
-    except:
-        return 0
+# 1️⃣ Target Espacial (simétrico)
+history['Target_Espacial'] = history.apply(criar_target_espacial_inteligente, axis=1)
+dist_espacial = history['Target_Espacial'].value_counts().to_dict()
+st.info(f"📊 Distribuição Target Espacial: {dist_espacial}")
 
+# 2️⃣ Zona de Risco (com suporte simétrico)
+history['Zona_Risco'] = history.apply(criar_target_zona_risco, axis=1)
+st.info(f"📊 Distribuição Zonas: {history['Zona_Risco'].value_counts().to_dict()}")
 
-def criar_target_zona_risco(row):
-    """
-    Classifica jogos em zonas de risco baseado na posição 3D
-    """
-    try:
-        dist_3d = row.get('Quadrant_Dist_3D', 0)
-        vector_sign = row.get('Vector_Sign', 0)
-        angulo_xy = row.get('Quadrant_Angle_XY', 0)
-        
-        # Zona Verde - Alta previsibilidade
-        if dist_3d > 1.0 and vector_sign > 0 and abs(angulo_xy) < 30:
-            return "ZONA_VERDE"
-        # Zona Vermelha - Alta imprevisibilidade
-        elif dist_3d < 0.5 or abs(angulo_xy) > 60:
-            return "ZONA_VERMELHA"
-        # Zona Amarela - Risco moderado
-        else:
-            return "ZONA_AMARELA"
-    except:
-        return "ZONA_AMARELA"
+# Cria target binário — Zona Verde (alta previsibilidade) e Zona Vermelha (contrária)
+history['Target_Zona_Verde'] = 0
+mask_home = (history['Zona_Risco'] == 'ZONA_VERDE') & (history['Target_AH_Home'] == 1)
+mask_away = (history['Zona_Risco'] == 'ZONA_VERMELHA') & (history['Target_AH_Away'] == 1)
+history.loc[mask_home | mask_away, 'Target_Zona_Verde'] = 1
+dist_zona = history['Target_Zona_Verde'].value_counts().to_dict()
+st.info(f"🎯 Target Zona Verde Balanceado: {dist_zona}")
+
+# 3️⃣ Confiança Espacial (simétrica)
+history['Confianca_Espacial'] = history.apply(calcular_confianca_espacial, axis=1)
+st.info(f"📊 Distribuição Confiança: {history['Confianca_Espacial'].value_counts().to_dict()}")
+
+history['Target_Alta_Confianca'] = 0
+mask_alta_home = (history['Confianca_Espacial'] == 'ALTA_CONFIANCA') & (history['Target_AH_Home'] == 1)
+mask_alta_away = (history['Confianca_Espacial'] == 'ALTA_INSTABILIDADE') & (history['Target_AH_Away'] == 1)
+history.loc[mask_alta_home | mask_alta_away, 'Target_Alta_Confianca'] = 1
+dist_conf = history['Target_Alta_Confianca'].value_counts().to_dict()
+st.info(f"🎯 Target Alta Confiança Balanceado: {dist_conf}")
+
 
 # ============================================================
 # 🏗️ FUNÇÃO DE TREINAMENTO MULTI-TARGET
@@ -827,176 +857,131 @@ def treinar_modelo_3d_clusters_single(history, games_today):
 
 def treinar_modelos_multi_target(history, games_today):
     """
-    Treina modelos separados para cada target selecionado - CORREÇÃO FINAL
+    🎯 Versão atualizada – treina e compara todos os targets balanceados.
+    Alinhado com os novos targets simétricos (Espacial, Zona, Confiança).
     """
     modelos = {}
     resultados = {}
-    
-    # Garantir que temos os dados 3D calculados
+
+    # --------------------------------------------------
+    # 🧩 Garantir cálculos 3D e clusters antes do treino
+    # --------------------------------------------------
     history = calcular_distancias_3d(history)
     games_today = calcular_distancias_3d(games_today)
-    
-    # Aplicar clusterização
+
     history = aplicar_clusterizacao_3d(history, n_clusters=4)
     games_today = aplicar_clusterizacao_3d(games_today, n_clusters=4)
-    
-    # 🎯 TARGET 1: ORIGINAL (AH Home) - CORRIGIDO
+
+    # --------------------------------------------------
+    # 🎯 1. Target Original – AH Home
+    # --------------------------------------------------
     if use_target_original:
         st.markdown("### 🎯 Modelo 1: Target Original (AH Home)")
         try:
             modelo_original, games_original = treinar_modelo_3d_clusters_single(history, games_today)
             modelos['ORIGINAL'] = modelo_original
-            resultados['ORIGINAL'] = games_original.copy()  # 🔑 FAZER CÓPIA
-            
-            # Verificar colunas
-            if 'ML_Confidence' in games_original.columns:
-                conf_media = games_original['ML_Confidence'].mean()
-                prob_media = games_original['Prob_Home'].mean()
-                home_count = len(games_original[games_original['ML_Side'] == 'HOME'])
-                away_count = len(games_original[games_original['ML_Side'] == 'AWAY'])
-                
-                st.success(f"✅ Original: {len(games_original)} jogos | Prob: {prob_media:.1%} | Conf: {conf_media:.1%} | H:{home_count} A:{away_count}")
-            else:
-                st.success(f"✅ Modelo Original treinado - {len(games_original)} jogos")
-                
+            resultados['ORIGINAL'] = games_original.copy()
+
+            conf_media = games_original['ML_Confidence'].mean()
+            prob_media = games_original['Prob_Home'].mean()
+            home_count = len(games_original[games_original['ML_Side'] == 'HOME'])
+            away_count = len(games_original[games_original['ML_Side'] == 'AWAY'])
+            st.success(f"✅ Original: {len(games_original)} jogos | Prob: {prob_media:.1%} | Conf: {conf_media:.1%} | H:{home_count} A:{away_count}")
         except Exception as e:
             st.error(f"❌ Erro no modelo original: {e}")
 
-    # 🧭 TARGET 2: ESPACIAL INTELIGENTE - CORRIGIDO
+    # --------------------------------------------------
+    # 🧭 2. Target Espacial (balanceado)
+    # --------------------------------------------------
     if use_target_espacial:
-        st.markdown("### 🧭 Modelo 2: Target Espacial Inteligente")
+        st.markdown("### 🧭 Modelo 2: Target Espacial (Balanceado)")
         try:
-            # Usar CÓPIA do games_today original para não sobrescrever
-            games_espacial_base = games_today.copy()
-            
-            history_espacial = history.copy()
-            history_espacial['Target_Espacial'] = history_espacial.apply(criar_target_espacial_inteligente, axis=1)
-            
-            dist_espacial = history_espacial['Target_Espacial'].value_counts().to_dict()
+            dist_espacial = history['Target_Espacial'].value_counts().to_dict()
             st.info(f"📊 Distribuição Target Espacial: {dist_espacial}")
-            
-            if history_espacial['Target_Espacial'].nunique() > 1:
-                modelo_espacial, games_espacial = treinar_modelo_personalizado(
-                    history_espacial, games_espacial_base, 'Target_Espacial'
-                )
-                if modelo_espacial is not None:
-                    modelos['ESPACIAL'] = modelo_espacial
-                    resultados['ESPACIAL'] = games_espacial
-                    
-                    # Estatísticas
-                    prob_col = [c for c in games_espacial.columns if 'Prob_Target_Espacial' in c][0]
-                    conf_col = [c for c in games_espacial.columns if 'Confidence_Target_Espacial' in c][0]
-                    side_col = [c for c in games_espacial.columns if 'ML_Side_Target_Espacial' in c][0]
-                    
-                    prob_media = games_espacial[prob_col].mean()
-                    conf_media = games_espacial[conf_col].mean()
-                    home_count = len(games_espacial[games_espacial[side_col] == 'HOME'])
-                    away_count = len(games_espacial[games_espacial[side_col] == 'AWAY'])
-                    
-                    st.success(f"✅ Espacial: {len(games_espacial)} jogos | Prob: {prob_media:.1%} | Conf: {conf_media:.1%} | H:{home_count} A:{away_count}")
-                else:
-                    st.warning("❌ Modelo Espacial não foi treinado")
-            else:
-                st.warning("⚠️ Target Espacial não tem variação")
-                
+
+            modelo_espacial, games_espacial = treinar_modelo_personalizado(
+                history, games_today, 'Target_Espacial'
+            )
+            if modelo_espacial is not None:
+                modelos['ESPACIAL'] = modelo_espacial
+                resultados['ESPACIAL'] = games_espacial
+
+                prob_col = [c for c in games_espacial.columns if 'Prob_Target_Espacial' in c][0]
+                conf_col = [c for c in games_espacial.columns if 'Confidence_Target_Espacial' in c][0]
+                side_col = [c for c in games_espacial.columns if 'ML_Side_Target_Espacial' in c][0]
+
+                prob_media = games_espacial[prob_col].mean()
+                conf_media = games_espacial[conf_col].mean()
+                home_count = len(games_espacial[games_espacial[side_col] == 'HOME'])
+                away_count = len(games_espacial[games_espacial[side_col] == 'AWAY'])
+                st.success(f"✅ Espacial: {len(games_espacial)} jogos | Prob: {prob_media:.1%} | Conf: {conf_media:.1%} | H:{home_count} A:{away_count}")
         except Exception as e:
             st.error(f"❌ Erro no modelo espacial: {e}")
 
-    # ⚠️ TARGET 3: ZONA DE RISCO - CORRIGIDO
+    # --------------------------------------------------
+    # ⚠️ 3. Target Zona de Risco (simétrico)
+    # --------------------------------------------------
     if use_target_zona_risco:
-        st.markdown("### ⚠️ Modelo 3: Target Zona de Risco")
+        st.markdown("### ⚠️ Modelo 3: Target Zona de Risco (Balanceado)")
         try:
-            # Usar CÓPIA do games_today original
-            games_zona_base = games_today.copy()
-            
-            history_zona = history.copy()
-            history_zona['Zona_Risco'] = history_zona.apply(criar_target_zona_risco, axis=1)
-            
-            st.info(f"📊 Distribuição Zonas: {history_zona['Zona_Risco'].value_counts().to_dict()}")
-            
-            # Criar target binário: 1 para Zona Verde que performou bem, 0 para outros
-            history_zona['Target_Zona_Verde'] = 0
-            mask_zona_verde = (history_zona['Zona_Risco'] == 'ZONA_VERDE') & (history_zona['Target_AH_Home'] == 1)
-            history_zona.loc[mask_zona_verde, 'Target_Zona_Verde'] = 1
-            
-            dist_zona = history_zona['Target_Zona_Verde'].value_counts().to_dict()
-            st.info(f"🎯 Target Zona Verde: {dist_zona}")
-            
-            if history_zona['Target_Zona_Verde'].nunique() > 1 and history_zona['Target_Zona_Verde'].sum() > 5:
-                modelo_zona, games_zona = treinar_modelo_personalizado(
-                    history_zona, games_zona_base, 'Target_Zona_Verde'
-                )
-                if modelo_zona is not None:
-                    modelos['ZONA_RISCO'] = modelo_zona
-                    resultados['ZONA_RISCO'] = games_zona
-                    
-                    # Estatísticas
-                    prob_col = [c for c in games_zona.columns if 'Prob_Target_Zona_Verde' in c][0]
-                    conf_col = [c for c in games_zona.columns if 'Confidence_Target_Zona_Verde' in c][0]
-                    side_col = [c for c in games_zona.columns if 'ML_Side_Target_Zona_Verde' in c][0]
-                    
-                    prob_media = games_zona[prob_col].mean()
-                    conf_media = games_zona[conf_col].mean()
-                    home_count = len(games_zona[games_zona[side_col] == 'HOME'])
-                    away_count = len(games_zona[games_zona[side_col] == 'AWAY'])
-                    
-                    st.success(f"✅ Zona Risco: {len(games_zona)} jogos | Prob: {prob_media:.1%} | Conf: {conf_media:.1%} | H:{home_count} A:{away_count}")
-                else:
-                    st.warning("❌ Modelo Zona Risco não foi treinado")
-            else:
-                st.warning("⚠️ Dados insuficientes para modelo zona risco")
-                
-        except Exception as e:
-            st.error(f"❌ Erro no modelo zona risco: {e}")
+            dist_zona = history['Target_Zona_Verde'].value_counts().to_dict()
+            st.info(f"📊 Distribuição Target Zona Verde: {dist_zona}")
 
-    # 📊 TARGET 4: CONFIANÇA ESPACIAL - CORRIGIDO
-    if use_target_confianca:
-        st.markdown("### 📊 Modelo 4: Target Confiança Espacial")
-        try:
-            # Usar CÓPIA do games_today original
-            games_confianca_base = games_today.copy()
-            
-            history_confianca = history.copy()
-            history_confianca['Confianca_Espacial'] = history_confianca.apply(calcular_confianca_espacial, axis=1)
-            
-            st.info(f"📊 Distribuição Confiança: {history_confianca['Confianca_Espacial'].value_counts().to_dict()}")
-            
-            # Criar target binário: 1 para Alta Confiança que performou bem
-            history_confianca['Target_Alta_Confianca'] = 0
-            mask_alta_conf = (history_confianca['Confianca_Espacial'] == 'ALTA_CONFIANCA') & (history_confianca['Target_AH_Home'] == 1)
-            history_confianca.loc[mask_alta_conf, 'Target_Alta_Confianca'] = 1
-            
-            dist_confianca = history_confianca['Target_Alta_Confianca'].value_counts().to_dict()
-            st.info(f"🎯 Target Alta Confiança: {dist_confianca}")
-            
-            if history_confianca['Target_Alta_Confianca'].nunique() > 1 and history_confianca['Target_Alta_Confianca'].sum() > 5:
-                modelo_confianca, games_confianca = treinar_modelo_personalizado(
-                    history_confianca, games_confianca_base, 'Target_Alta_Confianca'
-                )
-                if modelo_confianca is not None:
-                    modelos['CONFIANCA'] = modelo_confianca
-                    resultados['CONFIANCA'] = games_confianca
-                    
-                    # Estatísticas
-                    prob_col = [c for c in games_confianca.columns if 'Prob_Target_Alta_Confianca' in c][0]
-                    conf_col = [c for c in games_confianca.columns if 'Confidence_Target_Alta_Confianca' in c][0]
-                    side_col = [c for c in games_confianca.columns if 'ML_Side_Target_Alta_Confianca' in c][0]
-                    
-                    prob_media = games_confianca[prob_col].mean()
-                    conf_media = games_confianca[conf_col].mean()
-                    home_count = len(games_confianca[games_confianca[side_col] == 'HOME'])
-                    away_count = len(games_confianca[games_confianca[side_col] == 'AWAY'])
-                    
-                    st.success(f"✅ Confiança: {len(games_confianca)} jogos | Prob: {prob_media:.1%} | Conf: {conf_media:.1%} | H:{home_count} A:{away_count}")
-                else:
-                    st.warning("❌ Modelo Confiança não foi treinado")
-            else:
-                st.warning("⚠️ Dados insuficientes para modelo confiança")
-                
+            modelo_zona, games_zona = treinar_modelo_personalizado(
+                history, games_today, 'Target_Zona_Verde'
+            )
+            if modelo_zona is not None:
+                modelos['ZONA_RISCO'] = modelo_zona
+                resultados['ZONA_RISCO'] = games_zona
+
+                prob_col = [c for c in games_zona.columns if 'Prob_Target_Zona_Verde' in c][0]
+                conf_col = [c for c in games_zona.columns if 'Confidence_Target_Zona_Verde' in c][0]
+                side_col = [c for c in games_zona.columns if 'ML_Side_Target_Zona_Verde' in c][0]
+
+                prob_media = games_zona[prob_col].mean()
+                conf_media = games_zona[conf_col].mean()
+                home_count = len(games_zona[games_zona[side_col] == 'HOME'])
+                away_count = len(games_zona[games_zona[side_col] == 'AWAY'])
+                st.success(f"✅ Zona Risco: {len(games_zona)} jogos | Prob: {prob_media:.1%} | Conf: {conf_media:.1%} | H:{home_count} A:{away_count}")
         except Exception as e:
-            st.error(f"❌ Erro no modelo confiança: {e}")
+            st.error(f"❌ Erro no modelo Zona Risco: {e}")
+
+    # --------------------------------------------------
+    # 📊 4. Target Alta Confiança (balanceado)
+    # --------------------------------------------------
+    if use_target_confianca:
+        st.markdown("### 📊 Modelo 4: Target Confiança Espacial (Balanceado)")
+        try:
+            dist_conf = history['Target_Alta_Confianca'].value_counts().to_dict()
+            st.info(f"📊 Distribuição Target Alta Confiança: {dist_conf}")
+
+            modelo_confianca, games_confianca = treinar_modelo_personalizado(
+                history, games_today, 'Target_Alta_Confianca'
+            )
+            if modelo_confianca is not None:
+                modelos['CONFIANCA'] = modelo_confianca
+                resultados['CONFIANCA'] = games_confianca
+
+                prob_col = [c for c in games_confianca.columns if 'Prob_Target_Alta_Confianca' in c][0]
+                conf_col = [c for c in games_confianca.columns if 'Confidence_Target_Alta_Confianca' in c][0]
+                side_col = [c for c in games_confianca.columns if 'ML_Side_Target_Alta_Confianca' in c][0]
+
+                prob_media = games_confianca[prob_col].mean()
+                conf_media = games_confianca[conf_col].mean()
+                home_count = len(games_confianca[games_confianca[side_col] == 'HOME'])
+                away_count = len(games_confianca[games_confianca[side_col] == 'AWAY'])
+                st.success(f"✅ Confiança: {len(games_confianca)} jogos | Prob: {prob_media:.1%} | Conf: {conf_media:.1%} | H:{home_count} A:{away_count}")
+        except Exception as e:
+            st.error(f"❌ Erro no modelo Confiança: {e}")
+
+    # --------------------------------------------------
+    # ✅ Comparativo Final
+    # --------------------------------------------------
+    if resultados:
+        exibir_comparativo_modelos(resultados)
 
     return modelos, resultados
+
 
 # ============================================================
 # 📊 PAINEL COMPARATIVO DE RESULTADOS
