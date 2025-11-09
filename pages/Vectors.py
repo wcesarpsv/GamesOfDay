@@ -497,10 +497,11 @@ def criar_ensemble_angular(history, games_today):
             'Cluster3D_Label', 'C3D_ZScore', 'C3D_Sin', 'C3D_Cos'
         ],
         'Baseline': [
-            'Asian_Line_Decimal', 'Aggression_Home', 'Aggression_Away',
-            'M_H', 'M_A', 'MT_H', 'MT_A'
+          
         ]
     }
+    # 'Asian_Line_Decimal', 'Aggression_Home', 'Aggression_Away',
+    # 'M_H', 'M_A', 'MT_H', 'MT_A'
     
     # Coletar todas as features disponíveis
     all_features = []
