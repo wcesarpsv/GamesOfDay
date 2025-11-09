@@ -795,85 +795,107 @@ from sklearn.ensemble import RandomForestClassifier
 
 def treinar_modelo_quadrantes_dual(history, games_today):
     """
-    Treina modelo ML para Home e Away com base nos quadrantes,
-    ligas e métricas de distância entre times.
+    🔁 Versão atualizada – modelo dual (Home/Away) com target baseado em cobertura real de handicap (AH).
+    Compatível com todos os blocos do app (ML2, LiveScore e exibição).
     """
 
     # -------------------------------
-    # 🔹 Garantir cálculo das distâncias
+    # 🧮 Calcular distâncias e ângulos
     # -------------------------------
     history = calcular_distancias_quadrantes(history)
     games_today = calcular_distancias_quadrantes(games_today)
 
     # -------------------------------
-    # 🔹 Preparar features básicas
+    # 🎯 Criar target binário (Home cobre AH?)
     # -------------------------------
-    quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
-    quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
-    ligas_dummies = pd.get_dummies(history['League'], prefix='League')
+    def calc_target_handicap_cover(row):
+        gh = row.get("Goals_H_FT")
+        ga = row.get("Goals_A_FT")
+        line_home = row.get("Asian_Line_Decimal")
+        if pd.isna(gh) or pd.isna(ga) or pd.isna(line_home):
+            return np.nan
+        adjusted = (gh + line_home) - ga
+        if adjusted > 0:
+            return 1   # Home cobre o handicap
+        elif adjusted < 0:
+            return 0   # Home não cobre (Away vence o AH)
+        else:
+            return np.nan  # Push
 
-    # 🔹 Novas features contínuas (Distância, Separação e Ângulo)
-    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized']].fillna(0)
+    history["Target_AH_Home"] = history.apply(calc_target_handicap_cover, axis=1)
+    history = history.dropna(subset=["Target_AH_Home"]).copy()
+    history["Target_AH_Home"] = history["Target_AH_Home"].astype(int)
+    history["Target_AH_Away"] = 1 - history["Target_AH_Home"]
 
-    # Combinar todas as features
-    X = pd.concat([ligas_dummies, extras,quadrantes_home, quadrantes_away], axis=1)
-    # quadrantes_home, quadrantes_away, 
-
-    # Targets
-    y_home = history['Target_AH_Home']
-    y_away = 1 - y_home  # inverso lógico
+    if history["Target_AH_Home"].nunique() < 2:
+        st.warning("⚠️ Target insuficiente (todas as classes iguais) — verifique colunas de gols/linha.")
+        return None, None, games_today
 
     # -------------------------------
-    # 🔹 Treinar modelos
+    # 🧱 Features para treinamento
+    # -------------------------------
+    qh = pd.get_dummies(history["Quadrante_Home"], prefix="QH")
+    qa = pd.get_dummies(history["Quadrante_Away"], prefix="QA")
+    leagues = pd.get_dummies(history["League"], prefix="League")
+    extras = history[
+        ["Quadrant_Dist", "Quadrant_Separation", "Quadrant_Angle_Geometric", "Quadrant_Angle_Normalized"]
+    ].fillna(0)
+
+    X = pd.concat([leagues, extras, qh, qa], axis=1)
+    y_home = history["Target_AH_Home"]
+    y_away = history["Target_AH_Away"]
+
+    # -------------------------------
+    # 🤖 Treinar modelos (Home/Away)
     # -------------------------------
     model_home = RandomForestClassifier(
-        n_estimators=500, max_depth=10, random_state=42, class_weight='balanced_subsample', n_jobs=-1
+        n_estimators=600, max_depth=12, random_state=42,
+        class_weight="balanced_subsample", n_jobs=-1
     )
     model_away = RandomForestClassifier(
-        n_estimators=500, max_depth=10, random_state=42, class_weight='balanced_subsample', n_jobs=-1
+        n_estimators=600, max_depth=12, random_state=42,
+        class_weight="balanced_subsample", n_jobs=-1
     )
 
     model_home.fit(X, y_home)
     model_away.fit(X, y_away)
 
     # -------------------------------
-    # 🔹 Preparar dados para hoje
+    # 📊 Preparar features para os jogos de hoje
     # -------------------------------
-    qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
-    qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
-    ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    extras_today = games_today[['Quadrant_Dist', 
-                            'Quadrant_Separation', 
-                            'Quadrant_Angle_Geometric', 
-                            'Quadrant_Angle_Normalized']].fillna(0)
+    qh_today = pd.get_dummies(games_today["Quadrante_Home"], prefix="QH").reindex(columns=qh.columns, fill_value=0)
+    qa_today = pd.get_dummies(games_today["Quadrante_Away"], prefix="QA").reindex(columns=qa.columns, fill_value=0)
+    leagues_today = pd.get_dummies(games_today["League"], prefix="League").reindex(columns=leagues.columns, fill_value=0)
+    extras_today = games_today[
+        ["Quadrant_Dist", "Quadrant_Separation", "Quadrant_Angle_Geometric", "Quadrant_Angle_Normalized"]
+    ].fillna(0)
 
-    X_today = pd.concat([ligas_today, extras_today,qh_today, qa_today], axis=1)
-    # qh_today, qa_today,
+    X_today = pd.concat([leagues_today, extras_today, qh_today, qa_today], axis=1)
 
     # -------------------------------
-    # 🔹 Fazer previsões
+    # 🔮 Fazer previsões (probabilidade de cobrir AH)
     # -------------------------------
-    probas_home = model_home.predict_proba(X_today)[:, 1]
-    probas_away = model_away.predict_proba(X_today)[:, 1]
+    prob_home_cover = model_home.predict_proba(X_today)[:, 1]
+    prob_away_cover = model_away.predict_proba(X_today)[:, 1]
 
-    games_today['Quadrante_ML_Score_Home'] = probas_home
-    games_today['Quadrante_ML_Score_Away'] = probas_away
-    games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
-    games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
+    games_today["Quadrante_ML_Score_Home"] = prob_home_cover
+    games_today["Quadrante_ML_Score_Away"] = prob_away_cover
+    games_today["Quadrante_ML_Score_Main"] = np.maximum(prob_home_cover, prob_away_cover)
+    games_today["ML_Side"] = np.where(prob_home_cover > prob_away_cover, "HOME", "AWAY")
 
     # -------------------------------
-    # 🔹 Mostrar insights de importância
+    # 📈 Exibir importância das variáveis
     # -------------------------------
     try:
         importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
-        top_feats = importances.head(15)
-        st.markdown("### 🔍 Top Features mais importantes (Modelo HOME)")
-        st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
+        st.markdown("### 🔍 Top Features (Modelo HOME – Cobertura AH)")
+        st.dataframe(importances.head(15).to_frame("Importância"), use_container_width=True)
     except Exception as e:
         st.warning(f"Não foi possível calcular importâncias: {e}")
 
-    st.success("✅ Modelo dual (Home/Away) treinado com sucesso com novas features!")
+    st.success("✅ Modelo dual atualizado com target real de cobertura de Handicap (AH)!")
     return model_home, model_away, games_today
+
 
 
 # ---------------- SISTEMA DE INDICAÇÕES EXPLÍCITAS DUAL ----------------
