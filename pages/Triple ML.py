@@ -821,6 +821,10 @@ def treinar_modelos_multi_target(history, games_today):
 # 📊 PAINEL COMPARATIVO DE RESULTADOS
 # ============================================================
 
+# ============================================================
+# 📊 PAINEL COMPARATIVO DE RESULTADOS (CORRIGIDO)
+# ============================================================
+
 def exibir_comparativo_modelos(resultados):
     """
     Exibe comparação lado a lado dos diferentes modelos
@@ -857,16 +861,22 @@ def exibir_comparativo_modelos(resultados):
             comparativo.append({
                 'Modelo': modelo_nome,
                 'Total Jogos': total_jogos,
-                'Prob Média': f"{prob_media:.1%}",
-                'Confiança Média': f"{confidence_media:.1%}",
+                'Prob Média': prob_media,  # Manter como float para o gradiente
+                'Confiança Média': confidence_media,  # Manter como float
+                'Prob Média %': f"{prob_media:.1%}",  # Versão formatada para exibição
+                'Confiança Média %': f"{confidence_media:.1%}",  # Versão formatada
                 'Recomendações HOME': home_recomendations,
                 'Recomendações AWAY': away_recomendations
             })
     
     if comparativo:
         df_comparativo = pd.DataFrame(comparativo)
+        
+        # Exibir versão formatada para o usuário
         st.dataframe(
-            df_comparativo.style.background_gradient(subset=['Prob Média', 'Confiança Média'], cmap='RdYlGn'),
+            df_comparativo[['Modelo', 'Total Jogos', 'Prob Média %', 'Confiança Média %', 
+                          'Recomendações HOME', 'Recomendações AWAY']]
+            .style.background_gradient(subset=['Prob Média %', 'Confiança Média %'], cmap='RdYlGn'),
             use_container_width=True
         )
         
@@ -883,7 +893,15 @@ def exibir_comparativo_modelos(resultados):
                                   prob_cols[0], ml_side_cols[0], confidence_cols[0]]
                     
                     cols_exibir = [c for c in cols_exibir if c in df.columns]
-                    st.dataframe(df[cols_exibir].head(15), use_container_width=True)
+                    
+                    # Formatar as colunas numéricas para exibição
+                    display_df = df[cols_exibir].copy()
+                    if prob_cols[0] in display_df.columns:
+                        display_df[prob_cols[0]] = display_df[prob_cols[0]].apply(lambda x: f"{x:.1%}")
+                    if confidence_cols[0] in display_df.columns:
+                        display_df[confidence_cols[0]] = display_df[confidence_cols[0]].apply(lambda x: f"{x:.1%}")
+                    
+                    st.dataframe(display_df, use_container_width=True)
 
 # ============================================================
 # 🚀 EXECUÇÃO PRINCIPAL
