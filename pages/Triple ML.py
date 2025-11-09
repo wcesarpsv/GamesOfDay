@@ -427,16 +427,19 @@ def calcular_momentum_time(df, window=6):
 history = calcular_momentum_time(history)
 games_today = calcular_momentum_time(games_today)
 
-# ---------------- CÁLCULO DE DISTÂNCIAS 3D (Aggression × M × MT) ----------------
+# ============================================================
+# 🔧 AJUSTE DE NORMALIZAÇÃO ESPACIAL
+# ============================================================
+
 def calcular_distancias_3d(df):
     """
-    Calcula distância 3D e ângulos usando Aggression, Momentum (liga) e Momentum (time)
-    Versão neutra + features compostas (sin/cos combinados e sinal vetorial).
+    Versão balanceada: calcula distância 3D e ângulos
+    com eixos normalizados e valores suavizados.
     """
     df = df.copy()
 
     required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
-    missing_cols = [col for col in required_cols if col not in df.columns]
+    missing_cols = [c for c in required_cols if c not in df.columns]
 
     if missing_cols:
         st.warning(f"⚠️ Colunas faltando para cálculo 3D: {missing_cols}")
@@ -452,10 +455,10 @@ def calcular_distancias_3d(df):
             df[col] = np.nan
         return df
 
-    # --- Diferenças puras ---
-    dx = df['Aggression_Home'] - df['Aggression_Away']
-    dy = df['M_H'] - df['M_A']
-    dz = df['MT_H'] - df['MT_A']
+    # --- Normalização dos eixos (reduz viés de Aggression) ---
+    dx = (df['Aggression_Home'] - df['Aggression_Away']) / 2
+    dy = (df['M_H'] - df['M_A']) / 2
+    dz = (df['MT_H'] - df['MT_A']) / 2
 
     # --- Distância Euclidiana pura ---
     df['Quadrant_Dist_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
@@ -469,7 +472,7 @@ def calcular_distancias_3d(df):
     df['Quadrant_Angle_XZ'] = np.degrees(angle_xz)
     df['Quadrant_Angle_YZ'] = np.degrees(angle_yz)
 
-    # --- Projeções trigonométricas básicas ---
+    # --- Projeções trigonométricas ---
     df['Quadrant_Sin_XY'] = np.sin(angle_xy)
     df['Quadrant_Cos_XY'] = np.cos(angle_xy)
     df['Quadrant_Sin_XZ'] = np.sin(angle_xz)
@@ -477,11 +480,11 @@ def calcular_distancias_3d(df):
     df['Quadrant_Sin_YZ'] = np.sin(angle_yz)
     df['Quadrant_Cos_YZ'] = np.cos(angle_yz)
 
-    # --- 🧩 1) Combinações trigonométricas compostas ---
+    # --- Combinações compostas ---
     df['Quadrant_Sin_Combo'] = np.sin(angle_xy + angle_xz + angle_yz)
     df['Quadrant_Cos_Combo'] = np.cos(angle_xy + angle_xz + angle_yz)
 
-    # --- 🧭 2) Sinal vetorial (direção espacial total) ---
+    # --- Direção espacial total ---
     df['Vector_Sign'] = np.sign(dx * dy * dz)
 
     # --- Separação neutra 3D ---
@@ -495,6 +498,41 @@ def calcular_distancias_3d(df):
     df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
 
     return df
+
+
+# ============================================================
+# 🎯 TARGET ESPACIAL INTELIGENTE (BALANCEADO)
+# ============================================================
+
+def criar_target_espacial_inteligente(row):
+    """
+    Nova versão balanceada do Target Espacial:
+    considera direção, momentum e estabilidade angular.
+    """
+    try:
+        dx = (row.get('Aggression_Home', 0) - row.get('Aggression_Away', 0)) / 2
+        dy = (row.get('M_H', 0) - row.get('M_A', 0)) / 2
+        dz = (row.get('MT_H', 0) - row.get('MT_A', 0)) / 2
+        dist = np.sqrt(dx**2 + dy**2 + dz**2)
+
+        distancia_ok = dist > 0.6
+        angulo_xy = np.degrees(np.arctan2(dy, dx))
+        angulo_estavel = abs(angulo_xy) < 40
+        cluster_val = row.get('Cluster3D_Label', 0)
+        cluster_confiavel = cluster_val in [0, 2]
+
+        # 🧠 Regras de valor com direção corrigida
+        if distancia_ok and cluster_confiavel:
+            # HOME favorito com momentum positivo
+            if dx > 0 and dz >= 0 and angulo_estavel:
+                return 1
+            # AWAY favorito (momentum negativo)
+            elif dx < 0 and dz < 0 and not angulo_estavel:
+                return 0
+        return 0
+    except:
+        return 0
+
 
 # Aplicar cálculo 3D ao games_today
 games_today = calcular_distancias_3d(games_today)
