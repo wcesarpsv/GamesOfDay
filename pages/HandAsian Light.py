@@ -1435,7 +1435,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
                "League", "Time", "Home", "Away",  'Goals_H_Today', 'Goals_A_Today',
                 "Quadrante_Home_Label", "Quadrante_Away_Label",
                 "Quadrante_ML_Score_Home", "Quadrante_ML_Score_Away",
-                "Recomendacao"
+                "Recomendacao","Asian_Line_Decimal"
             ]
         ].style.format({
             "Goals_H_Today": "{:.0f}","Goals_A_Today": "{:.0f}",
