@@ -62,19 +62,30 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
     return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
 
 def convert_asian_line(line_str):
-    """Converte string de linha asiática em média numérica"""
+    """Converte string de linha asiática (ex: '-0.5/1') para valor decimal médio"""
     try:
-        if pd.isna(line_str) or line_str == "":
+        if pd.isna(line_str) or str(line_str).strip() == "":
             return None
+
         line_str = str(line_str).strip()
+
+        # Se não tem "/", apenas converte direto
         if "/" not in line_str:
             val = float(line_str)
             return 0.0 if abs(val) < 1e-10 else val
-        parts = [float(x) for x in line_str.split("/")]
+
+        # Se tiver "/", precisamos preservar o sinal
+        sign = -1 if line_str.strip().startswith("-") else 1
+
+        # Remove o sinal para fazer o split
+        parts = [abs(float(x)) for x in line_str.replace("-", "").split("/")]
         avg = sum(parts) / len(parts)
-        return 0.0 if abs(avg) < 1e-10 else avg
+
+        val = sign * avg
+        return 0.0 if abs(val) < 1e-10 else val
     except:
         return None
+
 
 def calc_handicap_result(margin, asian_line_str, invert=False):
     """Retorna média de pontos por linha (1 win, 0.5 push, 0 loss)"""
@@ -246,12 +257,12 @@ if "Date" in history.columns:
 
 
 
-# # Targets AH históricos
-# history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
-# history["Target_AH_Home"] = history.apply(
-#     lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]) > 0.5 else 0, 
-#     axis=1
-# )
+# Targets AH históricos
+history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
+history["Target_AH_Home"] = history.apply(
+    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]) > 0.5 else 0, 
+    axis=1
+)
 
 # ---------------- SISTEMA DE 8 QUADRANTES ----------------
 st.markdown("## 🎯 Sistema de 8 Quadrantes")
@@ -307,177 +318,6 @@ history['Quadrante_Home'] = history.apply(
 history['Quadrante_Away'] = history.apply(
     lambda x: classificar_quadrante(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
 )
-
-
-########################################
-#### 🧮 BLOCO – Cálculo das Distâncias Home ↔ Away
-########################################
-def calcular_distancias_quadrantes(df):
-    """Calcula distância, separação média e ângulo entre os pontos Home e Away."""
-    df = df.copy()
-    if all(col in df.columns for col in ['Aggression_Home', 'Aggression_Away', 'HandScore_Home', 'HandScore_Away']):
-        dx = df['Aggression_Home'] - df['Aggression_Away']
-        dy = df['HandScore_Home'] - df['HandScore_Away']
-        df['Quadrant_Dist'] = np.sqrt(dx**2 + (dy/60)**2 * 2.5) * 10  # escala visual ajustada
-        df['Quadrant_Separation'] = 0.5 * (dy + 60 * dx)
-        df['Quadrant_Angle_Geometric'] = np.degrees(np.arctan2(dy, dx))
-        df['Quadrant_Angle_Normalized'] = np.degrees(np.arctan2((dy / 60), dx))
-    else:
-        st.warning("⚠️ Colunas Aggression/HandScore não encontradas para calcular as distâncias.")
-        df['Quadrant_Dist'] = np.nan
-        df['Quadrant_Separation'] = np.nan
-        df['Quadrant_Angle_Geometric'] = np.nan
-    return df
-
-# Aplicar ao games_today
-games_today = calcular_distancias_quadrantes(games_today)
-
-
-st.dataframe(games_today[['Home','Away','Quadrant_Dist','Quadrant_Separation','Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized']].head(10))
-
-
-########################################
-#### 🎯 BLOCO – Visualização Interativa com Filtro por Liga e Ângulo
-########################################
-import plotly.graph_objects as go
-
-st.markdown("## 🎯 Visualização Interativa – Distância entre Times (Home × Away)")
-
-# ==========================
-# 🎛️ Filtros interativos
-# ==========================
-if "League" in games_today.columns and not games_today["League"].isna().all():
-    leagues = sorted(games_today["League"].dropna().unique())
-    selected_league = st.selectbox(
-        "Selecione a liga para análise:",
-        options=["⚽ Todas as ligas"] + leagues,
-        index=0
-    )
-
-    if selected_league != "⚽ Todas as ligas":
-        df_filtered = games_today[games_today["League"] == selected_league].copy()
-    else:
-        df_filtered = games_today.copy()
-else:
-    st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
-    df_filtered = games_today.copy()
-
-# ==========================
-# 🎚️ Filtros adicionais
-# ==========================
-max_n = len(df_filtered)
-n_to_show = st.slider("Quantos confrontos exibir (Top por distância):", 10, min(max_n, 200), 40, step=5)
-
-# 🔹 Novo filtro de ângulo
-angle_min, angle_max = st.slider(
-    "Filtrar por Ângulo (posição Home vs Away):",
-    min_value=-180, max_value=180, value=(-180, 180), step=5,
-    help="Ângulos positivos → Home acima | Ângulos negativos → Away acima"
-)
-
-# 🔘 Checkbox de modo combinado
-use_combined_filter = st.checkbox(
-    "Usar filtro combinado (Distância + Ângulo)",
-    value=True,
-    help="Se desmarcado, exibirá apenas confrontos dentro do intervalo de ângulo, ignorando o filtro de distância."
-)
-
-# ==========================
-# 📊 Preparar dados
-# ==========================
-if "Quadrant_Dist" not in df_filtered.columns:
-    df_filtered = calcular_distancias_quadrantes(df_filtered)
-
-# Aplicar filtro de ângulo
-df_angle = df_filtered[
-    (df_filtered['Quadrant_Angle_Normalized'] >= angle_min) &
-    (df_filtered['Quadrant_Angle_Normalized'] <= angle_max)
-]
-
-# Aplicar lógica conforme modo selecionado
-if use_combined_filter:
-    # Filtro combinado: aplicar ângulo + top por distância
-    df_plot = df_angle.nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
-else:
-    # Filtro somente por ângulo
-    df_plot = df_angle.reset_index(drop=True)
-
-# ==========================
-# 🎨 Criar gráfico Plotly
-# ==========================
-fig = go.Figure()
-
-for _, row in df_plot.iterrows():
-    xh, xa = row["Aggression_Home"], row["Aggression_Away"]
-    yh, ya = row["HandScore_Home"], row["HandScore_Away"]
-
-    fig.add_trace(go.Scatter(
-        x=[xh, xa],
-        y=[yh, ya],
-        mode="lines+markers",
-        line=dict(color="gray", width=1),
-        marker=dict(size=5),
-        hoverinfo="text",
-        hovertext=(
-            f"<b>{row['Home']} vs {row['Away']}</b><br>"
-            f"🏆 {row.get('League','N/A')}<br>"
-            f"📏 Distância: {row['Quadrant_Dist']:.2f}<br>"
-            f"📐 Ângulo: {row['Quadrant_Angle_Normalized']:.1f}°<br>"
-            f"↕️ {'Home acima' if row['Quadrant_Angle_Normalized'] > 0 else 'Away acima'}"
-        ),
-        showlegend=False
-    ))
-
-# Pontos Home e Away
-fig.add_trace(go.Scatter(
-    x=df_plot["Aggression_Home"],
-    y=df_plot["HandScore_Home"],
-    mode="markers+text",
-    name="Home",
-    marker=dict(color="royalblue", size=8, opacity=0.8),
-    text=df_plot["Home"],
-    textposition="top center",
-    hoverinfo="skip"
-))
-
-fig.add_trace(go.Scatter(
-    x=df_plot["Aggression_Away"],
-    y=df_plot["HandScore_Away"],
-    mode="markers+text",
-    name="Away",
-    marker=dict(color="orangered", size=8, opacity=0.8),
-    text=df_plot["Away"],
-    textposition="top center",
-    hoverinfo="skip"
-))
-
-# Eixos de referência
-fig.add_trace(go.Scatter(
-    x=[-1, 1], y=[0, 0],
-    mode="lines", line=dict(color="limegreen", width=2, dash="dash"), name="Eixo X"
-))
-fig.add_trace(go.Scatter(
-    x=[0, 0], y=[-60, 60],
-    mode="lines", line=dict(color="limegreen", width=2, dash="dash"), name="Eixo Y"
-))
-
-# Layout final
-titulo = f"Confrontos – Aggression × HandScore"
-if use_combined_filter:
-    titulo += f" | Top {n_to_show} Distâncias"
-if selected_league != "⚽ Todas as ligas":
-    titulo += f" | {selected_league}"
-
-fig.update_layout(
-    title=titulo,
-    xaxis_title="Aggression (-1 zebra ↔ +1 favorito)",
-    yaxis_title="HandScore (-60 ↔ +60)",
-    template="plotly_white",
-    height=700,
-    hovermode="closest",
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-)
-st.plotly_chart(fig, use_container_width=True)
 
 
 
@@ -740,6 +580,211 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
         return single_profit(handicap_result)
 
 
+
+########################################
+#### 🧮 BLOCO – Cálculo das Distâncias Home ↔ Away
+########################################
+def calcular_distancias_quadrantes(df):
+    """Calcula distância, separação média e ângulo entre os pontos Home e Away."""
+    df = df.copy()
+    if all(col in df.columns for col in ['Aggression_Home', 'Aggression_Away', 'HandScore_Home', 'HandScore_Away']):
+        dx = df['Aggression_Home'] - df['Aggression_Away']
+        dy = df['HandScore_Home'] - df['HandScore_Away']
+        df['Quadrant_Dist'] = np.sqrt(dx**2 + (dy / 60)**2 * 2.5) * 10  # escala visual ajustada
+        df['Quadrant_Separation'] = 0.5 * (dy + 60 * dx)
+        df['Quadrant_Angle_Geometric'] = np.degrees(np.arctan2(dy, dx))
+        df['Quadrant_Angle_Normalized'] = np.degrees(np.arctan2((dy / 60), dx))
+    else:
+        st.warning("⚠️ Colunas Aggression/HandScore não encontradas para calcular as distâncias.")
+        df['Quadrant_Dist'] = np.nan
+        df['Quadrant_Separation'] = np.nan
+        df['Quadrant_Angle_Geometric'] = np.nan
+        df['Quadrant_Angle_Normalized'] = np.nan
+    return df
+
+
+########################################
+#### 🎯 BLOCO – Visualização Interativa com Filtro por Liga e Ângulo (versão robusta)
+########################################
+import plotly.graph_objects as go
+
+st.markdown("## 🎯 Visualização Interativa – Distância entre Times (Home × Away)")
+
+# ==========================
+# 🎛️ Filtros interativos
+# ==========================
+if "League" in games_today.columns and not games_today["League"].isna().all():
+    leagues = sorted(games_today["League"].dropna().unique())
+
+    # ✅ Botão para selecionar todas as ligas
+    col_select_all, col_multiselect = st.columns([0.25, 0.75])
+    with col_select_all:
+        select_all = st.checkbox("Selecionar todas as ligas", key="checkbox_select_all_leagues")
+
+    with col_multiselect:
+        selected_leagues = st.multiselect(
+            "Selecione uma ou mais ligas para análise:",
+            options=leagues,
+            default=leagues if select_all else [],
+            help="Marque 'Selecionar todas as ligas' para incluir todas automaticamente.",
+            key="multiselect_leagues"
+        )
+
+    # ✅ Filtro principal
+    if selected_leagues:
+        df_filtered = games_today[games_today["League"].isin(selected_leagues)].copy()
+    else:
+        df_filtered = games_today.copy()
+else:
+    st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
+    df_filtered = games_today.copy()
+
+# ==========================
+# 🎚️ Filtros adicionais (robustos)
+# ==========================
+max_n = len(df_filtered)
+
+if max_n == 0:
+    st.warning("⚠️ Nenhum confronto disponível nesta seleção de ligas.")
+    st.stop()
+
+elif max_n == 1:
+    st.info("⚠️ Apenas um confronto disponível nesta seleção de ligas.")
+    n_to_show = 1  # ✅ evita erro no slider
+else:
+    n_min, n_max, n_default = 1, min(max_n, 200), min(40, max_n)
+    n_to_show = st.slider(
+        "Quantos confrontos exibir (Top por distância):",
+        min_value=n_min,
+        max_value=n_max,
+        value=n_default,
+        step=1,
+        key="slider_n_to_show"
+    )
+
+# ==========================
+# 🎯 Filtro de ângulo
+# ==========================
+angle_min, angle_max = st.slider(
+    "Filtrar por Ângulo (posição Home vs Away):",
+    min_value=-180,
+    max_value=180,
+    value=(-180, 180),
+    step=5,
+    help="Ângulos positivos → Home acima | Ângulos negativos → Away acima",
+    key="slider_angle_range"
+)
+
+# ==========================
+# ⚙️ Filtro combinado
+# ==========================
+use_combined_filter = st.checkbox(
+    "Usar filtro combinado (Distância + Ângulo)",
+    value=True,
+    help="Se desmarcado, exibirá apenas confrontos dentro do intervalo de ângulo.",
+    key="checkbox_combined_filter"
+)
+
+
+
+
+# ==========================
+# 📊 Aplicar filtros
+# ==========================
+if "Quadrant_Dist" not in df_filtered.columns:
+    df_filtered = calcular_distancias_quadrantes(df_filtered)
+
+df_angle = df_filtered[
+    (df_filtered["Quadrant_Angle_Normalized"] >= angle_min)
+    & (df_filtered["Quadrant_Angle_Normalized"] <= angle_max)
+]
+
+if use_combined_filter:
+    df_plot = df_angle.nlargest(n_to_show, "Quadrant_Dist").reset_index(drop=True)
+else:
+    df_plot = df_angle.reset_index(drop=True)
+
+# ==========================
+# 🎨 Criar gráfico Plotly
+# ==========================
+fig = go.Figure()
+
+for _, row in df_plot.iterrows():
+    xh, xa = row["Aggression_Home"], row["Aggression_Away"]
+    yh, ya = row["HandScore_Home"], row["HandScore_Away"]
+
+    fig.add_trace(go.Scatter(
+        x=[xh, xa],
+        y=[yh, ya],
+        mode="lines+markers",
+        line=dict(color="gray", width=1),
+        marker=dict(size=5),
+        hoverinfo="text",
+        hovertext=(
+            f"<b>{row['Home']} vs {row['Away']}</b><br>"
+            f"🏆 {row.get('League','N/A')}<br>"
+            f"📏 Distância: {row['Quadrant_Dist']:.2f}<br>"
+            f"📐 Ângulo: {row['Quadrant_Angle_Normalized']:.1f}°<br>"
+            f"↕️ {'Home acima' if row['Quadrant_Angle_Normalized'] > 0 else 'Away acima'}"
+        ),
+        showlegend=False
+    ))
+
+# Pontos Home e Away
+fig.add_trace(go.Scatter(
+    x=df_plot["Aggression_Home"],
+    y=df_plot["HandScore_Home"],
+    mode="markers+text",
+    name="Home",
+    marker=dict(color="royalblue", size=8, opacity=0.8),
+    text=df_plot["Home"],
+    textposition="top center",
+    hoverinfo="skip"
+))
+
+fig.add_trace(go.Scatter(
+    x=df_plot["Aggression_Away"],
+    y=df_plot["HandScore_Away"],
+    mode="markers+text",
+    name="Away",
+    marker=dict(color="orangered", size=8, opacity=0.8),
+    text=df_plot["Away"],
+    textposition="top center",
+    hoverinfo="skip"
+))
+
+# Eixos de referência
+fig.add_trace(go.Scatter(
+    x=[-1, 1], y=[0, 0],
+    mode="lines", line=dict(color="limegreen", width=2, dash="dash"), name="Eixo X"
+))
+fig.add_trace(go.Scatter(
+    x=[0, 0], y=[-60, 60],
+    mode="lines", line=dict(color="limegreen", width=2, dash="dash"), name="Eixo Y"
+))
+
+# Layout final
+titulo = "Confrontos – Aggression × HandScore"
+if use_combined_filter:
+    titulo += f" | Top {n_to_show} Distâncias"
+if selected_leagues:
+    titulo += " | " + ", ".join(selected_leagues)
+elif select_all:
+    titulo += " | Todas as ligas"
+
+fig.update_layout(
+    title=titulo,
+    xaxis_title="Aggression (-1 zebra ↔ +1 favorito)",
+    yaxis_title="HandScore (-60 ↔ +60)",
+    template="plotly_white",
+    height=700,
+    hovermode="closest",
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+
     
 
 
@@ -748,120 +793,86 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
 ########################################
 from sklearn.ensemble import RandomForestClassifier
 
-# ============================================================
-# 🤖 Treinamento ML Dual (Atualizado – Lógica Handicap Real)
-# ============================================================
-
-from sklearn.ensemble import RandomForestClassifier
-
 def treinar_modelo_quadrantes_dual(history, games_today):
     """
-    🔁 VERSÃO ATUALIZADA:
-    Treina modelo Home/Away com base na probabilidade de cobrir o handicap real do dia.
-    Mantém compatibilidade total com o app (mesmos nomes e colunas).
+    Treina modelo ML para Home e Away com base nos quadrantes,
+    ligas e métricas de distância entre times.
     """
 
     # -------------------------------
-    # 🧮 Garantir cálculo das distâncias
+    # 🔹 Garantir cálculo das distâncias
     # -------------------------------
     history = calcular_distancias_quadrantes(history)
     games_today = calcular_distancias_quadrantes(games_today)
 
     # -------------------------------
-    # 🎯 Novo Target: cobertura AH real
+    # 🔹 Preparar features básicas
     # -------------------------------
-    def calc_target_handicap_cover(row):
-        """
-        Target binário: 1 se o HOME cobre o handicap (linha já em perspectiva HOME),
-        0 se o HOME não cobre. PUSH fica de fora (NaN) para não enviesar.
-        """
-        gh = row.get("Goals_H_FT")
-        ga = row.get("Goals_A_FT")
-        line_home = row.get("Asian_Line_Decimal")
+    quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
+    quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
+    ligas_dummies = pd.get_dummies(history['League'], prefix='League')
 
-        if pd.isna(gh) or pd.isna(ga) or pd.isna(line_home):
-            return np.nan
+    # 🔹 Novas features contínuas (Distância, Separação e Ângulo)
+    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized']].fillna(0)
 
-        # Handicap asiático do HOME já convertido:
-        adjusted = (gh + line_home) - ga
+    # Combinar todas as features
+    X = pd.concat([ligas_dummies, extras, quadrantes_home, quadrantes_away], axis=1)
+    # quadrantes_home, quadrantes_away, 
 
-        if adjusted > 0:
-            return 1   # HOME cobre o handicap
-        elif adjusted < 0:
-            return 0   # HOME NÃO cobre (logo AWAY vence o handicap)
-        else:
-            return np.nan  # PUSH: ignora no treino (nem 1, nem 0)
-
-    # 🧾 AQUI ESTAVA FALTANDO: aplicar e criar as colunas!
-    history["Target_AH_Home"] = history.apply(calc_target_handicap_cover, axis=1)
-    history = history.dropna(subset=["Target_AH_Home", "Asian_Line_Decimal"])
-    history["Target_AH_Home"] = history["Target_AH_Home"].astype(int)
-    history["Target_AH_Away"] = 1 - history["Target_AH_Home"]
-
-    if "Target_AH_Home" not in history.columns or history["Target_AH_Home"].empty:
-        st.error("❌ Coluna Target_AH_Home não foi criada — verifique se Asian_Line_Decimal existe.")
-        return None, None, games_today
+    # Targets
+    y_home = history['Target_AH_Home']
+    y_away = 1 - y_home  # inverso lógico
 
     # -------------------------------
-    # 🧱 Preparar features
-    # -------------------------------
-    qh = pd.get_dummies(history["Quadrante_Home"], prefix="QH")
-    qa = pd.get_dummies(history["Quadrante_Away"], prefix="QA")
-    leagues = pd.get_dummies(history["League"], prefix="L")
-    extras = history[["Quadrant_Dist", "Quadrant_Separation", "Quadrant_Angle_Geometric", "Quadrant_Angle_Normalized"]].fillna(0)
-
-    X = pd.concat([qh, qa, leagues, extras], axis=1)
-    y_home = history["Target_AH_Home"].astype(int)
-    y_away = history["Target_AH_Away"].astype(int)
-
-    # -------------------------------
-    # 🧠 Treinar modelos
+    # 🔹 Treinar modelos
     # -------------------------------
     model_home = RandomForestClassifier(
-        n_estimators=600, max_depth=12, random_state=42,
-        class_weight="balanced_subsample", n_jobs=-1
+        n_estimators=500, max_depth=10, random_state=42, class_weight='balanced_subsample', n_jobs=-1
     )
     model_away = RandomForestClassifier(
-        n_estimators=600, max_depth=12, random_state=42,
-        class_weight="balanced_subsample", n_jobs=-1
+        n_estimators=500, max_depth=10, random_state=42, class_weight='balanced_subsample', n_jobs=-1
     )
 
     model_home.fit(X, y_home)
     model_away.fit(X, y_away)
 
     # -------------------------------
-    # 📊 Preparar dados do dia
+    # 🔹 Preparar dados para hoje
     # -------------------------------
-    qh_today = pd.get_dummies(games_today["Quadrante_Home"], prefix="QH").reindex(columns=qh.columns, fill_value=0)
-    qa_today = pd.get_dummies(games_today["Quadrante_Away"], prefix="QA").reindex(columns=qa.columns, fill_value=0)
-    leagues_today = pd.get_dummies(games_today["League"], prefix="L").reindex(columns=leagues.columns, fill_value=0)
-    extras_today = games_today[["Quadrant_Dist", "Quadrant_Separation", "Quadrant_Angle_Geometric", "Quadrant_Angle_Normalized"]].fillna(0)
+    qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
+    qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
+    ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
+    extras_today = games_today[['Quadrant_Dist', 
+                            'Quadrant_Separation', 
+                            'Quadrant_Angle_Geometric', 
+                            'Quadrant_Angle_Normalized']].fillna(0)
 
-    X_today = pd.concat([qh_today, qa_today, leagues_today, extras_today], axis=1)
+    X_today = pd.concat([ligas_today, extras_today,qh_today, qa_today], axis=1)
+    # qh_today, qa_today,
 
     # -------------------------------
-    # 🔮 Prever probabilidades
+    # 🔹 Fazer previsões
     # -------------------------------
     probas_home = model_home.predict_proba(X_today)[:, 1]
     probas_away = model_away.predict_proba(X_today)[:, 1]
 
-    games_today["Quadrante_ML_Score_Home"] = probas_home
-    games_today["Quadrante_ML_Score_Away"] = probas_away
-    games_today["Quadrante_ML_Score_Main"] = np.maximum(probas_home, probas_away)
-    games_today["ML_Side"] = np.where(probas_home > probas_away, "HOME", "AWAY")
+    games_today['Quadrante_ML_Score_Home'] = probas_home
+    games_today['Quadrante_ML_Score_Away'] = probas_away
+    games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
+    games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
 
     # -------------------------------
-    # 🧩 Insight de importância
+    # 🔹 Mostrar insights de importância
     # -------------------------------
     try:
         importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
         top_feats = importances.head(15)
-        st.markdown("### 🔍 Top Features (Modelo HOME – AH Cover)")
+        st.markdown("### 🔍 Top Features mais importantes (Modelo HOME)")
         st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
     except Exception as e:
         st.warning(f"Não foi possível calcular importâncias: {e}")
 
-    st.success("✅ Modelo dual atualizado com foco em cobertura de Handicap (AH)!")
+    st.success("✅ Modelo dual (Home/Away) treinado com sucesso com novas features!")
     return model_home, model_away, games_today
 
 
@@ -966,8 +977,6 @@ def estilo_tabela_quadrantes_dual(df):
 
 
 
-
-
 # ---------------- ANÁLISE DE PADRÕES DUAL ----------------
 def analisar_padroes_quadrantes_dual(df):
     """Analisa padrões recorrentes nas combinações de quadrantes com perspectiva dual"""
@@ -1037,8 +1046,350 @@ else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
 
 
+########################################
+#### 🤖 BLOCO – ML2 PRO (Integrada + Target Contínuo + Meta Confidence)
+########################################
+from sklearn.ensemble import RandomForestRegressor
 
+def handicap_result_continuous(margin, line):
+    """Retorna escore contínuo do resultado do handicap (-1 a +1)."""
+    try:
+        if pd.isna(margin) or pd.isna(line):
+            return np.nan
+        
+        diff = margin + line
+        # Full win
+        if diff > 0.5:
+            return 1.0
+        # Half win
+        elif 0 < diff <= 0.5:
+            return 0.5
+        # Push
+        elif diff == 0:
+            return 0.0
+        # Half loss
+        elif -0.5 < diff < 0:
+            return -0.5
+        # Full loss
+        else:
+            return -1.0
+    except:
+        return np.nan
+
+
+def treinar_ml2_handicap_integrada_pro(history, games_today, model_home, model_away):
+    """
+    Nova versão da ML2:
+    - Usa target contínuo (-1 a +1) para representar força da cobertura
+    - Integra saídas da ML1 (meta learning)
+    - Retorna probabilidade e meta-confiança combinada
+    """
+
+    st.markdown("## ⚙️ Treinando ML2 Pro – Handicap Cover com Contexto da ML1")
+
+    # =====================================================
+    # 1️⃣ Criar target contínuo baseado na cobertura real
+    # =====================================================
+    history = history.copy()
+    history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line_Decimal"]).copy()
+    history["Margin_FT"] = history["Goals_H_FT"] - history["Goals_A_FT"]
+    history["Target_Continuous"] = history.apply(
+        lambda r: handicap_result_continuous(r["Margin_FT"], -r["Asian_Line_Decimal"]),
+        axis=1
+    )
+
+    # Normaliza para [0,1] para usar como target de regressão
+    history["Target_Continuous"] = (history["Target_Continuous"] + 1) / 2
+
+    # =====================================================
+    # 2️⃣ Preparar features (iguais à ML1 + integração ML1)
+    # =====================================================
+    history = calcular_distancias_quadrantes(history)
+    games_today = calcular_distancias_quadrantes(games_today)
+
+    quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
+    quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
+    ligas_dummies = pd.get_dummies(history['League'], prefix='League')
+    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric',
+                      'Quadrant_Angle_Normalized', 'Asian_Line_Decimal']].fillna(0)
+    
+    X_base = pd.concat([ligas_dummies, extras, quadrantes_home, quadrantes_away], axis=1)
+
+    # =====================================================
+    # 3️⃣ Gerar previsões da ML1 para usar como features (meta learning)
+    # =====================================================
+    try:
+        X_base_aligned = X_base.reindex(columns=model_home.feature_names_in_, fill_value=0)
+        probas_home = model_home.predict_proba(X_base_aligned)[:, 1]
+        probas_away = model_away.predict_proba(X_base_aligned)[:, 1]
+        history["ML1_Prob_Home"] = probas_home
+        history["ML1_Prob_Away"] = probas_away
+        history["ML1_Diff"] = probas_home - probas_away
+        X_full = pd.concat([X_base, history[["ML1_Prob_Home", "ML1_Prob_Away", "ML1_Diff"]]], axis=1)
+    except Exception as e:
+        st.warning(f"⚠️ Não foi possível usar saídas da ML1: {e}")
+        X_full = X_base.copy()
+
+    y = history["Target_Continuous"]
+
+    # =====================================================
+    # 4️⃣ Treinamento do modelo final (Regressor)
+    # =====================================================
+    model_handicap = RandomForestRegressor(
+        n_estimators=700,
+        max_depth=10,
+        random_state=42,
+        n_jobs=-1
+    )
+    model_handicap.fit(X_full, y)
+
+    # =====================================================
+    # 5️⃣ Preparar dados para previsão (games_today)
+    # =====================================================
+    qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
+    qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
+    ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
+    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric',
+                                'Quadrant_Angle_Normalized', 'Asian_Line_Decimal']].fillna(0)
+
+    X_today_base = pd.concat([ligas_today, extras_today, qh_today, qa_today], axis=1)
+
+    # Adicionar as features da ML1 já calculadas no games_today
+    if "Quadrante_ML_Score_Home" in games_today.columns:
+        X_today_full = pd.concat([
+            X_today_base,
+            games_today[["Quadrante_ML_Score_Home", "Quadrante_ML_Score_Away"]].rename(
+                columns={
+                    "Quadrante_ML_Score_Home": "ML1_Prob_Home",
+                    "Quadrante_ML_Score_Away": "ML1_Prob_Away"
+                }
+            )
+        ], axis=1)
+        X_today_full["ML1_Diff"] = X_today_full["ML1_Prob_Home"] - X_today_full["ML1_Prob_Away"]
+    else:
+        X_today_full = X_today_base.copy()
+
+    # Alinha colunas
+    X_today_full = X_today_full.reindex(columns=X_full.columns, fill_value=0)
+
+    # =====================================================
+    # 6️⃣ Previsões finais e meta-confidence
+    # =====================================================
+    pred_continuous = model_handicap.predict(X_today_full)
+    games_today["ML2_Prob_Home_Cover"] = np.clip(pred_continuous, 0, 1)
+    games_today["ML2_Pred_Cover"] = np.where(games_today["ML2_Prob_Home_Cover"] >= 0.5, 1, 0)
+
+    # =====================================================
+    # 7️⃣ Meta Confidence combinando ML1 + ML2
+    # =====================================================
+    games_today["Meta_Confidence"] = (
+        0.6 * games_today["ML2_Prob_Home_Cover"] +
+        0.4 * games_today["Quadrante_ML_Score_Home"]
+    )
+
+    # =====================================================
+    # 8️⃣ Exibição
+    # =====================================================
+    st.success("✅ ML2 Pro treinada com sucesso (target contínuo + integração ML1)")
+    st.dataframe(
+        games_today[["Time", "Home", "Away", 'Goals_H_Today', 'Goals_A_Today', "Asian_Line_Decimal", "ML2_Prob_Home_Cover", "Meta_Confidence"]]
+        .sort_values("Meta_Confidence", ascending=False)
+        .style.format({
+            "Goals_H_Today": "{:.0f}","Goals_A_Today": "{:.0f}",
+            "Asian_Line_Decimal": "{:.2f}",
+            "ML2_Prob_Home_Cover": "{:.1%}",
+            "Meta_Confidence": "{:.1%}"
+        })
+        .background_gradient(subset=["Meta_Confidence"], cmap="YlGn"),
+        use_container_width=True
+    )
+
+    # Feature importance
+    try:
+        importances = pd.Series(model_handicap.feature_importances_, index=X_full.columns).sort_values(ascending=False)
+        top_feats = importances.head(15)
+        st.markdown("### 🔍 Top Features (ML2 Pro)")
+        st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
+    except Exception as e:
+        st.warning(f"Não foi possível calcular importâncias: {e}")
+
+    return model_handicap, games_today
+
+
+
+########################################
+#### 🤖 BLOCO – ML2 PRO (Away Side)
+########################################
+from sklearn.ensemble import RandomForestRegressor
+
+def handicap_result_continuous_away(margin, line):
+    """
+    Calcula o escore contínuo (-1 a +1) do resultado do handicap
+    para o time visitante (AWAY). A linha recebida é do ponto de vista do HOME.
+    """
+    try:
+        if pd.isna(margin) or pd.isna(line):
+            return np.nan
+        
+        # Invertemos a perspectiva: se a linha é -0.5 para HOME → +0.5 para AWAY
+        diff = -margin - line
+        if diff > 0.5:
+            return 1.0       # Full Win (Away cobre)
+        elif 0 < diff <= 0.5:
+            return 0.5       # Half Win
+        elif diff == 0:
+            return 0.0       # Push
+        elif -0.5 < diff < 0:
+            return -0.5      # Half Loss
+        else:
+            return -1.0      # Full Loss
+    except:
+        return np.nan
+
+
+def treinar_ml2_handicap_away_pro(history, games_today, model_home, model_away):
+    """
+    ML2 Pro para o lado Away:
+    - Target contínuo baseado em cobertura do time visitante
+    - Integra saídas da ML1
+    - Gera meta-confiança específica para o Away
+    """
+
+    st.markdown("## ⚙️ Treinando ML2 Pro – Handicap Cover (Away Side)")
+
+    # =====================================================
+    # 1️⃣ Criar target contínuo do lado AWAY
+    # =====================================================
+    history = history.copy()
+    history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line_Decimal"]).copy()
+    history["Margin_FT"] = history["Goals_H_FT"] - history["Goals_A_FT"]
+    history["Target_Continuous_Away"] = history.apply(
+        lambda r: handicap_result_continuous_away(r["Margin_FT"], r["Asian_Line_Decimal"]),
+        axis=1
+    )
+
+    # Normaliza para [0,1]
+    history["Target_Continuous_Away"] = (history["Target_Continuous_Away"] + 1) / 2
+
+    # =====================================================
+    # 2️⃣ Features e integração ML1
+    # =====================================================
+    history = calcular_distancias_quadrantes(history)
+    games_today = calcular_distancias_quadrantes(games_today)
+
+    quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
+    quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
+    ligas_dummies = pd.get_dummies(history['League'], prefix='League')
+    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric',
+                      'Quadrant_Angle_Normalized', 'Asian_Line_Decimal']].fillna(0)
+    
+    X_base = pd.concat([ligas_dummies, extras, quadrantes_home, quadrantes_away], axis=1)
+
+    # =====================================================
+    # 3️⃣ Adicionar previsões da ML1 como features
+    # =====================================================
+    try:
+        X_base_aligned = X_base.reindex(columns=model_away.feature_names_in_, fill_value=0)
+        probas_home = model_home.predict_proba(X_base_aligned)[:, 1]
+        probas_away = model_away.predict_proba(X_base_aligned)[:, 1]
+        history["ML1_Prob_Home"] = probas_home
+        history["ML1_Prob_Away"] = probas_away
+        history["ML1_Diff"] = probas_home - probas_away
+        X_full = pd.concat([X_base, history[["ML1_Prob_Home", "ML1_Prob_Away", "ML1_Diff"]]], axis=1)
+    except Exception as e:
+        st.warning(f"⚠️ Não foi possível usar saídas da ML1: {e}")
+        X_full = X_base.copy()
+
+    y = history["Target_Continuous_Away"]
+
+    # =====================================================
+    # 4️⃣ Treinar modelo final (regressor)
+    # =====================================================
+    model_handicap_away = RandomForestRegressor(
+        n_estimators=700,
+        max_depth=10,
+        random_state=42,
+        n_jobs=-1
+    )
+    model_handicap_away.fit(X_full, y)
+
+    # =====================================================
+    # 5️⃣ Preparar dados de hoje
+    # =====================================================
+    qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
+    qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
+    ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
+    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric',
+                                'Quadrant_Angle_Normalized', 'Asian_Line_Decimal']].fillna(0)
+
+    X_today_base = pd.concat([ligas_today, extras_today, qh_today, qa_today], axis=1)
+
+    # Adicionar features da ML1
+    if "Quadrante_ML_Score_Home" in games_today.columns:
+        X_today_full = pd.concat([
+            X_today_base,
+            games_today[["Quadrante_ML_Score_Home", "Quadrante_ML_Score_Away"]].rename(
+                columns={
+                    "Quadrante_ML_Score_Home": "ML1_Prob_Home",
+                    "Quadrante_ML_Score_Away": "ML1_Prob_Away"
+                }
+            )
+        ], axis=1)
+        X_today_full["ML1_Diff"] = X_today_full["ML1_Prob_Home"] - X_today_full["ML1_Prob_Away"]
+    else:
+        X_today_full = X_today_base.copy()
+
+    X_today_full = X_today_full.reindex(columns=X_full.columns, fill_value=0)
+
+    # =====================================================
+    # 6️⃣ Previsões e Meta Confidence (Away)
+    # =====================================================
+    pred_continuous = model_handicap_away.predict(X_today_full)
+    games_today["ML2_Prob_Away_Cover"] = np.clip(pred_continuous, 0, 1)
+    games_today["ML2_Pred_Away_Cover"] = np.where(games_today["ML2_Prob_Away_Cover"] >= 0.5, 1, 0)
+
+    # Meta Confidence (Away)
+    games_today["Meta_Confidence_Away"] = (
+        0.6 * games_today["ML2_Prob_Away_Cover"] +
+        0.4 * games_today["Quadrante_ML_Score_Away"]
+    )
+
+    # =====================================================
+    # 7️⃣ Exibição
+    # =====================================================
+    st.success("✅ ML2 Pro (Away) treinada com sucesso (target contínuo + integração ML1)")
+    st.dataframe(
+        games_today[["Time", "Home", "Away", 'Goals_H_Today', 'Goals_A_Today', "Asian_Line_Decimal", "ML2_Prob_Away_Cover", "Meta_Confidence_Away"]]
+        .sort_values("Meta_Confidence_Away", ascending=False)
+        .style.format({
+            "Goals_H_Today": "{:.0f}",
+            "Goals_A_Today": "{:.0f}",
+            "Asian_Line_Decimal": "{:.2f}",
+            "ML2_Prob_Away_Cover": "{:.1%}",
+            "Meta_Confidence_Away": "{:.1%}"
+        })
+        .background_gradient(subset=["Meta_Confidence_Away"], cmap="RdYlGn"),
+        use_container_width=True
+    )
+
+    # Importância das features
+    try:
+        importances = pd.Series(model_handicap_away.feature_importances_, index=X_full.columns).sort_values(ascending=False)
+        top_feats = importances.head(15)
+        st.markdown("### 🔍 Top Features (ML2 Pro – Away)")
+        st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
+    except Exception as e:
+        st.warning(f"Não foi possível calcular importâncias: {e}")
+
+    return model_handicap_away, games_today
+
+
+
+
+# ============================================================
 # ---------------- EXIBIÇÃO DOS RESULTADOS DUAL ----------------
+# ============================================================
+
 st.markdown("## 🏆 Melhores Confrontos por Quadrantes ML (Home & Away)")
 
 if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
@@ -1050,214 +1401,299 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     ranking_quadrantes['Quadrante_Away_Label'] = ranking_quadrantes['Quadrante_Away'].map(
         lambda x: QUADRANTES_8.get(x, {}).get('nome', 'Neutro') if x != 0 else 'Neutro'
     )
-    
-    # Aplicar indicadores explicativos dual
+
+    # Aplicar indicadores explicativos dual (gera a coluna 'Recomendacao')
     ranking_quadrantes = adicionar_indicadores_explicativos_dual(ranking_quadrantes)
 
-    # ---------------- ATUALIZAR COM DADOS LIVE ----------------
-    def update_real_time_data(df):
-        """Atualiza todos os dados em tempo real para HANDICAP"""
-        # Resultados do handicap
-        df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
-        
-        # Performance das recomendações (baseado no handicap)
-        df['Quadrante_Correct'] = df.apply(
-            lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
-        )
-        df['Profit_Quadrante'] = df.apply(
-            lambda r: calculate_handicap_profit(r['Recomendacao'], r['Handicap_Result'], r, r['Asian_Line_Decimal']), axis=1
-        )
-        return df
+    # 🔄 Garante que games_today tenha as mesmas colunas e recomendações
+    games_today = ranking_quadrantes.copy()
 
-    # Aplicar atualização em tempo real
-    ranking_quadrantes = update_real_time_data(ranking_quadrantes)
-    
-    # ---------------- RESUMO LIVE ----------------
-    def generate_live_summary(df):
-        """Gera resumo em tempo real dos resultados de HANDICAP"""
-        finished_games = df.dropna(subset=['Handicap_Result'])
-        
-        if finished_games.empty:
-            return {
-                "Total Jogos": len(df),
-                "Jogos Finalizados": 0,
-                "Apostas Quadrante": 0,
-                "Acertos Quadrante": 0,
-                "Winrate Quadrante": "0%",
-                "Profit Quadrante": 0,
-                "ROI Quadrante": "0%"
-            }
-        
-        quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
-        total_bets = len(quadrante_bets)
-        correct_bets = quadrante_bets['Quadrante_Correct'].sum()
-        winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
-        total_profit = quadrante_bets['Profit_Quadrante'].sum()
-        roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
-        
-        return {
-            "Total Jogos": len(df),
-            "Jogos Finalizados": len(finished_games),
-            "Apostas Quadrante": total_bets,
-            "Acertos Quadrante": int(correct_bets),
-            "Winrate Quadrante": f"{winrate:.1f}%",
-            "Profit Quadrante": f"{total_profit:.2f}u",
-            "ROI Quadrante": f"{roi:.1f}%"
-        }
+    # Exibir tabela principal
+    st.dataframe(
+        ranking_quadrantes[
+            [
+               "League", "Time", "Home", "Away",  'Goals_H_Today', 'Goals_A_Today',
+                "Quadrante_Home_Label", "Quadrante_Away_Label",
+                "Quadrante_ML_Score_Home", "Quadrante_ML_Score_Away",
+                "Recomendacao"
+            ]
+        ].style.format({
+            "Goals_H_Today": "{:.0f}","Goals_A_Today": "{:.0f}",
+            "Quadrante_ML_Score_Home": "{:.2f}",
+            "Quadrante_ML_Score_Away": "{:.2f}",
+        }),
+        use_container_width=True
+    )
+else:
+    st.warning("⚠️ Dados insuficientes para exibir os resultados dual.")
 
-    # Exibir resumo live APÓS criar ranking_quadrantes
-    st.markdown("## 📡 Live Score Monitor")
-    live_summary = generate_live_summary(ranking_quadrantes)
-    st.json(live_summary)
-    
-    # Ordenar por score principal (se existir) ou pelo score do home
-    if 'Quadrante_ML_Score_Main' in ranking_quadrantes.columns:
-        ranking_quadrantes = ranking_quadrantes.sort_values('Quadrante_ML_Score_Main', ascending=False)
+
+# ============================================================
+# 📡 LIVE SCORE MONITOR – SISTEMA 3D (HANDICAP + 1X2)
+# ============================================================
+
+# 🔧 Compatibilidade: garante que a coluna 'Recomendacao' exista
+if 'Recomendacao' not in games_today.columns:
+    if 'Recomendacao_Handicap' in games_today.columns:
+        games_today['Recomendacao'] = games_today['Recomendacao_Handicap']
+    elif 'Pred_Side' in games_today.columns:
+        games_today['Recomendacao'] = games_today['Pred_Side']
+    elif 'Indicacao_Final' in games_today.columns:
+        games_today['Recomendacao'] = games_today['Indicacao_Final']
     else:
-        ranking_quadrantes = ranking_quadrantes.sort_values('Quadrante_ML_Score_Home', ascending=False)
-    
-    # Colunas para exibir - incluindo Live Score
-    colunas_possiveis = [
-        'League','Time', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'ML_Side', 'Recomendacao',
-        'Quadrante_Home_Label', 'Quadrante_Away_Label',
-        'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
-        'Quadrante_ML_Score_Main', 'Classificacao_Valor_Home', 
-        'Classificacao_Valor_Away', 
-        # Colunas Live Score
-         'Asian_Line_Decimal', 'Handicap_Result',
-        'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
-    ]
-    
-    # Filtrar colunas existentes
-    cols_finais = [c for c in colunas_possiveis if c in ranking_quadrantes.columns]
-    
-    st.dataframe(
-        estilo_tabela_quadrantes_dual(ranking_quadrantes[cols_finais])
-        .format({
-            'Goals_H_Today': '{:.0f}',
-            'Goals_A_Today': '{:.0f}',
-            'Asian_Line_Decimal': '{:.2f}',
-            'Home_Red': '{:.0f}',
-            'Away_Red': '{:.0f}',
-            'Profit_Quadrante': '{:.2f}',
-            'Quadrante_ML_Score_Home': '{:.1%}',
-            'Quadrante_ML_Score_Away': '{:.1%}',
-            'Quadrante_ML_Score_Main': '{:.1%}'
-        }, na_rep="-"),
-        use_container_width=True
-    )
-    
-else:
-    st.info("⚠️ Aguardando dados para gerar ranking dual")
-    
+        games_today['Recomendacao'] = ""
+
 
 # ============================================================
-# 🧭 BLOCO – Índice de Convergência Total (Confidence_Score)
+# ⚽ RESULTADO 1X2
 # ============================================================
+def determine_match_result_1x2(row):
+    gh, ga = row.get('Goals_H_Today'), row.get('Goals_A_Today')
+    if pd.isna(gh) or pd.isna(ga):
+        return None
+    if gh > ga:
+        return "HOME_WIN"
+    elif gh < ga:
+        return "AWAY_WIN"
+    else:
+        return "DRAW"
 
-def calc_convergencia(row):
-    """
-    Mede o grau de convergência entre modelo, contexto tático e separação visual.
-    Valores mais altos indicam cenários 'redondos' (tudo coerente).
-    Retorna escore entre 0 e 1.
-    """
 
+def check_recommendation_correct_1x2(recomendacao, match_result):
+    if pd.isna(recomendacao) or match_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
+        return None
+    rec = str(recomendacao).upper()
+    is_home = any(k in rec for k in ['HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
+    is_away = any(k in rec for k in ['AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+    if is_home and match_result == "HOME_WIN":
+        return True
+    elif is_away and match_result == "AWAY_WIN":
+        return True
+    else:
+        return False
+
+
+def calculate_profit_1x2(recomendacao, match_result, odds_row):
+    if pd.isna(recomendacao) or match_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
+        return 0
+    rec = str(recomendacao).upper()
+    is_home = any(k in rec for k in ['HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
+    is_away = any(k in rec for k in ['AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+    if is_home:
+        odd = odds_row.get('Odd_H', np.nan)
+        won = match_result == "HOME_WIN"
+    elif is_away:
+        odd = odds_row.get('Odd_A', np.nan)
+        won = match_result == "AWAY_WIN"
+    else:
+        return 0
+    if pd.isna(odd):
+        return 0
+    return (odd - 1) if won else -1
+
+
+def update_real_time_data_1x2(df):
+    df = df.copy()
+    df['Result_1x2'] = df.apply(determine_match_result_1x2, axis=1)
+    df['Quadrante_Correct_1x2'] = df.apply(
+        lambda r: check_recommendation_correct_1x2(r['Recomendacao'], r['Result_1x2']), axis=1)
+    df['Profit_1x2'] = df.apply(
+        lambda r: calculate_profit_1x2(r['Recomendacao'], r['Result_1x2'], r), axis=1)
+    return df
+
+
+# ============================================================
+# ⚖️ RESULTADO HANDICAP ASIÁTICO
+# ============================================================
+def determine_handicap_result_3d(row):
     try:
-        score_home = float(row.get('Quadrante_ML_Score_Home', 0))
-        score_away = float(row.get('Quadrante_ML_Score_Away', 0))
-        dist = float(row.get('Quadrant_Dist', 0))
-        ml_side = "HOME" if score_home > score_away else "AWAY"
-        diff = abs(score_home - score_away)
-    except Exception:
-        return 0.0
+        gh = float(row['Goals_H_Today'])
+        ga = float(row['Goals_A_Today'])
+        asian_line = float(row['Asian_Line_Decimal'])
+        rec = str(row.get('Recomendacao', '')).upper()
+    except:
+        return None
+    if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line):
+        return None
+    is_home = any(k in rec for k in ['HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
+    is_away = any(k in rec for k in ['AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+    if not (is_home or is_away):
+        return None
+    side = "HOME" if is_home else "AWAY"
+    frac = abs(asian_line % 1)
+    is_quarter = frac in [0.25, 0.75]
 
-    # 1️⃣ Peso da confiança do modelo (diferença H-A)
-    w_ml = min(diff * 2, 1.0)  # diferença de 0.5 já é força máxima
+    def single_result(gh, ga, line, side):
+        if side == "HOME":
+            adj = (gh + line) - ga
+        else:
+            adj = (ga - line) - gh
+        if adj > 0:
+            return 1.0
+        elif adj == 0:
+            return 0.5
+        else:
+            return 0.0
 
-    # 2️⃣ Peso da separação tática (distância entre quadrantes)
-    w_dist = min(dist / 0.8, 1.0)
+    if is_quarter:
+        if asian_line > 0:
+            line1 = math.floor(asian_line * 2) / 2
+            line2 = line1 + 0.5
+        else:
+            line1 = math.ceil(asian_line * 2) / 2
+            line2 = line1 - 0.5
+        r1, r2 = single_result(gh, ga, line1, side), single_result(gh, ga, line2, side)
+        avg = (r1 + r2) / 2
+        if avg == 1:
+            return f"{side}_COVERED"
+        elif avg == 0.75:
+            return "HALF_WIN"
+        elif avg == 0.5:
+            return "PUSH"
+        elif avg == 0.25:
+            return "HALF_LOSS"
+        else:
+            return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
 
-    # 3️⃣ Peso da coerência entre padrão e lado do modelo
-    home_q = str(row.get('Quadrante_Home_Label', ''))
-    away_q = str(row.get('Quadrante_Away_Label', ''))
+    if side == "HOME":
+        adj = (gh + asian_line) - ga
+    else:
+        adj = (ga - asian_line) - gh
 
-    # Coerência tática → quando padrão e lado do modelo apontam juntos
-    padrao_favoravel = (
-        ('Underdog Value' in home_q and ml_side == 'HOME') or
-        ('Market Overrates' in away_q and ml_side == 'HOME') or
-        ('Favorite Reliable' in home_q and ml_side == 'HOME') or
-        ('Weak Underdog' in away_q and ml_side == 'AWAY')
-    )
-    w_pattern = 1.0 if padrao_favoravel else 0.0
-
-    # 4️⃣ Convergência total (ponderada)
-    confidence_score = round((0.5 * w_ml + 0.3 * w_dist + 0.2 * w_pattern), 3)
-    return confidence_score
+    if adj > 0:
+        return f"{side}_COVERED"
+    elif adj < 0:
+        return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
+    else:
+        return "PUSH"
 
 
-# Aplicar cálculo
-ranking_quadrantes['Confidence_Score'] = ranking_quadrantes.apply(calc_convergencia, axis=1)
+def check_handicap_recommendation_correct_3d(rec, result):
+    if pd.isna(rec) or result is None or '⚖️ ANALISAR' in str(rec).upper():
+        return None
+    rec = str(rec).upper()
+    is_home = any(k in rec for k in ['HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
+    is_away = any(k in rec for k in ['AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+    if is_home and result in ["HOME_COVERED", "HALF_WIN"]:
+        return True
+    elif is_away and result in ["AWAY_COVERED", "HALF_WIN"]:
+        return True
+    elif result == "PUSH":
+        return None
+    else:
+        return False
 
-# Exibir os 'Gold Matches' – cenários com tudo coerente
-st.markdown("### 🥇 Gold Matches – Convergência Máxima")
-gold_matches = ranking_quadrantes[ranking_quadrantes['Confidence_Score'] >= 0.75]
 
-if not gold_matches.empty:
-    st.dataframe(
-        gold_matches[['League', 'Home', 'Away', 'Recomendacao', 
-                      'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 'Confidence_Score']]
-        .sort_values('Confidence_Score', ascending=False)
-        .style.format({
-            'Quadrante_ML_Score_Home': '{:.1%}',
-            'Quadrante_ML_Score_Away': '{:.1%}',
-            'Confidence_Score': '{:.2f}'
-        })
-        .background_gradient(subset=['Confidence_Score'], cmap='YlGn'),
-        use_container_width=True
-    )
+def calculate_handicap_profit_3d(rec, result, odds_row):
+    if pd.isna(rec) or result is None or '⚖️ ANALISAR' in str(rec).upper():
+        return 0
+    rec = str(rec).upper()
+    is_home = any(k in rec for k in ['HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
+    is_away = any(k in rec for k in ['AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+    odd = odds_row.get('Odd_H_Asi', np.nan) if is_home else odds_row.get('Odd_A_Asi', np.nan)
+    if pd.isna(odd):
+        return 0
+    if (is_home and result == "HOME_COVERED") or (is_away and result == "AWAY_COVERED"):
+        return odd
+    elif result == "HALF_WIN":
+        return odd / 2
+    elif result == "HALF_LOSS":
+        return -0.5
+    elif result == "PUSH":
+        return 0
+    else:
+        return -1
+
+
+def update_real_time_data_3d(df):
+    df = df.copy()
+    df['Handicap_Result'] = df.apply(determine_handicap_result_3d, axis=1)
+    df['Quadrante_Correct'] = df.apply(
+        lambda r: check_handicap_recommendation_correct_3d(r['Recomendacao'], r['Handicap_Result']), axis=1)
+    df['Profit_Quadrante'] = df.apply(
+        lambda r: calculate_handicap_profit_3d(r['Recomendacao'], r['Handicap_Result'], r), axis=1)
+    return df
+
+
+# ============================================================
+# 🔄 EXECUÇÃO DO LIVE SCORE COMPARATIVO
+# ============================================================
+games_today = update_real_time_data_3d(games_today)
+games_today = update_real_time_data_1x2(games_today)
+
+st.markdown("## 📡 Live Score Monitor – Sistema 3D (AH + 1x2)")
+
+# --- Handicap (AH)
+finished_ah = games_today[games_today['Handicap_Result'].notna()]
+if not finished_ah.empty:
+    bets = finished_ah['Quadrante_Correct'].notna().sum()
+    correct = finished_ah['Quadrante_Correct'].sum()
+    profit = finished_ah['Profit_Quadrante'].sum()
+    roi = profit / bets if bets > 0 else 0
+    st.metric("Apostas (AH)", bets)
+    st.metric("Winrate (AH)", f"{correct/bets:.1%}")
+    st.metric("Lucro Total (AH)", f"{profit:.2f}u")
+    st.metric("ROI (AH)", f"{roi:.1%}")
 else:
-    st.info("Nenhum confronto atingiu nível de convergência 🥇 Gold hoje.")
+    st.info("⚠️ Nenhum jogo finalizado ainda para o sistema Handicap.")
+
+# --- 1x2
+finished_1x2 = games_today[games_today['Result_1x2'].notna()]
+if not finished_1x2.empty:
+    bets = finished_1x2['Quadrante_Correct_1x2'].notna().sum()
+    correct = finished_1x2['Quadrante_Correct_1x2'].sum()
+    profit = finished_1x2['Profit_1x2'].sum()
+    roi = profit / bets if bets > 0 else 0
+    st.metric("Apostas (1x2)", bets)
+    st.metric("Winrate (1x2)", f"{correct/bets:.1%}")
+    st.metric("Lucro Total (1x2)", f"{profit:.2f}u")
+    st.metric("ROI (1x2)", f"{roi:.1%}")
+else:
+    st.info("⚠️ Nenhum jogo finalizado ainda para o sistema 1x2.")
+
+
+# ============================================================
+# ⚖️ COMPARATIVO – AH x 1x2
+# ============================================================
+def compare_systems_summary(df):
+    def calc(correct_col, profit_col):
+        valid = df[correct_col].notna().sum()
+        correct = df[correct_col].sum(skipna=True)
+        profit = df[profit_col].sum()
+        roi = profit / valid if valid > 0 else 0
+        winrate = correct / valid if valid > 0 else 0
+        return valid, winrate, profit, roi
+
+    ah_bets, ah_win, ah_profit, ah_roi = calc("Quadrante_Correct", "Profit_Quadrante")
+    x2_bets, x2_win, x2_profit, x2_roi = calc("Quadrante_Correct_1x2", "Profit_1x2")
+
+    resumo = pd.DataFrame({
+        "Métrica": ["Apostas", "Winrate", "Lucro Total", "ROI"],
+        "Sistema Handicap (AH)": [ah_bets, f"{ah_win:.1%}", f"{ah_profit:.2f}", f"{ah_roi:.1%}"],
+        "Sistema 1x2": [x2_bets, f"{x2_win:.1%}", f"{x2_profit:.2f}", f"{x2_roi:.1%}"]
+    })
+
+    st.markdown("### ⚖️ Comparativo de Performance – AH vs 1x2")
+    st.dataframe(resumo, use_container_width=True)
 
 
 
+# Executar comparativo final
+compare_systems_summary(games_today)
 
-# ---------------- RESUMO EXECUTIVO DUAL ----------------
-def resumo_quadrantes_hoje_dual(df):
-    """Resumo executivo dos quadrantes de hoje com perspectiva dual"""
-    
-    st.markdown("### 📋 Resumo Executivo - Quadrantes Hoje (Dual)")
-    
-    if df.empty:
-        st.info("Nenhum dado disponível para resumo")
-        return
-    
-    total_jogos = len(df)
-    alto_valor_home = len(df[df['Classificacao_Valor_Home'] == '🏆 ALTO VALOR'])
-    bom_valor_home = len(df[df['Classificacao_Valor_Home'] == '✅ BOM VALOR'])
-    alto_valor_away = len(df[df['Classificacao_Valor_Away'] == '🏆 ALTO VALOR'])
-    bom_valor_away = len(df[df['Classificacao_Valor_Away'] == '✅ BOM VALOR'])
-    
-    home_recomendado = len(df[df['ML_Side'] == 'HOME'])
-    away_recomendado = len(df[df['ML_Side'] == 'AWAY'])
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Total Jogos", total_jogos)
-    with col2:
-        st.metric("🎯 Alto Valor Home", alto_valor_home)
-    with col3:
-        st.metric("🎯 Alto Valor Away", alto_valor_away)
-    with col4:
-        st.metric("📊 Home vs Away", f"{home_recomendado} : {away_recomendado}")
-    
-    # Distribuição de recomendações
-    st.markdown("#### 📊 Distribuição de Recomendações")
-    dist_recomendacoes = df['Recomendacao'].value_counts()
-    st.dataframe(dist_recomendacoes, use_container_width=True)
 
-if not games_today.empty and 'Classificacao_Valor_Home' in games_today.columns:
-    resumo_quadrantes_hoje_dual(games_today)
+
+if not history.empty:
+    model_handicap, games_today = treinar_ml2_handicap_integrada_pro(history, games_today, modelo_home, modelo_away)
+    model_handicap_away, games_today = treinar_ml2_handicap_away_pro(history, games_today, modelo_home, modelo_away)
+
+else:
+    st.warning("⚠️ Histórico vazio – não foi possível treinar a ML2 Pro.")
+
+
+
+    
+
 
 st.markdown("---")
 st.info("🎯 **Análise de Quadrantes ML Dual** - Sistema avançado para identificação de value bets em Home e Away baseado em Aggression × HandScore")
