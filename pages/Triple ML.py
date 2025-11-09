@@ -537,28 +537,27 @@ def calcular_confianca_espacial(row):
 
 def criar_target_espacial_inteligente(row):
     """
-    Target binário que considera relações espaciais
+    Versão refinada: considera também a direção do vetor (dx) e momentum dominante.
     """
     try:
         dx = row.get('Aggression_Home', 0) - row.get('Aggression_Away', 0)
         dy = row.get('M_H', 0) - row.get('M_A', 0)
         dz = row.get('MT_H', 0) - row.get('MT_A', 0)
         dist = np.sqrt(dx**2 + dy**2 + dz**2)
-        
-        # Critérios espaciais para value bet
+
         distancia_ok = dist > 0.7
         angulo_estavel = abs(np.degrees(np.arctan2(dy, dx))) < 40 if dx != 0 else True
-        
-        # Cluster estável (usando fallback se não existir)
         cluster_val = row.get('Cluster3D_Label', 0)
-        cluster_confiavel = cluster_val in [0, 2]  # clusters mais estáveis
-        
-        if distancia_ok and angulo_estavel and cluster_confiavel:
-            return 1  # VALUE BET ESPACIAL
+        cluster_confiavel = cluster_val in [0, 2]
+
+        # 🧠 nova condição — só marca 1 se for favoritismo da casa e estabilidade
+        if distancia_ok and angulo_estavel and cluster_confiavel and dx > 0:
+            return 1
         else:
-            return 0  # EVITAR - alta instabilidade
+            return 0
     except:
         return 0
+
 
 def criar_target_zona_risco(row):
     """
@@ -664,7 +663,7 @@ def treinar_modelo_personalizado(history_subset, games_today, target_col):
         from sklearn.ensemble import RandomForestClassifier
         model = RandomForestClassifier(
             n_estimators=180,
-            max_depth=12,
+            max_depth=8,
             random_state=42,
             class_weight='balanced_subsample',
             n_jobs=-1
@@ -757,7 +756,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
 
     model_home = RandomForestClassifier(
         n_estimators=200,
-        max_depth=12,
+        max_depth=8,
         random_state=42,
         class_weight='balanced_subsample',
         n_jobs=-1
