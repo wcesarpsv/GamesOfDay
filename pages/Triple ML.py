@@ -648,8 +648,9 @@ def treinar_modelo_personalizado(history_subset, games_today, target_col):
             'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ', 
             'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
             'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',
-            'Vector_Sign', 'Magnitude_3D', "Asian_Line_Decimal"
+            'Vector_Sign', 'Magnitude_3D'
         ]
+        #, "Asian_Line_Decimal"
         features_cluster = ['Cluster3D_Label', 'C3D_ZScore', 'C3D_Sin', 'C3D_Cos']
 
         available_features = [f for f in features_3d + features_cluster if f in history_balanced.columns]
@@ -741,7 +742,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
         'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
         'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',
-        'Vector_Sign', 'Magnitude_3D', "Asian_Line_Decimal"
+        'Vector_Sign', 'Magnitude_3D'
     ]
 
     features_cluster = ['Cluster3D_Label', 'C3D_ZScore', 'C3D_Sin', 'C3D_Cos']
