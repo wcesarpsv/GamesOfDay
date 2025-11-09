@@ -771,27 +771,27 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     # 🎯 Novo Target: cobertura AH real
     # -------------------------------
     def calc_target_handicap_cover(row):
-    """
-    Target binário: 1 se o HOME cobre o handicap (linha já em perspectiva HOME),
-    0 se o HOME não cobre. PUSH fica de fora (NaN) para não enviesar.
-    """
-    gh = row.get("Goals_H_FT")
-    ga = row.get("Goals_A_FT")
-    line_home = row.get("Asian_Line_Decimal")
-
-    if pd.isna(gh) or pd.isna(ga) or pd.isna(line_home):
-        return np.nan
-
-    # Handicap asiático do HOME já convertido:
-    # adjusted = (gh + line_home) - ga
-    adjusted = (gh + line_home) - ga
-
-    if adjusted > 0:
-        return 1   # HOME cobre o handicap
-    elif adjusted < 0:
-        return 0   # HOME NÃO cobre (logo AWAY vence o handicap)
-    else:
-        return np.nan  # PUSH: ignora no treino (nem 1, nem 0)
+        """
+        Target binário: 1 se o HOME cobre o handicap (linha já em perspectiva HOME),
+        0 se o HOME não cobre. PUSH fica de fora (NaN) para não enviesar.
+        """
+        gh = row.get("Goals_H_FT")
+        ga = row.get("Goals_A_FT")
+        line_home = row.get("Asian_Line_Decimal")
+    
+        if pd.isna(gh) or pd.isna(ga) or pd.isna(line_home):
+            return np.nan
+    
+        # Handicap asiático do HOME já convertido:
+        # adjusted = (gh + line_home) - ga
+        adjusted = (gh + line_home) - ga
+    
+        if adjusted > 0:
+            return 1   # HOME cobre o handicap
+        elif adjusted < 0:
+            return 0   # HOME NÃO cobre (logo AWAY vence o handicap)
+        else:
+            return np.nan  # PUSH: ignora no treino (nem 1, nem 0)
 
 
     # -------------------------------
