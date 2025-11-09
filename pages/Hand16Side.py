@@ -2061,13 +2061,12 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
 
     #####################################################################
-
+    
     # Ordenar por score final 3D
     ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
-
+    
     # Colunas para exibição 3D
     colunas_3d = [
-        
         'League', "Liga_Confiabilidade_Label", 'Time',
         'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Recomendacao', 'ML_Side',
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
@@ -2077,10 +2076,10 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         'Asian_Line_Decimal', 'Handicap_Result',
         'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
     ]
-
+    
     # Filtrar colunas existentes
     cols_finais_3d = [c for c in colunas_3d if c in ranking_3d.columns]
-
+    
     # Função de estilo para tabela 3D
     def estilo_tabela_3d_quadrantes(df):
         def cor_classificacao_3d(valor):
@@ -2092,16 +2091,16 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             elif 'VALUE' in str(valor): return 'font-weight: bold'
             elif 'EVITAR' in str(valor): return 'font-weight: bold'
             else: return ''
-
+    
         colunas_para_estilo = []
         for col in ['Classificacao_Potencial_3D', 'Classificacao_Valor_Home', 'Classificacao_Valor_Away', 'Recomendacao']:
             if col in df.columns:
                 colunas_para_estilo.append(col)
-
+    
         styler = df.style
         if colunas_para_estilo:
             styler = styler.applymap(cor_classificacao_3d, subset=colunas_para_estilo)
-
+    
         # Aplicar gradientes para colunas numéricas
         if 'Quadrante_ML_Score_Home' in df.columns:
             styler = styler.background_gradient(subset=['Quadrante_ML_Score_Home'], cmap='RdYlGn')
@@ -2109,25 +2108,31 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             styler = styler.background_gradient(subset=['Quadrante_ML_Score_Away'], cmap='RdYlGn')
         if 'Score_Final_3D' in df.columns:
             styler = styler.background_gradient(subset=['Score_Final_3D'], cmap='RdYlGn')
-
-
+    
         return styler
-
+    
+    # Dicionário de formatação dinâmico
+    format_dict = {
+        'Goals_H_Today': '{:.0f}',
+        'Goals_A_Today': '{:.0f}',
+        'Asian_Line_Decimal': '{:.2f}',
+        'Home_Red': '{:.0f}',
+        'Away_Red': '{:.0f}',
+        'Profit_Quadrante': '{:.2f}',
+        'Quadrante_ML_Score_Home': '{:.1%}',
+        'Quadrante_ML_Score_Away': '{:.1%}',
+        'Score_Final_3D': '{:.1f}'
+    }
+    # Manter apenas colunas existentes
+    format_dict = {k: v for k, v in format_dict.items() if k in ranking_3d.columns}
+    
+    # Exibir tabela
     st.dataframe(
         estilo_tabela_3d_quadrantes(ranking_3d[cols_finais_3d])
-        .format({
-            'Goals_H_Today': '{:.0f}',
-            'Goals_A_Today': '{:.0f}',
-            'Asian_Line_Decimal': '{:.2f}',
-            'Home_Red': '{:.0f}',
-            'Away_Red': '{:.0f}',
-            'Profit_Quadrante': '{:.2f}',
-            'Quadrante_ML_Score_Home': '{:.1%}',
-            'Quadrante_ML_Score_Away': '{:.1%}',
-            'Score_Final_3D': '{:.1f}'
-        }, na_rep="-"),
+        .format(format_dict, na_rep="-"),
         use_container_width=True
     )
+
 
     # ---------------- ANÁLISES ESPECÍFICAS 3D ----------------
     analisar_padroes_3d_quadrantes_16_dual(ranking_3d)
