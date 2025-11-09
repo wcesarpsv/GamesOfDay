@@ -733,7 +733,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
 
 def treinar_modelos_multi_target(history, games_today):
     """
-    Treina modelos separados para cada target selecionado - CORREÇÃO COMPLETA
+    Treina modelos separados para cada target selecionado - CORREÇÃO FINAL
     """
     modelos = {}
     resultados = {}
@@ -750,17 +750,20 @@ def treinar_modelos_multi_target(history, games_today):
     if use_target_original:
         st.markdown("### 🎯 Modelo 1: Target Original (AH Home)")
         try:
-            # Usar função original que sabemos que funciona
             modelo_original, games_original = treinar_modelo_3d_clusters_single(history, games_today)
             modelos['ORIGINAL'] = modelo_original
-            resultados['ORIGINAL'] = games_original
+            resultados['ORIGINAL'] = games_original.copy()  # 🔑 FAZER CÓPIA
             
-            # Verificar se as colunas de confiança foram criadas
+            # Verificar colunas
             if 'ML_Confidence' in games_original.columns:
                 conf_media = games_original['ML_Confidence'].mean()
-                st.success(f"✅ Modelo Original treinado | Confiança: {conf_media:.1%}")
+                prob_media = games_original['Prob_Home'].mean()
+                home_count = len(games_original[games_original['ML_Side'] == 'HOME'])
+                away_count = len(games_original[games_original['ML_Side'] == 'AWAY'])
+                
+                st.success(f"✅ Original: {len(games_original)} jogos | Prob: {prob_media:.1%} | Conf: {conf_media:.1%} | H:{home_count} A:{away_count}")
             else:
-                st.success("✅ Modelo Original treinado")
+                st.success(f"✅ Modelo Original treinado - {len(games_original)} jogos")
                 
         except Exception as e:
             st.error(f"❌ Erro no modelo original: {e}")
@@ -769,22 +772,38 @@ def treinar_modelos_multi_target(history, games_today):
     if use_target_espacial:
         st.markdown("### 🧭 Modelo 2: Target Espacial Inteligente")
         try:
-            # Criar target espacial
+            # Usar CÓPIA do games_today original para não sobrescrever
+            games_espacial_base = games_today.copy()
+            
             history_espacial = history.copy()
             history_espacial['Target_Espacial'] = history_espacial.apply(criar_target_espacial_inteligente, axis=1)
             
-            st.info(f"📊 Distribuição Target Espacial: {history_espacial['Target_Espacial'].value_counts().to_dict()}")
+            dist_espacial = history_espacial['Target_Espacial'].value_counts().to_dict()
+            st.info(f"📊 Distribuição Target Espacial: {dist_espacial}")
             
-            # Verificar balanceamento
             if history_espacial['Target_Espacial'].nunique() > 1:
                 modelo_espacial, games_espacial = treinar_modelo_personalizado(
-                    history_espacial, games_today, 'Target_Espacial'
+                    history_espacial, games_espacial_base, 'Target_Espacial'
                 )
-                modelos['ESPACIAL'] = modelo_espacial
-                resultados['ESPACIAL'] = games_espacial
-                st.success(f"✅ Modelo Espacial treinado com {len(history_espacial)} jogos")
+                if modelo_espacial is not None:
+                    modelos['ESPACIAL'] = modelo_espacial
+                    resultados['ESPACIAL'] = games_espacial
+                    
+                    # Estatísticas
+                    prob_col = [c for c in games_espacial.columns if 'Prob_Target_Espacial' in c][0]
+                    conf_col = [c for c in games_espacial.columns if 'Confidence_Target_Espacial' in c][0]
+                    side_col = [c for c in games_espacial.columns if 'ML_Side_Target_Espacial' in c][0]
+                    
+                    prob_media = games_espacial[prob_col].mean()
+                    conf_media = games_espacial[conf_col].mean()
+                    home_count = len(games_espacial[games_espacial[side_col] == 'HOME'])
+                    away_count = len(games_espacial[games_espacial[side_col] == 'AWAY'])
+                    
+                    st.success(f"✅ Espacial: {len(games_espacial)} jogos | Prob: {prob_media:.1%} | Conf: {conf_media:.1%} | H:{home_count} A:{away_count}")
+                else:
+                    st.warning("❌ Modelo Espacial não foi treinado")
             else:
-                st.warning("⚠️ Target Espacial não tem variação (todas as classes iguais)")
+                st.warning("⚠️ Target Espacial não tem variação")
                 
         except Exception as e:
             st.error(f"❌ Erro no modelo espacial: {e}")
@@ -793,6 +812,9 @@ def treinar_modelos_multi_target(history, games_today):
     if use_target_zona_risco:
         st.markdown("### ⚠️ Modelo 3: Target Zona de Risco")
         try:
+            # Usar CÓPIA do games_today original
+            games_zona_base = games_today.copy()
+            
             history_zona = history.copy()
             history_zona['Zona_Risco'] = history_zona.apply(criar_target_zona_risco, axis=1)
             
@@ -803,15 +825,30 @@ def treinar_modelos_multi_target(history, games_today):
             mask_zona_verde = (history_zona['Zona_Risco'] == 'ZONA_VERDE') & (history_zona['Target_AH_Home'] == 1)
             history_zona.loc[mask_zona_verde, 'Target_Zona_Verde'] = 1
             
-            st.info(f"🎯 Target Zona Verde: {history_zona['Target_Zona_Verde'].value_counts().to_dict()}")
+            dist_zona = history_zona['Target_Zona_Verde'].value_counts().to_dict()
+            st.info(f"🎯 Target Zona Verde: {dist_zona}")
             
             if history_zona['Target_Zona_Verde'].nunique() > 1 and history_zona['Target_Zona_Verde'].sum() > 5:
                 modelo_zona, games_zona = treinar_modelo_personalizado(
-                    history_zona, games_today, 'Target_Zona_Verde'
+                    history_zona, games_zona_base, 'Target_Zona_Verde'
                 )
-                modelos['ZONA_RISCO'] = modelo_zona
-                resultados['ZONA_RISCO'] = games_zona
-                st.success(f"✅ Modelo Zona Risco treinado com {len(history_zona)} jogos")
+                if modelo_zona is not None:
+                    modelos['ZONA_RISCO'] = modelo_zona
+                    resultados['ZONA_RISCO'] = games_zona
+                    
+                    # Estatísticas
+                    prob_col = [c for c in games_zona.columns if 'Prob_Target_Zona_Verde' in c][0]
+                    conf_col = [c for c in games_zona.columns if 'Confidence_Target_Zona_Verde' in c][0]
+                    side_col = [c for c in games_zona.columns if 'ML_Side_Target_Zona_Verde' in c][0]
+                    
+                    prob_media = games_zona[prob_col].mean()
+                    conf_media = games_zona[conf_col].mean()
+                    home_count = len(games_zona[games_zona[side_col] == 'HOME'])
+                    away_count = len(games_zona[games_zona[side_col] == 'AWAY'])
+                    
+                    st.success(f"✅ Zona Risco: {len(games_zona)} jogos | Prob: {prob_media:.1%} | Conf: {conf_media:.1%} | H:{home_count} A:{away_count}")
+                else:
+                    st.warning("❌ Modelo Zona Risco não foi treinado")
             else:
                 st.warning("⚠️ Dados insuficientes para modelo zona risco")
                 
@@ -822,6 +859,9 @@ def treinar_modelos_multi_target(history, games_today):
     if use_target_confianca:
         st.markdown("### 📊 Modelo 4: Target Confiança Espacial")
         try:
+            # Usar CÓPIA do games_today original
+            games_confianca_base = games_today.copy()
+            
             history_confianca = history.copy()
             history_confianca['Confianca_Espacial'] = history_confianca.apply(calcular_confianca_espacial, axis=1)
             
@@ -832,15 +872,30 @@ def treinar_modelos_multi_target(history, games_today):
             mask_alta_conf = (history_confianca['Confianca_Espacial'] == 'ALTA_CONFIANCA') & (history_confianca['Target_AH_Home'] == 1)
             history_confianca.loc[mask_alta_conf, 'Target_Alta_Confianca'] = 1
             
-            st.info(f"🎯 Target Alta Confiança: {history_confianca['Target_Alta_Confianca'].value_counts().to_dict()}")
+            dist_confianca = history_confianca['Target_Alta_Confianca'].value_counts().to_dict()
+            st.info(f"🎯 Target Alta Confiança: {dist_confianca}")
             
             if history_confianca['Target_Alta_Confianca'].nunique() > 1 and history_confianca['Target_Alta_Confianca'].sum() > 5:
                 modelo_confianca, games_confianca = treinar_modelo_personalizado(
-                    history_confianca, games_today, 'Target_Alta_Confianca'
+                    history_confianca, games_confianca_base, 'Target_Alta_Confianca'
                 )
-                modelos['CONFIANCA'] = modelo_confianca
-                resultados['CONFIANCA'] = games_confianca
-                st.success(f"✅ Modelo Confiança treinado com {len(history_confianca)} jogos")
+                if modelo_confianca is not None:
+                    modelos['CONFIANCA'] = modelo_confianca
+                    resultados['CONFIANCA'] = games_confianca
+                    
+                    # Estatísticas
+                    prob_col = [c for c in games_confianca.columns if 'Prob_Target_Alta_Confianca' in c][0]
+                    conf_col = [c for c in games_confianca.columns if 'Confidence_Target_Alta_Confianca' in c][0]
+                    side_col = [c for c in games_confianca.columns if 'ML_Side_Target_Alta_Confianca' in c][0]
+                    
+                    prob_media = games_confianca[prob_col].mean()
+                    conf_media = games_confianca[conf_col].mean()
+                    home_count = len(games_confianca[games_confianca[side_col] == 'HOME'])
+                    away_count = len(games_confianca[games_confianca[side_col] == 'AWAY'])
+                    
+                    st.success(f"✅ Confiança: {len(games_confianca)} jogos | Prob: {prob_media:.1%} | Conf: {conf_media:.1%} | H:{home_count} A:{away_count}")
+                else:
+                    st.warning("❌ Modelo Confiança não foi treinado")
             else:
                 st.warning("⚠️ Dados insuficientes para modelo confiança")
                 
@@ -863,7 +918,7 @@ def treinar_modelos_multi_target(history, games_today):
 
 def exibir_comparativo_modelos(resultados):
     """
-    Exibe comparação lado a lado dos diferentes modelos
+    Exibe comparação lado a lado dos diferentes modelos - CORRIGIDO
     """
     st.markdown("## 📊 Comparativo de Modelos")
     
@@ -879,16 +934,23 @@ def exibir_comparativo_modelos(resultados):
             # Estatísticas básicas
             total_jogos = len(df)
             
-            # Encontrar colunas de probabilidade
-            prob_cols = [c for c in df.columns if 'Prob_' in c and 'Home' in c]
-            confidence_cols = [c for c in df.columns if 'Confidence_' in c]
-            ml_side_cols = [c for c in df.columns if 'ML_Side_' in c]
+            # Encontrar colunas específicas de cada modelo
+            if modelo_nome == 'ORIGINAL':
+                prob_cols = ['Prob_Home']
+                confidence_cols = ['ML_Confidence']
+                ml_side_cols = ['ML_Side']
+            else:
+                # Para modelos personalizados, buscar colunas dinamicamente
+                prob_cols = [c for c in df.columns if 'Prob_' in c and 'Target_' in c]
+                confidence_cols = [c for c in df.columns if 'Confidence_' in c and 'Target_' in c]
+                ml_side_cols = [c for c in df.columns if 'ML_Side_' in c and 'Target_' in c]
             
-            prob_media = df[prob_cols[0]].mean() if prob_cols else 0
-            confidence_media = df[confidence_cols[0]].mean() if confidence_cols else 0
+            # Calcular estatísticas
+            prob_media = df[prob_cols[0]].mean() if prob_cols and prob_cols[0] in df.columns else 0
+            confidence_media = df[confidence_cols[0]].mean() if confidence_cols and confidence_cols[0] in df.columns else 0
             
             # Contar recomendações
-            if ml_side_cols:
+            if ml_side_cols and ml_side_cols[0] in df.columns:
                 home_recomendations = len(df[df[ml_side_cols[0]] == 'HOME'])
                 away_recomendations = len(df[df[ml_side_cols[0]] == 'AWAY'])
             else:
@@ -897,8 +959,8 @@ def exibir_comparativo_modelos(resultados):
             comparativo.append({
                 'Modelo': modelo_nome,
                 'Total Jogos': total_jogos,
-                'Prob Média': prob_media,  # Manter como float
-                'Confiança Média': confidence_media,  # Manter como float
+                'Prob Média': prob_media,
+                'Confiança Média': confidence_media,
                 'Recomendações HOME': home_recomendations,
                 'Recomendações AWAY': away_recomendations
             })
@@ -908,68 +970,59 @@ def exibir_comparativo_modelos(resultados):
         
         # Criar DataFrame para exibição (com valores formatados)
         df_display = df_comparativo.copy()
-        df_display['Prob Média'] = df_display['Prob Média'].apply(lambda x: f"{x:.1%}")
-        df_display['Confiança Média'] = df_display['Confiança Média'].apply(lambda x: f"{x:.1%}")
+        df_display['Prob Média %'] = df_display['Prob Média'].apply(lambda x: f"{x:.1%}")
+        df_display['Confiança Média %'] = df_display['Confiança Média'].apply(lambda x: f"{x:.1%}")
         
         # Reordenar colunas para exibição
-        df_display = df_display[['Modelo', 'Total Jogos', 'Prob Média', 'Confiança Média', 
+        df_display = df_display[['Modelo', 'Total Jogos', 'Prob Média %', 'Confiança Média %', 
                                'Recomendações HOME', 'Recomendações AWAY']]
         
-        # Exibir sem background_gradient para evitar o erro
+        # Exibir tabela
         st.dataframe(df_display, use_container_width=True)
-        
-        # Exibir métricas em cards para melhor visualização
-        st.markdown("### 📈 Métricas dos Modelos")
-        cols = st.columns(len(df_comparativo))
-        
-        for idx, (_, row) in enumerate(df_comparativo.iterrows()):
-            with cols[idx]:
-                st.metric(
-                    label=f"**{row['Modelo']}**",
-                    value=f"{row['Prob Média']:.1%}",
-                    delta=f"Conf: {row['Confiança Média']:.1%}",
-                    help=f"Total: {row['Total Jogos']} jogos | HOME: {row['Recomendações HOME']} | AWAY: {row['Recomendações AWAY']}"
-                )
         
         # Exibir recomendações de cada modelo
         st.markdown("### 🎯 Recomendações Detalhadas por Modelo")
         for modelo_nome, df in resultados.items():
             with st.expander(f"📋 {modelo_nome} - {len(df)} jogos", expanded=False):
-                # Encontrar colunas relevantes
-                prob_cols = [c for c in df.columns if 'Prob_' in c and 'Home' in c]
-                ml_side_cols = [c for c in df.columns if 'ML_Side_' in c]
-                confidence_cols = [c for c in df.columns if 'Confidence_' in c]
+                # Encontrar colunas relevantes para cada modelo
+                if modelo_nome == 'ORIGINAL':
+                    prob_cols = ['Prob_Home']
+                    ml_side_cols = ['ML_Side']
+                    confidence_cols = ['ML_Confidence']
+                else:
+                    prob_cols = [c for c in df.columns if 'Prob_' in c and 'Target_' in c]
+                    ml_side_cols = [c for c in df.columns if 'ML_Side_' in c and 'Target_' in c]
+                    confidence_cols = [c for c in df.columns if 'Confidence_' in c and 'Target_' in c]
                 
                 if prob_cols and ml_side_cols and confidence_cols:
-                    cols_exibir = ['Home', 'Away', 'League', 'Goals_H_Today','Goals_A_Today',
-                                  prob_cols[0], ml_side_cols[0], confidence_cols[0]]
-                    
+                    cols_exibir = ['Home', 'Away', 'League'] + prob_cols + ml_side_cols + confidence_cols
                     cols_exibir = [c for c in cols_exibir if c in df.columns]
                     
                     # Formatar as colunas numéricas para exibição
                     display_df = df[cols_exibir].copy()
-                    if prob_cols[0] in display_df.columns:
-                        display_df[prob_cols[0]] = display_df[prob_cols[0]].apply(lambda x: f"{x:.1%}")
-                    if confidence_cols[0] in display_df.columns:
-                        display_df[confidence_cols[0]] = display_df[confidence_cols[0]].apply(lambda x: f"{x:.1%}")
+                    for col in prob_cols + confidence_cols:
+                        if col in display_df.columns:
+                            display_df[col] = display_df[col].apply(lambda x: f"{x:.1%}")
                     
                     # Ordenar por confiança
                     if confidence_cols[0] in df.columns:
                         display_df = display_df.sort_values(confidence_cols[0], ascending=False)
                     
-                    st.dataframe(display_df, use_container_width=True)
+                    st.dataframe(display_df.head(20), use_container_width=True)
                     
                     # Estatísticas rápidas
-                    home_count = len(display_df[display_df[ml_side_cols[0]] == 'HOME'])
-                    away_count = len(display_df[display_df[ml_side_cols[0]] == 'AWAY'])
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("🏠 Recomendações HOME", home_count)
-                    with col2:
-                        st.metric("✈️ Recomendações AWAY", away_count)
-                    with col3:
-                        st.metric("📊 Confiança Média", f"{df[confidence_cols[0]].mean():.1%}")
+                    if ml_side_cols[0] in df.columns:
+                        home_count = len(df[df[ml_side_cols[0]] == 'HOME'])
+                        away_count = len(df[df[ml_side_cols[0]] == 'AWAY'])
+                        
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("🏠 Recomendações HOME", home_count)
+                        with col2:
+                            st.metric("✈️ Recomendações AWAY", away_count)
+                        with col3:
+                            if confidence_cols[0] in df.columns:
+                                st.metric("📊 Confiança Média", f"{df[confidence_cols[0]].mean():.1%}")
 
 # ============================================================
 # 🚀 EXECUÇÃO PRINCIPAL
