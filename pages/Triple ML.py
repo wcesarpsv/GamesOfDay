@@ -925,7 +925,7 @@ def exibir_comparativo_modelos(resultados):
                     if confidence_cols[0] in df.columns:
                         display_df = display_df.sort_values(confidence_cols[0], ascending=False)
                     
-                    st.dataframe(display_df.head(20), use_container_width=True)
+                    st.dataframe(display_df, use_container_width=True)
                     
                     # Estatísticas rápidas
                     home_count = len(display_df[display_df[ml_side_cols[0]] == 'HOME'])
