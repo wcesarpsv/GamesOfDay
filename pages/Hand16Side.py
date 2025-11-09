@@ -2073,9 +2073,6 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
         'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
         'Score_Final_3D', 'Classificacao_Potencial_3D',
-        'Classificacao_Valor_Home', 'Classificacao_Valor_Away',
-        # Colunas 3D
-        'Quadrant_Dist_3D', 'Momentum_Diff',
         # Colunas Live Score
         'Asian_Line_Decimal', 'Handicap_Result',
         'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
