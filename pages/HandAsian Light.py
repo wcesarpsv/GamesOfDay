@@ -838,7 +838,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     qa = pd.get_dummies(history["Quadrante_Away"], prefix="QA")
     leagues = pd.get_dummies(history["League"], prefix="League")
     extras = history[
-        ["Quadrant_Dist", "Quadrant_Separation", "Quadrant_Angle_Geometric", "Quadrant_Angle_Normalized"]
+        ["Quadrant_Dist", "Quadrant_Separation", "Quadrant_Angle_Geometric", "Quadrant_Angle_Normalized","Asian_Line_Decimal"]
     ].fillna(0)
 
     X = pd.concat([leagues, extras, qh, qa], axis=1)
@@ -867,7 +867,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     qa_today = pd.get_dummies(games_today["Quadrante_Away"], prefix="QA").reindex(columns=qa.columns, fill_value=0)
     leagues_today = pd.get_dummies(games_today["League"], prefix="League").reindex(columns=leagues.columns, fill_value=0)
     extras_today = games_today[
-        ["Quadrant_Dist", "Quadrant_Separation", "Quadrant_Angle_Geometric", "Quadrant_Angle_Normalized"]
+        ["Quadrant_Dist", "Quadrant_Separation", "Quadrant_Angle_Geometric", "Quadrant_Angle_Normalized","Asian_Line_Decimal"]
     ].fillna(0)
 
     X_today = pd.concat([leagues_today, extras_today, qh_today, qa_today], axis=1)
