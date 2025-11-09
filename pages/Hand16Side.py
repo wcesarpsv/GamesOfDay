@@ -2061,6 +2061,9 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
 
     #####################################################################
+    #####################################################################
+    # ✅ BLOCO SEGURO PARA EXIBIÇÃO 3D (SEM ERROS DE RENDERIZAÇÃO)
+    #####################################################################
     
     # Ordenar por score final 3D
     ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
@@ -2080,38 +2083,44 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # Filtrar colunas existentes
     cols_finais_3d = [c for c in colunas_3d if c in ranking_3d.columns]
     
-    # Função de estilo para tabela 3D
+    # ================================
+    # 🎨 Estilo visual (com proteção)
+    # ================================
     def estilo_tabela_3d_quadrantes(df):
+        """Aplica cores, gradientes e negrito condicional com segurança."""
         def cor_classificacao_3d(valor):
-            if '🌟 ALTO POTENCIAL 3D' in str(valor): return 'font-weight: bold'
-            elif '💼 VALOR SOLIDO 3D' in str(valor): return 'font-weight: bold'
-            elif '🔴 BAIXO POTENCIAL 3D' in str(valor): return 'font-weight: bold'
-            elif '🏆 ALTO VALOR' in str(valor): return 'font-weight: bold'
-            elif '🔴 ALTO RISCO' in str(valor): return 'font-weight: bold'
-            elif 'VALUE' in str(valor): return 'font-weight: bold'
-            elif 'EVITAR' in str(valor): return 'font-weight: bold'
-            else: return ''
+            if any(txt in str(valor) for txt in [
+                '🌟 ALTO POTENCIAL 3D', '💼 VALOR SOLIDO 3D',
+                '🔴 BAIXO POTENCIAL 3D', '🏆 ALTO VALOR',
+                '🔴 ALTO RISCO', 'VALUE', 'EVITAR'
+            ]):
+                return 'font-weight: bold'
+            return ''
     
-        colunas_para_estilo = []
-        for col in ['Classificacao_Potencial_3D', 'Classificacao_Valor_Home', 'Classificacao_Valor_Away', 'Recomendacao']:
-            if col in df.columns:
-                colunas_para_estilo.append(col)
+        colunas_para_estilo = [c for c in [
+            'Classificacao_Potencial_3D',
+            'Classificacao_Valor_Home',
+            'Classificacao_Valor_Away',
+            'Recomendacao'
+        ] if c in df.columns]
     
+        # Cria styler base
         styler = df.style
+    
+        # Aplicar formatações condicionais
         if colunas_para_estilo:
             styler = styler.applymap(cor_classificacao_3d, subset=colunas_para_estilo)
     
-        # Aplicar gradientes para colunas numéricas
-        if 'Quadrante_ML_Score_Home' in df.columns:
-            styler = styler.background_gradient(subset=['Quadrante_ML_Score_Home'], cmap='RdYlGn')
-        if 'Quadrante_ML_Score_Away' in df.columns:
-            styler = styler.background_gradient(subset=['Quadrante_ML_Score_Away'], cmap='RdYlGn')
-        if 'Score_Final_3D' in df.columns:
-            styler = styler.background_gradient(subset=['Score_Final_3D'], cmap='RdYlGn')
+        # Gradientes de performance
+        for col in ['Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 'Score_Final_3D']:
+            if col in df.columns:
+                styler = styler.background_gradient(subset=[col], cmap='RdYlGn')
     
         return styler
     
-    # Dicionário de formatação dinâmico
+    # ================================
+    # 🧮 Dicionário de formatação dinâmico
+    # ================================
     format_dict = {
         'Goals_H_Today': '{:.0f}',
         'Goals_A_Today': '{:.0f}',
@@ -2123,15 +2132,26 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         'Quadrante_ML_Score_Away': '{:.1%}',
         'Score_Final_3D': '{:.1f}'
     }
-    # Manter apenas colunas existentes
     format_dict = {k: v for k, v in format_dict.items() if k in ranking_3d.columns}
     
-    # Exibir tabela
-    st.dataframe(
-        estilo_tabela_3d_quadrantes(ranking_3d[cols_finais_3d])
-        .format(format_dict, na_rep="-"),
-        use_container_width=True
-    )
+    # ================================
+    # 💾 Renderização segura
+    # ================================
+    if not ranking_3d.empty:
+        # Copiar e resetar o índice (evita conflito interno no Streamlit)
+        df_display = ranking_3d[cols_finais_3d].copy().reset_index(drop=True)
+    
+        # Chave dinâmica: muda se tamanho ou colunas mudarem
+        table_key = f"ranking_3d_{len(df_display)}_{len(df_display.columns)}"
+    
+        st.dataframe(
+            estilo_tabela_3d_quadrantes(df_display).format(format_dict, na_rep="-"),
+            use_container_width=True,
+            key=table_key
+        )
+    else:
+        st.info("⚠️ Nenhum dado disponível para exibição 3D.")
+
 
 
     # ---------------- ANÁLISES ESPECÍFICAS 3D ----------------
