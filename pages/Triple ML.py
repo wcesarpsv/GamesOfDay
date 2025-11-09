@@ -825,6 +825,10 @@ def treinar_modelos_multi_target(history, games_today):
 # 📊 PAINEL COMPARATIVO DE RESULTADOS (CORRIGIDO)
 # ============================================================
 
+# ============================================================
+# 📊 PAINEL COMPARATIVO DE RESULTADOS (CORRIGIDO DEFINITIVO)
+# ============================================================
+
 def exibir_comparativo_modelos(resultados):
     """
     Exibe comparação lado a lado dos diferentes modelos
@@ -861,10 +865,8 @@ def exibir_comparativo_modelos(resultados):
             comparativo.append({
                 'Modelo': modelo_nome,
                 'Total Jogos': total_jogos,
-                'Prob Média': prob_media,  # Manter como float para o gradiente
+                'Prob Média': prob_media,  # Manter como float
                 'Confiança Média': confidence_media,  # Manter como float
-                'Prob Média %': f"{prob_media:.1%}",  # Versão formatada para exibição
-                'Confiança Média %': f"{confidence_media:.1%}",  # Versão formatada
                 'Recomendações HOME': home_recomendations,
                 'Recomendações AWAY': away_recomendations
             })
@@ -872,17 +874,35 @@ def exibir_comparativo_modelos(resultados):
     if comparativo:
         df_comparativo = pd.DataFrame(comparativo)
         
-        # Exibir versão formatada para o usuário
-        st.dataframe(
-            df_comparativo[['Modelo', 'Total Jogos', 'Prob Média %', 'Confiança Média %', 
-                          'Recomendações HOME', 'Recomendações AWAY']]
-            .style.background_gradient(subset=['Prob Média %', 'Confiança Média %'], cmap='RdYlGn'),
-            use_container_width=True
-        )
+        # Criar DataFrame para exibição (com valores formatados)
+        df_display = df_comparativo.copy()
+        df_display['Prob Média'] = df_display['Prob Média'].apply(lambda x: f"{x:.1%}")
+        df_display['Confiança Média'] = df_display['Confiança Média'].apply(lambda x: f"{x:.1%}")
+        
+        # Reordenar colunas para exibição
+        df_display = df_display[['Modelo', 'Total Jogos', 'Prob Média', 'Confiança Média', 
+                               'Recomendações HOME', 'Recomendações AWAY']]
+        
+        # Exibir sem background_gradient para evitar o erro
+        st.dataframe(df_display, use_container_width=True)
+        
+        # Exibir métricas em cards para melhor visualização
+        st.markdown("### 📈 Métricas dos Modelos")
+        cols = st.columns(len(df_comparativo))
+        
+        for idx, (_, row) in enumerate(df_comparativo.iterrows()):
+            with cols[idx]:
+                st.metric(
+                    label=f"**{row['Modelo']}**",
+                    value=f"{row['Prob Média']:.1%}",
+                    delta=f"Conf: {row['Confiança Média']:.1%}",
+                    help=f"Total: {row['Total Jogos']} jogos | HOME: {row['Recomendações HOME']} | AWAY: {row['Recomendações AWAY']}"
+                )
         
         # Exibir recomendações de cada modelo
+        st.markdown("### 🎯 Recomendações Detalhadas por Modelo")
         for modelo_nome, df in resultados.items():
-            with st.expander(f"🎯 Recomendações - {modelo_nome}", expanded=False):
+            with st.expander(f"📋 {modelo_nome} - {len(df)} jogos", expanded=False):
                 # Encontrar colunas relevantes
                 prob_cols = [c for c in df.columns if 'Prob_' in c and 'Home' in c]
                 ml_side_cols = [c for c in df.columns if 'ML_Side_' in c]
@@ -901,7 +921,23 @@ def exibir_comparativo_modelos(resultados):
                     if confidence_cols[0] in display_df.columns:
                         display_df[confidence_cols[0]] = display_df[confidence_cols[0]].apply(lambda x: f"{x:.1%}")
                     
-                    st.dataframe(display_df, use_container_width=True)
+                    # Ordenar por confiança
+                    if confidence_cols[0] in df.columns:
+                        display_df = display_df.sort_values(confidence_cols[0], ascending=False)
+                    
+                    st.dataframe(display_df.head(20), use_container_width=True)
+                    
+                    # Estatísticas rápidas
+                    home_count = len(display_df[display_df[ml_side_cols[0]] == 'HOME'])
+                    away_count = len(display_df[display_df[ml_side_cols[0]] == 'AWAY'])
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("🏠 Recomendações HOME", home_count)
+                    with col2:
+                        st.metric("✈️ Recomendações AWAY", away_count)
+                    with col3:
+                        st.metric("📊 Confiança Média", f"{df[confidence_cols[0]].mean():.1%}")
 
 # ============================================================
 # 🚀 EXECUÇÃO PRINCIPAL
