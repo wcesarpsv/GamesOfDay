@@ -2125,9 +2125,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             'Profit_Quadrante': '{:.2f}',
             'Quadrante_ML_Score_Home': '{:.1%}',
             'Quadrante_ML_Score_Away': '{:.1%}',
-            'Score_Final_3D': '{:.1f}',
-            'Quadrant_Dist_3D': '{:.2f}',
-            'Momentum_Diff': '{:.2f}'
+            'Score_Final_3D': '{:.1f}'
         }, na_rep="-"),
         use_container_width=True
     )
