@@ -778,14 +778,13 @@ def treinar_modelo_quadrantes_dual(history, games_today):
         gh = row.get("Goals_H_FT")
         ga = row.get("Goals_A_FT")
         line_home = row.get("Asian_Line_Decimal")
-    
+
         if pd.isna(gh) or pd.isna(ga) or pd.isna(line_home):
             return np.nan
-    
+
         # Handicap asiático do HOME já convertido:
-        # adjusted = (gh + line_home) - ga
         adjusted = (gh + line_home) - ga
-    
+
         if adjusted > 0:
             return 1   # HOME cobre o handicap
         elif adjusted < 0:
@@ -793,6 +792,15 @@ def treinar_modelo_quadrantes_dual(history, games_today):
         else:
             return np.nan  # PUSH: ignora no treino (nem 1, nem 0)
 
+    # 🧾 AQUI ESTAVA FALTANDO: aplicar e criar as colunas!
+    history["Target_AH_Home"] = history.apply(calc_target_handicap_cover, axis=1)
+    history = history.dropna(subset=["Target_AH_Home", "Asian_Line_Decimal"])
+    history["Target_AH_Home"] = history["Target_AH_Home"].astype(int)
+    history["Target_AH_Away"] = 1 - history["Target_AH_Home"]
+
+    if "Target_AH_Home" not in history.columns or history["Target_AH_Home"].empty:
+        st.error("❌ Coluna Target_AH_Home não foi criada — verifique se Asian_Line_Decimal existe.")
+        return None, None, games_today
 
     # -------------------------------
     # 🧱 Preparar features
@@ -855,6 +863,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
 
     st.success("✅ Modelo dual atualizado com foco em cobertura de Handicap (AH)!")
     return model_home, model_away, games_today
+
 
 
 
