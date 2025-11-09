@@ -135,23 +135,7 @@ def calculate_ah_home_target(row):
     else:
         return 0   # Push (tratado como 0 para manter consistência)
 
-# ------------------------------------------------------------
-# Aplicação do cálculo do target no histórico
-# ------------------------------------------------------------
-history["Target_AH_Home"] = history.apply(calculate_ah_home_target, axis=1)
 
-# Remover partidas inválidas
-history = history.dropna(subset=["Target_AH_Home"]).copy()
-
-# Garantir tipo inteiro
-history["Target_AH_Home"] = history["Target_AH_Home"].astype(int)
-
-# Target alternativo para o time visitante (mantendo compatibilidade dual)
-history["Target_AH_Away"] = 1 - history["Target_AH_Home"]
-
-# Verificação de consistência mínima
-if history["Target_AH_Home"].nunique() < 2:
-    st.warning("⚠️ Target insuficiente (todas as classes iguais) — verifique colunas de gols/linha.")
 
 
 
@@ -339,6 +323,29 @@ history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
 history["Target_AH_Home"] = history.apply(
     lambda r: calculate_ah_home_target(r["Margin"], r["Asian_Line"]), axis=1
 )
+
+
+
+
+# ------------------------------------------------------------
+# Aplicação do cálculo do target no histórico
+# ------------------------------------------------------------
+history["Target_AH_Home"] = history.apply(calculate_ah_home_target, axis=1)
+
+# Remover partidas inválidas
+history = history.dropna(subset=["Target_AH_Home"]).copy()
+
+# Garantir tipo inteiro
+history["Target_AH_Home"] = history["Target_AH_Home"].astype(int)
+
+# Target alternativo para o time visitante (mantendo compatibilidade dual)
+history["Target_AH_Away"] = 1 - history["Target_AH_Home"]
+
+# Verificação de consistência mínima
+if history["Target_AH_Home"].nunique() < 2:
+    st.warning("⚠️ Target insuficiente (todas as classes iguais) — verifique colunas de gols/linha.")
+
+
 
 # ---------------- SISTEMA 3D DE 16 QUADRANTES ----------------
 st.markdown("## 🎯 Sistema 3D de 16 Quadrantes")
