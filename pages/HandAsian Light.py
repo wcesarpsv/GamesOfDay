@@ -1108,8 +1108,7 @@ def treinar_ml2_handicap_integrada_pro(history, games_today, model_home, model_a
     st.markdown("## ⚙️ Treinando ML2 Pro – Handicap Cover com Contexto da ML1")
 
 
-
-    ########################## TESTE ###########################
+########################## TESTE ###########################
 
 
     
