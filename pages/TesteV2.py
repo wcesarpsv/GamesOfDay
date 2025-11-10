@@ -1060,6 +1060,36 @@ st.info("""
 
 st.markdown("## 🧠 ML em 2 Estágios - Regressão à Média + Principal")
 
+
+# 🔥 CORREÇÃO CRÍTICA: GARANTIR QUE AS DISTÂNCIAS EXISTAM
+st.info("🔧 Garantindo cálculo de distâncias...")
+
+# Aplicar cálculo de distâncias se não existirem
+if 'Quadrant_Dist' not in history.columns:
+    history = calcular_distancias_quadrantes(history)
+    st.success("✅ Distâncias calculadas para histórico")
+
+if 'Quadrant_Dist' not in games_today.columns:
+    games_today = calcular_distancias_quadrantes(games_today) 
+    st.success("✅ Distâncias calculadas para jogos de hoje")
+
+# VERIFICAR SE AS COLUNAS NECESSÁRIAS EXISTEM
+required_distance_cols = ['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 'Quadrant_Cos', 'Quadrant_Angle']
+missing_in_history = [col for col in required_distance_cols if col not in history.columns]
+missing_in_today = [col for col in required_distance_cols if col not in games_today.columns]
+
+if missing_in_history:
+    st.error(f"❌ Colunas de distância faltando no histórico: {missing_in_history}")
+    # Criar colunas vazias para evitar erro
+    for col in missing_in_history:
+        history[col] = 0.0
+
+if missing_in_today:
+    st.error(f"❌ Colunas de distância faltando em games_today: {missing_in_today}") 
+    for col in missing_in_today:
+        games_today[col] = 0.0
+        
+
 def calcular_regressao_media_avancada(df):
     """Calcula features avançadas de regressão à média"""
     df = df.copy()
