@@ -1311,6 +1311,121 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 else:
     st.info("⚠️ Aguardando dados para gerar ranking de 16 quadrantes")
 
+###############################
+
+
+
+# ============================================================
+# 🎯 ANÁLISE ESTRATÉGICA AUTOMÁTICA (Z-Scores + Handicap)
+# ============================================================
+
+import numpy as np
+import pandas as pd
+import streamlit as st
+
+st.subheader("📊 Análise Estratégica – M & MT + Handicap")
+
+# --- 1️⃣ Deltas principais
+df["Delta_M"] = df["M_H"] - df["M_A"]      # força estrutural (liga)
+df["Delta_MT"] = df["MT_H"] - df["MT_A"]   # forma recente (vs padrão próprio)
+df["Asian_Line_Decimal"] = df["Asian_Line_Decimal"].astype(float)
+
+# --- 2️⃣ Vetor: ângulo e distância
+df["Quadrant_Angle"] = np.degrees(np.arctan2(df["Delta_MT"], df["Delta_M"]))
+df["Quadrant_Dist"] = np.sqrt(df["Delta_M"]**2 + df["Delta_MT"]**2)
+
+# --- 3️⃣ Tipo de desequilíbrio
+def classify_desequilibrio(angle, dist):
+    if abs(angle) > 60:
+        return "Forma-Recente"
+    elif abs(angle) < 30:
+        return "Força-Liga"
+    elif 30 <= abs(angle) <= 60 and dist > 0.5:
+        return "Consistente"
+    else:
+        return "Equilibrado"
+
+df["Tipo_Desequilibrio"] = df.apply(
+    lambda x: classify_desequilibrio(x["Quadrant_Angle"], x["Quadrant_Dist"]), axis=1
+)
+
+# --- 4️⃣ Lado provável (quem tende a cobrir o handicap)
+def predict_side(row):
+    line = row["Asian_Line_Decimal"]
+    dM = row["Delta_M"]
+    dMT = row["Delta_MT"]
+
+    # Favorito é o Home (linha negativa)
+    if line < 0:
+        # favorito em má forma → value no away
+        if dMT < 0:
+            return "Away"
+        # favorito forte e em boa forma → tende a cobrir
+        elif dM > 0 and dMT > 0:
+            return "Home"
+        else:
+            return "Equilibrado"
+
+    # Favorito é o Away (linha positiva)
+    elif line > 0:
+        if dMT > 0:
+            return "Away"
+        else:
+            return "Home"
+
+    # Linha zero → neutro
+    return "Equilibrado"
+
+df["Valor_Sugerido"] = df.apply(predict_side, axis=1)
+
+# --- 5️⃣ Grau de confiança
+def classify_confidence(row):
+    if row["Quadrant_Dist"] >= 1.2:
+        return "Alta"
+    elif row["Quadrant_Dist"] >= 0.6:
+        return "Moderada"
+    else:
+        return "Baixa"
+
+df["Confiança_Modelo"] = df.apply(classify_confidence, axis=1)
+
+# --- 6️⃣ Tendência contínua de cobertura (para ML supervisionada)
+df["Cover_Tendency"] = (
+    (df["Delta_M"] * np.sign(-df["Asian_Line_Decimal"])) +
+    (df["Delta_MT"] * np.sign(-df["Asian_Line_Decimal"]))
+)
+
+# ============================================================
+# 🧩 Exibição da análise
+# ============================================================
+cols_show = [
+    "Home", "Away", "Asian_Line_Decimal", 
+    "Delta_M", "Delta_MT", "Tipo_Desequilibrio", 
+    "Valor_Sugerido", "Confiança_Modelo", "Cover_Tendency"
+]
+
+st.dataframe(
+    df[cols_show].style
+      .apply(lambda s: ["background-color: #e0ffe0" if v=="Home" else 
+                        "background-color: #ffe0e0" if v=="Away" else "" 
+                        for v in s], subset=["Valor_Sugerido"])
+      .highlight_max(subset=["Cover_Tendency"], color="#c1f0c1")
+      .highlight_min(subset=["Cover_Tendency"], color="#f0c1c1"),
+    use_container_width=True
+)
+
+# ============================================================
+# 💡 Observação
+# ============================================================
+st.info("""
+✅ **Lógica da análise:**
+- `Delta_M` → força relativa na liga  
+- `Delta_MT` → forma atual comparada ao padrão próprio  
+- `Tipo_Desequilibrio` → Forma-Recente, Força-Liga, Consistente ou Equilibrado  
+- `Valor_Sugerido` → lado com maior probabilidade de cobrir o handicap  
+- `Cover_Tendency` → métrica contínua usada como feature para ML (positivo = Home, negativo = Away)
+""")
+
 
 
 
