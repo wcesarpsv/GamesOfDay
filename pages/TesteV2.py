@@ -1055,30 +1055,149 @@ st.info("""
 
 
 
-##### BLOCO 9: MODELO ML PARA 16 QUADRANTES #####
 
-def treinar_modelo_quadrantes_16_dual_estrategico(history, games_today):
-    """
-    Treina modelo ML para Home e Away com base nos 16 quadrantes + análise estratégica
-    """
-    # Garantir cálculo das distâncias e análise estratégica
-    history = calcular_distancias_quadrantes(history)
-    history = calcular_analise_estrategica(history)
-    history = enriquecer_features_ml(history)
+##### BLOCO 14: SISTEMA DE REGRESSÃO À MÉDIA + ML EM 2 ESTÁGIOS #####
+
+st.markdown("## 🧠 ML em 2 Estágios - Regressão à Média + Principal")
+
+def calcular_regressao_media_avancada(df):
+    """Calcula features avançadas de regressão à média"""
+    df = df.copy()
     
-    games_today = calcular_distancias_quadrantes(games_today)
-    games_today = calcular_analise_estrategica(games_today)
-    games_today = enriquecer_features_ml(games_today)
+    # Verificar se colunas necessárias existem
+    required_cols = ['M_H', 'MT_H', 'M_A', 'MT_A']
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    
+    if missing_cols:
+        st.warning(f"⚠️ Colunas ausentes para regressão: {missing_cols}")
+        # Inicializar colunas com NaN
+        for col in ['Z_Excesso_M_Home', 'Z_Excesso_MT_Home', 'Z_Excesso_M_Away', 'Z_Excesso_MT_Away',
+                   'Fator_Regressao_Home', 'Fator_Regressao_Away', 'Historico_Extremos_Home', 
+                   'Historico_Extremos_Away', 'Tendencia_Regressao_Home', 'Tendencia_Regressao_Away']:
+            df[col] = np.nan
+        return df
+    
+    # 1. ESTATÍSTICAS BÁSICAS DA LIGA
+    media_liga_M = df['M_H'].mean()
+    media_liga_MT = df['MT_H'].mean()
+    std_M = df['M_H'].std()
+    std_MT = df['MT_H'].std()
+    
+    # 2. Z-SCORES DE EXCESSO
+    df['Z_Excesso_M_Home'] = (df['M_H'] - media_liga_M) / std_M
+    df['Z_Excesso_MT_Home'] = (df['MT_H'] - media_liga_MT) / std_MT
+    df['Z_Excesso_M_Away'] = (df['M_A'] - media_liga_M) / std_M  
+    df['Z_Excesso_MT_Away'] = (df['MT_A'] - media_liga_MT) / std_MT
+    
+    # 3. FATORES DE REGRESSÃO (não-lineares)
+    df['Fator_Regressao_Home'] = 1 - np.exp(-abs(df['Z_Excesso_M_Home']) * 0.4)
+    df['Fator_Regressao_Away'] = 1 - np.exp(-abs(df['Z_Excesso_M_Away']) * 0.4)
+    
+    # 4. HISTÓRICO DE EXTREMOS (quantas vezes foi extremo recentemente)
+    df['Historico_Extremos_Home'] = (abs(df['Z_Excesso_M_Home']) > 1.5).astype(int)
+    df['Historico_Extremos_Away'] = (abs(df['Z_Excesso_M_Away']) > 1.5).astype(int)
+    
+    # 5. TENDÊNCIA DE REGRESSÃO (direção do movimento)
+    df['Tendencia_Regressao_Home'] = np.where(
+        df['Z_Excesso_M_Home'] > 0, 
+        -df['Fator_Regressao_Home'],  # Positivo → tende a cair
+        df['Fator_Regressao_Home']    # Negativo → tende a subir
+    )
+    df['Tendencia_Regressao_Away'] = np.where(
+        df['Z_Excesso_M_Away'] > 0,
+        -df['Fator_Regressao_Away'],
+        df['Fator_Regressao_Away']
+    )
+    
+    return df
 
-    # Preparar features básicas (EXISTENTE)
+def treinar_ml_regressao_estagio1(history):
+    """Estágio 1: ML especializado em detectar regressão à média"""
+    
+    # Features específicas para regressão
+    features_regressao = [
+        'Z_Excesso_M_Home', 'Z_Excesso_MT_Home', 
+        'Z_Excesso_M_Away', 'Z_Excesso_MT_Away',
+        'Fator_Regressao_Home', 'Fator_Regressao_Away',
+        'Historico_Extremos_Home', 'Historico_Extremos_Away',
+        'Tendencia_Regressao_Home', 'Tendencia_Regressao_Away',
+        'M_H', 'MT_H', 'M_A', 'MT_A',
+        'Quadrant_Dist', 'Quadrant_Angle'
+    ]
+    
+    # Filtrar features que existem nos dados
+    features_existentes = [f for f in features_regressao if f in history.columns]
+    
+    if not features_existentes:
+        st.error("❌ Nenhuma feature de regressão encontrada!")
+        return None, []
+    
+    X_regressao = history[features_existentes].fillna(0)
+    y_regressao = history['Target_AH_Home']
+    
+    # Verificar se temos dados suficientes
+    if len(X_regressao) < 100:
+        st.warning("⚠️ Dados insuficientes para treinar ML de regressão")
+        return None, features_existentes
+    
+    model_regressao = RandomForestClassifier(
+        n_estimators=200, 
+        max_depth=8, 
+        random_state=42,
+        min_samples_split=20,
+        class_weight='balanced'
+    )
+    
+    model_regressao.fit(X_regressao, y_regressao)
+    
+    # Mostrar importância das features
+    try:
+        importances = pd.Series(
+            model_regressao.feature_importances_, 
+            index=X_regressao.columns
+        ).sort_values(ascending=False)
+        
+        st.markdown("### 🔍 Features Mais Importantes - ML Regressão")
+        st.dataframe(importances.head(10).to_frame("Importância"), width='stretch')
+    except Exception as e:
+        st.warning(f"Não foi possível calcular importâncias: {e}")
+    
+    st.success(f"✅ ML Regressão (Estágio 1) treinado com {len(features_existentes)} features")
+    return model_regressao, features_existentes
+
+def treinar_ml_principal_estagio2(history, model_regressao, features_regressao):
+    """Estágio 2: ML principal com features enriquecidas pela regressão"""
+    
+    # 1. OBTER PREVISÕES DO ESTÁGIO 1
+    if model_regressao is not None:
+        X_regressao_treino = history[features_regressao].fillna(0)
+        probas_regressao = model_regressao.predict_proba(X_regressao_treino)[:, 1]
+        
+        # Adicionar previsões como novas features
+        history['ML_Regressao_Score'] = probas_regressao
+        history['ML_Regressao_Confianca'] = np.abs(probas_regressao - 0.5) * 2
+        history['ML_Regressao_Direcao'] = np.where(probas_regressao > 0.5, 1, -1)
+    else:
+        # Fallback: usar features básicas de regressão
+        st.warning("⚠️ Usando fallback - ML regressão não disponível")
+        history['ML_Regressao_Score'] = 0.5
+        history['ML_Regressao_Confianca'] = 0
+        history['ML_Regressao_Direcao'] = 0
+    
+    # 2. PREPARAR FEATURES DO ML PRINCIPAL
+    # Features básicas do sistema atual
     quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
     quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
-
-    # Features contínuas (EXISTENTE)
-    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 'Quadrant_Cos','Quadrant_Angle','Cover_Tendency']].fillna(0)
-
-    # NOVAS FEATURES ESTRATÉGICAS
+    
+    # Features contínuas
+    extras_cols = ['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 
+                   'Quadrant_Cos', 'Quadrant_Angle']
+    if 'Cover_Tendency' in history.columns:
+        extras_cols.append('Cover_Tendency')
+    extras = history[extras_cols].fillna(0)
+    
+    # Features estratégicas
     features_estrategicas = []
     prefixos_estrategicos = ['DESEQ_', 'VALOR_', 'CONF_']
     for prefix in prefixos_estrategicos:
@@ -1087,84 +1206,199 @@ def treinar_modelo_quadrantes_16_dual_estrategico(history, games_today):
     
     if features_estrategicas:
         estrategicas_df = history[features_estrategicas].fillna(0)
-        st.info(f"🔍 Adicionando {len(features_estrategicas)} features estratégicas ao modelo")
     else:
         estrategicas_df = pd.DataFrame()
-        st.warning("⚠️ Nenhuma feature estratégica encontrada")
-
-    # Combinar TODAS as features
-    X_components = [quadrantes_home, quadrantes_away, ligas_dummies, extras]
+    
+    # 3. NOVAS FEATURES DE REGRESSÃO PARA ML PRINCIPAL
+    features_regressao_ml = [
+        'ML_Regressao_Score', 'ML_Regressao_Confianca', 'ML_Regressao_Direcao',
+        'Z_Excesso_M_Home', 'Z_Excesso_MT_Home', 'Z_Excesso_M_Away', 'Z_Excesso_MT_Away',
+        'Fator_Regressao_Home', 'Fator_Regressao_Away'
+    ]
+    features_regressao_existentes = [f for f in features_regressao_ml if f in history.columns]
+    regressao_ml_df = history[features_regressao_existentes].fillna(0)
+    
+    # 4. COMBINAR TODAS AS FEATURES
+    X_components = [quadrantes_home, quadrantes_away, ligas_dummies, extras, regressao_ml_df]
     if not estrategicas_df.empty:
         X_components.append(estrategicas_df)
     
-    X = pd.concat(X_components, axis=1)
-
-    # Targets
+    X_principal = pd.concat(X_components, axis=1)
+    
+    # 5. TREINAR MODELOS PRINCIPAIS
     y_home = history['Target_AH_Home']
-    y_away = 1 - y_home  # inverso lógico
-
-    # Treinar modelos
+    y_away = 1 - y_home
+    
     model_home = RandomForestClassifier(
-        n_estimators=500, max_depth=12, random_state=42, class_weight='balanced_subsample', n_jobs=-1
+        n_estimators=500, 
+        max_depth=12, 
+        random_state=42, 
+        class_weight='balanced_subsample',
+        n_jobs=-1
     )
     model_away = RandomForestClassifier(
-        n_estimators=500, max_depth=12, random_state=42, class_weight='balanced_subsample', n_jobs=-1
+        n_estimators=500, 
+        max_depth=12, 
+        random_state=42, 
+        class_weight='balanced_subsample', 
+        n_jobs=-1
     )
-
-    model_home.fit(X, y_home)
-    model_away.fit(X, y_away)
-
-    # 🔥 PREPARAR DADOS PARA HOJE - CORREÇÃO CRÍTICA
-    # Garantir que temos as mesmas features do treino
-    qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
-    qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
-    ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 'Quadrant_Cos','Quadrant_Angle']].fillna(0)
-
-    X_today_components = [qh_today, qa_today, ligas_today, extras_today]
     
-    # Adicionar features estratégicas se existirem no treino
-    if not estrategicas_df.empty:
-        # Criar versão estratégica para hoje com MESMAS colunas
-        deseq_today = pd.get_dummies(games_today['Tipo_Desequilibrio'], prefix='DESEQ').reindex(
-            columns=[col for col in estrategicas_df.columns if col.startswith('DESEQ_')], fill_value=0
-        )
-        valor_today = pd.get_dummies(games_today['Valor_Estrategico'], prefix='VALOR').reindex(
-            columns=[col for col in estrategicas_df.columns if col.startswith('VALOR_')], fill_value=0
-        )
-        conf_today = pd.get_dummies(games_today['Confiança_Estrategica'], prefix='CONF').reindex(
-            columns=[col for col in estrategicas_df.columns if col.startswith('CONF_')], fill_value=0
-        )
+    model_home.fit(X_principal, y_home)
+    model_away.fit(X_principal, y_away)
+    
+    # Mostrar importância das features do estágio 2
+    try:
+        importances_principal = pd.Series(
+            model_home.feature_importances_, 
+            index=X_principal.columns
+        ).sort_values(ascending=False)
         
-        estrategicas_today = pd.concat([deseq_today, valor_today, conf_today], axis=1)
-        X_today_components.append(estrategicas_today)
+        st.markdown("### 🔍 Top Features - ML Principal (Estágio 2)")
+        st.dataframe(importances_principal.head(15).to_frame("Importância"), width='stretch')
+        
+        # Análise específica das features de regressão
+        features_regressao_importances = importances_principal[
+            importances_principal.index.str.startswith(('ML_Regressao', 'Z_', 'Fator_'))
+        ]
+        if not features_regressao_importances.empty:
+            st.markdown("#### 📊 Importância das Features de Regressão")
+            st.dataframe(features_regressao_importances, width='stretch')
+            
+    except Exception as e:
+        st.warning(f"Não foi possível calcular importâncias do estágio 2: {e}")
     
-    X_today = pd.concat(X_today_components, axis=1)
+    st.success(f"✅ ML Principal (Estágio 2) treinado com {X_principal.shape[1]} features")
+    return model_home, model_away, X_principal.columns.tolist()
+
+def prever_com_sistema_duplo(games_today, model_regressao, model_home, model_away, features_principal, features_regressao):
+    """Previsão usando ambos os modelos em cascata"""
     
-    # 🔥 GARANTIR ORDEM IDÊNTICA ÀS FEATURES DO TREINO
-    X_today = X_today.reindex(columns=X.columns, fill_value=0)
-
-    # Fazer previsões
-    probas_home = model_home.predict_proba(X_today)[:, 1]
-    probas_away = model_away.predict_proba(X_today)[:, 1]
-
+    # 1. CALCULAR FEATURES DE REGRESSÃO
+    games_today = calcular_regressao_media_avancada(games_today)
+    
+    # 2. ESTÁGIO 1: ML DE REGRESSÃO
+    if model_regressao is not None:
+        features_regressao_existentes = [f for f in features_regressao if f in games_today.columns]
+        if features_regressao_existentes:
+            X_regressao_hoje = games_today[features_regressao_existentes].fillna(0)
+            probas_regressao = model_regressao.predict_proba(X_regressao_hoje)[:, 1]
+            
+            games_today['ML_Regressao_Score'] = probas_regressao
+            games_today['ML_Regressao_Confianca'] = np.abs(probas_regressao - 0.5) * 2
+            games_today['ML_Regressao_Direcao'] = np.where(probas_regressao > 0.5, 1, -1)
+        else:
+            st.warning("⚠️ Features de regressão não encontradas para previsão")
+            games_today['ML_Regressao_Score'] = 0.5
+            games_today['ML_Regressao_Confianca'] = 0
+            games_today['ML_Regressao_Direcao'] = 0
+    else:
+        games_today['ML_Regressao_Score'] = 0.5
+        games_today['ML_Regressao_Confianca'] = 0  
+        games_today['ML_Regressao_Direcao'] = 0
+    
+    # 3. ESTÁGIO 2: PREPARAR FEATURES PARA ML PRINCIPAL
+    # Features básicas
+    qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH')
+    qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA')
+    ligas_today = pd.get_dummies(games_today['League'], prefix='League')
+    
+    # Features contínuas
+    extras_cols = ['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 
+                   'Quadrant_Cos', 'Quadrant_Angle']
+    if 'Cover_Tendency' in games_today.columns:
+        extras_cols.append('Cover_Tendency')
+    extras_today = games_today[extras_cols].fillna(0)
+    
+    # Features estratégicas
+    features_estrategicas_hoje = []
+    prefixos_estrategicos = ['DESEQ_', 'VALOR_', 'CONF_']
+    for prefix in prefixos_estrategicos:
+        cols_estrategicas = [col for col in games_today.columns if col.startswith(prefix)]
+        features_estrategicas_hoje.extend(cols_estrategicas)
+    
+    if features_estrategicas_hoje:
+        estrategicas_today = games_today[features_estrategicas_hoje].fillna(0)
+    else:
+        estrategicas_today = pd.DataFrame()
+    
+    # Features de regressão
+    features_regressao_ml = [
+        'ML_Regressao_Score', 'ML_Regressao_Confianca', 'ML_Regressao_Direcao',
+        'Z_Excesso_M_Home', 'Z_Excesso_MT_Home', 'Z_Excesso_M_Away', 'Z_Excesso_MT_Away',
+        'Fator_Regressao_Home', 'Fator_Regressao_Away'
+    ]
+    features_regressao_ml_existentes = [f for f in features_regressao_ml if f in games_today.columns]
+    regressao_ml_today = games_today[features_regressao_ml_existentes].fillna(0)
+    
+    # 4. COMBINAR TODAS AS FEATURES
+    X_components_today = [qh_today, qa_today, ligas_today, extras_today, regressao_ml_today]
+    if not estrategicas_today.empty:
+        X_components_today.append(estrategicas_today)
+    
+    X_hoje = pd.concat(X_components_today, axis=1)
+    
+    # 5. GARANTIR MESMA ORDEM DAS FEATURES DO TREINO
+    X_hoje = X_hoje.reindex(columns=features_principal, fill_value=0)
+    
+    # 6. PREVISÕES FINAIS
+    probas_home = model_home.predict_proba(X_hoje)[:, 1]
+    probas_away = model_away.predict_proba(X_hoje)[:, 1]
+    
     games_today['Quadrante_ML_Score_Home'] = probas_home
-    games_today['Quadrante_ML_Score_Away'] = probas_away
+    games_today['Quadrante_ML_Score_Away'] = probas_away  
     games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
     games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
+    
+    return games_today
 
-    # Mostrar importância das features
-    try:
-        importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
-        top_feats = importances.head(15)
-        st.markdown("### 🔍 Top Features mais importantes (Modelo HOME - 16 Quadrantes)")
-        st.dataframe(top_feats.to_frame("Importância"), width='stretch')
-    except Exception as e:
-        st.warning(f"Não foi possível calcular importâncias: {e}")
-
-    st.success("✅ Modelo dual (Home/Away) com 16 quadrantes treinado com sucesso!")
-    return model_home, model_away, games_today
-
+# EXECUTAR SISTEMA COMPLETO
+if not history.empty:
+    st.markdown("### 🔄 Treinando Sistema em 2 Estágios...")
+    
+    # 1. Calcular regressão para histórico
+    history = calcular_regressao_media_avancada(history)
+    
+    # 2. Estágio 1: ML Regressão
+    with st.spinner("Treinando ML de Regressão (Estágio 1)..."):
+        model_regressao, features_regressao = treinar_ml_regressao_estagio1(history)
+    
+    # 3. Estágio 2: ML Principal  
+    with st.spinner("Treinando ML Principal (Estágio 2)..."):
+        model_home, model_away, features_principal = treinar_ml_principal_estagio2(
+            history, model_regressao, features_regressao
+        )
+    
+    # 4. Previsões para hoje
+    with st.spinner("Fazendo previsões com sistema duplo..."):
+        games_today = prever_com_sistema_duplo(
+            games_today, model_regressao, model_home, model_away, 
+            features_principal, features_regressao
+        )
+    
+    st.success("🎉 Sistema em 2 Estágios implementado com sucesso!")
+    
+    # 5. ANÁLISE DE CONTRIBUIÇÃO
+    st.markdown("### 📊 Análise de Contribuição dos Estágios")
+    
+    if 'ML_Regressao_Score' in games_today.columns and 'Quadrante_ML_Score_Main' in games_today.columns:
+        correlacao = games_today[['ML_Regressao_Score', 'Quadrante_ML_Score_Main']].corr().iloc[0,1]
+        st.metric("📈 Correlação entre Estágios", f"{correlacao:.3f}")
+        
+        # Jogos onde os estágios discordam (oportunidades especiais)
+        discordantes = games_today[
+            (games_today['ML_Regressao_Score'] > 0.6) & 
+            (games_today['Quadrante_ML_Score_Main'] < 0.4)
+        ]
+        st.metric("🎯 Oportunidades de Regressão", len(discordantes))
+        
+        if not discordantes.empty:
+            st.info("💡 Estes jogos têm alta probabilidade de regressão mas baixa probabilidade principal")
+            st.dataframe(discordantes[['Home', 'Away', 'ML_Regressao_Score', 'Quadrante_ML_Score_Main']], width='stretch')
+    
+else:
+    st.warning("⚠️ Histórico vazio - não foi possível treinar o sistema em 2 estágios")
+    
 
 
 ##### BLOCO 10: SISTEMA DE INDICAÇÕES E RECOMENDAÇÕES #####
