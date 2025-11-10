@@ -851,7 +851,7 @@ fig.update_layout(
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
 )
 
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, width='stretch')
 
 
 ##### BLOCO 11: ANÁLISE ESTRATÉGICA AUTOMÁTICA (Z-Scores + Handicap) #####
@@ -1005,7 +1005,7 @@ if "Valor_Estrategico" in games_today.columns:
             'Delta_MT': '{:.2f}',
             'Cover_Tendency': '{:.2f}'
         }),
-        use_container_width=True
+        width='stretch'
     )
 
 # --- INTEGRAÇÃO COM O MODELO EXISTENTE ---
@@ -1048,7 +1048,6 @@ st.info("""
 
 ##### BLOCO 9: MODELO ML PARA 16 QUADRANTES #####
 
-# NO BLOCO 9, substituir a preparação de features por:
 def treinar_modelo_quadrantes_16_dual_estrategico(history, games_today):
     """
     Treina modelo ML para Home e Away com base nos 16 quadrantes + análise estratégica
@@ -1091,7 +1090,6 @@ def treinar_modelo_quadrantes_16_dual_estrategico(history, games_today):
     
     X = pd.concat(X_components, axis=1)
 
-
     # Targets
     y_home = history['Target_AH_Home']
     y_away = 1 - y_home  # inverso lógico
@@ -1107,13 +1105,35 @@ def treinar_modelo_quadrantes_16_dual_estrategico(history, games_today):
     model_home.fit(X, y_home)
     model_away.fit(X, y_away)
 
-    # Preparar dados para hoje
+    # 🔥 PREPARAR DADOS PARA HOJE - CORREÇÃO CRÍTICA
+    # Garantir que temos as mesmas features do treino
     qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
     qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
     extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 'Quadrant_Cos','Quadrant_Angle']].fillna(0)
 
-    X_today = pd.concat([qh_today, qa_today, ligas_today, extras_today], axis=1)
+    X_today_components = [qh_today, qa_today, ligas_today, extras_today]
+    
+    # Adicionar features estratégicas se existirem no treino
+    if not estrategicas_df.empty:
+        # Criar versão estratégica para hoje com MESMAS colunas
+        deseq_today = pd.get_dummies(games_today['Tipo_Desequilibrio'], prefix='DESEQ').reindex(
+            columns=[col for col in estrategicas_df.columns if col.startswith('DESEQ_')], fill_value=0
+        )
+        valor_today = pd.get_dummies(games_today['Valor_Estrategico'], prefix='VALOR').reindex(
+            columns=[col for col in estrategicas_df.columns if col.startswith('VALOR_')], fill_value=0
+        )
+        conf_today = pd.get_dummies(games_today['Confiança_Estrategica'], prefix='CONF').reindex(
+            columns=[col for col in estrategicas_df.columns if col.startswith('CONF_')], fill_value=0
+        )
+        
+        estrategicas_today = pd.concat([deseq_today, valor_today, conf_today], axis=1)
+        X_today_components.append(estrategicas_today)
+    
+    X_today = pd.concat(X_today_components, axis=1)
+    
+    # 🔥 GARANTIR ORDEM IDÊNTICA ÀS FEATURES DO TREINO
+    X_today = X_today.reindex(columns=X.columns, fill_value=0)
 
     # Fazer previsões
     probas_home = model_home.predict_proba(X_today)[:, 1]
@@ -1129,19 +1149,14 @@ def treinar_modelo_quadrantes_16_dual_estrategico(history, games_today):
         importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
         top_feats = importances.head(15)
         st.markdown("### 🔍 Top Features mais importantes (Modelo HOME - 16 Quadrantes)")
-        st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
+        st.dataframe(top_feats.to_frame("Importância"), width='stretch')
     except Exception as e:
         st.warning(f"Não foi possível calcular importâncias: {e}")
 
     st.success("✅ Modelo dual (Home/Away) com 16 quadrantes treinado com sucesso!")
     return model_home, model_away, games_today
 
-# Executar treinamento
-if not history.empty:
-    modelo_home, modelo_away, games_today = treinar_modelo_quadrantes_16_dual_estrategico(history, games_today)
-    st.success("✅ Modelo dual com 16 quadrantes + análise estratégica treinado com sucesso!")
-else:
-    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
+
 
 ##### BLOCO 10: SISTEMA DE INDICAÇÕES E RECOMENDAÇÕES #####
 
@@ -1292,7 +1307,7 @@ def gerar_estrategias_16_quadrantes(df):
                         'Quadrant_Angle': '{:.1f}°'
                     })
                     .background_gradient(subset=['Quadrante_ML_Score_Main'], cmap='RdYlGn'),
-                    use_container_width=True
+                    width='stretch'
                 )
 
         else:
@@ -1384,7 +1399,7 @@ def analisar_padroes_quadrantes_16_dual(df):
                     'Quadrant_Angle': '{:.1f}°'
                 })
                 .background_gradient(subset=[score_col], cmap='RdYlGn'),
-                use_container_width=True
+                width='stretch'
             )
             st.write("---")
 
@@ -1523,7 +1538,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             'Quadrante_ML_Score_Away': '{:.1%}',
             'Score_Final': '{:.1f}'
         }, na_rep="-"),
-        use_container_width=True
+        width='stretch'
     )
     
     # ---------------- ANÁLISES ESPECÍFICAS ----------------
