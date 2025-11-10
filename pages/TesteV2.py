@@ -994,8 +994,8 @@ if "Valor_Estrategico" in games_today.columns:
     st.dataframe(
         games_today[cols_existentes]
         .style
-        .apply(lambda s: ["background-color: #e0ffe0" if v=="HOME" else 
-                          "background-color: #ffe0e0" if v=="AWAY" else "" 
+        .apply(lambda s: ["font-weight: bold" if v=="HOME" else 
+                          "font-weight: bold" if v=="AWAY" else "" 
                           for v in s], subset=["Valor_Estrategico"])
         .highlight_max(subset=["Cover_Tendency"], color="#c1f0c1")
         .highlight_min(subset=["Cover_Tendency"], color="#f0c1c1")
