@@ -983,7 +983,7 @@ if "Valor_Estrategico" in games_today.columns:
     st.markdown("### 🎯 Resultados da Análise Estratégica")
     
     cols_show = [
-        "Home", "Away", "Goals_H_Today", "Goals_A_Today", "Asian_Line_Decimal", 
+        "League", "Time", "Home", "Away", "Goals_H_Today", "Goals_A_Today", "Asian_Line_Decimal", 
         "Delta_M", "Delta_MT", "Tipo_Desequilibrio", 
         "Valor_Estrategico", "Confiança_Estrategica", "Cover_Tendency"
     ]
