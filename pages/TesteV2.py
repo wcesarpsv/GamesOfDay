@@ -1076,7 +1076,7 @@ def treinar_modelo_quadrantes_16_dual_estrategico(history, games_today):
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
 
     # Features contínuas (EXISTENTE)
-    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 'Quadrant_Cos','Quadrant_Angle']].fillna(0)
+    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 'Quadrant_Cos','Quadrant_Angle','Cover_Tendency']].fillna(0)
 
     # NOVAS FEATURES ESTRATÉGICAS
     features_estrategicas = []
