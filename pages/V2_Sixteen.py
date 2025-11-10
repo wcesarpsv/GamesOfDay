@@ -773,8 +773,8 @@ fig = go.Figure()
 
 # Vetores Home → Away
 for _, row in df_plot.iterrows():
-    xh, xa = row["Aggression_Home"], row["Aggression_Away"]
-    yh, ya = row["HandScore_Home"], row["HandScore_Away"]
+    xh, xa = row["M_H"], row["M_A"]
+    yh, ya = row["MT_H"], row["MT_A"]
 
     fig.add_trace(go.Scatter(
         x=[xh, xa],
@@ -797,8 +797,8 @@ for _, row in df_plot.iterrows():
 
 # Pontos Home e Away
 fig.add_trace(go.Scatter(
-    x=df_plot["Aggression_Home"],
-    y=df_plot["HandScore_Home"],
+    x=df_plot["M_H"],
+    y=df_plot["MT_H"],
     mode="markers+text",
     name="Home",
     marker=dict(color="royalblue", size=8, opacity=0.8),
@@ -808,8 +808,8 @@ fig.add_trace(go.Scatter(
 ))
 
 fig.add_trace(go.Scatter(
-    x=df_plot["Aggression_Away"],
-    y=df_plot["HandScore_Away"],
+    x=df_plot["M_A"],
+    y=df_plot["MT_A"],
     mode="markers+text",
     name="Away",
     marker=dict(color="orangered", size=8, opacity=0.8),
@@ -820,7 +820,7 @@ fig.add_trace(go.Scatter(
 
 # Linha de referência
 fig.add_trace(go.Scatter(
-    x=[-2, 2],
+    x=[-3, 3],
     y=[ 0, 0],
     mode="lines",
     line=dict(color="limegreen", width=2, dash="dash"),
@@ -830,7 +830,7 @@ fig.add_trace(go.Scatter(
 # Linha de referência
 fig.add_trace(go.Scatter(
     x=[ 0, 0],
-    y=[-40, 40],
+    y=[-4, 4],
     mode="lines",
     line=dict(color="limegreen", width=2, dash="dash"),
     name="Eixo Y"
