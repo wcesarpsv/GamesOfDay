@@ -991,20 +991,29 @@ if "Valor_Estrategico" in games_today.columns:
     # Filtrar colunas existentes
     cols_existentes = [c for c in cols_show if c in games_today.columns]
     
+    # VERSÃO MAIS SIMPLES E DIRETA:
     st.dataframe(
         games_today[cols_existentes]
-        .style
-        .apply(lambda s: ["font-weight: bold" if v=="HOME" else 
-                          "font-weight: bold" if v=="AWAY" else "" 
-                          for v in s], subset=["Valor_Estrategico"])
-        .highlight_max(subset=["Cover_Tendency"], color="#c1f0c1")
-        .highlight_min(subset=["Cover_Tendency"], color="#f0c1c1")
-        .format({
-            'Asian_Line_Decimal': '{:.2f}',
-            'Delta_M': '{:.2f}',
-            'Delta_MT': '{:.2f}',
-            'Cover_Tendency': '{:.2f}'
-        }),
+        .assign(
+            Valor_Estrategico=lambda df: df['Valor_Estrategico'].map({
+                'HOME': '🔵 HOME', 
+                'AWAY': '🔴 AWAY', 
+                'EQUILIBRADO': '⚪ EQUILIBRADO',
+                'Analisar': '❓ ANALISAR'
+            }),
+            Cover_Tendency=lambda df: df['Cover_Tendency'].apply(
+                lambda x: f"🔼 {x:.2f}" if x > 0.5 else 
+                         f"↗️ {x:.2f}" if x > 0 else 
+                         f"➖ {x:.2f}" if x == 0 else 
+                         f"↘️ {x:.2f}" if x > -0.5 else 
+                         f"🔽 {x:.2f}"
+            ),
+            Confiança_Estrategica=lambda df: df['Confiança_Estrategica'].map({
+                'Alta': '🎯 Alta', 
+                'Moderada': '✅ Moderada', 
+                'Baixa': '⚠️ Baixa'
+            })
+        ),
         width='stretch'
     )
 
