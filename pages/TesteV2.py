@@ -853,26 +853,244 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
+
+##### BLOCO 11: ANÁLISE ESTRATÉGICA AUTOMÁTICA (Z-Scores + Handicap) #####
+
+st.markdown("## 📊 Análise Estratégica – M & MT + Handicap")
+
+def calcular_analise_estrategica(df):
+    """Aplica a análise estratégica baseada em Deltas M/MT e Handicap"""
+    df = df.copy()
+    
+    # Verificar se as colunas necessárias existem
+    required_cols = ['M_H', 'M_A', 'MT_H', 'MT_A']
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    
+    if missing_cols:
+        st.warning(f"⚠️ Colunas ausentes para análise estratégica: {missing_cols}")
+        # Inicializar colunas com NaN para evitar erros
+        for col in ['Delta_M', 'Delta_MT', 'Strategic_Angle', 'Strategic_Dist', 
+                   'Tipo_Desequilibrio', 'Valor_Estrategico', 'Confiança_Estrategica', 'Cover_Tendency']:
+            df[col] = np.nan
+        return df
+    
+    # --- 1️⃣ Deltas principais
+    df["Delta_M"] = df["M_H"] - df["M_A"]      # força estrutural (liga)
+    df["Delta_MT"] = df["MT_H"] - df["MT_A"]   # forma recente (vs padrão próprio)
+    
+    # Garantir que Asian_Line_Decimal é numérico (se existir)
+    if 'Asian_Line_Decimal' in df.columns:
+        df["Asian_Line_Decimal"] = pd.to_numeric(df["Asian_Line_Decimal"], errors='coerce')
+    else:
+        df["Asian_Line_Decimal"] = np.nan
+    
+    # --- 2️⃣ Vetor: ângulo e distância (ATUALIZADO - compatível com existente)
+    # Nota: Mantemos Quadrant_Dist existente, mas adicionamos perspectiva angular
+    df["Strategic_Angle"] = np.degrees(np.arctan2(df["Delta_MT"], df["Delta_M"]))
+    df["Strategic_Dist"] = np.sqrt(df["Delta_M"]**2 + df["Delta_MT"]**2)
+    
+    # --- 3️⃣ Tipo de desequilíbrio
+    def classify_desequilibrio(angle, dist):
+        if pd.isna(angle) or pd.isna(dist):
+            return "Indefinido"
+        angle_abs = abs(angle)
+        if angle_abs > 60:
+            return "Forma-Recente"
+        elif angle_abs < 30:
+            return "Força-Liga"
+        elif 30 <= angle_abs <= 60 and dist > 0.5:
+            return "Consistente"
+        else:
+            return "Equilibrado"
+    
+    df["Tipo_Desequilibrio"] = df.apply(
+        lambda x: classify_desequilibrio(x["Strategic_Angle"], x["Strategic_Dist"]), axis=1
+    )
+    
+    # --- 4️⃣ Lado provável (quem tende a cobrir o handicap)
+    def predict_side(row):
+        line = row["Asian_Line_Decimal"]
+        dM = row["Delta_M"]
+        dMT = row["Delta_MT"]
+        
+        if pd.isna(line) or pd.isna(dM) or pd.isna(dMT):
+            return "Analisar"
+            
+        # Favorito é o Home (linha negativa)
+        if line < 0:
+            # favorito em má forma → value no away
+            if dMT < -0.2:
+                return "AWAY"
+            # favorito forte e em boa forma → tende a cobrir
+            elif dM > 0.3 and dMT > 0.2:
+                return "HOME"
+            else:
+                return "EQUILIBRADO"
+
+        # Favorito é o Away (linha positiva)
+        elif line > 0:
+            if dMT > 0.2:
+                return "HOME"
+            elif dMT < -0.2:
+                return "AWAY"
+            else:
+                return "EQUILIBRADO"
+
+        # Linha zero → neutro
+        return "EQUILIBRADO"
+    
+    df["Valor_Estrategico"] = df.apply(predict_side, axis=1)
+    
+    # --- 5️⃣ Grau de confiança
+    def classify_confidence(row):
+        dist = row["Strategic_Dist"]
+        if pd.isna(dist):
+            return "Baixa"
+        if dist >= 1.2:
+            return "Alta"
+        elif dist >= 0.6:
+            return "Moderada"
+        else:
+            return "Baixa"
+    
+    df["Confiança_Estrategica"] = df.apply(classify_confidence, axis=1)
+    
+    # --- 6️⃣ Tendência contínua de cobertura (para ML supervisionada)
+    def calculate_cover_tendency(row):
+        line = row["Asian_Line_Decimal"]
+        dM = row["Delta_M"]
+        dMT = row["Delta_MT"]
+        
+        if pd.isna(line) or pd.isna(dM) or pd.isna(dMT):
+            return np.nan
+            
+        # Sinal baseado na linha: positivo favorece Home, negativo favorece Away
+        line_sign = -1 if line < 0 else 1
+        
+        return (dM * line_sign) + (dMT * line_sign)
+    
+    df["Cover_Tendency"] = df.apply(calculate_cover_tendency, axis=1)
+    
+    return df
+
+# Aplicar análise estratégica aos dados
+if not games_today.empty:
+    games_today = calcular_analise_estrategica(games_today)
+    st.success("✅ Análise estratégica aplicada com sucesso!")
+
+# Exibir resultados da análise estratégica
+if "Valor_Estrategico" in games_today.columns:
+    st.markdown("### 🎯 Resultados da Análise Estratégica")
+    
+    cols_show = [
+        "Home", "Away", "Asian_Line_Decimal", 
+        "Delta_M", "Delta_MT", "Tipo_Desequilibrio", 
+        "Valor_Estrategico", "Confiança_Estrategica", "Cover_Tendency"
+    ]
+    
+    # Filtrar colunas existentes
+    cols_existentes = [c for c in cols_show if c in games_today.columns]
+    
+    st.dataframe(
+        games_today[cols_existentes]
+        .style
+        .apply(lambda s: ["background-color: #e0ffe0" if v=="HOME" else 
+                          "background-color: #ffe0e0" if v=="AWAY" else "" 
+                          for v in s], subset=["Valor_Estrategico"])
+        .highlight_max(subset=["Cover_Tendency"], color="#c1f0c1")
+        .highlight_min(subset=["Cover_Tendency"], color="#f0c1c1")
+        .format({
+            'Asian_Line_Decimal': '{:.2f}',
+            'Delta_M': '{:.2f}',
+            'Delta_MT': '{:.2f}',
+            'Cover_Tendency': '{:.2f}'
+        }),
+        use_container_width=True
+    )
+
+# --- INTEGRAÇÃO COM O MODELO EXISTENTE ---
+def enriquecer_features_ml(df):
+    """Adiciona as novas features estratégicas para o modelo ML"""
+    if "Tipo_Desequilibrio" in df.columns:
+        # One-hot encoding para tipo de desequilíbrio
+        desequilibrio_dummies = pd.get_dummies(df['Tipo_Desequilibrio'], prefix='DESEQ')
+        
+        # One-hot encoding para valor estratégico
+        valor_dummies = pd.get_dummies(df['Valor_Estrategico'], prefix='VALOR')
+        
+        # One-hot encoding para confiança
+        confianca_dummies = pd.get_dummies(df['Confiança_Estrategica'], prefix='CONF')
+        
+        # Combinar com dataframe existente
+        df = pd.concat([df, desequilibrio_dummies, valor_dummies, confianca_dummies], axis=1)
+    
+    return df
+
+# Aplicar enriquecimento aos dados de treino e hoje
+if not history.empty:
+    history = enriquecer_features_ml(history)
+    
+if not games_today.empty:
+    games_today = enriquecer_features_ml(games_today)
+
+st.info("""
+✅ **Lógica da análise estratégica integrada:**
+- `Delta_M` → força relativa na liga  
+- `Delta_MT` → forma atual comparada ao padrão próprio  
+- `Tipo_Desequilibrio` → Forma-Recente, Força-Liga, Consistente ou Equilibrado  
+- `Valor_Estrategico` → lado com maior probabilidade de cobrir o handicap  
+- `Confiança_Estrategica` → baseada na distância do desequilíbrio
+- `Cover_Tendency` → métrica contínua para ML (positivo = Home, negativo = Away)
+""")
+
+
+
+
 ##### BLOCO 9: MODELO ML PARA 16 QUADRANTES #####
 
-def treinar_modelo_quadrantes_16_dual(history, games_today):
+# NO BLOCO 9, substituir a preparação de features por:
+def treinar_modelo_quadrantes_16_dual_estrategico(history, games_today):
     """
-    Treina modelo ML para Home e Away com base nos 16 quadrantes
+    Treina modelo ML para Home e Away com base nos 16 quadrantes + análise estratégica
     """
-    # Garantir cálculo das distâncias
+    # Garantir cálculo das distâncias e análise estratégica
     history = calcular_distancias_quadrantes(history)
+    history = calcular_analise_estrategica(history)
+    history = enriquecer_features_ml(history)
+    
     games_today = calcular_distancias_quadrantes(games_today)
+    games_today = calcular_analise_estrategica(games_today)
+    games_today = enriquecer_features_ml(games_today)
 
-    # Preparar features básicas
+    # Preparar features básicas (EXISTENTE)
     quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
     quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
 
-    # Features contínuas
+    # Features contínuas (EXISTENTE)
     extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 'Quadrant_Cos','Quadrant_Angle']].fillna(0)
 
-    # Combinar todas as features
-    X = pd.concat([quadrantes_home, quadrantes_away, ligas_dummies, extras], axis=1)
+    # NOVAS FEATURES ESTRATÉGICAS
+    features_estrategicas = []
+    prefixos_estrategicos = ['DESEQ_', 'VALOR_', 'CONF_']
+    for prefix in prefixos_estrategicos:
+        cols_estrategicas = [col for col in history.columns if col.startswith(prefix)]
+        features_estrategicas.extend(cols_estrategicas)
+    
+    if features_estrategicas:
+        estrategicas_df = history[features_estrategicas].fillna(0)
+        st.info(f"🔍 Adicionando {len(features_estrategicas)} features estratégicas ao modelo")
+    else:
+        estrategicas_df = pd.DataFrame()
+        st.warning("⚠️ Nenhuma feature estratégica encontrada")
+
+    # Combinar TODAS as features
+    X_components = [quadrantes_home, quadrantes_away, ligas_dummies, extras]
+    if not estrategicas_df.empty:
+        X_components.append(estrategicas_df)
+    
+    X = pd.concat(X_components, axis=1)
+
 
     # Targets
     y_home = history['Target_AH_Home']
@@ -920,8 +1138,8 @@ def treinar_modelo_quadrantes_16_dual(history, games_today):
 
 # Executar treinamento
 if not history.empty:
-    modelo_home, modelo_away, games_today = treinar_modelo_quadrantes_16_dual(history, games_today)
-    st.success("✅ Modelo dual com 16 quadrantes treinado com sucesso!")
+    modelo_home, modelo_away, games_today = treinar_modelo_quadrantes_16_dual_estrategico(history, games_today)
+    st.success("✅ Modelo dual com 16 quadrantes + análise estratégica treinado com sucesso!")
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
 
@@ -1172,6 +1390,10 @@ def analisar_padroes_quadrantes_16_dual(df):
 
 
 
+
+
+
+
 ##### BLOCO 12: SISTEMA DE SCORING COMBINADO #####
 
 def calcular_pontuacao_quadrante_16(quadrante_id):
@@ -1312,121 +1534,6 @@ else:
     st.info("⚠️ Aguardando dados para gerar ranking de 16 quadrantes")
 
 ###############################
-
-
-
-# ============================================================
-# 🎯 ANÁLISE ESTRATÉGICA AUTOMÁTICA (Z-Scores + Handicap)
-# ============================================================
-
-import numpy as np
-import pandas as pd
-import streamlit as st
-
-st.subheader("📊 Análise Estratégica – M & MT + Handicap")
-
-# --- 1️⃣ Deltas principais
-df["Delta_M"] = df["M_H"] - df["M_A"]      # força estrutural (liga)
-df["Delta_MT"] = df["MT_H"] - df["MT_A"]   # forma recente (vs padrão próprio)
-df["Asian_Line_Decimal"] = df["Asian_Line_Decimal"].astype(float)
-
-# --- 2️⃣ Vetor: ângulo e distância
-df["Quadrant_Angle"] = np.degrees(np.arctan2(df["Delta_MT"], df["Delta_M"]))
-df["Quadrant_Dist"] = np.sqrt(df["Delta_M"]**2 + df["Delta_MT"]**2)
-
-# --- 3️⃣ Tipo de desequilíbrio
-def classify_desequilibrio(angle, dist):
-    if abs(angle) > 60:
-        return "Forma-Recente"
-    elif abs(angle) < 30:
-        return "Força-Liga"
-    elif 30 <= abs(angle) <= 60 and dist > 0.5:
-        return "Consistente"
-    else:
-        return "Equilibrado"
-
-df["Tipo_Desequilibrio"] = df.apply(
-    lambda x: classify_desequilibrio(x["Quadrant_Angle"], x["Quadrant_Dist"]), axis=1
-)
-
-# --- 4️⃣ Lado provável (quem tende a cobrir o handicap)
-def predict_side(row):
-    line = row["Asian_Line_Decimal"]
-    dM = row["Delta_M"]
-    dMT = row["Delta_MT"]
-
-    # Favorito é o Home (linha negativa)
-    if line < 0:
-        # favorito em má forma → value no away
-        if dMT < 0:
-            return "Away"
-        # favorito forte e em boa forma → tende a cobrir
-        elif dM > 0 and dMT > 0:
-            return "Home"
-        else:
-            return "Equilibrado"
-
-    # Favorito é o Away (linha positiva)
-    elif line > 0:
-        if dMT > 0:
-            return "Away"
-        else:
-            return "Home"
-
-    # Linha zero → neutro
-    return "Equilibrado"
-
-df["Valor_Sugerido"] = df.apply(predict_side, axis=1)
-
-# --- 5️⃣ Grau de confiança
-def classify_confidence(row):
-    if row["Quadrant_Dist"] >= 1.2:
-        return "Alta"
-    elif row["Quadrant_Dist"] >= 0.6:
-        return "Moderada"
-    else:
-        return "Baixa"
-
-df["Confiança_Modelo"] = df.apply(classify_confidence, axis=1)
-
-# --- 6️⃣ Tendência contínua de cobertura (para ML supervisionada)
-df["Cover_Tendency"] = (
-    (df["Delta_M"] * np.sign(-df["Asian_Line_Decimal"])) +
-    (df["Delta_MT"] * np.sign(-df["Asian_Line_Decimal"]))
-)
-
-# ============================================================
-# 🧩 Exibição da análise
-# ============================================================
-cols_show = [
-    "Home", "Away", "Asian_Line_Decimal", 
-    "Delta_M", "Delta_MT", "Tipo_Desequilibrio", 
-    "Valor_Sugerido", "Confiança_Modelo", "Cover_Tendency"
-]
-
-st.dataframe(
-    df[cols_show].style
-      .apply(lambda s: ["background-color: #e0ffe0" if v=="Home" else 
-                        "background-color: #ffe0e0" if v=="Away" else "" 
-                        for v in s], subset=["Valor_Sugerido"])
-      .highlight_max(subset=["Cover_Tendency"], color="#c1f0c1")
-      .highlight_min(subset=["Cover_Tendency"], color="#f0c1c1"),
-    use_container_width=True
-)
-
-# ============================================================
-# 💡 Observação
-# ============================================================
-st.info("""
-✅ **Lógica da análise:**
-- `Delta_M` → força relativa na liga  
-- `Delta_MT` → forma atual comparada ao padrão próprio  
-- `Tipo_Desequilibrio` → Forma-Recente, Força-Liga, Consistente ou Equilibrado  
-- `Valor_Sugerido` → lado com maior probabilidade de cobrir o handicap  
-- `Cover_Tendency` → métrica contínua usada como feature para ML (positivo = Home, negativo = Away)
-""")
-
-
 
 
 ##########################
