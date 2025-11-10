@@ -820,7 +820,7 @@ fig.add_trace(go.Scatter(
 
 # Linha de referência
 fig.add_trace(go.Scatter(
-    x=[-1, 1],
+    x=[-2, 2],
     y=[ 0, 0],
     mode="lines",
     line=dict(color="limegreen", width=2, dash="dash"),
@@ -830,7 +830,7 @@ fig.add_trace(go.Scatter(
 # Linha de referência
 fig.add_trace(go.Scatter(
     x=[ 0, 0],
-    y=[-60, 60],
+    y=[-40, 40],
     mode="lines",
     line=dict(color="limegreen", width=2, dash="dash"),
     name="Eixo Y"
