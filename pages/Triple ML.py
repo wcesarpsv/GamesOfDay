@@ -1074,7 +1074,7 @@ def exibir_comparativo_modelos(resultados):
                     confidence_cols = [c for c in df.columns if 'Confidence_' in c and 'Target_' in c]
                 
                 if prob_cols and ml_side_cols and confidence_cols:
-                    cols_exibir = ['League', 'Home', 'Away', 'Goals_H_Today','Goals_A_Today' ] + prob_cols + ml_side_cols + confidence_cols
+                    cols_exibir = ['League', 'Home', 'Away', 'Goals_H_Today','Goals_A_Today', 'Asian_Line_Decimal' ] + prob_cols + ml_side_cols + confidence_cols
                     cols_exibir = [c for c in cols_exibir if c in df.columns]
                     
                     # Formatar as colunas numéricas para exibição
