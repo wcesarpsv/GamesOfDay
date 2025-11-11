@@ -54,49 +54,37 @@ def calculate_ah_home_target(row):
     return 1 if (gh + line - ga) > 0 else 0
 
 # =====================================================================
-# 📊 CÁLCULO ESPACIAL COM JULGAMENTO DE MERCADO (VERSÃO ULTRA-ROBUSTA)
+# 📊 CÁLCULO ESPACIAL COM JULGAMENTO DE MERCADO
 # =====================================================================
 def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calcula métricas espaciais 3D + detecção de julgamento de mercado.
-    - Versão ultra-robusta que funciona mesmo com DataFrames vazios
     """
     if df is None or df.empty:
-        st.warning("⚠️ DataFrame vazio recebido em calcular_distancias_3d(). Criando estrutura básica...")
-        # Criar estrutura mínima necessária
-        base_cols = ['dx', 'dy', 'dz', 'Diff_Judgment', 'Quadrant_Dist_3D', 'Magnitude_3D', 
-                    'Quadrant_Angle_XY', 'Quadrant_Sin_XY', 'Quadrant_Cos_XY', 
-                    'Vector_Sign', 'Quadrant_Separation_3D',
-                    'Judgment_Discrepancy_H', 'Judgment_Discrepancy_A']
-        return pd.DataFrame(columns=base_cols)
+        st.warning("⚠️ DataFrame vazio recebido em calcular_distancias_3d().")
+        return pd.DataFrame()
 
     df = df.copy()
 
-    # ------------------ DEBUG: Mostrar colunas disponíveis ------------------
-    st.sidebar.info(f"📊 Colunas de entrada: {list(df.columns)}")
-
-    # ------------------ Garantir colunas básicas ABSOLUTAMENTE NECESSÁRIAS ------------------
+    # ------------------ Garantir colunas básicas ------------------
     cols_necessarias = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
     
     for col in cols_necessarias:
         if col not in df.columns:
-            st.warning(f"⚠️ Coluna {col} não encontrada - criando com zeros")
             df[col] = 0.0
     
     # Preencher NaN com zeros
     for col in cols_necessarias:
         df[col] = df[col].fillna(0.0)
 
-    # ------------------ Cálculo DIRETO sem normalização complexa ------------------
-    # Usar valores originais diretamente para evitar problemas de normalização
+    # ------------------ Cálculo vetorial 3D ------------------
     df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
     df['dy'] = df['M_H'] - df['M_A']
     df['dz'] = df['MT_H'] - df['MT_A']
 
-    # ------------------ Garantir que todas as colunas necessárias existam ------------------
-    # Distância 3D
+    # ------------------ Métricas espaciais ------------------
     df['Quadrant_Dist_3D'] = np.sqrt(df['dx']**2 + df['dy']**2 + df['dz']**2)
-    df['Magnitude_3D'] = df['Quadrant_Dist_3D']  # Alias para compatibilidade
+    df['Magnitude_3D'] = df['Quadrant_Dist_3D']
 
     # Ângulos e trigonometria
     angle_xy = np.arctan2(df['dy'], df['dx'])
@@ -117,13 +105,10 @@ def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
     df.replace([np.inf, -np.inf], 0, inplace=True)
     df.fillna(0, inplace=True)
 
-    # DEBUG: Verificar colunas criadas
-    st.sidebar.success(f"✅ Colunas criadas: {len([col for col in df.columns if col in ['dx', 'dy', 'dz', 'Diff_Judgment', 'Quadrant_Dist_3D', 'Magnitude_3D']])}/6")
-
     return df
 
 # =====================================================================
-# ⚡ CLUSTERIZAÇÃO 3D (VERSÃO ROBUSTA)
+# ⚡ CLUSTERIZAÇÃO 3D
 # =====================================================================
 def aplicar_clusterizacao_3d(df: pd.DataFrame, n_clusters: int = 3, random_state: int = 42) -> pd.DataFrame:
     """
@@ -201,204 +186,237 @@ def calcular_score_espacial_inteligente(row, angulo):
     return float(np.clip(score, 0.05, 0.95))
 
 # =====================================================================
-# 🎯 TREINAMENTO E EXIBIÇÃO (VERSÃO ULTRA-ROBUSTA)
+# 🎯 TREINAMENTO E PREVISÃO (LÓGICA CORRIGIDA)
 # =====================================================================
-def treinar_modelo_espacial_inteligente(history, games_today):
-    st.subheader("Treinando Modelo Market Judgment V3")
+def treinar_e_prever_espacial_inteligente(history_with_results, games_today):
+    """
+    LÓGICA CORRIGIDA:
+    - Usa dados HISTÓRICOS com resultados para treinar
+    - Aplica o modelo treinado nos jogos de HOJE (sem resultados)
+    """
+    st.subheader("🎯 Modelo Market Judgment V3 - Previsões para Hoje")
     
-    # Verificar se temos dados suficientes
-    if history.empty:
-        st.error("❌ Histórico vazio! Não é possível treinar o modelo.")
-        st.info("💡 Verifique se existem jogos com resultados completos (Goals_H_FT e Goals_A_FT)")
+    # VERIFICAÇÃO 1: Temos dados históricos para treinar?
+    if history_with_results.empty:
+        st.error("❌ Nenhum dado histórico com resultados para treinar o modelo!")
+        st.info("""
+        💡 **Solução:** 
+        - Use um arquivo CSV que contenha jogos PASSADOS com resultados completos
+        - O modelo precisa de histórico para aprender padrões
+        - Os jogos de HOJE não precisam ter resultados (serão previstos)
+        """)
         return None, games_today
     
-    st.info(f"📚 Dados de treino: {len(history)} jogos históricos")
+    st.success(f"📚 Dados de treino: {len(history_with_results)} jogos históricos com resultados")
     
-    # Aplicar cálculos espaciais
-    history = calcular_distancias_3d(history)
-    games_today = calcular_distancias_3d(games_today)
-    
-    # Verificar se as colunas necessárias foram criadas
-    colunas_necessarias = ['dx', 'dy', 'dz', 'Diff_Judgment', 'Quadrant_Dist_3D', 'Magnitude_3D']
-    
-    if history.empty:
-        st.error("❌ Histórico ficou vazio após cálculo espacial!")
+    # VERIFICAÇÃO 2: Temos jogos para hoje para prever?
+    if games_today.empty:
+        st.warning("⚠️ Nenhum jogo encontrado para hoje")
         return None, games_today
-        
-    colunas_faltantes = [col for col in colunas_necessarias if col not in history.columns]
     
-    if colunas_faltantes:
-        st.error(f"❌ Colunas faltantes após cálculo espacial: {colunas_faltantes}")
-        st.info("📋 Colunas disponíveis no history:")
-        st.write(list(history.columns))
-        
-        # Tentar criar colunas manualmente como fallback
-        st.warning("🔄 Tentando criar colunas manualmente...")
-        for col in colunas_faltantes:
-            if col in ['dx', 'dy', 'dz']:
-                history[col] = 0.0
-                games_today[col] = 0.0
-            elif col == 'Diff_Judgment':
-                history[col] = 0.0
-                games_today[col] = 0.0
-            elif col in ['Quadrant_Dist_3D', 'Magnitude_3D']:
-                history[col] = 0.0
-                games_today[col] = 0.0
+    st.info(f"🎯 Jogos para prever hoje: {len(games_today)}")
+
+    # PASSO 1: Calcular features espaciais nos dados históricos
+    st.write("📊 Calculando métricas espaciais...")
+    history_processed = calcular_distancias_3d(history_with_results)
     
-    # Aplicar clusterização
-    history = aplicar_clusterizacao_3d(history)
-    games_today = aplicar_clusterizacao_3d(games_today)
-    
-    # Calcular score espacial
+    if history_processed.empty:
+        st.error("❌ Erro no processamento dos dados históricos")
+        return None, games_today
+
+    # PASSO 2: Aplicar clusterização no histórico
+    st.write("🔮 Aplicando clusterização...")
+    history_processed = aplicar_clusterizacao_3d(history_processed)
+
+    # PASSO 3: Calcular score espacial no histórico (PARA TREINO)
     ang = 40
-    history['Score_Espacial'] = history.apply(lambda x: calcular_score_espacial_inteligente(x, ang), axis=1)
-    history['Target_Espacial'] = (history['Score_Espacial'] >= 0.5).astype(int)
+    history_processed['Score_Espacial'] = history_processed.apply(
+        lambda x: calcular_score_espacial_inteligente(x, ang), axis=1
+    )
     
-    # Features para o modelo
-    features_base = ['dx', 'dy', 'dz', 'Diff_Judgment', 'Quadrant_Dist_3D', 'Magnitude_3D']
-    features_extras = ['Score_Espacial', 'Cluster3D_Label']
+    # PASSO 4: Definir target baseado no score (PARA TREINO)
+    history_processed['Target_Espacial'] = (history_processed['Score_Espacial'] >= 0.5).astype(int)
+
+    # PASSO 5: Treinar modelo com dados históricos
+    st.write("🤖 Treinando modelo Random Forest...")
+    features = ['dx', 'dy', 'dz', 'Diff_Judgment', 'Quadrant_Dist_3D', 'Magnitude_3D', 'Score_Espacial', 'Cluster3D_Label']
     
-    # Construir lista de features disponíveis
-    features = []
-    for f in features_base + features_extras:
-        if f in history.columns:
-            features.append(f)
+    # Garantir que todas as features existem
+    features_disponiveis = [f for f in features if f in history_processed.columns]
     
-    if len(features) < 3:  # Mínimo de features necessárias
-        st.error(f"❌ Features insuficientes: apenas {len(features)} disponíveis")
-        st.info(f"✅ Features disponíveis: {features}")
+    if len(features_disponiveis) < 3:
+        st.error(f"❌ Features insuficientes para treinamento: {features_disponiveis}")
         return None, games_today
-    
-    st.success(f"✅ Features para treinamento: {features}")
-    
-    # Treinar modelo
-    X = history[features].fillna(0)
-    y = history['Target_Espacial']
-    
+
+    X_train = history_processed[features_disponiveis].fillna(0)
+    y_train = history_processed['Target_Espacial']
+
     try:
         model = RandomForestClassifier(
-            n_estimators=100,  # Reduzido para mais estabilidade
+            n_estimators=100,
             max_depth=6, 
             class_weight='balanced', 
             random_state=42, 
             n_jobs=-1
         )
-        model.fit(X, y)
-        
-        # Fazer previsões
-        if games_today.empty:
-            st.warning("⚠️ Nenhum jogo para hoje para fazer previsões")
-            games_today['Prob_Espacial'] = 0.5
-            games_today['ML_Side_Espacial'] = 'NEUTRAL'
-            games_today['Confidence_Espacial'] = 0.0
-        else:
-            X_today = games_today[features].fillna(0)
-            proba = np.clip(model.predict_proba(X_today)[:, 1], 0.05, 0.95)
-            
-            games_today['Prob_Espacial'] = proba
-            games_today['ML_Side_Espacial'] = np.where(proba >= 0.5, 'HOME', 'AWAY')
-            games_today['Confidence_Espacial'] = np.maximum(proba, 1 - proba)
-        
+        model.fit(X_train, y_train)
+        st.success(f"✅ Modelo treinado com {len(X_train)} amostras e {len(features_disponiveis)} features")
     except Exception as e:
-        st.error(f"❌ Erro no treinamento do modelo: {e}")
+        st.error(f"❌ Erro no treinamento: {e}")
         return None, games_today
+
+    # PASSO 6: APLICAR NAS PREVISÕES DE HOJE
+    st.write("🔮 Aplicando previsões para os jogos de hoje...")
     
-    # ---- tabela de julgamento invertido ----
-    st.markdown("### 🧭 Top 10 Confrontos de Julgamento Invertido")
+    # Processar jogos de hoje com as MESMAS transformações
+    games_processed = calcular_distancias_3d(games_today)
+    games_processed = aplicar_clusterizacao_3d(games_processed)
     
+    # Calcular score espacial para hoje
+    games_processed['Score_Espacial'] = games_processed.apply(
+        lambda x: calcular_score_espacial_inteligente(x, ang), axis=1
+    )
+
+    # Fazer previsões
+    X_today = games_processed[features_disponiveis].fillna(0)
+    proba = np.clip(model.predict_proba(X_today)[:, 1], 0.05, 0.95)
+    
+    # Adicionar resultados às previsões
+    games_processed['Prob_Espacial'] = proba
+    games_processed['ML_Side_Espacial'] = np.where(proba >= 0.5, 'HOME', 'AWAY')
+    games_processed['Confidence_Espacial'] = np.maximum(proba, 1 - proba)
+
+    # EXIBIR RESULTADOS
+    st.success("✅ Previsões concluídas!")
+    
+    # Tabela de julgamento de mercado
+    st.markdown("### 🧭 Top 10 - Julgamento de Mercado")
     colunas_tabela = ['League', 'Home', 'Away', 'Diff_Judgment', 'ML_Side_Espacial', 'Confidence_Espacial']
-    colunas_disponiveis = [col for col in colunas_tabela if col in games_today.columns]
+    colunas_disponiveis = [col for col in colunas_tabela if col in games_processed.columns]
     
-    if colunas_disponiveis and not games_today.empty:
-        top = games_today[colunas_disponiveis].copy()
-        top['Tipo'] = np.where(top['Diff_Judgment'] > 0, '⚡ Home Subestimado', '🔻 Home Overvalued')
-        st.dataframe(top.sort_values('Diff_Judgment', ascending=False).head(10), width='stretch')
-    else:
-        st.warning("⚠️ Colunas insuficientes para exibir tabela de julgamento")
-    
-    st.success("✅ Modelo Market Judgment V3 treinado!")
-    return model, games_today
+    if colunas_disponiveis:
+        top_julgamento = games_processed[colunas_disponiveis].copy()
+        top_julgamento['Tipo_Julgamento'] = np.where(
+            top_julgamento['Diff_Judgment'] > 0, 
+            '⚡ Home Subestimado', 
+            '🔻 Home Superestimado'
+        )
+        st.dataframe(
+            top_julgamento.sort_values('Diff_Judgment', ascending=False).head(10), 
+            width='stretch'
+        )
+
+    return model, games_processed
 
 # =====================================================================
-# 🚀 MAIN (VERSÃO ULTRA-ROBUSTA)
+# 🚀 MAIN (LÓGICA CORRIGIDA)
 # =====================================================================
 def main():
-    st.sidebar.markdown("## Configurações V3")
+    st.sidebar.markdown("## Configurações V3 - Market Judgment")
+    
+    # Carregar arquivos disponíveis
     files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith('.csv')]
     
     if not files: 
-        st.error("❌ Nenhum CSV encontrado em GamesDay")
-        st.info(f"💡 Verifique se a pasta '{GAMES_FOLDER}' existe e contém arquivos CSV")
+        st.error(f"❌ Nenhum CSV encontrado na pasta '{GAMES_FOLDER}'")
         return
     
-    fsel = st.sidebar.selectbox("Arquivo:", sorted(files), index=len(files)-1)
+    fsel = st.sidebar.selectbox("Selecionar arquivo CSV:", sorted(files), index=len(files)-1)
     
     try:
+        # Carregar dados
         df = pd.read_csv(os.path.join(GAMES_FOLDER, fsel))
         st.sidebar.success(f"✅ {len(df)} jogos carregados")
-        
-        # DEBUG: Mostrar informações do arquivo
-        st.sidebar.info(f"📋 Colunas no CSV: {len(df.columns)}")
-        st.sidebar.write(f"📅 Período: {df['Date'].min() if 'Date' in df.columns else 'N/A'} a {df['Date'].max() if 'Date' in df.columns else 'N/A'}")
         
     except Exception as e:
         st.error(f"❌ Erro ao carregar arquivo: {e}")
         return
     
+    # Filtrar ligas
     df = filter_leagues(df)
     
-    # Preparar colunas necessárias
+    # Preparar colunas de Asian Handicap
     if 'Asian_Line' in df.columns:
         df['Asian_Line_Decimal'] = df['Asian_Line'].apply(convert_asian_line_to_decimal)
     else:
-        st.warning("⚠️ Coluna 'Asian_Line' não encontrada")
-        df['Asian_Line_Decimal'] = np.nan
-    
+        df['Asian_Line_Decimal'] = 0.0  # Valor padrão
+
     # Garantir colunas de goals
     if 'Goals_H_FT' not in df.columns: 
-        st.warning("⚠️ Colunas de goals não encontradas - criando com NaN")
         df['Goals_H_FT'] = np.nan
         df['Goals_A_FT'] = np.nan
     
+    # CALCULAR TARGET APENAS PARA IDENTIFICAR JOGOS COM RESULTADOS
     df['Target_AH_Home'] = df.apply(calculate_ah_home_target, axis=1)
     
-    # Separar histórico e jogos de hoje
-    history = df.dropna(subset=['Target_AH_Home']).copy()
-    games_today = df.copy()
+    # SEPARAÇÃO CORRIGIDA:
+    # - HISTÓRICO: jogos com resultados (Target_AH_Home não é NaN) → PARA TREINAR
+    # - HOJE: todos os jogos (incluindo os sem resultados) → PARA PREVER
     
-    st.sidebar.info(f"📚 Histórico: {len(history)} jogos | 🎯 Hoje: {len(games_today)} jogos")
+    history_with_results = df.dropna(subset=['Target_AH_Home']).copy()
+    all_games_today = df.copy()  # Todos os jogos do arquivo
     
-    # DEBUG: Mostrar primeiras linhas
-    with st.expander("🔍 Debug - Visualizar Dados Carregados"):
-        st.write("**DataFrame Completo:**", df.shape)
-        st.write("**Colunas:**", list(df.columns))
+    st.sidebar.info(f"""
+    📊 **Estatísticas do Arquivo:**
+    - 📚 Histórico com resultados: **{len(history_with_results)}** jogos
+    - 🎯 Total de jogos para análise: **{len(all_games_today)}** jogos
+    - 📅 Data do arquivo: **{fsel}**
+    """)
+    
+    # Debug expander
+    with st.expander("🔍 Ver detalhes dos dados carregados"):
+        st.write("**Colunas disponíveis:**", list(df.columns))
         st.write("**Primeiras linhas:**")
         st.dataframe(df.head(3), width='stretch')
         
-        if not history.empty:
-            st.write("**Histórico (com targets):**", history.shape)
-            st.dataframe(history[['Home', 'Away', 'Goals_H_FT', 'Goals_A_FT', 'Target_AH_Home']].head(3), width='stretch')
+        if not history_with_results.empty:
+            st.write("**Exemplo de jogos históricos (com resultados):**")
+            st.dataframe(history_with_results[['Home', 'Away', 'Goals_H_FT', 'Goals_A_FT', 'Asian_Line_Decimal', 'Target_AH_Home']].head(3), width='stretch')
     
-    if st.sidebar.button("🚀 Treinar V3"):
-        with st.spinner("Treinando modelo Market Judgment V3..."):
-            model, res = treinar_modelo_espacial_inteligente(history, games_today)
+    # Botão de treinamento
+    if st.sidebar.button("🚀 Executar Market Judgment V3", type="primary"):
+        with st.spinner("Processando dados e gerando previsões..."):
+            model, resultados = treinar_e_prever_espacial_inteligente(history_with_results, all_games_today)
             
-            if model is not None and not res.empty:
-                colunas_resultado = ['Home', 'Away', 'Prob_Espacial', 'ML_Side_Espacial', 'Confidence_Espacial']
-                colunas_disponiveis = [col for col in colunas_resultado if col in res.columns]
+            if model is not None and not resultados.empty:
+                # Mostrar todas as previsões
+                st.markdown("### 📊 Previsões para Todos os Jogos")
+                
+                colunas_resultado = [
+                    'League', 'Home', 'Away', 
+                    'Prob_Espacial', 'ML_Side_Espacial', 'Confidence_Espacial',
+                    'Diff_Judgment'
+                ]
+                
+                colunas_disponiveis = [col for col in colunas_resultado if col in resultados.columns]
                 
                 if colunas_disponiveis:
-                    st.markdown("### 📊 Resultados das Previsões")
-                    st.dataframe(
-                        res[colunas_disponiveis].sort_values('Confidence_Espacial', ascending=False), 
-                        width='stretch'
+                    resultados_ordenados = resultados[colunas_disponiveis].sort_values(
+                        'Confidence_Espacial', 
+                        ascending=False
                     )
+                    
+                    st.dataframe(resultados_ordenados, width='stretch')
+                    
+                    # Estatísticas rápidas
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("🏠 Previsões HOME", 
+                                 len(resultados[resultados['ML_Side_Espacial'] == 'HOME']))
+                    with col2:
+                        st.metric("✈️ Previsões AWAY", 
+                                 len(resultados[resultados['ML_Side_Espacial'] == 'AWAY']))
+                    with col3:
+                        avg_confidence = resultados['Confidence_Espacial'].mean()
+                        st.metric("🎯 Confiança Média", f"{avg_confidence:.1%}")
+                    
                 else:
                     st.error("❌ Colunas de resultado não encontradas")
             else:
-                st.error("❌ Falha no treinamento do modelo - verifique os dados de entrada")
+                st.error("❌ Não foi possível gerar previsões")
+
     else:
-        st.info("👆 Clique em 'Treinar V3' para rodar o detector de julgamento de mercado")
+        st.info("👆 Clique em **'Executar Market Judgment V3'** para gerar previsões")
 
 if __name__ == "__main__":
     main()
