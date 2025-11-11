@@ -125,20 +125,40 @@ def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # =====================================================================
-# ⚡ CLUSTERIZAÇÃO 3D (idêntica à V2 resumida)
+# ⚡ CLUSTERIZAÇÃO 3D (VERSÃO ROBUSTA)
 # =====================================================================
-def aplicar_clusterizacao_3d(df,random_state=42):
-    df=df.copy()
-    X=df[['dx','dy','dz']].fillna(0)
-    best_k,best_score=2,-1
-    for k in range(2,min(8,len(df))):
-        try:
-            sc=silhouette_score(X,KMeans(k,random_state=42,n_init=10).fit_predict(X))
-            if sc>best_score: best_k, best_score=k, sc
-        except: continue
-    km=KMeans(best_k,random_state=42,n_init=10)
-    df['Cluster3D_Label']=km.fit_predict(X)
+def aplicar_clusterizacao_3d(df: pd.DataFrame, n_clusters: int = 5, random_state: int = 42) -> pd.DataFrame:
+    """
+    Cria clusters espaciais 3D com ajuste automático do número de clusters.
+    - Evita erro quando há poucos jogos (n_samples < n_clusters)
+    - Garante saída consistente mesmo com bases pequenas
+    """
+    df = df.copy()
+
+    # Garantir colunas diferenciais
+    for col in ['dx', 'dy', 'dz']:
+        if col not in df.columns:
+            df[col] = 0
+
+    X = df[['dx', 'dy', 'dz']].fillna(0)
+
+    # Se poucos jogos, reduzir clusters automaticamente
+    n_samples = len(X)
+    if n_samples < 2:
+        df['Cluster3D_Label'] = 0
+        return df
+
+    n_clusters = min(max(2, n_clusters), n_samples)
+
+    try:
+        kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)
+        df['Cluster3D_Label'] = kmeans.fit_predict(X)
+    except Exception as e:
+        st.warning(f"⚠️ Clusterização simplificada: {e}")
+        df['Cluster3D_Label'] = 0
+
     return df
+
 
 # =====================================================================
 # 🧮 SCORE ESPACIAL AJUSTADO POR JULGAMENTO
