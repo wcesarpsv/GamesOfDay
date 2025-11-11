@@ -47,37 +47,82 @@ def calculate_ah_home_target(row):
     if pd.isna(gh) or pd.isna(ga) or pd.isna(line): return np.nan
     return 1 if (gh+line-ga)>0 else 0
 
+
 # =====================================================================
-# 📊 CÁLCULO ESPACIAL COM JULGAMENTO DE MERCADO
+# 📊 CÁLCULO ESPACIAL COM JULGAMENTO DE MERCADO (VERSÃO ROBUSTA V3.1)
 # =====================================================================
-def calcular_distancias_3d(df:pd.DataFrame)->pd.DataFrame:
-    df=df.copy()
-    cols=['Aggression_Home','Aggression_Away','M_H','M_A','MT_H','MT_A']
+def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula métricas espaciais 3D + detecção de julgamento de mercado
+    - Normalização robusta por liga (z-score)
+    - Cálculo de dx, dy, dz e métricas geométricas
+    - Cálculo de Diff_Judgment (gap entre percepção e momento real)
+    """
+    df = df.copy()
+
+    # ------------------ Garantir colunas básicas ------------------
+    cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
     for c in cols:
-        if c not in df.columns: df[c]=0
-    # normalização leve
+        if c not in df.columns:
+            df[c] = 0
+
+    # ------------------ Normalização robusta por liga ------------------
+    cols_norm = cols.copy()
+
     if 'League' in df.columns:
-        df[cols]=df.groupby('League')[cols].transform(lambda x:(x-x.mean())/(x.std(ddof=0) or 1))
+        normed_blocks = []
+
+        for league, g in df.groupby('League', group_keys=False):
+            # Se a liga tem só NaN ou 1 jogo, não normaliza
+            if len(g) < 2 or g[cols_norm].dropna(how='all').empty:
+                g_norm = g[cols_norm].fillna(0)
+            else:
+                g_norm = g[cols_norm].apply(
+                    lambda x: (x - x.mean()) / (x.std(ddof=0) or 1)
+                )
+            normed_blocks.append(g_norm)
+
+        # Concatenar resultados e restaurar ordem original
+        df[cols_norm] = pd.concat(normed_blocks, axis=0).sort_index()
+
     else:
-        df[cols]=(df[cols]-df[cols].mean())/(df[cols].std(ddof=0) or 1)
-    # vetores diferenciais
-    df['dx']=df['Aggression_Home']-df['Aggression_Away']
-    df['dy']=df['M_H']-df['M_A']
-    df['dz']=df['MT_H']-df['MT_A']
-    # distâncias e ângulos
-    df['Quadrant_Dist_3D']=np.sqrt(df['dx']**2+df['dy']**2+df['dz']**2)
-    ang=np.arctan2(df['dy'],df['dx'])
-    df['Quadrant_Angle_XY']=np.degrees(ang)
-    df['Quadrant_Sin_XY']=np.sin(ang)
-    df['Quadrant_Cos_XY']=np.cos(ang)
-    df['Vector_Sign']=np.sign(df['dx']*df['dy']*df['dz']).fillna(0)
-    df['Quadrant_Separation_3D']=(df['dx']+df['dy']+df['dz'])/3
-    df['Magnitude_3D']=np.sqrt(df['dx']**2+df['dy']**2+df['dz']**2)
-    # ------------------ Market Judgment ------------------
-    df['Judgment_Discrepancy_H']=(df['Aggression_Home']*-1)*(df['M_H']+df['MT_H'])
-    df['Judgment_Discrepancy_A']=(df['Aggression_Away']*-1)*(df['M_A']+df['MT_A'])
-    df['Diff_Judgment']=df['Judgment_Discrepancy_H']-df['Judgment_Discrepancy_A']
+        # Sem coluna de liga — normalização global
+        df[cols_norm] = df[cols_norm].apply(
+            lambda x: (x - x.mean()) / (x.std(ddof=0) or 1)
+        )
+
+    # ------------------ Cálculo vetorial 3D ------------------
+    df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
+    df['dy'] = df['M_H'] - df['M_A']
+    df['dz'] = df['MT_H'] - df['MT_A']
+
+    df['Quadrant_Dist_3D'] = np.sqrt(df['dx'] ** 2 + df['dy'] ** 2 + df['dz'] ** 2)
+
+    angle_xy = np.arctan2(df['dy'], df['dx'])
+    df['Quadrant_Angle_XY'] = np.degrees(angle_xy)
+    df['Quadrant_Sin_XY'] = np.sin(angle_xy)
+    df['Quadrant_Cos_XY'] = np.cos(angle_xy)
+    df['Vector_Sign'] = np.sign(df['dx'] * df['dy'] * df['dz']).fillna(0)
+    df['Quadrant_Separation_3D'] = (df['dx'] + df['dy'] + df['dz']) / 3.0
+    df['Magnitude_3D'] = np.sqrt(df['dx'] ** 2 + df['dy'] ** 2 + df['dz'] ** 2)
+
+    # ------------------ Cálculo de distorção de julgamento ------------------
+    df['Judgment_Discrepancy_H'] = (df['Aggression_Home'] * -1) * (
+        df['M_H'] + df['MT_H']
+    )
+    df['Judgment_Discrepancy_A'] = (df['Aggression_Away'] * -1) * (
+        df['M_A'] + df['MT_A']
+    )
+    df['Diff_Judgment'] = (
+        df['Judgment_Discrepancy_H'] - df['Judgment_Discrepancy_A']
+    )
+
+    # ------------------ Segurança final ------------------
+    df.replace([np.inf, -np.inf], 0, inplace=True)
+    df.fillna(0, inplace=True)
+
     return df
+
 
 # =====================================================================
 # ⚡ CLUSTERIZAÇÃO 3D (idêntica à V2 resumida)
