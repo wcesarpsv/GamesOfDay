@@ -326,7 +326,7 @@ def calcular_julgamento_mercado(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 # =====================================================================
-# 🧠 TREINAMENTO COM MARKET JUDGMENT V3
+# 🧠 TREINAMENTO COM MARKET JUDGMENT V3 (CORRIGIDO)
 # =====================================================================
 def treinar_modelo_espacial_inteligente(history: pd.DataFrame, games_today: pd.DataFrame):
     st.markdown("## 🧠 Treinando Modelo Market Judgment V3")
@@ -354,20 +354,20 @@ def treinar_modelo_espacial_inteligente(history: pd.DataFrame, games_today: pd.D
     # 4) Otimizar ângulo usando Target_AH_Home (base real)
     angulo_otimo = encontrar_angulo_otimo(history, target_col='Target_AH_Home')
 
-    # 5) Score & Target Espacial
+    # 5) Score & Target Espacial (APENAS PARA HISTORY - TREINO)
     st.info(f"🎯 Aplicando Score Espacial com ângulo {angulo_otimo}°")
     history['Score_Espacial'] = history.apply(
         lambda x: calcular_score_espacial_inteligente(x, angulo_otimo), axis=1
     )
     history['Target_Espacial'] = (history['Score_Espacial'] >= 0.5).astype(int)
 
-    # 6) Features para o modelo (INCLUINDO JULGAMENTO DE MERCADO)
+    # 6) Features para o modelo (EXCLUINDO Score_Espacial das features de treino)
     features_espaciais = [
         'dx', 'dy', 'dz', 'Diff_Judgment', 'Value_Gap',
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
         'Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Quadrant_Angle_XY',
         'Vector_Sign', 'Magnitude_3D',
-        'Score_Espacial', 'Cluster3D_Label'
+        'Cluster3D_Label'  # REMOVIDO: 'Score_Espacial'
     ]
 
     features_espaciais = [f for f in features_espaciais if f in history.columns]
@@ -395,25 +395,30 @@ def treinar_modelo_espacial_inteligente(history: pd.DataFrame, games_today: pd.D
     )
     model.fit(X, y)
 
-    # 8) Preparar dados de hoje
+    # 8) CALCULAR SCORE ESPACIAL PARA HOJE (APÓS O TREINAMENTO)
+    games_today['Score_Espacial'] = games_today.apply(
+        lambda x: calcular_score_espacial_inteligente(x, angulo_otimo), axis=1
+    )
+
+    # 9) Preparar dados de hoje para previsão (AGORA INCLUINDO Score_Espacial)
+    features_para_previsao = features_espaciais + ['Score_Espacial']  # ADICIONADO para previsão
+    
     if 'League' in games_today.columns:
         ligas_today = pd.get_dummies(games_today['League'], prefix='League')
         # Garantir mesmas colunas
         for col in X.columns:
             if col.startswith("League_") and col not in ligas_today.columns:
                 ligas_today[col] = 0
-        X_today = pd.concat([ligas_today, games_today[features_espaciais]], axis=1)
+        
+        # Usar features atualizadas que incluem Score_Espacial
+        X_today = pd.concat([ligas_today, games_today[features_para_previsao]], axis=1)
     else:
-        X_today = games_today[features_espaciais].copy()
+        X_today = games_today[features_para_previsao].copy()
     
+    # Garantir que X_today tenha as mesmas colunas que X (do treino)
     X_today = X_today.reindex(columns=X.columns, fill_value=0)
 
-    # Score espacial de hoje
-    games_today['Score_Espacial'] = games_today.apply(
-        lambda x: calcular_score_espacial_inteligente(x, angulo_otimo), axis=1
-    )
-
-    # 9) Previsão
+    # 10) Previsão
     try:
         proba = model.predict_proba(X_today)[:, 1]
         proba = np.clip(proba, 0.05, 0.95)
