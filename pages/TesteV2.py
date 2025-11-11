@@ -1208,26 +1208,81 @@ if not history.empty:
     
     st.success("🎉 Sistema em 2 Estágios implementado com sucesso!")
     
-    # 5. ANÁLISE DE CONTRIBUIÇÃO
+    # 5. ANÁLISE DE CONTRIBUIÇÃO DOS ESTÁGIOS (ATUALIZADA)
     st.markdown("### 📊 Análise de Contribuição dos Estágios")
     
     if 'ML_Regressao_Score' in games_today.columns and 'Quadrante_ML_Score_Main' in games_today.columns:
         correlacao = games_today[['ML_Regressao_Score', 'Quadrante_ML_Score_Main']].corr().iloc[0,1]
         st.metric("📈 Correlação entre Estágios", f"{correlacao:.3f}")
         
-        # Jogos onde os estágios discordam (oportunidades especiais)
-        discordantes = games_today[
-            (games_today['ML_Regressao_Score'] > 0.6) & 
-            (games_today['Quadrante_ML_Score_Main'] < 0.4)
+        # 🆕 CRITÉRIOS MAIS FLEXÍVEIS PARA OPORTUNIDADES
+        oportunidade_1 = games_today[
+            (games_today['ML_Regressao_Score'] > 0.55) & 
+            (games_today['Quadrante_ML_Score_Main'] < 0.45)
         ]
-        st.metric("🎯 Oportunidades de Regressão", len(discordantes))
         
-        if not discordantes.empty:
-            st.info("💡 Estes jogos têm alta probabilidade de regressão mas baixa probabilidade principal")
-            st.dataframe(discordantes[['Home', 'Away', 'ML_Regressao_Score', 'Quadrante_ML_Score_Main']], width='stretch')
-    
-else:
-    st.warning("⚠️ Histórico vazio - não foi possível treinar o sistema em 2 estágios")
+        oportunidade_2 = games_today[
+            (games_today['ML_Regressao_Score'] < 0.45) & 
+            (games_today['Quadrante_ML_Score_Main'] > 0.55)
+        ]
+        
+        oportunidade_3 = games_today[
+            (abs(games_today['ML_Regressao_Score'] - games_today['Quadrante_ML_Score_Main']) > 0.25)
+        ]
+        
+        total_oportunidades = len(oportunidade_1) + len(oportunidade_2) + len(oportunidade_3)
+        
+        # 🆕 MÉTRICAS DETALHADAS
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("🎯 Oportunidades Totais", total_oportunidades)
+        with col2:
+            st.metric("📊 Diferença Média", 
+                     f"{(games_today['ML_Regressao_Score'] - games_today['Quadrante_ML_Score_Main']).mean():.3f}")
+        with col3:
+            st.metric("🔄 Alinhamento", 
+                     "✅ BOM" if correlacao > 0.3 else "⚠️ BAIXO")
+        
+        # 🆕 DETALHES DAS OPORTUNIDADES
+        if total_oportunidades > 0:
+            st.info("💡 **Oportunidades identificadas** - Discordância significativa entre os estágios")
+            
+            todas_oportunidades = pd.concat([oportunidade_1, oportunidade_2, oportunidade_3]).drop_duplicates()
+            
+            st.dataframe(
+                todas_oportunidades[['Home', 'Away', 'ML_Regressao_Score', 'Quadrante_ML_Score_Main', 
+                                   'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away']]
+                .assign(
+                    Diferenca=lambda df: df['ML_Regressao_Score'] - df['Quadrante_ML_Score_Main'],
+                    Tipo_Oportunidade=lambda df: np.where(
+                        df['ML_Regressao_Score'] > df['Quadrante_ML_Score_Main'], 
+                        '📈 REGRESSÃO ALTA', '📉 REGRESSÃO BAIXA'
+                    )
+                )
+                .sort_values('Diferenca', key=abs, ascending=False)
+                .style.format({
+                    'ML_Regressao_Score': '{:.1%}',
+                    'Quadrante_ML_Score_Main': '{:.1%}',
+                    'Quadrante_ML_Score_Home': '{:.1%}',
+                    'Quadrante_ML_Score_Away': '{:.1%}',
+                    'Diferenca': '{:.3f}'
+                })
+                .background_gradient(subset=['Diferenca'], cmap='RdYlBu'),
+                width='stretch'
+            )
+        else:
+            st.success("✅ **Estágios alinhados** - Nenhuma discordância significativa detectada")
+            
+            # 🆕 MOSTRAR ALGUNS EXEMPLOS MESMO SEM OPORTUNIDADES
+            st.info("🔍 **Amostra de alinhamento entre estágios:**")
+            amostra = games_today[['Home', 'Away', 'ML_Regressao_Score', 'Quadrante_ML_Score_Main']].head(5)
+            st.dataframe(
+                amostra.style.format({
+                    'ML_Regressao_Score': '{:.1%}',
+                    'Quadrante_ML_Score_Main': '{:.1%}'
+                }),
+                width='stretch'
+            )
     
 
 
