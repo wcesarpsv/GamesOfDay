@@ -544,10 +544,10 @@ def plot_quadrantes_16(df, side="Home"):
 
     # Definir cores por categoria
     cores_categorias = {
-        'Fav Forte': 'lightcoral',
-        'Fav Moderado': 'lightpink', 
-        'Under Moderado': 'lightblue',
-        'Under Forte': 'lightsteelblue'
+        'Fav Forte': 'gold',
+        'Fav Moderado': 'blue', 
+        'Under Moderado': 'black',
+        'Under Forte': 'red'
     }
 
     # Plotar cada ponto com cor da categoria
@@ -1495,11 +1495,10 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         recomendacao_str = str(recomendacao).upper()
     
         is_home_bet = any(k in recomendacao_str for k in [
-            'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
-            'MODELO CONFIA HOME', 'H:', 'HOME)'
+            '1 - '
         ])
         is_away_bet = any(k in recomendacao_str for k in [
-            'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+            'AWAY','2 - ', 'FAVORITO AWAY', 'VALUE NO AWAY',
             'MODELO CONFIA AWAY', 'A:', 'AWAY)'
         ])
     
