@@ -731,7 +731,7 @@ def treinar_modelo_personalizado(history_subset, games_today, target_col):
         # ===============================
         from sklearn.ensemble import RandomForestClassifier
         model = RandomForestClassifier(
-            n_estimators=180,
+            n_estimators=500,
             max_depth=8,
             random_state=42,
             class_weight='balanced_subsample',
