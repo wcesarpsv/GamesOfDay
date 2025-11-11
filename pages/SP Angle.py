@@ -193,7 +193,7 @@ def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
     cols_norm = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
     if 'League' in df.columns:
         df[cols_norm] = df.groupby('League')[cols_norm].transform(
-            lambda x: (x - x.mean()) / (x.std(ddof=0).replace(0, 1))
+            lambda x: (x - x.mean()) / (x.std(ddof=0) or 1)
         )
     else:
         for c in cols_norm:
