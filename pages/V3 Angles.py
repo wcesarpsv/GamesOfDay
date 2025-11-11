@@ -23,6 +23,62 @@ EXCLUDED_LEAGUE_KEYWORDS = ["cup","copas","uefa","afc","sudamericana","copa","tr
 np.random.seed(42)
 
 # =====================================================================
+# 🔧 FUNÇÕES AUXILIARES PARA ARQUIVOS
+# =====================================================================
+def extract_date_from_filename(filename):
+    """
+    Extrai data do nome do arquivo no formato YYYY-MM-DD
+    """
+    # Procura por padrões de data: 2024-01-15 ou 2024_01_15 etc.
+    date_patterns = [
+        r'(\d{4}-\d{2}-\d{2})',  # 2024-01-15
+        r'(\d{4}_\d{2}_\d{2})',  # 2024_01_15
+        r'(\d{8})',              # 20240115
+    ]
+    
+    for pattern in date_patterns:
+        match = re.search(pattern, filename)
+        if match:
+            date_str = match.group(1)
+            # Converter para formato padrão
+            if '_' in date_str:
+                date_str = date_str.replace('_', '-')
+            elif len(date_str) == 8:  # 20240115
+                date_str = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+            
+            try:
+                return datetime.strptime(date_str, '%Y-%m-%d')
+            except ValueError:
+                continue
+    
+    # Se não encontrar data, usa data de modificação do arquivo
+    try:
+        file_path = os.path.join(GAMES_FOLDER, filename)
+        return datetime.fromtimestamp(os.path.getmtime(file_path))
+    except:
+        return datetime.min
+
+def get_sorted_files():
+    """
+    Retorna arquivos CSV ordenados por data (mais recente primeiro)
+    """
+    if not os.path.exists(GAMES_FOLDER):
+        return []
+    
+    files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith('.csv')]
+    
+    # Ordenar por data extraída do nome do arquivo
+    files_with_dates = []
+    for file in files:
+        file_date = extract_date_from_filename(file)
+        files_with_dates.append((file, file_date))
+    
+    # Ordenar por data (mais recente primeiro)
+    files_with_dates.sort(key=lambda x: x[1], reverse=True)
+    
+    return [file for file, date in files_with_dates]
+
+# =====================================================================
 # 🔧 FUNÇÕES BÁSICAS (mantendo sua lógica)
 # =====================================================================
 def filter_leagues(df):
@@ -436,44 +492,51 @@ def treinar_modelo_espacial_inteligente(history: pd.DataFrame, games_today: pd.D
     return model, games_today
 
 # =====================================================================
-# 🚀 MAIN (LÓGICA CORRIGIDA)
+# 🚀 MAIN (COM SELEÇÃO DE ARQUIVOS CORRIGIDA)
 # =====================================================================
 def main():
     st.sidebar.markdown("## ⚙️ Configurações Market Judgment V3")
     
-    # Carregar arquivos
-    files = [f for f in os.listdir(GAMES_FOLDER) if f.endswith('.csv')]
+    # Carregar arquivos ORDENADOS por data
+    sorted_files = get_sorted_files()
     
-    if not files: 
+    if not sorted_files: 
         st.error(f"❌ Nenhum CSV encontrado na pasta '{GAMES_FOLDER}'")
         return
     
-    # Selecionar arquivo mais recente
-    options = files[-7:] if len(files) >= 7 else files
-    selected_file = st.sidebar.selectbox("Selecionar arquivo:", options, index=len(options)-1)
+    # Mostrar arquivo mais recente primeiro
+    selected_file = st.sidebar.selectbox(
+        "Selecionar arquivo (mais recente primeiro):", 
+        sorted_files, 
+        index=0  # Sempre seleciona o mais recente por padrão
+    )
+    
+    # Mostrar data do arquivo selecionado
+    file_date = extract_date_from_filename(selected_file)
+    st.sidebar.info(f"📅 **Arquivo selecionado:** {file_date.strftime('%d/%m/%Y')}")
     
     try:
         # Carregar dados do dia
         games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
         games_today = filter_leagues(games_today)
         
-        # Carregar histórico de vários arquivos
+        # Carregar histórico de VÁRIOS arquivos para treinamento
         history_dfs = []
-        for file in files:
+        for file in sorted_files:  # Usar arquivos ordenados
             try:
                 df_hist = pd.read_csv(os.path.join(GAMES_FOLDER, file))
                 df_hist = filter_leagues(df_hist)
                 history_dfs.append(df_hist)
-            except:
+            except Exception as e:
                 continue
         
         if history_dfs:
             history = pd.concat(history_dfs, ignore_index=True)
+            st.sidebar.success(f"✅ {len(games_today)} jogos de hoje | {len(history)} jogos históricos")
         else:
             history = pd.DataFrame()
+            st.sidebar.warning("⚠️ Nenhum dado histórico válido encontrado")
             
-        st.sidebar.success(f"✅ {len(games_today)} jogos de hoje | {len(history)} jogos históricos")
-        
     except Exception as e:
         st.error(f"❌ Erro ao carregar dados: {e}")
         return
@@ -503,10 +566,16 @@ def main():
     📊 **Estatísticas:**
     - 📚 Histórico com resultados: **{len(history_with_results)}** jogos
     - 🎯 Jogos para prever hoje: **{len(games_today)}** jogos
+    - 📅 Data do arquivo: **{file_date.strftime('%d/%m/%Y')}**
     """)
 
     # Debug
     with st.expander("🔍 Ver detalhes dos dados"):
+        st.write("**Arquivos disponíveis (ordenados por data):**")
+        for i, file in enumerate(sorted_files[:10]):  # Mostrar apenas os 10 mais recentes
+            file_dt = extract_date_from_filename(file)
+            st.write(f"{i+1}. {file} ({file_dt.strftime('%d/%m/%Y')})")
+        
         st.write("**Colunas disponíveis:**", list(games_today.columns))
         if not history_with_results.empty:
             st.write("**Exemplo histórico:**")
