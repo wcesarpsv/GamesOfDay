@@ -133,6 +133,64 @@ def calcular_momentum_time(df, window=6):
     return df
 
 # ============================================================
+# 📐 CÁLCULO DE DISTÂNCIAS 3D (VERSÃO CORRIGIDA)
+# ============================================================
+def calcular_distancias_3d(df):
+    """Calcula métricas espaciais 3D - VERSÃO CORRIGIDA"""
+    df = df.copy()
+
+    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+    missing_cols = [c for c in required_cols if c not in df.columns]
+    
+    if missing_cols:
+        st.warning(f"⚠️ Colunas faltando para cálculo 3D: {missing_cols}")
+        # Inicializar colunas com NaN
+        for col in ['Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Quadrant_Angle_XY', 
+                   'Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Vector_Sign', 'Magnitude_3D']:
+            df[col] = np.nan
+        return df
+
+    try:
+        # Normalização dos eixos
+        dx = (df['Aggression_Home'] - df['Aggression_Away']) / 2.0
+        dy = (df['M_H'] - df['M_A']) / 2.0
+        dz = (df['MT_H'] - df['MT_A']) / 2.0
+
+        # Preencher NaN com 0 para evitar erros
+        dx = dx.fillna(0)
+        dy = dy.fillna(0)
+        dz = dz.fillna(0)
+
+        # Métricas espaciais
+        df['Quadrant_Dist_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+        
+        # Calcular ângulo XY com tratamento de divisão por zero
+        angle_xy = np.arctan2(dy, dx)
+        df['Quadrant_Angle_XY'] = np.degrees(angle_xy)
+        df['Quadrant_Sin_XY'] = np.sin(angle_xy)
+        df['Quadrant_Cos_XY'] = np.cos(angle_xy)
+        
+        df['Vector_Sign'] = np.sign(dx * dy * dz)
+        df['Vector_Sign'] = df['Vector_Sign'].fillna(0)  # Tratar NaN do sign
+        
+        df['Quadrant_Separation_3D'] = (dx + dy + dz) / 3.0
+        df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+        
+        # Preencher quaisquer valores NaN restantes
+        for col in ['Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Quadrant_Angle_XY',
+                   'Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Vector_Sign', 'Magnitude_3D']:
+            df[col] = df[col].fillna(0)
+            
+    except Exception as e:
+        st.error(f"❌ Erro no cálculo 3D: {e}")
+        # Inicializar colunas com 0 em caso de erro
+        for col in ['Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Quadrant_Angle_XY',
+                   'Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Vector_Sign', 'Magnitude_3D']:
+            df[col] = 0
+
+    return df
+
+# ============================================================
 # 🧩 CLUSTERIZAÇÃO 3D
 # ============================================================
 def aplicar_clusterizacao_3d(df, n_clusters=4, random_state=42):
@@ -146,71 +204,54 @@ def aplicar_clusterizacao_3d(df, n_clusters=4, random_state=42):
         df['Cluster3D_Label'] = -1
         return df
 
-    # Vetor 3D de diferenças
-    df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
-    df['dy'] = df['M_H'] - df['M_A']
-    df['dz'] = df['MT_H'] - df['MT_A']
+    # Garantir que as colunas de diferença existam
+    if 'dx' not in df.columns:
+        df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
+    if 'dy' not in df.columns:
+        df['dy'] = df['M_H'] - df['M_A']
+    if 'dz' not in df.columns:
+        df['dz'] = df['MT_H'] - df['MT_A']
 
     X_cluster = df[['dx', 'dy', 'dz']].fillna(0).to_numpy()
 
-    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, init='k-means++', n_init=10)
-    df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
+    try:
+        kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, init='k-means++', n_init=10)
+        df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
 
-    # Descrição dos clusters
-    df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
-        0: '⚡ Agressivos + Momentum Positivo',
-        1: '💤 Reativos + Momentum Negativo', 
-        2: '⚖️ Equilibrados',
-        3: '🔥 Alta Variância'
-    }).fillna('🌀 Outro')
-
-    return df
-
-# ============================================================
-# 📐 CÁLCULO DE DISTÂNCIAS 3D
-# ============================================================
-def calcular_distancias_3d(df):
-    """Calcula métricas espaciais 3D"""
-    df = df.copy()
-
-    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
-    missing_cols = [c for c in required_cols if c not in df.columns]
-    if missing_cols:
-        st.warning(f"⚠️ Colunas faltando: {missing_cols}")
-        for col in ['Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Quadrant_Angle_XY', 
-                   'Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Vector_Sign', 'Magnitude_3D']:
-            df[col] = np.nan
-        return df
-
-    # Normalização dos eixos
-    dx = (df['Aggression_Home'] - df['Aggression_Away']) / 2
-    dy = (df['M_H'] - df['M_A']) / 2
-    dz = (df['MT_H'] - df['MT_A']) / 2
-
-    # Métricas espaciais
-    df['Quadrant_Dist_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
-    
-    angle_xy = np.arctan2(dy, dx)
-    df['Quadrant_Angle_XY'] = np.degrees(angle_xy)
-    df['Quadrant_Sin_XY'] = np.sin(angle_xy)
-    df['Quadrant_Cos_XY'] = np.cos(angle_xy)
-    
-    df['Vector_Sign'] = np.sign(dx * dy * dz)
-    df['Quadrant_Separation_3D'] = (dx + dy + dz) / 3
-    df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+        # Descrição dos clusters
+        df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
+            0: '⚡ Agressivos + Momentum Positivo',
+            1: '💤 Reativos + Momentum Negativo', 
+            2: '⚖️ Equilibrados',
+            3: '🔥 Alta Variância'
+        }).fillna('🌀 Outro')
+    except Exception as e:
+        st.error(f"❌ Erro na clusterização: {e}")
+        df['Cluster3D_Label'] = -1
+        df['Cluster3D_Desc'] = 'Erro'
 
     return df
 
 # ============================================================
-# 🎯 SISTEMA DE OTIMIZAÇÃO DE ÂNGULOS
+# 🎯 SISTEMA DE OTIMIZAÇÃO DE ÂNGULOS (VERSÃO CORRIGIDA)
 # ============================================================
 def encontrar_angulo_otimo(history, target_col='Target_AH_Home', min_samples=100):
     """Encontra automaticamente o ângulo ótimo para separação estável/instável"""
     try:
         st.markdown("### 🔍 Buscando Ângulo Ótimo")
         
+        # VERIFICAR SE A COLUNA EXISTE
         if 'Quadrant_Angle_XY' not in history.columns:
-            st.warning("❌ Coluna Quadrant_Angle_XY não encontrada")
+            st.error("❌ Coluna Quadrant_Angle_XY não encontrada - calculando métricas 3D primeiro...")
+            history = calcular_distancias_3d(history)
+            
+        if 'Quadrant_Angle_XY' not in history.columns:
+            st.warning("❌ Não foi possível calcular Quadrant_Angle_XY. Usando ângulo padrão: 40°")
+            return 40
+        
+        # Verificar se há dados suficientes
+        if len(history) < min_samples:
+            st.warning(f"⚠️ Dados insuficientes para otimização: {len(history)} < {min_samples}")
             return 40
         
         resultados = []
@@ -322,10 +363,12 @@ def criar_target_espacial_inteligente(row, angulo_limite=40):
         dx = row.get('Aggression_Home', 0) - row.get('Aggression_Away', 0)
         dy = row.get('M_H', 0) - row.get('M_A', 0)
         dz = row.get('MT_H', 0) - row.get('MT_A', 0)
-        dist = np.sqrt(dx**2 + dy**2 + dz**2)
-
-        if np.isnan(dx) or np.isnan(dy) or np.isnan(dz):
+        
+        # Verificar valores NaN
+        if any(pd.isna(val) for val in [dx, dy, dz]):
             return 0
+
+        dist = np.sqrt(dx**2 + dy**2 + dz**2)
 
         # Ângulo otimizado dinamicamente
         angulo_xy = np.degrees(np.arctan2(dy, dx))
@@ -359,7 +402,7 @@ def criar_target_espacial_inteligente(row, angulo_limite=40):
         return 0
 
 # ============================================================
-# 🚀 TREINAMENTO DO MODELO ESPACIAL
+# 🚀 TREINAMENTO DO MODELO ESPACIAL (VERSÃO CORRIGIDA)
 # ============================================================
 def treinar_modelo_espacial_inteligente(history, games_today):
     """
@@ -367,10 +410,19 @@ def treinar_modelo_espacial_inteligente(history, games_today):
     """
     st.markdown("## 🧠 Treinando Modelo Espacial Inteligente")
     
-    # 1. OTIMIZAR ÂNGULO
+    # 1. PRÉ-PROCESSAMENTO OBRIGATÓRIO
+    st.info("📊 Calculando métricas espaciais...")
+    
+    # Garantir que todas as colunas necessárias existam
+    history = calcular_distancias_3d(history)
+    games_today = calcular_distancias_3d(games_today)
+    history = aplicar_clusterizacao_3d(history)
+    games_today = aplicar_clusterizacao_3d(games_today)
+    
+    # 2. OTIMIZAR ÂNGULO (AGORA COM DADOS PRONTOS)
     angulo_otimo = encontrar_angulo_otimo(history)
     
-    # 2. APLICAR TARGET ESPACIAL COM ÂNGULO OTIMIZADO
+    # 3. APLICAR TARGET ESPACIAL COM ÂNGULO OTIMIZADO
     st.info(f"🔄 Criando Target Espacial com ângulo ótimo: {angulo_otimo}°")
     history['Target_Espacial'] = history.apply(
         lambda x: criar_target_espacial_inteligente(x, angulo_otimo), 
@@ -381,13 +433,7 @@ def treinar_modelo_espacial_inteligente(history, games_today):
     dist_espacial = history['Target_Espacial'].value_counts().to_dict()
     st.info(f"📊 Distribuição Target Espacial: {dist_espacial}")
     
-    # 3. PREPARAR FEATURES
-    history = calcular_distancias_3d(history)
-    games_today = calcular_distancias_3d(games_today)
-    history = aplicar_clusterizacao_3d(history)
-    games_today = aplicar_clusterizacao_3d(games_today)
-    
-    # Feature engineering para clusters
+    # 4. FEATURE ENGINEERING PARA CLUSTERS
     history['Cluster3D_Label'] = history['Cluster3D_Label'].astype(float)
     games_today['Cluster3D_Label'] = games_today['Cluster3D_Label'].astype(float)
     
@@ -401,7 +447,7 @@ def treinar_modelo_espacial_inteligente(history, games_today):
     games_today['C3D_Sin'] = np.sin(games_today['Cluster3D_Label'])
     games_today['C3D_Cos'] = np.cos(games_today['Cluster3D_Label'])
     
-    # 4. FEATURES FINAIS
+    # 5. PREPARAR FEATURES FINAIS
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
     
     features_espaciais = [
@@ -411,53 +457,74 @@ def treinar_modelo_espacial_inteligente(history, games_today):
         'C3D_ZScore', 'C3D_Sin', 'C3D_Cos'
     ]
     
+    # Filtrar apenas features que existem
     available_features = [f for f in features_espaciais if f in history.columns]
     st.info(f"🔧 Features espaciais utilizadas: {available_features}")
     
-    # 5. TREINAR MODELO
+    # 6. TREINAR MODELO
     X = pd.concat([ligas_dummies, history[available_features]], axis=1).fillna(0)
     y = history['Target_Espacial'].astype(int)
     
     # Balanceamento de classes
     from sklearn.utils import resample
+    
+    # VERIFICAR SE TEM DADOS SUFICIENTES
+    if len(history) < 50:
+        st.error("❌ Dados insuficientes para treinamento")
+        return None, games_today
+    
     major = history[history['Target_Espacial'] == 0]
     minor = history[history['Target_Espacial'] == 1]
     
     if len(minor) > 10 and len(major) > 10:
-        minor_upsampled = resample(minor, replace=True, n_samples=len(major), random_state=42)
-        history_balanced = pd.concat([major, minor_upsampled])
-        X_balanced = pd.concat([ligas_dummies, history_balanced[available_features]], axis=1).fillna(0)
+        # Criar cópias para evitar problemas de índice
+        minor_upsampled = minor.copy().sample(n=len(major), replace=True, random_state=42)
+        history_balanced = pd.concat([major, minor_upsampled], ignore_index=True)
+        
+        # Recriar features para dados balanceados
+        ligas_balanced = pd.get_dummies(history_balanced['League'], prefix='League')
+        X_balanced = pd.concat([ligas_balanced, history_balanced[available_features]], axis=1).fillna(0)
         y_balanced = history_balanced['Target_Espacial'].astype(int)
+        
         st.info(f"⚖️ Dataset balanceado: {len(major)} x {len(minor_upsampled)}")
     else:
         X_balanced, y_balanced = X, y
         st.warning("⚠️ Dataset muito pequeno para balanceamento")
     
     model = RandomForestClassifier(
-        n_estimators=300,
-        max_depth=10,
+        n_estimators=200,  # Reduzido para mais estabilidade
+        max_depth=8,
         random_state=42,
-        class_weight='balanced_subsample',
+        class_weight='balanced',
         n_jobs=-1
     )
     model.fit(X_balanced, y_balanced)
     
-    # 6. PREVISÕES
+    # 7. PREVISÕES
     ligas_today = pd.get_dummies(games_today['League'], prefix='League')
-    ligas_today = ligas_today.reindex(columns=ligas_dummies.columns, fill_value=0)
+    
+    # Garantir que temos as mesmas colunas
+    missing_liga_cols = set(ligas_dummies.columns) - set(ligas_today.columns)
+    for col in missing_liga_cols:
+        ligas_today[col] = 0
+    ligas_today = ligas_today[ligas_dummies.columns]  # Ordem correta
     
     X_today = pd.concat([ligas_today, games_today[available_features]], axis=1).fillna(0)
     
-    # Garantir mesma ordem de features
-    missing_cols = set(X.columns) - set(X_today.columns)
-    for col in missing_cols:
+    # Garantir mesma ordem de features do treino
+    missing_features = set(X.columns) - set(X_today.columns)
+    for col in missing_features:
         X_today[col] = 0
     X_today = X_today[X.columns]
     
-    proba = model.predict_proba(X_today)[:, 1]
-    proba = np.clip(proba, 0.05, 0.95)  # Evitar extremos
+    try:
+        proba = model.predict_proba(X_today)[:, 1]
+        proba = np.clip(proba, 0.05, 0.95)  # Evitar extremos
+    except Exception as e:
+        st.error(f"❌ Erro nas previsões: {e}")
+        proba = np.full(len(games_today), 0.5)  # Fallback
     
-    # 7. RESULTADOS
+    # 8. RESULTADOS
     games_today['Prob_Espacial'] = proba
     games_today['ML_Side_Espacial'] = np.where(proba >= 0.5, 'HOME', 'AWAY')
     games_today['Confidence_Espacial'] = np.round(np.maximum(proba, 1 - proba), 3)
