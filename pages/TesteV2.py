@@ -1728,33 +1728,223 @@ def gerar_score_combinado_16(df):
     
     return df
 
-##### BLOCO 13: EXIBIÇÃO DOS RESULTADOS E LIVE MONITOR #####
+
+
+
+
+##### BLOCO 15: VERIFICAÇÃO DE DADOS COMPLETOS E SINALIZAÇÃO #####
+
+def verificar_dados_completos(df):
+    """
+    Verifica se temos dados completos para análise e classifica cada confronto
+    """
+    df = df.copy()
+    
+    # 🔍 COLUNAS CRÍTICAS PARA ANÁLISE COMPLETA
+    colunas_criticas_ml = [
+        'M_H', 'M_A', 'MT_H', 'MT_A',
+        'Aggression_Home', 'Aggression_Away', 
+        'HandScore_Home', 'HandScore_Away',
+        'Asian_Line_Decimal'
+    ]
+    
+    colunas_criticas_quadrantes = [
+        'Quadrante_Home', 'Quadrante_Away',
+        'Quadrant_Dist', 'Quadrant_Angle'
+    ]
+    
+    colunas_criticas_regressao = [
+        'Z_Excesso_M_Home', 'Z_Excesso_MT_Home',
+        'Fator_Regressao_Home', 'ML_Regressao_Score'
+    ]
+    
+    # 🎯 VERIFICAÇÃO POR NÍVEL DE COMPLETUDE
+    def classificar_completude(row):
+        missing_criticos = sum(1 for col in colunas_criticas_ml if pd.isna(row.get(col, np.nan)))
+        missing_quadrantes = sum(1 for col in colunas_criticas_quadrantes if pd.isna(row.get(col, np.nan)))
+        missing_regressao = sum(1 for col in colunas_criticas_regressao if pd.isna(row.get(col, np.nan)))
+        
+        total_criticos = len(colunas_criticas_ml)
+        total_quadrantes = len(colunas_criticas_quadrantes)
+        
+        # 📊 CALCULAR PERCENTUAL DE DADOS PRESENTES
+        percentual_ml = ((total_criticos - missing_criticos) / total_criticos) * 100
+        percentual_quadrantes = ((total_quadrantes - missing_quadrantes) / total_quadrantes) * 100
+        tem_regressao = missing_regressao <= 2  # Permite até 2 faltantes
+        
+        # 🎚️ CLASSIFICAÇÃO
+        if percentual_ml >= 90 and percentual_quadrantes >= 80 and tem_regressao:
+            return "✅ DADOS COMPLETOS", "high"
+        elif percentual_ml >= 70 and percentual_quadrantes >= 60:
+            return "⚠️ DADOS PARCIAIS", "medium" 
+        elif percentual_ml >= 50:
+            return "🚨 DADOS INSUFICIENTES", "low"
+        else:
+            return "❌ DADOS CRÍTICOS", "critical"
+    
+    # 📝 APLICAR CLASSIFICAÇÃO
+    resultados = df.apply(classificar_completude, axis=1)
+    df[['Status_Dados', 'Nivel_Confianca']] = pd.DataFrame(resultados.tolist(), index=df.index)
+    
+    # 🔢 CONTAGEM DE DADOS FALTANTES POR CATEGORIA
+    df['Missing_ML'] = df[colunas_criticas_ml].isna().sum(axis=1)
+    df['Missing_Quadrantes'] = df[colunas_criticas_quadrantes].isna().sum(axis=1)
+    df['Missing_Regressao'] = df[colunas_criticas_regressao].isna().sum(axis=1)
+    df['Total_Missing'] = df['Missing_ML'] + df['Missing_Quadrantes'] + df['Missing_Regressao']
+    
+    return df
+
+def aplicar_filtros_qualidade(df, nivel_minimo="medium"):
+    """
+    Filtra confrontos baseado na qualidade dos dados
+    """
+    niveis = {"critical": 0, "low": 1, "medium": 2, "high": 3}
+    nivel_min = niveis.get(nivel_minimo, 2)
+    
+    df_filtrado = df.copy()
+    df_filtrado['Nivel_Num'] = df_filtrado['Nivel_Confianca'].map(niveis)
+    
+    # Filtrar por nível mínimo
+    mascarafiltro = df_filtrado['Nivel_Num'] >= nivel_min
+    
+    st.info(f"📊 Filtro aplicado: {nivel_minimo} | {mascarafiltro.sum()}/{len(df)} confrontos válidos")
+    
+    return df_filtrado[mascarafiltro]
+
+def criar_visualizacao_status_dados(df):
+    """
+    Cria visualização do status dos dados
+    """
+    st.markdown("### 📋 Status de Dados por Confronto")
+    
+    # Estatísticas gerais
+    status_counts = df['Status_Dados'].value_counts()
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("✅ Completos", status_counts.get("✅ DADOS COMPLETOS", 0))
+    with col2:
+        st.metric("⚠️ Parciais", status_counts.get("⚠️ DADOS PARCIAIS", 0))
+    with col3:
+        st.metric("🚨 Insuficientes", status_counts.get("🚨 DADOS INSUFICIENTES", 0))
+    with col4:
+        st.metric("❌ Críticos", status_counts.get("❌ DADOS CRÍTICOS", 0))
+    
+    # Gráfico de barras
+    fig, ax = plt.subplots(figsize=(10, 4))
+    cores = {'✅ DADOS COMPLETOS': 'green', '⚠️ DADOS PARCIAIS': 'orange', 
+             '🚨 DADOS INSUFICIENTES': 'red', '❌ DADOS CRÍTICOS': 'darkred'}
+    
+    bars = ax.bar(status_counts.index, status_counts.values, 
+                  color=[cores.get(x, 'gray') for x in status_counts.index])
+    
+    # Adicionar valores nas barras
+    for bar in bars:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                f'{int(height)}', ha='center', va='bottom')
+    
+    ax.set_ylabel('Número de Confrontos')
+    ax.set_title('Distribuição da Qualidade dos Dados')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    
+    st.pyplot(fig)
+    
+    # Tabela detalhada
+    with st.expander("🔍 Ver Detalhes por Confronto"):
+        cols_detalhes = [
+            'League', 'Home', 'Away', 'Status_Dados', 'Nivel_Confianca',
+            'Missing_ML', 'Missing_Quadrantes', 'Missing_Regressao', 'Total_Missing'
+        ]
+        cols_existentes = [c for c in cols_detalhes if c in df.columns]
+        
+        st.dataframe(
+            df[cols_existentes].sort_values(['Nivel_Confianca', 'Total_Missing']),
+            width='stretch'
+        )
+
+# 🔄 ATUALIZAR A FUNÇÃO DE ESTILO PARA INCLUIR STATUS
+def estilo_tabela_com_status(df):
+    """
+    Estilo atualizado para incluir status de dados
+    """
+    def cor_status(val):
+        if '✅' in str(val): return 'font-weight: bold'
+        elif '⚠️' in str(val): return 'font-weight: bold'
+        elif '🚨' in str(val): return 'font-weight: bold'
+        elif '❌' in str(val): return 'font-weight: bold'
+        return ''
+    
+    styler = df.style
+    
+    # Aplicar cores ao status
+    if 'Status_Dados' in df.columns:
+        styler = styler.applymap(cor_status, subset=['Status_Dados'])
+    
+    # Manter gradientes existentes
+    score_cols = [col for col in ['Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 'Score_Final'] 
+                  if col in df.columns]
+    if score_cols:
+        styler = styler.background_gradient(subset=score_cols, cmap='RdYlGn')
+    
+    return styler
+
+
+
+
+##### BLOCO 13: EXIBIÇÃO DOS RESULTADOS E LIVE MONITOR (ATUALIZADO) #####
 
 st.markdown("## 🏆 Melhores Confrontos por 16 Quadrantes ML")
 
 if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # Preparar dados para exibição
     ranking_quadrantes = games_today.copy()
+
+    # 🆕 APLICAR VERIFICAÇÃO DE DADOS COMPLETOS
+    ranking_quadrantes = verificar_dados_completos(ranking_quadrantes)
     
+    # 🆕 CRIAR VISUALIZAÇÃO DO STATUS
+    criar_visualizacao_status_dados(ranking_quadrantes)
+    
+    # 🆕 FILTRO INTERATIVO DE QUALIDADE
+    st.markdown("### 🎛️ Filtro de Qualidade de Dados")
+    nivel_filtro = st.selectbox(
+        "Nível mínimo de confiança nos dados:",
+        ["✅ DADOS COMPLETOS", "⚠️ DADOS PARCIAIS", "🚨 DADOS INSUFICIENTES", "❌ TODOS"],
+        index=1
+    )
+    
+    # Converter para chave do filtro
+    nivel_map = {
+        "✅ DADOS COMPLETOS": "high",
+        "⚠️ DADOS PARCIAIS": "medium", 
+        "🚨 DADOS INSUFICIENTES": "low",
+        "❌ TODOS": "critical"
+    }
+    
+    ranking_filtrado = aplicar_filtros_qualidade(ranking_quadrantes, nivel_map[nivel_filtro])
+
     # Aplicar indicadores explicativos para 16 quadrantes
-    ranking_quadrantes = adicionar_indicadores_explicativos_16_dual(ranking_quadrantes)
-    
+    ranking_filtrado = adicionar_indicadores_explicativos_16_dual(ranking_filtrado)
+
     # Aplicar scoring combinado
-    ranking_quadrantes = gerar_score_combinado_16(ranking_quadrantes)
-    
+    ranking_filtrado = gerar_score_combinado_16(ranking_filtrado)
+
     # Aplicar atualização em tempo real COM V9
-    ranking_quadrantes = apply_handicap_results_v9(ranking_quadrantes)
-    
+    ranking_filtrado = apply_handicap_results_v9(ranking_filtrado)
+
     # Exibir resumo live ATUALIZADO
     st.markdown("## 📡 Live Score Monitor - 16 Quadrantes (v9 Validado)")
-    live_summary = generate_live_summary_v9(ranking_quadrantes)
+    live_summary = generate_live_summary_v9(ranking_filtrado)
     st.json(live_summary)
-    
+
     # Ordenar por score final
-    ranking_quadrantes = ranking_quadrantes.sort_values('Score_Final', ascending=False)
-    
-    # Colunas para exibir
+    ranking_filtrado = ranking_filtrado.sort_values('Score_Final', ascending=False)
+
+    # 🆕 ATUALIZAR COLUNAS PARA INCLUIR STATUS
     colunas_possiveis = [
+        'Status_Dados',  # 🆕 NOVA COLUNA
         'League', 'Time', 'Home', 'Away', 
         'Goals_H_Today', 'Goals_A_Today', 'Recomendacao',
         'ML_Side', 'Side_Bet',
@@ -1766,43 +1956,13 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         'Asian_Line_Decimal', 'Handicap_Result_Final', 'Outcome_Final',
         'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Final'
     ]
-    
-    # Filtrar colunas existentes
-    cols_finais = [c for c in colunas_possiveis if c in ranking_quadrantes.columns]
-    
-    # Função de estilo atualizada
-    def estilo_tabela_16_quadrantes(df):
-        def cor_classificacao(valor):
-            if '🌟 ALTO POTENCIAL' in str(valor): return 'font-weight: bold'
-            elif '💼 VALOR SOLIDO' in str(valor): return 'font-weight: bold'
-            elif '🔴 BAIXO POTENCIAL' in str(valor): return 'font-weight: bold'
-            elif '🏆 ALTO VALOR' in str(valor): return 'font-weight: bold'
-            elif '🔴 ALTO RISCO' in str(valor): return 'font-weight: bold'
-            elif 'VALUE' in str(valor): return 'background-color: #98FB98'
-            elif 'EVITAR' in str(valor): return 'background-color: #FFCCCB'
-            else: return ''
-        
-        colunas_para_estilo = []
-        for col in ['Classificacao_Potencial', 'Classificacao_Valor_Home', 'Classificacao_Valor_Away', 'Recomendacao']:
-            if col in df.columns:
-                colunas_para_estilo.append(col)
-        
-        styler = df.style
-        if colunas_para_estilo:
-            styler = styler.applymap(cor_classificacao, subset=colunas_para_estilo)
-        
-        # Aplicar gradientes
-        if 'Quadrante_ML_Score_Home' in df.columns:
-            styler = styler.background_gradient(subset=['Quadrante_ML_Score_Home'], cmap='RdYlGn')
-        if 'Quadrante_ML_Score_Away' in df.columns:
-            styler = styler.background_gradient(subset=['Quadrante_ML_Score_Away'], cmap='RdYlGn')
-        if 'Score_Final' in df.columns:
-            styler = styler.background_gradient(subset=['Score_Final'], cmap='RdYlGn')
-        
-        return styler
 
+    # Filtrar colunas existentes
+    cols_finais = [c for c in colunas_possiveis if c in ranking_filtrado.columns]
+
+    # 🆕 USAR ESTILO ATUALIZADO COM STATUS
     st.dataframe(
-        estilo_tabela_16_quadrantes(ranking_quadrantes[cols_finais])
+        estilo_tabela_com_status(ranking_filtrado[cols_finais])
         .format({
             'Goals_H_Today': '{:.0f}',
             'Goals_A_Today': '{:.0f}',
@@ -1817,11 +1977,15 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         }, na_rep="-"),
         width='stretch'
     )
-    
+
+    # 🆕 AVISO PARA CONFRONTOS FILTRADOS
+    if len(ranking_filtrado) < len(ranking_quadrantes):
+        st.warning(f"⚠️ {len(ranking_quadrantes) - len(ranking_filtrado)} confrontos foram ocultados devido à baixa qualidade dos dados")
+
     # ---------------- ANÁLISES ESPECÍFICAS ----------------
-    analisar_padroes_quadrantes_16_dual(ranking_quadrantes)
-    gerar_estrategias_16_quadrantes(ranking_quadrantes)
-    
+    analisar_padroes_quadrantes_16_dual(ranking_filtrado)
+    gerar_estrategias_16_quadrantes(ranking_filtrado)
+
 else:
     st.info("⚠️ Aguardando dados para gerar ranking de 16 quadrantes")
 
