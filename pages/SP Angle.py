@@ -10,13 +10,15 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import math
 from sklearn.cluster import KMeans
-from scipy import stats
+from sklearn.metrics import silhouette_score
+from sklearn.utils import resample
 
-st.set_page_config(page_title="Sistema Espacial Inteligente - Bet Indicator", layout="wide")
-st.title("🎯 Sistema Espacial Inteligente com Otimização Automática")
+# ========================= CONFIG STREAMLIT =========================
+st.set_page_config(page_title="Sistema Espacial Inteligente - Bet Indicator V2", layout="wide")
+st.title("🎯 Sistema Espacial Inteligente com Otimização Automática (V2)")
 
-# ---------------- Configurações ----------------
-PAGE_PREFIX = "Espacial_Inteligente"
+# ========================= CONFIGURAÇÕES GERAIS =========================
+PAGE_PREFIX = "Espacial_Inteligente_V2"
 GAMES_FOLDER = "GamesDay"
 LIVESCORE_FOLDER = "LiveScore"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa", "trophy"]
@@ -25,20 +27,18 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
 os.makedirs(MODELS_FOLDER, exist_ok=True)
 
-# ---------------- CONFIGURAÇÕES LIVE SCORE ----------------
-def setup_livescore_columns(df):
+np.random.seed(42)
+
+# ========================= LIVE SCORE =========================
+def setup_livescore_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Garante que as colunas do Live Score existam no DataFrame"""
-    if 'Goals_H_Today' not in df.columns:
-        df['Goals_H_Today'] = np.nan
-    if 'Goals_A_Today' not in df.columns:
-        df['Goals_A_Today'] = np.nan
-    if 'Home_Red' not in df.columns:
-        df['Home_Red'] = np.nan
-    if 'Away_Red' not in df.columns:
-        df['Away_Red'] = np.nan
+    df = df.copy()
+    for col in ['Goals_H_Today', 'Goals_A_Today', 'Home_Red', 'Away_Red']:
+        if col not in df.columns:
+            df[col] = np.nan
     return df
 
-# ---------------- Helpers Básicos ----------------
+# ========================= HELPERS BÁSICOS =========================
 def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     if "Goals_H_FT_x" in df.columns:
@@ -48,10 +48,20 @@ def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def load_all_games(folder: str) -> pd.DataFrame:
+    if not os.path.exists(folder):
+        return pd.DataFrame()
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     if not files:
         return pd.DataFrame()
-    dfs = [preprocess_df(pd.read_csv(os.path.join(folder, f))) for f in files]
+    dfs = []
+    for f in files:
+        try:
+            df_tmp = pd.read_csv(os.path.join(folder, f))
+            dfs.append(preprocess_df(df_tmp))
+        except Exception:
+            continue
+    if not dfs:
+        return pd.DataFrame()
     return pd.concat(dfs, ignore_index=True)
 
 def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
@@ -61,18 +71,23 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
     return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
 
 def convert_asian_line_to_decimal(value):
-    """Converte handicaps asiáticos para decimal"""
+    """
+    Converte Asian_Line (referência AWAY) para decimal na perspectiva HOME.
+    Mantém sua lógica original: inverte o sinal para ficar pró-casa.
+    """
     if pd.isna(value):
         return np.nan
     value = str(value).strip()
-    
+
+    # Linha cheia
     if "/" not in value:
         try:
             num = float(value)
-            return -num
+            return -num  # inverter perspectiva away -> home
         except ValueError:
             return np.nan
-    
+
+    # Linha fracionada (ex: -0.5/1)
     try:
         parts = [float(p) for p in value.split("/")]
         avg = np.mean(parts)
@@ -80,15 +95,13 @@ def convert_asian_line_to_decimal(value):
             result = -abs(avg)
         else:
             result = abs(avg)
-        return -result
+        return -result  # inverter
     except ValueError:
         return np.nan
 
-# ============================================================
-# 🎯 CÁLCULO DO TARGET BASE
-# ============================================================
+# ========================= TARGET AH BASE =========================
 def calculate_ah_home_target(row):
-    """Calcula o target binário para handicap asiático"""
+    """Target binário: 1 se HOME cobre o handicap (Asian_Line_Decimal pró-casa), 0 caso contrário"""
     gh = row.get("Goals_H_FT")
     ga = row.get("Goals_A_FT")
     line_home = row.get("Asian_Line_Decimal")
@@ -97,13 +110,14 @@ def calculate_ah_home_target(row):
         return np.nan
 
     adjusted = (gh + line_home) - ga
-    return 1 if adjusted > 0 else 0
+    return 1 if adjusted > 0 else 0  # push entra como 0 (conservador)
 
-# ============================================================
-# 🧠 CÁLCULO DE MOMENTUM DO TIME
-# ============================================================
-def calcular_momentum_time(df, window=6):
-    """Calcula MT_H e MT_A com base no HandScore"""
+# ========================= MOMENTUM TIME =========================
+def calcular_momentum_time(df: pd.DataFrame, window: int = 6) -> pd.DataFrame:
+    """
+    Calcula MT_H e MT_A com base no HandScore_Home e HandScore_Away (rolling + z-score).
+    Se não tiver HandScore, só retorna colunas preenchidas com 0.
+    """
     df = df.copy()
 
     if 'MT_H' not in df.columns:
@@ -111,588 +125,645 @@ def calcular_momentum_time(df, window=6):
     if 'MT_A' not in df.columns:
         df['MT_A'] = np.nan
 
+    if not {'Home', 'Away'}.issubset(df.columns):
+        df['MT_H'] = 0
+        df['MT_A'] = 0
+        return df
+
+    if 'HandScore_Home' not in df.columns or 'HandScore_Away' not in df.columns:
+        # Sem HandScore, MT = 0
+        df['MT_H'] = 0
+        df['MT_A'] = 0
+        return df
+
     all_teams = pd.unique(df[['Home', 'Away']].values.ravel())
 
     for team in all_teams:
-        # Momentum como mandante
+        # Mandante
         mask_home = df['Home'] == team
         if mask_home.sum() > 2:
             series = df.loc[mask_home, 'HandScore_Home'].astype(float).rolling(window, min_periods=2).mean()
-            zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
+            mu = series.mean()
+            sigma = series.std(ddof=0) or 1
+            zscore = (series - mu) / sigma
             df.loc[mask_home, 'MT_H'] = zscore
 
-        # Momentum como visitante
+        # Visitante
         mask_away = df['Away'] == team
         if mask_away.sum() > 2:
             series = df.loc[mask_away, 'HandScore_Away'].astype(float).rolling(window, min_periods=2).mean()
-            zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
+            mu = series.mean()
+            sigma = series.std(ddof=0) or 1
+            zscore = (series - mu) / sigma
             df.loc[mask_away, 'MT_A'] = zscore
 
     df['MT_H'] = df['MT_H'].fillna(0)
     df['MT_A'] = df['MT_A'].fillna(0)
     return df
 
-# ============================================================
-# 📐 CÁLCULO DE DISTÂNCIAS 3D (VERSÃO CORRIGIDA)
-# ============================================================
-def calcular_distancias_3d(df):
-    """Calcula métricas espaciais 3D - VERSÃO CORRIGIDA"""
+# ========================= MÉTRICAS 3D + NORMALIZAÇÃO =========================
+def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula métricas espaciais 3D com:
+    - normalização por liga (z-score) para Aggression, M, MT
+    - dx, dy, dz entre Home e Away
+    - distância, ângulo, seno, cosseno, magnitude
+    """
     df = df.copy()
 
     required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
     missing_cols = [c for c in required_cols if c not in df.columns]
-    
+
+    # Se faltar algo, inicializa colunas de saída e retorna
+    out_cols = [
+        'dx', 'dy', 'dz',
+        'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
+        'Quadrant_Angle_XY', 'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
+        'Vector_Sign', 'Magnitude_3D'
+    ]
+
     if missing_cols:
         st.warning(f"⚠️ Colunas faltando para cálculo 3D: {missing_cols}")
-        # Inicializar colunas com NaN
-        for col in ['Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Quadrant_Angle_XY', 
-                   'Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Vector_Sign', 'Magnitude_3D']:
-            df[col] = np.nan
+        for col in out_cols:
+            if col not in df.columns:
+                df[col] = 0
         return df
 
+    # Normalização por liga (z-score) para estabilizar espaço
+    cols_norm = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+    if 'League' in df.columns:
+        df[cols_norm] = df.groupby('League')[cols_norm].transform(
+            lambda x: (x - x.mean()) / (x.std(ddof=0).replace(0, 1))
+        )
+    else:
+        for c in cols_norm:
+            mu = df[c].mean()
+            sigma = df[c].std(ddof=0) or 1
+            df[c] = (df[c] - mu) / sigma
+
     try:
-        # Normalização dos eixos
-        dx = (df['Aggression_Home'] - df['Aggression_Away']) / 2.0
-        dy = (df['M_H'] - df['M_A']) / 2.0
-        dz = (df['MT_H'] - df['MT_A']) / 2.0
+        # Diferenciais
+        df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
+        df['dy'] = df['M_H'] - df['M_A']
+        df['dz'] = df['MT_H'] - df['MT_A']
 
-        # Preencher NaN com 0 para evitar erros
-        dx = dx.fillna(0)
-        dy = dy.fillna(0)
-        dz = dz.fillna(0)
+        dx = df['dx'].fillna(0)
+        dy = df['dy'].fillna(0)
+        dz = df['dz'].fillna(0)
 
-        # Métricas espaciais
+        # Distância 3D
         df['Quadrant_Dist_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
-        
-        # Calcular ângulo XY com tratamento de divisão por zero
+
+        # Ângulo XY
         angle_xy = np.arctan2(dy, dx)
         df['Quadrant_Angle_XY'] = np.degrees(angle_xy)
         df['Quadrant_Sin_XY'] = np.sin(angle_xy)
         df['Quadrant_Cos_XY'] = np.cos(angle_xy)
-        
-        df['Vector_Sign'] = np.sign(dx * dy * dz)
-        df['Vector_Sign'] = df['Vector_Sign'].fillna(0)  # Tratar NaN do sign
-        
+
+        # Sinal do vetor
+        df['Vector_Sign'] = np.sign(dx * dy * dz).fillna(0)
+
+        # Separação média e magnitude (redundantes mas úteis)
         df['Quadrant_Separation_3D'] = (dx + dy + dz) / 3.0
         df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
-        
-        # Preencher quaisquer valores NaN restantes
-        for col in ['Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Quadrant_Angle_XY',
-                   'Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Vector_Sign', 'Magnitude_3D']:
+
+        for col in out_cols:
             df[col] = df[col].fillna(0)
-            
+
     except Exception as e:
         st.error(f"❌ Erro no cálculo 3D: {e}")
-        # Inicializar colunas com 0 em caso de erro
-        for col in ['Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Quadrant_Angle_XY',
-                   'Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Vector_Sign', 'Magnitude_3D']:
+        for col in out_cols:
             df[col] = 0
 
     return df
 
-# ============================================================
-# 🧩 CLUSTERIZAÇÃO 3D
-# ============================================================
-def aplicar_clusterizacao_3d(df, n_clusters=4, random_state=42):
-    """Cria clusters espaciais 3D"""
+# ========================= CLUSTERIZAÇÃO 3D DINÂMICA =========================
+def aplicar_clusterizacao_3d(df: pd.DataFrame, random_state: int = 42) -> pd.DataFrame:
+    """
+    Clusterização 3D usando (dx, dy, dz) com escolha dinâmica de K via Silhouette.
+    """
     df = df.copy()
 
-    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        st.warning(f"⚠️ Colunas ausentes: {missing}")
-        df['Cluster3D_Label'] = -1
-        return df
-
-    # Garantir que as colunas de diferença existam
-    if 'dx' not in df.columns:
-        df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
-    if 'dy' not in df.columns:
-        df['dy'] = df['M_H'] - df['M_A']
-    if 'dz' not in df.columns:
-        df['dz'] = df['MT_H'] - df['MT_A']
+    required_cols = ['dx', 'dy', 'dz']
+    if not all(c in df.columns for c in required_cols):
+        df = calcular_distancias_3d(df)
 
     X_cluster = df[['dx', 'dy', 'dz']].fillna(0).to_numpy()
 
-    try:
-        kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, init='k-means++', n_init=10)
-        df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
+    # Poucos dados -> cluster único
+    if len(df) < 20:
+        df['Cluster3D_Label'] = 0
+        df['Cluster3D_Desc'] = '📉 Poucos dados'
+        return df
 
-        # Descrição dos clusters
-        df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
-            0: '⚡ Agressivos + Momentum Positivo',
-            1: '💤 Reativos + Momentum Negativo', 
-            2: '⚖️ Equilibrados',
-            3: '🔥 Alta Variância'
-        }).fillna('🌀 Outro')
+    try:
+        best_k = None
+        best_score = -1
+
+        max_k = min(8, len(df) - 1)
+        for k in range(2, max_k + 1):
+            try:
+                km = KMeans(n_clusters=k, random_state=random_state, n_init=10)
+                labels = km.fit_predict(X_cluster)
+                score = silhouette_score(X_cluster, labels)
+                if score > best_score:
+                    best_score = score
+                    best_k = k
+            except Exception:
+                continue
+
+        if best_k is None:
+            best_k = 4  # fallback
+
+        kmeans = KMeans(n_clusters=best_k, random_state=random_state, n_init=10)
+        labels = kmeans.fit_predict(X_cluster)
+        df['Cluster3D_Label'] = labels
+
+        # Mapeamento descritivo simples por posição do cluster
+        desc_map = {}
+        for c in range(best_k):
+            mask = df['Cluster3D_Label'] == c
+            if not mask.any():
+                desc_map[c] = '🌀 Outro'
+                continue
+            mean_dx = df.loc[mask, 'dx'].mean()
+            mean_dz = df.loc[mask, 'dz'].mean()
+            if mean_dx > 0.5 and mean_dz >= 0:
+                desc = '⚡ Agressivo + Momentum Positivo'
+            elif mean_dx < -0.5 and mean_dz < 0:
+                desc = '🔻 Dominado + Momentum Negativo'
+            elif abs(mean_dx) < 0.3 and abs(mean_dz) < 0.3:
+                desc = '⚖️ Equilibrado'
+            else:
+                desc = '🔥 Alta Variância'
+            desc_map[c] = desc
+
+        df['Cluster3D_Desc'] = df['Cluster3D_Label'].map(desc_map).fillna('🌀 Outro')
+        st.info(f"📦 Clusterização 3D concluída com K = {best_k} (Silhouette: {best_score:.3f})")
+
     except Exception as e:
-        st.error(f"❌ Erro na clusterização: {e}")
-        df['Cluster3D_Label'] = -1
+        st.error(f"❌ Erro na clusterização 3D: {e}")
+        df['Cluster3D_Label'] = 0
         df['Cluster3D_Desc'] = 'Erro'
 
     return df
 
-# ============================================================
-# 🎯 SISTEMA DE OTIMIZAÇÃO DE ÂNGULOS (VERSÃO CORRIGIDA)
-# ============================================================
-def encontrar_angulo_otimo(history, target_col='Target_AH_Home', min_samples=100):
-    """Encontra automaticamente o ângulo ótimo para separação estável/instável"""
-    try:
-        st.markdown("### 🔍 Buscando Ângulo Ótimo")
-        
-        # VERIFICAR SE A COLUNA EXISTE
-        if 'Quadrant_Angle_XY' not in history.columns:
-            st.error("❌ Coluna Quadrant_Angle_XY não encontrada - calculando métricas 3D primeiro...")
-            history = calcular_distancias_3d(history)
-            
-        if 'Quadrant_Angle_XY' not in history.columns:
-            st.warning("❌ Não foi possível calcular Quadrant_Angle_XY. Usando ângulo padrão: 40°")
-            return 40
-        
-        # Verificar se há dados suficientes
-        if len(history) < min_samples:
-            st.warning(f"⚠️ Dados insuficientes para otimização: {len(history)} < {min_samples}")
-            return 40
-        
-        resultados = []
-        angulos_testar = range(10, 80, 5)  # 10° a 75° em passos de 5°
-        
-        progress_bar = st.progress(0)
-        total_angulos = len(angulos_testar)
-        
-        for i, angulo_limite in enumerate(angulos_testar):
-            progress_bar.progress((i + 1) / total_angulos)
-            
-            # Separar estáveis vs instáveis
-            mask_estavel = history['Quadrant_Angle_XY'].abs() < angulo_limite
-            mask_instavel = history['Quadrant_Angle_XY'].abs() >= angulo_limite
-            
-            # Métricas para estáveis
-            if mask_estavel.sum() >= min_samples:
-                estavel_data = history[mask_estavel]
-                acuracia_estavel = estavel_data[target_col].mean()
-                volume_estavel = len(estavel_data)
-                roi_estavel = (acuracia_estavel * 0.90 - (1 - acuracia_estavel)) * 100
-            else:
-                acuracia_estavel = volume_estavel = roi_estavel = 0
-            
-            # Métricas para instáveis
-            if mask_instavel.sum() >= min_samples:
-                instavel_data = history[mask_instavel]
-                acuracia_instavel = instavel_data[target_col].mean()
-                volume_instavel = len(instavel_data)
-                roi_instavel = (acuracia_instavel * 0.90 - (1 - acuracia_instavel)) * 100
-            else:
-                acuracia_instavel = volume_instavel = roi_instavel = 0
-            
-            # Score de qualidade
-            if volume_estavel >= min_samples and volume_instavel >= min_samples:
-                diferenca_acuracia = acuracia_estavel - acuracia_instavel
-                score_qualidade = diferenca_acuracia * (volume_estavel + volume_instavel) / 2000
-            else:
-                score_qualidade = -1
-            
-            resultados.append({
-                'angulo_limite': angulo_limite,
-                'acuracia_estavel': acuracia_estavel,
-                'volume_estavel': volume_estavel,
-                'roi_estavel': roi_estavel,
-                'acuracia_instavel': acuracia_instavel,
-                'volume_instavel': volume_instavel,
-                'diferenca_acuracia': diferenca_acuracia,
-                'score_qualidade': score_qualidade
-            })
-        
-        # Encontrar ângulo ótimo
-        df_resultados = pd.DataFrame(resultados)
-        df_validos = df_resultados[df_resultados['score_qualidade'] > 0]
-        
-        if len(df_validos) > 0:
-            angulo_otimo_idx = df_validos['score_qualidade'].idxmax()
-            angulo_otimo = df_validos.loc[angulo_otimo_idx, 'angulo_limite']
-            melhor_score = df_validos.loc[angulo_otimo_idx, 'score_qualidade']
-            
-            st.success(f"🎯 Ângulo ótimo encontrado: {angulo_otimo}° (Score: {melhor_score:.4f})")
-            
-            # Top 5 ângulos
-            st.markdown("#### 📊 Top 5 Ângulos por Performance")
-            top_5 = df_validos.nlargest(5, 'score_qualidade')[
-                ['angulo_limite', 'acuracia_estavel', 'volume_estavel', 
-                 'acuracia_instavel', 'volume_instavel', 'diferenca_acuracia']
-            ].round(4)
-            
-            st.dataframe(top_5.style.format({
+# ========================= OTIMIZAÇÃO DE ÂNGULO =========================
+def encontrar_angulo_otimo(history: pd.DataFrame,
+                           target_col: str = 'Target_AH_Home',
+                           min_samples: int = 150) -> int:
+    """
+    Encontra o melhor ângulo-limite para separar zonas estáveis/instáveis,
+    maximizando diferença de acurácia com volume mínimo.
+    """
+    st.markdown("### 🔍 Otimizando Ângulo Espacial")
+
+    if 'Quadrant_Angle_XY' not in history.columns:
+        history = calcular_distancias_3d(history)
+
+    if 'Quadrant_Angle_XY' not in history.columns:
+        st.warning("⚠️ Não foi possível calcular ângulo. Usando 40° como padrão.")
+        return 40
+
+    if target_col not in history.columns:
+        st.warning(f"⚠️ Target {target_col} não encontrado. Usando 40°.")
+        return 40
+
+    if len(history) < min_samples:
+        st.warning(f"⚠️ Dados insuficientes para otimização ({len(history)} < {min_samples}). Usando 40°.")
+        return 40
+
+    resultados = []
+    angulos_testar = range(10, 80, 5)
+    progress_bar = st.progress(0)
+    total = len(angulos_testar)
+
+    for i, ang in enumerate(angulos_testar):
+        progress_bar.progress((i + 1) / total)
+
+        mask_estavel = history['Quadrant_Angle_XY'].abs() < ang
+        mask_instavel = ~mask_estavel
+
+        # Estável
+        if mask_estavel.sum() >= min_samples:
+            estavel = history[mask_estavel]
+            acc_e = estavel[target_col].mean()
+            vol_e = len(estavel)
+            roi_e = (acc_e * 0.90 - (1 - acc_e)) * 100
+        else:
+            acc_e = vol_e = roi_e = 0
+
+        # Instável
+        if mask_instavel.sum() >= min_samples:
+            instavel = history[mask_instavel]
+            acc_i = instavel[target_col].mean()
+            vol_i = len(instavel)
+            roi_i = (acc_i * 0.90 - (1 - acc_i)) * 100
+        else:
+            acc_i = vol_i = roi_i = 0
+
+        if vol_e >= min_samples and vol_i >= min_samples:
+            diff_acc = acc_e - acc_i
+            score = diff_acc * ((vol_e + vol_i) / 2000)
+        else:
+            diff_acc = 0
+            score = -1
+
+        resultados.append({
+            'angulo_limite': ang,
+            'acuracia_estavel': acc_e,
+            'volume_estavel': vol_e,
+            'roi_estavel': roi_e,
+            'acuracia_instavel': acc_i,
+            'volume_instavel': vol_i,
+            'diferenca_acuracia': diff_acc,
+            'score_qualidade': score
+        })
+
+    df_res = pd.DataFrame(resultados)
+    df_validos = df_res[df_res['score_qualidade'] > 0]
+
+    if not df_validos.empty:
+        idx = df_validos['score_qualidade'].idxmax()
+        ang_otimo = int(df_validos.loc[idx, 'angulo_limite'])
+        score = df_validos.loc[idx, 'score_qualidade']
+
+        st.success(f"🎯 Ângulo ótimo encontrado: {ang_otimo}° (Score {score:.4f})")
+
+        top_5 = df_validos.nlargest(5, 'score_qualidade')[
+            ['angulo_limite', 'acuracia_estavel', 'volume_estavel',
+             'acuracia_instavel', 'volume_instavel', 'diferenca_acuracia']
+        ].round(4)
+
+        st.markdown("#### 📊 Top 5 Ângulos por Performance")
+        st.dataframe(
+            top_5.style.format({
                 'acuracia_estavel': '{:.1%}',
                 'acuracia_instavel': '{:.1%}',
                 'diferenca_acuracia': '{:.1%}'
-            }))
-            
-            # Gráfico de performance
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.plot(df_resultados['angulo_limite'], df_resultados['acuracia_estavel'], 
-                   label='Zona Estável', marker='o', linewidth=2, color='green')
-            ax.plot(df_resultados['angulo_limite'], df_resultados['acuracia_instavel'],
-                   label='Zona Instável', marker='s', linewidth=2, color='red')
-            ax.axvline(x=angulo_otimo, color='blue', linestyle='--', alpha=0.7, 
-                      label=f'Ângulo Ótimo: {angulo_otimo}°')
-            ax.set_xlabel('Ângulo Limite (°)')
-            ax.set_ylabel('Acurácia')
-            ax.set_title('Performance por Faixa Angular')
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            st.pyplot(fig)
-            
-            return angulo_otimo
-        else:
-            st.warning("⚠️ Nenhum ângulo válido encontrado. Usando padrão: 40°")
-            return 40
-            
-    except Exception as e:
-        st.error(f"❌ Erro na otimização: {e}")
-        return 40
+            }),
+            use_container_width=True
+        )
 
-# ============================================================
-# 🧠 TARGET ESPACIAL INTELIGENTE (VERSÃO OTIMIZADA)
-# ============================================================
-def criar_target_espacial_inteligente(row, angulo_limite=40):
+        # Gráfico simples (sem frescura)
+        fig, ax = plt.subplots()
+        ax.plot(df_res['angulo_limite'], df_res['acuracia_estavel'], marker='o', label='Zona Estável')
+        ax.plot(df_res['angulo_limite'], df_res['acuracia_instavel'], marker='s', label='Zona Instável')
+        ax.axvline(x=ang_otimo, linestyle='--', label=f'Ângulo Ótimo {ang_otimo}°')
+        ax.set_xlabel("Ângulo Limite (°)")
+        ax.set_ylabel("Acurácia")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        st.pyplot(fig)
+
+        return ang_otimo
+
+    st.warning("⚠️ Nenhum ângulo consistente encontrado. Usando 40°.")
+    return 40
+
+# ========================= SCORE ESPACIAL INTELIGENTE =========================
+def calcular_score_espacial_inteligente(row, angulo_limite: float) -> float:
     """
-    Target espacial inteligente com ângulo otimizado
-    Versão balanceada e simétrica
+    Score contínuo [0,1] baseado em geometria:
+    >0.5 tende HOME, <0.5 tende AWAY.
+    Usa dx, dz, ângulo e cluster como reforço.
     """
-    try:
-        dx = row.get('Aggression_Home', 0) - row.get('Aggression_Away', 0)
-        dy = row.get('M_H', 0) - row.get('M_A', 0)
-        dz = row.get('MT_H', 0) - row.get('MT_A', 0)
-        
-        # Verificar valores NaN
-        if any(pd.isna(val) for val in [dx, dy, dz]):
-            return 0
+    dx = row.get('dx', 0)
+    dy = row.get('dy', 0)
+    dz = row.get('dz', 0)
+    ang_xy = row.get('Quadrant_Angle_XY', 0)
+    cluster = row.get('Cluster3D_Label', 0)
 
-        dist = np.sqrt(dx**2 + dy**2 + dz**2)
+    # Falhas -> neutro
+    if any(pd.isna(v) for v in [dx, dy, dz, ang_xy]):
+        return 0.5
 
-        # Ângulo otimizado dinamicamente
-        angulo_xy = np.degrees(np.arctan2(dy, dx))
-        angulo_estavel = abs(angulo_xy) < angulo_limite
-        
-        distancia_ok = dist > 0.6
-        cluster_val = row.get('Cluster3D_Label', 0)
-        cluster_confiavel = cluster_val in [0, 2]  # Clusters estáveis
+    dist = math.sqrt(dx**2 + dy**2 + dz**2)
+    ang_estavel = abs(ang_xy) < angulo_limite
 
-        # Lógica de valor simétrica
-        if distancia_ok and cluster_confiavel:
-            # HOME value: Aggression positivo + Momentum positivo + Ângulo estável
-            if dx > 0 and dz >= 0 and angulo_estavel:
-                return 1
-            # AWAY value: Aggression negativo + Momentum negativo + Ângulo instável
-            elif dx < 0 and dz < 0 and not angulo_estavel:
-                return 0
-            else:
-                # Neutro - distribuição balanceada
-                return np.random.choice([0, 1])
-        else:
-            # Fallback baseado na direção principal
-            if dx > 0.2:
-                return 1
-            elif dx < -0.2:
-                return 0
-            else:
-                return np.random.choice([0, 1])
-                
-    except Exception as e:
-        return 0
+    score = 0.5
 
-# ============================================================
-# 🚀 TREINAMENTO DO MODELO ESPACIAL (VERSÃO CORRIGIDA)
-# ============================================================
-def treinar_modelo_espacial_inteligente(history, games_today):
-    """
-    Treina o modelo espacial inteligente com otimização automática
-    """
-    st.markdown("## 🧠 Treinando Modelo Espacial Inteligente")
-    
-    # 1. PRÉ-PROCESSAMENTO OBRIGATÓRIO
-    st.info("📊 Calculando métricas espaciais...")
-    
-    # Garantir que todas as colunas necessárias existam
+    # Peso direção principal (dx)
+    if dx > 0:
+        score += 0.12
+    elif dx < 0:
+        score -= 0.12
+
+    # Momentum 3D (dz)
+    if dz > 0:
+        score += 0.10
+    elif dz < 0:
+        score -= 0.10
+
+    # Ângulo estável favorece quem está "empurrando"
+    if ang_estavel and dx > 0:
+        score += 0.08
+    if (not ang_estavel) and dx < 0:
+        score -= 0.08
+
+    # Distância mínima: se muito perto, puxa p/ neutro
+    if dist < 0.4:
+        score = 0.5 + (score - 0.5) * 0.4
+
+    # Cluster confiável puxa levemente pró-padrão
+    if cluster in [0]:  # cluster agressivo positivo
+        score += 0.04
+    elif cluster in [1]:  # cluster negativo
+        score -= 0.04
+
+    return float(np.clip(score, 0.05, 0.95))
+
+# ========================= TREINAMENTO ESPACIAL V2 =========================
+def treinar_modelo_espacial_inteligente(history: pd.DataFrame,
+                                        games_today: pd.DataFrame):
+    st.markdown("## 🧠 Treinando Modelo Espacial Inteligente (V2)")
+
+    # 1) Métricas 3D e clusterização
+    st.info("📐 Calculando métricas 3D e clusters...")
     history = calcular_distancias_3d(history)
     games_today = calcular_distancias_3d(games_today)
+
     history = aplicar_clusterizacao_3d(history)
     games_today = aplicar_clusterizacao_3d(games_today)
-    
-    # 2. OTIMIZAR ÂNGULO (AGORA COM DADOS PRONTOS)
-    angulo_otimo = encontrar_angulo_otimo(history)
-    
-    # 3. APLICAR TARGET ESPACIAL COM ÂNGULO OTIMIZADO
-    st.info(f"🔄 Criando Target Espacial com ângulo ótimo: {angulo_otimo}°")
-    history['Target_Espacial'] = history.apply(
-        lambda x: criar_target_espacial_inteligente(x, angulo_otimo), 
-        axis=1
+
+    # 2) Otimizar ângulo usando Target_AH_Home (base real)
+    if 'Target_AH_Home' not in history.columns:
+        st.error("❌ Target_AH_Home não encontrado no histórico.")
+        return None, games_today
+
+    angulo_otimo = encontrar_angulo_otimo(history, target_col='Target_AH_Home')
+
+    # 3) Score & Target Espacial
+    st.info(f"🎯 Aplicando Score Espacial com ângulo {angulo_otimo}°")
+    history['Score_Espacial'] = history.apply(
+        lambda x: calcular_score_espacial_inteligente(x, angulo_otimo), axis=1
     )
-    
-    # Estatísticas do target
-    dist_espacial = history['Target_Espacial'].value_counts().to_dict()
-    st.info(f"📊 Distribuição Target Espacial: {dist_espacial}")
-    
-    # 4. FEATURE ENGINEERING PARA CLUSTERS
-    history['Cluster3D_Label'] = history['Cluster3D_Label'].astype(float)
-    games_today['Cluster3D_Label'] = games_today['Cluster3D_Label'].astype(float)
-    
-    mean_c = history['Cluster3D_Label'].mean()
-    std_c = history['Cluster3D_Label'].std(ddof=0) or 1
-    history['C3D_ZScore'] = (history['Cluster3D_Label'] - mean_c) / std_c
-    games_today['C3D_ZScore'] = (games_today['Cluster3D_Label'] - mean_c) / std_c
-    
-    history['C3D_Sin'] = np.sin(history['Cluster3D_Label'])
-    history['C3D_Cos'] = np.cos(history['Cluster3D_Label'])
-    games_today['C3D_Sin'] = np.sin(games_today['Cluster3D_Label'])
-    games_today['C3D_Cos'] = np.cos(games_today['Cluster3D_Label'])
-    
-    # 5. PREPARAR FEATURES FINAIS
-    ligas_dummies = pd.get_dummies(history['League'], prefix='League')
-    
+    history['Target_Espacial'] = (history['Score_Espacial'] >= 0.5).astype(int)
+
+    dist_target = history['Target_Espacial'].value_counts(normalize=True).to_dict()
+    st.info(f"📊 Distribuição Target_Espacial: { {k: f'{v:.1%}' for k,v in dist_target.items()} }")
+
+    # 4) Features
     features_espaciais = [
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
         'Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Quadrant_Angle_XY',
         'Vector_Sign', 'Magnitude_3D',
-        'C3D_ZScore', 'C3D_Sin', 'C3D_Cos'
+        'dx', 'dy', 'dz',
+        'Score_Espacial',
+        'Cluster3D_Label'
     ]
-    
-    # Filtrar apenas features que existem
-    available_features = [f for f in features_espaciais if f in history.columns]
-    st.info(f"🔧 Features espaciais utilizadas: {available_features}")
-    
-    # 6. TREINAR MODELO
-    X = pd.concat([ligas_dummies, history[available_features]], axis=1).fillna(0)
-    y = history['Target_Espacial'].astype(int)
-    
-    # Balanceamento de classes
-    from sklearn.utils import resample
-    
-    # VERIFICAR SE TEM DADOS SUFICIENTES
-    if len(history) < 50:
-        st.error("❌ Dados insuficientes para treinamento")
-        return None, games_today
-    
-    major = history[history['Target_Espacial'] == 0]
-    minor = history[history['Target_Espacial'] == 1]
-    
-    if len(minor) > 10 and len(major) > 10:
-        # Criar cópias para evitar problemas de índice
-        minor_upsampled = minor.copy().sample(n=len(major), replace=True, random_state=42)
-        history_balanced = pd.concat([major, minor_upsampled], ignore_index=True)
-        
-        # Recriar features para dados balanceados
-        ligas_balanced = pd.get_dummies(history_balanced['League'], prefix='League')
-        X_balanced = pd.concat([ligas_balanced, history_balanced[available_features]], axis=1).fillna(0)
-        y_balanced = history_balanced['Target_Espacial'].astype(int)
-        
-        st.info(f"⚖️ Dataset balanceado: {len(major)} x {len(minor_upsampled)}")
+
+    features_espaciais = [f for f in features_espaciais if f in history.columns]
+
+    if 'League' in history.columns:
+        ligas_dummies = pd.get_dummies(history['League'], prefix='League')
     else:
-        X_balanced, y_balanced = X, y
-        st.warning("⚠️ Dataset muito pequeno para balanceamento")
-    
+        ligas_dummies = pd.DataFrame(index=history.index)
+
+    X = pd.concat([ligas_dummies, history[features_espaciais]], axis=1).fillna(0)
+    y = history['Target_Espacial'].astype(int)
+
+    if len(history) < 100:
+        st.error("❌ Dados insuficientes para treinamento consistente (<100 jogos).")
+        return None, games_today
+
+    # 5) Balanceamento simples (upsample da minoria)
+    counts = y.value_counts()
+    if len(counts) == 2:
+        majority_class = counts.idxmax()
+        minority_class = counts.idxmin()
+        df_major = history[history['Target_Espacial'] == majority_class]
+        df_minor = history[history['Target_Espacial'] == minority_class]
+
+        if len(df_minor) > 20:
+            df_minor_up = resample(df_minor,
+                                   replace=True,
+                                   n_samples=len(df_major),
+                                   random_state=42)
+            hist_bal = pd.concat([df_major, df_minor_up], ignore_index=True)
+
+            if 'League' in hist_bal.columns:
+                ligas_bal = pd.get_dummies(hist_bal['League'], prefix='League')
+            else:
+                ligas_bal = pd.DataFrame(index=hist_bal.index)
+
+            X_bal = pd.concat([ligas_bal, hist_bal[features_espaciais]], axis=1).fillna(0)
+            y_bal = hist_bal['Target_Espacial'].astype(int)
+
+            st.info(f"⚖️ Dataset balanceado: {len(df_major)} x {len(df_minor_up)}")
+        else:
+            st.warning("⚠️ Minoria muito pequena, usando dataset original.")
+            X_bal, y_bal = X, y
+    else:
+        X_bal, y_bal = X, y
+
+    # Alinhar colunas (caso tenha diferença entre X e X_bal)
+    X_cols = X_bal.columns
+
+    # 6) Modelo
     model = RandomForestClassifier(
-        n_estimators=200,  # Reduzido para mais estabilidade
-        max_depth=8,
+        n_estimators=250,
+        max_depth=10,
         random_state=42,
         class_weight='balanced',
-        n_jobs=-1
+        n_jobs=-1,
     )
-    model.fit(X_balanced, y_balanced)
-    
-    # 7. PREVISÕES
-    ligas_today = pd.get_dummies(games_today['League'], prefix='League')
-    
-    # Garantir que temos as mesmas colunas
-    missing_liga_cols = set(ligas_dummies.columns) - set(ligas_today.columns)
-    for col in missing_liga_cols:
-        ligas_today[col] = 0
-    ligas_today = ligas_today[ligas_dummies.columns]  # Ordem correta
-    
-    X_today = pd.concat([ligas_today, games_today[available_features]], axis=1).fillna(0)
-    
-    # Garantir mesma ordem de features do treino
-    missing_features = set(X.columns) - set(X_today.columns)
-    for col in missing_features:
-        X_today[col] = 0
-    X_today = X_today[X.columns]
-    
+    model.fit(X_bal, y_bal)
+
+    # 7) Importância das features (top 15)
+    try:
+        importances = pd.Series(model.feature_importances_, index=X_cols).sort_values(ascending=False)
+        st.markdown("### 🧩 Principais Features do Modelo")
+        st.dataframe(importances.head(15).round(4).to_frame("Importância"), use_container_width=True)
+    except Exception:
+        pass
+
+    # 8) Preparar dados de hoje
+    if 'League' in games_today.columns:
+        ligas_today = pd.get_dummies(games_today['League'], prefix='League')
+    else:
+        ligas_today = pd.DataFrame(index=games_today.index)
+
+    # Garantir mesmas colunas
+    for col in X_cols:
+        if col not in ligas_today.columns and col not in games_today.columns:
+            # feature ausente -> cria 0
+            if col.startswith("League_"):
+                ligas_today[col] = 0
+
+    X_today = pd.concat(
+        [ligas_today.reindex(columns=[c for c in X_cols if c.startswith("League_")], fill_value=0),
+         games_today.reindex(columns=[c for c in X_cols if c not in ligas_today.columns], fill_value=0)],
+        axis=1
+    )
+
+    # Reordenar
+    X_today = X_today.reindex(columns=X_cols, fill_value=0)
+
+    # Score espacial de hoje
+    games_today['Score_Espacial'] = games_today.apply(
+        lambda x: calcular_score_espacial_inteligente(x, angulo_otimo), axis=1
+    )
+
+    # 9) Previsão
     try:
         proba = model.predict_proba(X_today)[:, 1]
-        proba = np.clip(proba, 0.05, 0.95)  # Evitar extremos
+        proba = np.clip(proba, 0.05, 0.95)
     except Exception as e:
         st.error(f"❌ Erro nas previsões: {e}")
-        proba = np.full(len(games_today), 0.5)  # Fallback
-    
-    # 8. RESULTADOS
+        proba = np.full(len(games_today), 0.5)
+
     games_today['Prob_Espacial'] = proba
     games_today['ML_Side_Espacial'] = np.where(proba >= 0.5, 'HOME', 'AWAY')
     games_today['Confidence_Espacial'] = np.round(np.maximum(proba, 1 - proba), 3)
     games_today['Angulo_Otimizado'] = angulo_otimo
-    
-    # Estatísticas finais
+
     mean_conf = games_today['Confidence_Espacial'].mean()
     home_preds = (games_today['ML_Side_Espacial'] == 'HOME').sum()
     away_preds = (games_today['ML_Side_Espacial'] == 'AWAY').sum()
-    
-    st.success(f"✅ Modelo treinado: {len(games_today)} jogos | Confiança média: {mean_conf:.1%}")
-    st.success(f"🏠 HOME: {home_preds} | ✈️ AWAY: {away_preds}")
-    
+
+    st.success(f"✅ Modelo treinado em {len(history)} jogos históricos.")
+    st.success(f"🏟️ {len(games_today)} jogos hoje | 🎯 Confiança média: {mean_conf:.1%} | 🏠 HOME: {home_preds} | ✈️ AWAY: {away_preds}")
+
     return model, games_today
 
-# ============================================================
-# 📊 VISUALIZAÇÃO DE RESULTADOS
-# ============================================================
-def exibir_resultados_espaciais(games_today):
-    """Exibe resultados do modelo espacial"""
-    st.markdown("## 📊 Resultados do Modelo Espacial Inteligente")
-    
-    # Filtrar colunas relevantes
+# ========================= EXIBIÇÃO RESULTADOS =========================
+def exibir_resultados_espaciais(games_today: pd.DataFrame):
+    st.markdown("## 📊 Resultados do Modelo Espacial Inteligente (V2)")
+
     cols_display = [
         'League', 'Home', 'Away', 'Asian_Line_Decimal',
-        'Goals_H_Today', 'Goals_A_Today', 'Prob_Espacial', 
-        'ML_Side_Espacial', 'Confidence_Espacial', 'Angulo_Otimizado'
+        'Goals_H_Today', 'Goals_A_Today',
+        'Prob_Espacial', 'ML_Side_Espacial',
+        'Confidence_Espacial', 'Score_Espacial', 'Angulo_Otimizado'
     ]
-    
     cols_display = [c for c in cols_display if c in games_today.columns]
-    
-    resultados_df = games_today[cols_display].copy()
-    
-    # Formatar probabilidades
-    if 'Prob_Espacial' in resultados_df.columns:
-        resultados_df['Prob_Espacial'] = resultados_df['Prob_Espacial'].apply(lambda x: f"{x:.1%}")
-    if 'Confidence_Espacial' in resultados_df.columns:
-        resultados_df['Confidence_Espacial'] = resultados_df['Confidence_Espacial'].apply(lambda x: f"{x:.1%}")
-    
-    # Ordenar por confiança
+
+    df_show = games_today[cols_display].copy()
+
+    if 'Prob_Espacial' in df_show.columns:
+        df_show['Prob_Espacial'] = df_show['Prob_Espacial'].apply(lambda x: f"{x:.1%}")
+    if 'Confidence_Espacial' in df_show.columns:
+        df_show['Confidence_Espacial'] = df_show['Confidence_Espacial'].apply(lambda x: f"{x:.1%}")
+    if 'Score_Espacial' in df_show.columns:
+        df_show['Score_Espacial'] = df_show['Score_Espacial'].apply(lambda x: f"{x:.3f}")
+
     if 'Confidence_Espacial' in games_today.columns:
-        resultados_df = resultados_df.sort_values('Confidence_Espacial', ascending=False)
-    
-    st.dataframe(resultados_df, use_container_width=True)
-    
-    # Métricas rápidas
+        df_show = df_show.sort_values('Confidence_Espacial', ascending=False)
+
+    st.dataframe(df_show, use_container_width=True)
+
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("📊 Total Jogos", len(games_today))
     with col2:
-        home_count = (games_today['ML_Side_Espacial'] == 'HOME').sum()
-        st.metric("🏠 Recomendações HOME", home_count)
+        st.metric("🏠 Recomendações HOME", int((games_today['ML_Side_Espacial'] == 'HOME').sum()))
     with col3:
-        away_count = (games_today['ML_Side_Espacial'] == 'AWAY').sum()
-        st.metric("✈️ Recomendações AWAY", away_count)
+        st.metric("✈️ Recomendações AWAY", int((games_today['ML_Side_Espacial'] == 'AWAY').sum()))
     with col4:
         if 'Confidence_Espacial' in games_today.columns:
-            conf_media = games_today['Confidence_Espacial'].mean()
-            st.metric("🎯 Confiança Média", f"{conf_media:.1%}")
+            st.metric("🎯 Confiança Média", f"{games_today['Confidence_Espacial'].mean():.1%}")
 
-# ============================================================
-# 🎯 FUNÇÃO PRINCIPAL
-# ============================================================
+# ========================= MAIN =========================
 def main():
-    """Função principal do sistema espacial inteligente"""
-    
-    # ---------------- CARREGAR DADOS ----------------
     st.sidebar.markdown("## ⚙️ Configurações")
-    
+
+    if not os.path.exists(GAMES_FOLDER):
+        st.error(f"Pasta {GAMES_FOLDER} não encontrada.")
+        return
+
     files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
     if not files:
         st.error("❌ Nenhum arquivo CSV encontrado na pasta GamesDay")
         return
-    
+
     options = files[-7:] if len(files) >= 7 else files
-    selected_file = st.sidebar.selectbox("Selecionar Arquivo:", options, index=len(options)-1)
-    
-    # Carregar dados com cache
+    selected_file = st.sidebar.selectbox("Selecionar Arquivo:", options, index=len(options) - 1)
+
     @st.cache_data(ttl=3600)
-    def load_cached_data(selected_file):
-        games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
+    def load_cached_data(sel_file: str):
+        games_today = pd.read_csv(os.path.join(GAMES_FOLDER, sel_file))
         games_today = filter_leagues(games_today)
-        
+
         history = filter_leagues(load_all_games(GAMES_FOLDER))
-        history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line"]).copy()
-        
-        return games_today, history
-    
+        history = preprocess_df(history)
+
+        # Garantir colunas essenciais
+        if 'Asian_Line' in history.columns:
+            history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
+        if 'Asian_Line' in games_today.columns:
+            games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
+
+        history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line_Decimal"]).copy()
+
+        # Target base AH Home
+        history["Target_AH_Home"] = history.apply(calculate_ah_home_target, axis=1)
+        history = history.dropna(subset=["Target_AH_Home"]).copy()
+        history["Target_AH_Home"] = history["Target_AH_Home"].astype(int)
+
+        # Momentum (se tiver HandScore)
+        history_mt = calcular_momentum_time(history)
+        games_today_mt = calcular_momentum_time(games_today)
+
+        return games_today_mt, history_mt
+
     games_today, history = load_cached_data(selected_file)
-    
-    # ---------------- LIVE SCORE ----------------
-    def load_and_merge_livescore(games_today, selected_date_str):
+
+    # LiveScore
+    def load_and_merge_livescore(games_today_df: pd.DataFrame, selected_date_str: str):
+        games_today_df = setup_livescore_columns(games_today_df)
         livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
-        games_today = setup_livescore_columns(games_today)
-        
+
         if os.path.exists(livescore_file):
-            results_df = pd.read_csv(livescore_file)
-            results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
-            
-            required_cols = ['Id', 'status', 'home_goal', 'away_goal', 'home_red', 'away_red']
-            missing_cols = [col for col in required_cols if col not in results_df.columns]
-            
-            if not missing_cols:
-                games_today = games_today.merge(
-                    results_df, left_on='Id', right_on='Id', how='left', suffixes=('', '_RAW')
-                )
-                games_today['Goals_H_Today'] = games_today['home_goal']
-                games_today['Goals_A_Today'] = games_today['away_goal']
-                games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
-                games_today['Home_Red'] = games_today['home_red']
-                games_today['Away_Red'] = games_today['away_red']
-                st.success("✅ LiveScore integrado")
-        
-        return games_today
-    
+            try:
+                results_df = pd.read_csv(livescore_file)
+                results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
+
+                required_cols = ['Id', 'status', 'home_goal', 'away_goal', 'home_red', 'away_red']
+                if all(c in results_df.columns for c in required_cols):
+                    merged = games_today_df.merge(
+                        results_df[['Id', 'status', 'home_goal', 'away_goal', 'home_red', 'away_red']],
+                        on='Id', how='left'
+                    )
+                    merged.loc[merged['status'] == 'FT', 'Goals_H_Today'] = merged['home_goal']
+                    merged.loc[merged['status'] == 'FT', 'Goals_A_Today'] = merged['away_goal']
+                    merged['Home_Red'] = merged['home_red']
+                    merged['Away_Red'] = merged['away_red']
+                    st.success("✅ LiveScore integrado")
+                    return merged
+            except Exception:
+                st.warning("⚠️ Erro ao integrar LiveScore.")
+        return games_today_df
+
     date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
     selected_date_str = date_match.group(0) if date_match else datetime.now().strftime("%Y-%m-%d")
     games_today = load_and_merge_livescore(games_today, selected_date_str)
-    
-    # ---------------- PREPARAR DADOS ----------------
-    st.info(f"📊 Carregados: {len(games_today)} jogos de hoje | {len(history)} histórico")
-    
-    # Converter Asian Line
-    history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
-    games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
-    
-    history = history.dropna(subset=['Asian_Line_Decimal'])
-    
-    # Target base
-    history["Target_AH_Home"] = history.apply(calculate_ah_home_target, axis=1)
-    history = history.dropna(subset=["Target_AH_Home"]).copy()
-    history["Target_AH_Home"] = history["Target_AH_Home"].astype(int)
-    
-    # Calcular momentum
-    history = calcular_momentum_time(history)
-    games_today = calcular_momentum_time(games_today)
-    
-    # ---------------- INTERFACE PRINCIPAL ----------------
-    st.markdown("## 🎯 Sistema Espacial Inteligente")
-    
-    st.info("""
-    **🎯 Este sistema utiliza:**
-    - 🧠 **Otimização automática** de ângulos espaciais
-    - 📐 **Análise 3D** com Aggression, Momentum e MT
-    - 🎯 **Target inteligente** simétrico (HOME/AWAY)
-    - ⚡ **Clusterização** para identificar padrões
+
+    st.info(f"📊 Carregados: {len(games_today)} jogos de hoje | {len(history)} jogos históricos válidos")
+
+    st.markdown("""
+    ## 🎯 Sistema Espacial Inteligente V2
+    - 🧠 Otimização automática do ângulo espacial (baseado no histórico real AH)
+    - 📐 Métricas 3D normalizadas por liga (Aggression, M, MT)
+    - 📦 Clusterização 3D dinâmica (K otimizado por Silhouette)
+    - 🎯 Target Espacial derivado de **score contínuo geométrico**
+    - 📊 Importância de features para interpretar o modelo
     """)
-    
-    # Botão de treinamento
+
     if st.sidebar.button("🚀 Treinar Modelo Espacial", type="primary"):
-        with st.spinner("Treinando modelo espacial inteligente..."):
-            modelo, resultados = treinar_modelo_espacial_inteligente(history, games_today)
-            
-            if modelo is not None:
+        with st.spinner("Treinando modelo espacial inteligente V2..."):
+            model, resultados = treinar_modelo_espacial_inteligente(history, games_today)
+            if model is not None:
                 exibir_resultados_espaciais(resultados)
-                
-                # Salvar resultados
-                resultados.to_csv(f"resultados_espacial_{selected_date_str}.csv", index=False)
-                st.success(f"💾 Resultados salvos em: resultados_espacial_{selected_date_str}.csv")
+                out_path = f"resultados_espacial_V2_{selected_date_str}.csv"
+                resultados.to_csv(out_path, index=False)
+                st.success(f"💾 Resultados salvos em: {out_path}")
                 st.balloons()
             else:
-                st.error("❌ Falha no treinamento do modelo")
-    
+                st.error("❌ Falha no treinamento do modelo.")
     else:
-        st.info("👆 Clique em **'Treinar Modelo Espacial'** para iniciar a análise")
+        st.info("👆 Clique em **'Treinar Modelo Espacial'** para gerar as recomendações do dia.")
 
-# ============================================================
-# 🚀 EXECUÇÃO
-# ============================================================
+# ========================= RUN =========================
 if __name__ == "__main__":
     main()
