@@ -51,13 +51,19 @@ def calculate_ah_home_target(row):
 # =====================================================================
 # 📊 CÁLCULO ESPACIAL COM JULGAMENTO DE MERCADO (VERSÃO ROBUSTA V3.1)
 # =====================================================================
+# =====================================================================
+# 📊 CÁLCULO ESPACIAL COM JULGAMENTO DE MERCADO (VERSÃO ULTRA-ROBUSTA)
+# =====================================================================
 def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calcula métricas espaciais 3D + detecção de julgamento de mercado
-    - Normalização robusta por liga (z-score)
-    - Cálculo de dx, dy, dz e métricas geométricas
-    - Cálculo de Diff_Judgment (gap entre percepção e momento real)
+    Calcula métricas espaciais 3D + detecção de julgamento de mercado.
+    - Evita 'No objects to concatenate'
+    - Tolerante a ligas vazias ou colunas ausentes
     """
+    if df is None or df.empty:
+        st.warning("⚠️ DataFrame vazio recebido em calcular_distancias_3d().")
+        return pd.DataFrame()
+
     df = df.copy()
 
     # ------------------ Garantir colunas básicas ------------------
@@ -65,15 +71,16 @@ def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
     for c in cols:
         if c not in df.columns:
             df[c] = 0
+        df[c] = df[c].fillna(0)
 
     # ------------------ Normalização robusta por liga ------------------
     cols_norm = cols.copy()
+    normed_blocks = []
 
-    if 'League' in df.columns:
-        normed_blocks = []
-
+    if 'League' in df.columns and df['League'].notna().any():
         for league, g in df.groupby('League', group_keys=False):
-            # Se a liga tem só NaN ou 1 jogo, não normaliza
+            if g.empty:
+                continue
             if len(g) < 2 or g[cols_norm].dropna(how='all').empty:
                 g_norm = g[cols_norm].fillna(0)
             else:
@@ -82,11 +89,13 @@ def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
                 )
             normed_blocks.append(g_norm)
 
-        # Concatenar resultados e restaurar ordem original
-        df[cols_norm] = pd.concat(normed_blocks, axis=0).sort_index()
-
+        if len(normed_blocks) > 0:
+            df[cols_norm] = pd.concat(normed_blocks, axis=0).sort_index()
+        else:
+            st.warning("⚠️ Nenhuma liga válida para normalização — preenchendo com zeros.")
+            df[cols_norm] = 0
     else:
-        # Sem coluna de liga — normalização global
+        st.info("ℹ️ Sem coluna 'League' ou vazia — normalização global aplicada.")
         df[cols_norm] = df[cols_norm].apply(
             lambda x: (x - x.mean()) / (x.std(ddof=0) or 1)
         )
@@ -96,7 +105,7 @@ def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
     df['dy'] = df['M_H'] - df['M_A']
     df['dz'] = df['MT_H'] - df['MT_A']
 
-    df['Quadrant_Dist_3D'] = np.sqrt(df['dx'] ** 2 + df['dy'] ** 2 + df['dz'] ** 2)
+    df['Quadrant_Dist_3D'] = np.sqrt(df['dx']**2 + df['dy']**2 + df['dz']**2)
 
     angle_xy = np.arctan2(df['dy'], df['dx'])
     df['Quadrant_Angle_XY'] = np.degrees(angle_xy)
@@ -104,9 +113,9 @@ def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
     df['Quadrant_Cos_XY'] = np.cos(angle_xy)
     df['Vector_Sign'] = np.sign(df['dx'] * df['dy'] * df['dz']).fillna(0)
     df['Quadrant_Separation_3D'] = (df['dx'] + df['dy'] + df['dz']) / 3.0
-    df['Magnitude_3D'] = np.sqrt(df['dx'] ** 2 + df['dy'] ** 2 + df['dz'] ** 2)
+    df['Magnitude_3D'] = np.sqrt(df['dx']**2 + df['dy']**2 + df['dz']**2)
 
-    # ------------------ Cálculo de distorção de julgamento ------------------
+    # ------------------ Distorção de julgamento ------------------
     df['Judgment_Discrepancy_H'] = (df['Aggression_Home'] * -1) * (
         df['M_H'] + df['MT_H']
     )
@@ -122,6 +131,7 @@ def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
     df.fillna(0, inplace=True)
 
     return df
+
 
 
 # =====================================================================
