@@ -1208,81 +1208,246 @@ if not history.empty:
     
     st.success("🎉 Sistema em 2 Estágios implementado com sucesso!")
     
-    # 5. ANÁLISE DE CONTRIBUIÇÃO DOS ESTÁGIOS (ATUALIZADA)
+    # 5. ANÁLISE DE CONTRIBUIÇÃO DOS ESTÁGIOS (COM THRESHOLDS DINÂMICOS)
     st.markdown("### 📊 Análise de Contribuição dos Estágios")
     
     if 'ML_Regressao_Score' in games_today.columns and 'Quadrante_ML_Score_Main' in games_today.columns:
+        
+        # 🆕 CALCULAR THRESHOLDS BASEADOS NO HISTÓRICO
+        def calcular_thresholds_ideais(history):
+            """Calcula thresholds ótimos baseados na distribuição dos scores no histórico"""
+            if history.empty or 'ML_Regressao_Score' not in history.columns:
+                return 0.4, 0.6  # Fallback conservador
+                
+            # 🎯 ANALISAR DISTRIBUIÇÃO DOS SCORES
+            q25_regressao = history['ML_Regressao_Score'].quantile(0.25)
+            q75_regressao = history['ML_Regressao_Score'].quantile(0.75)
+            q25_principal = history['Quadrante_ML_Score_Main'].quantile(0.25)
+            q75_principal = history['Quadrante_ML_Score_Main'].quantile(0.75)
+            
+            # 📊 CALCULAR THRESHOLDS BASEADOS EM QUARTIS
+            threshold_baixo = max(0.35, min(q25_regressao, q25_principal))  # Não menor que 0.35
+            threshold_alto = min(0.65, max(q75_regressao, q75_principal))   # Não maior que 0.65
+            
+            # 🎚️ AJUSTAR PARA BASE PEQUENA (4k jogos)
+            if len(history) < 10000:
+                threshold_baixo = max(0.30, threshold_baixo - 0.05)   # Mais sensível
+                threshold_alto = min(0.70, threshold_alto + 0.05)     # Mais sensível
+                
+            return round(threshold_baixo, 3), round(threshold_alto, 3)
+        
+        # 🆕 APLICAR THRESHOLDS CALCULADOS
+        threshold_baixo, threshold_alto = calcular_thresholds_ideais(history)
+        
+        # 📈 MOSTRAR THRESHOLDS CALCULADOS
+        st.markdown(f"#### 🎚️ Thresholds Calculados (Base: {len(history):,} jogos)")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("📉 Threshold Baixo", f"{threshold_baixo:.3f}")
+        with col2:
+            st.metric("📈 Threshold Alto", f"{threshold_alto:.3f}")
+        
+        # 📊 EXPLICAR DISTRIBUIÇÃO
+        with st.expander("🔍 Ver Distribuição dos Scores no Histórico"):
+            if not history.empty and 'ML_Regressao_Score' in history.columns:
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write("**ML Regressão Score:**")
+                    st.write(f"- Média: {history['ML_Regressao_Score'].mean():.3f}")
+                    st.write(f"- Mediana: {history['ML_Regressao_Score'].median():.3f}")
+                    st.write(f"- Q1: {history['ML_Regressao_Score'].quantile(0.25):.3f}")
+                    st.write(f"- Q3: {history['ML_Regressao_Score'].quantile(0.75):.3f}")
+                
+                with col2:
+                    st.write("**ML Principal Score:**")
+                    st.write(f"- Média: {history['Quadrante_ML_Score_Main'].mean():.3f}")
+                    st.write(f"- Mediana: {history['Quadrante_ML_Score_Main'].median():.3f}")
+                    st.write(f"- Q1: {history['Quadrante_ML_Score_Main'].quantile(0.25):.3f}")
+                    st.write(f"- Q3: {history['Quadrante_ML_Score_Main'].quantile(0.75):.3f}")
+            else:
+                st.info("⚠️ Dados de histórico não disponíveis para análise")
+        
+        # 📈 CORRELAÇÃO
         correlacao = games_today[['ML_Regressao_Score', 'Quadrante_ML_Score_Main']].corr().iloc[0,1]
-        st.metric("📈 Correlação entre Estágios", f"{correlacao:.3f}")
         
-        # 🆕 CRITÉRIOS MAIS FLEXÍVEIS PARA OPORTUNIDADES
-        oportunidade_1 = games_today[
-            (games_today['ML_Regressao_Score'] > 0.55) & 
-            (games_today['Quadrante_ML_Score_Main'] < 0.45)
+        col_corr1, col_corr2, col_corr3 = st.columns([1,2,1])
+        with col_corr2:
+            st.metric("📈 Correlação entre Estágios", f"{correlacao:.3f}")
+        
+        if correlacao > 0.6:
+            st.success("**✅ ALTA CORRELAÇÃO**: Os estágios concordam fortemente")
+        elif correlacao > 0.3:
+            st.info("**🔄 CORRELAÇÃO MODERADA**: Os estágios têm visões complementares")
+        else:
+            st.warning("**⚠️ BAIXA CORRELAÇÃO**: Os estágios discordam significativamente")
+        
+        # 🆕 DETECTAR CONFLITOS COM THRESHOLDS DINÂMICOS
+        st.markdown("#### 🎯 Conflitos entre Modelos (Thresholds Dinâmicos)")
+        
+        # Conflito A: Regressão PESSIMISTA vs Principal OTIMISTA
+        conflito_pessimista_regressao = games_today[
+            (games_today['ML_Regressao_Score'] < threshold_baixo) & 
+            (games_today['Quadrante_ML_Score_Main'] > threshold_alto)
         ]
         
-        oportunidade_2 = games_today[
-            (games_today['ML_Regressao_Score'] < 0.45) & 
-            (games_today['Quadrante_ML_Score_Main'] > 0.55)
+        # Conflito B: Regressão OTIMISTA vs Principal PESSIMISTA  
+        conflito_otimista_regressao = games_today[
+            (games_today['ML_Regressao_Score'] > threshold_alto) & 
+            (games_today['Quadrante_ML_Score_Main'] < threshold_baixo)
         ]
         
-        oportunidade_3 = games_today[
-            (abs(games_today['ML_Regressao_Score'] - games_today['Quadrante_ML_Score_Main']) > 0.25)
-        ]
+        total_conflitos = len(conflito_pessimista_regressao) + len(conflito_otimista_regressao)
         
-        total_oportunidades = len(oportunidade_1) + len(oportunidade_2) + len(oportunidade_3)
-        
-        # 🆕 MÉTRICAS DETALHADAS
+        # 📊 ESTATÍSTICAS DOS CONFLITOS
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("🎯 Oportunidades Totais", total_oportunidades)
+            st.metric("⚡ Conflitos Totais", total_conflitos)
         with col2:
-            st.metric("📊 Diferença Média", 
-                     f"{(games_today['ML_Regressao_Score'] - games_today['Quadrante_ML_Score_Main']).mean():.3f}")
+            st.metric("🔴 Regressão PESSIMISTA", len(conflito_pessimista_regressao))
         with col3:
-            st.metric("🔄 Alinhamento", 
-                     "✅ BOM" if correlacao > 0.3 else "⚠️ BAIXO")
+            st.metric("🟢 Regressão OTIMISTA", len(conflito_otimista_regressao))
         
-        # 🆕 DETALHES DAS OPORTUNIDADES
-        if total_oportunidades > 0:
-            st.info("💡 **Oportunidades identificadas** - Discordância significativa entre os estágios")
+        # 🆕 ANALISAR PERFORMANCE HISTÓRICA DOS THRESHOLDS
+        def analisar_performance_thresholds(history, threshold_baixo, threshold_alto):
+            """Analisa se os thresholds identificam conflitos relevantes no histórico"""
+            if history.empty or 'ML_Regressao_Score' not in history.columns:
+                return "⚠️ Dados insuficientes para análise histórica"
+                
+            # Identificar conflitos no histórico
+            conflitos_hist = history[
+                ((history['ML_Regressao_Score'] < threshold_baixo) & (history['Quadrante_ML_Score_Main'] > threshold_alto)) |
+                ((history['ML_Regressao_Score'] > threshold_alto) & (history['Quadrante_ML_Score_Main'] < threshold_baixo))
+            ]
             
-            todas_oportunidades = pd.concat([oportunidade_1, oportunidade_2, oportunidade_3]).drop_duplicates()
+            if len(conflitos_hist) == 0:
+                return "📊 Sem conflitos detectados no histórico com esses thresholds"
+                
+            # Calcular acurácia dos conflitos (se tiver targets)
+            if 'Target_AH_Home' in history.columns:
+                acuracia_conflitos = conflitos_hist['Target_AH_Home'].mean()
+                performance = "ALTA" if acuracia_conflitos > 0.6 else "BAIXA" if acuracia_conflitos < 0.4 else "MÉDIA"
+                return f"🎯 {len(conflitos_hist)} conflitos históricos | Acurácia: {acuracia_conflitos:.1%} ({performance})"
+            else:
+                return f"📈 {len(conflitos_hist)} conflitos identificados no histórico"
+        
+        # Mostrar análise histórica
+        analise_historica = analisar_performance_thresholds(history, threshold_baixo, threshold_alto)
+        st.info(f"**Análise Histórica:** {analise_historica}")
+        
+        if total_conflitos > 0:
+            st.warning(f"""
+            ⚠️ **CONFLITOS DETECTADOS** 
+            
+            **Thresholds aplicados:**
+            - 🔴 PESSIMISTA: Regressão Score < {threshold_baixo:.3f}  
+            - 🟢 OTIMISTA: Principal Score > {threshold_alto:.3f}
+            
+            **Interpretação:**
+            - 🔴 REGRESSÃO PESSIMISTA: ML Principal confia, mas Regressão detecta RISCO
+            - 🟢 REGRESSÃO OTIMISTA: ML Principal não confia, mas Regressão detecta OPORTUNIDADE
+            """)
+            
+            # PROCESSAR CONFLITOS
+            todos_conflitos = pd.concat([
+                conflito_pessimista_regressao.assign(Tipo_Conflito='🔴 REGRESSÃO PESSIMISTA'),
+                conflito_otimista_regressao.assign(Tipo_Conflito='🟢 REGRESSÃO OTIMISTA')
+            ]).drop_duplicates()
+            
+            # COLUNAS CLARAS
+            cols_detalhes = [
+                'Home', 'Away', 'Tipo_Conflito', 'ML_Side',
+                'ML_Regressao_Score', 'Quadrante_ML_Score_Main',
+                'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away',
+                'Recomendacao', 'Asian_Line_Decimal'
+            ]
+            
+            cols_existentes = [c for c in cols_detalhes if c in todos_conflitos.columns]
+            
+            df_claro = todos_conflitos[cols_existentes].copy()
+            
+            # ADICIONAR EXPLICAÇÃO DETALHADA
+            def explicar_conflito(row):
+                if row['Tipo_Conflito'] == '🔴 REGRESSÃO PESSIMISTA':
+                    lado = row['ML_Side']
+                    return f"⚡ CONFLITO: Principal recomenda {lado} ({row['Quadrante_ML_Score_Main']:.1%}), mas Regressão alerta risco ({row['ML_Regressao_Score']:.1%})"
+                else:
+                    lado = row['ML_Side'] 
+                    return f"💎 OPORTUNIDADE: Principal não confia ({row['Quadrante_ML_Score_Main']:.1%}), mas Regressão detecta valor ({row['ML_Regressao_Score']:.1%})"
+            
+            df_claro['Explicação_Detalhada'] = df_claro.apply(explicar_conflito, axis=1)
+            
+            # CALCULAR GRAU DE CONFLITO
+            df_claro['Grau_Conflito'] = abs(
+                df_claro['ML_Regressao_Score'] - df_claro['Quadrante_ML_Score_Main']
+            )
+            
+            # DECISÃO SUGERIDA
+            def sugerir_decisao(row):
+                if row['Tipo_Conflito'] == '🔴 REGRESSÃO PESSIMISTA':
+                    return "🔴 EVITAR ou Aposta PEQUENA"
+                else:
+                    return "🟢 CONSIDERAR oportunidade"
+            
+            df_claro['Decisão_Sugerida'] = df_claro.apply(sugerir_decisao, axis=1)
             
             st.dataframe(
-                todas_oportunidades[['Home', 'Away', 'ML_Regressao_Score', 'Quadrante_ML_Score_Main', 
-                                   'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away']]
-                .assign(
-                    Diferenca=lambda df: df['ML_Regressao_Score'] - df['Quadrante_ML_Score_Main'],
-                    Tipo_Oportunidade=lambda df: np.where(
-                        df['ML_Regressao_Score'] > df['Quadrante_ML_Score_Main'], 
-                        '📈 REGRESSÃO ALTA', '📉 REGRESSÃO BAIXA'
-                    )
-                )
-                .sort_values('Diferenca', key=abs, ascending=False)
+                df_claro
+                .sort_values('Grau_Conflito', ascending=False)
                 .style.format({
                     'ML_Regressao_Score': '{:.1%}',
                     'Quadrante_ML_Score_Main': '{:.1%}',
                     'Quadrante_ML_Score_Home': '{:.1%}',
                     'Quadrante_ML_Score_Away': '{:.1%}',
-                    'Diferenca': '{:.3f}'
+                    'Asian_Line_Decimal': '{:.2f}',
+                    'Grau_Conflito': '{:.3f}'
                 })
-                .background_gradient(subset=['Diferenca'], cmap='RdYlBu'),
+                .background_gradient(subset=['Grau_Conflito'], cmap='RdYlBu_r')
+                .apply(lambda x: ['background-color: #FFE4E1' if 'EVITAR' in str(x) else '' for i in x], 
+                       subset=['Decisão_Sugerida'])
+                .apply(lambda x: ['background-color: #E1FFE1' if 'CONSIDERAR' in str(x) else '' for i in x], 
+                       subset=['Decisão_Sugerida']),
                 width='stretch'
             )
-        else:
-            st.success("✅ **Estágios alinhados** - Nenhuma discordância significativa detectada")
             
-            # 🆕 MOSTRAR ALGUNS EXEMPLOS MESMO SEM OPORTUNIDADES
-            st.info("🔍 **Amostra de alinhamento entre estágios:**")
-            amostra = games_today[['Home', 'Away', 'ML_Regressao_Score', 'Quadrante_ML_Score_Main']].head(5)
-            st.dataframe(
-                amostra.style.format({
-                    'ML_Regressao_Score': '{:.1%}',
-                    'Quadrante_ML_Score_Main': '{:.1%}'
-                }),
-                width='stretch'
-            )
+            # RESUMO POR TIPO DE CONFLITO
+            st.markdown("#### 📋 Resumo dos Conflitos")
+            
+            for tipo in ['🔴 REGRESSÃO PESSIMISTA', '🟢 REGRESSÃO OTIMISTA']:
+                jogos_tipo = df_claro[df_claro['Tipo_Conflito'] == tipo]
+                if not jogos_tipo.empty:
+                    st.write(f"**{tipo}**")
+                    st.write(f"- {len(jogos_tipo)} jogos com conflito")
+                    st.write(f"- Conflito médio: {jogos_tipo['Grau_Conflito'].mean():.3f}")
+                    st.write(f"- Lado recomendado: {', '.join(jogos_tipo['ML_Side'].unique())}")
+                    
+        else:
+            st.success(f"""
+            ✅ **MODELOS ALINHADOS** 
+            
+            Nenhum conflito significativo detectado com thresholds:
+            - 🔴 PESSIMISTA: Regressão Score < {threshold_baixo:.3f}
+            - 🟢 OTIMISTA: Principal Score > {threshold_alto:.3f}
+            
+            **Interpretação:** As recomendações são consistentes e confiáveis!
+            """)
+            
+            # Mostrar amostra do alinhamento
+            st.info("🔍 **Amostra do alinhamento entre estágios:**")
+            amostra_cols = ['Home', 'Away', 'ML_Regressao_Score', 'Quadrante_ML_Score_Main', 'ML_Side']
+            amostra_cols = [c for c in amostra_cols if c in games_today.columns]
+            
+            if amostra_cols:
+                st.dataframe(
+                    games_today[amostra_cols].head(5)
+                    .style.format({
+                        'ML_Regressao_Score': '{:.1%}',
+                        'Quadrante_ML_Score_Main': '{:.1%}'
+                    }),
+                    width='stretch'
+                )
+    
+    else:
+        st.warning("⚠️ Dados de ML não disponíveis para análise de contribuição")
     
 
 
