@@ -465,9 +465,9 @@ def analisar_value_bets_nova_logica(games_today):
         if pd.notna(goals_h_today) and pd.notna(goals_a_today):
             live_score_info = f"⚽ {goals_h_today}-{goals_a_today}"
             if pd.notna(home_red) and home_red > 0:
-                live_score_info += f " 🟥H{home_red}"
+                live_score_info += f" 🟥H{home_red}"
             if pd.notna(away_red) and away_red > 0:
-                live_score_info += f " 🟥A{away_red}"
+                live_score_info += f" 🟥A{away_red}"
         
         results.append({
             'League': row.get('League'),
