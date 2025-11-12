@@ -13,6 +13,9 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.metrics import mean_absolute_error
 
+# 🔧 CORREÇÃO: Aumentar limite de células para Pandas Styler
+pd.set_option("styler.render.max_elements", 500000)
+
 st.set_page_config(page_title="Analisador de Handicap Ótimo - CALIBRADO", layout="wide")
 st.title("🎯 Analisador de Handicap Ótimo - Modelo Calibrado")
 
@@ -771,23 +774,33 @@ def main():
         strong_values = df_value_bets[df_value_bets['Confidence'].isin(['HIGH', 'MEDIUM'])]
         if not strong_values.empty:
             st.markdown("### 🎯 Value Bets Identificados")
-            st.dataframe(strong_values.style.format({
-                'Asian_Line': '{:.2f}',
-                'Handicap_Regressao': '{:.2f}', 
-                'Handicap_Classificacao': '{:.2f}',
-                'Value_Gap': '{:.2f}'
-            }))
+            # 🔧 CORREÇÃO: Usar st.dataframe em vez de styler para evitar o erro
+            st.dataframe(
+                strong_values,
+                column_config={
+                    'Asian_Line': st.column_config.NumberColumn(format="%.2f"),
+                    'Handicap_Regressao': st.column_config.NumberColumn(format="%.2f"),
+                    'Handicap_Classificacao': st.column_config.NumberColumn(format="%.2f"),
+                    'Value_Gap': st.column_config.NumberColumn(format="%.2f")
+                },
+                width='stretch'  # 🔧 CORREÇÃO: use_container_width substituído
+            )
         else:
             st.info("ℹ️ Nenhum value bet forte identificado hoje")
         
         # Todos os jogos
         st.markdown("### 📋 Todos os Jogos Analisados")
-        st.dataframe(df_value_bets.style.format({
-            'Asian_Line': '{:.2f}',
-            'Handicap_Regressao': '{:.2f}',
-            'Handicap_Classificacao': '{:.2f}', 
-            'Value_Gap': '{:.2f}'
-        }))
+        # 🔧 CORREÇÃO: Usar st.dataframe simples para evitar o erro
+        st.dataframe(
+            df_value_bets,
+            column_config={
+                'Asian_Line': st.column_config.NumberColumn(format="%.2f"),
+                'Handicap_Regressao': st.column_config.NumberColumn(format="%.2f"),
+                'Handicap_Classificacao': st.column_config.NumberColumn(format="%.2f"),
+                'Value_Gap': st.column_config.NumberColumn(format="%.2f")
+            },
+            width='stretch'  # 🔧 CORREÇÃO: use_container_width substituído
+        )
         
         # Gráficos
         st.markdown("### 📈 Análise Visual")
