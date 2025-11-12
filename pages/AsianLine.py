@@ -335,12 +335,12 @@ def treinar_modelo_handicap_regressao_calibrado(history, games_today):
 
 def treinar_modelo_handicap_classificacao_calibrado(history, games_today):
     """
-    Modelo de Classificação CALIBRADO
+    Modelo de Classificação CALIBRADO CONSERVADOR
     """
-    st.markdown("### 🎯 Modelo Classificação Calibrado")
+    st.markdown("### 🎯 Modelo Classificação Calibrado (Versão Conservadora)")
     
-    # Criar target categórico calibrado
-    history['Handicap_Categoria_Calibrado'] = history.apply(criar_target_handicap_discreto_calibrado, axis=1)
+    # Criar target categórico calibrado CONSERVADOR
+    history['Handicap_Categoria_Calibrado'] = history.apply(criar_target_handicap_discreto_calibrado_v2, axis=1)
     
     # Features
     features_3d = [
@@ -350,7 +350,6 @@ def treinar_modelo_handicap_classificacao_calibrado(history, games_today):
     
     available_features = [f for f in features_3d if f in history.columns]
     
-    # Verificar se temos features suficientes
     if len(available_features) < 3:
         st.error("❌ Features insuficientes para treinamento")
         return None, games_today, None
@@ -362,20 +361,19 @@ def treinar_modelo_handicap_classificacao_calibrado(history, games_today):
     le = LabelEncoder()
     y_encoded = le.fit_transform(y)
     
-    # Treinar modelo
+    # Treinar modelo CONSERVADOR
     model = RandomForestClassifier(
-        n_estimators=150,
-        max_depth=6,
+        n_estimators=100,  # MENOS árvores
+        max_depth=5,       # MENOS profundidade
         random_state=42,
         class_weight='balanced',
-        min_samples_leaf=10
+        min_samples_leaf=15  # MAIS amostras
     )
     model.fit(X, y_encoded)
     
     # Prever para jogos de hoje
     X_today = games_today[available_features].fillna(0)
     
-    # Verificar se temos as mesmas features nos dados de hoje
     missing_features = set(available_features) - set(X_today.columns)
     if missing_features:
         st.warning(f"⚠️ Features faltando nos dados de hoje: {missing_features}")
@@ -388,25 +386,24 @@ def treinar_modelo_handicap_classificacao_calibrado(history, games_today):
     games_today['Handicap_Categoria_Predito_Calibrado'] = le.inverse_transform(predicoes_encoded)
     games_today['Confianca_Categoria_Calibrado'] = np.max(probas, axis=1)
     
-    # 🔧 MAPEAMENTO CALIBRADO para handicaps numéricos
-    categoria_para_handicap_calibrado = {
-        'STRONG_HOME': -1.5,
-        'MODERATE_HOME': -0.75, 
-        'LIGHT_HOME': -0.25,
+    # 🔧 MAPEAMENTO MAIS CONSERVADOR para handicaps numéricos
+    categoria_para_handicap_calibrado_v2 = {
+        'MODERATE_HOME': -0.75,   # ANTES: -1.5
+        'LIGHT_HOME': -0.25,      # ANTES: -0.75
         'NEUTRAL': 0,
-        'LIGHT_AWAY': +0.25,
-        'MODERATE_AWAY': +0.75,
-        'STRONG_AWAY': +1.5
+        'LIGHT_AWAY': +0.25,      # ANTES: +0.25
+        'MODERATE_AWAY': +0.75    # ANTES: +1.5
     }
     
-    games_today['Handicap_Predito_Classificacao_Calibrado'] = games_today['Handicap_Categoria_Predito_Calibrado'].map(categoria_para_handicap_calibrado)
+    games_today['Handicap_Predito_Classificacao_Calibrado'] = games_today['Handicap_Categoria_Predito_Calibrado'].map(categoria_para_handicap_calibrado_v2)
     games_today['Value_Gap_Classificacao_Calibrado'] = (
         games_today['Handicap_Predito_Classificacao_Calibrado'] - games_today['Asian_Line_Decimal']
     )
     
-    st.info(f"📊 Distribuição categorias calibradas: {dict(history['Handicap_Categoria_Calibrado'].value_counts())}")
+    st.info(f"📊 Distribuição categorias CALIBRADAS: {dict(history['Handicap_Categoria_Calibrado'].value_counts())}")
     
     return model, games_today, le
+
 
 # ============================================================
 # 📊 ANÁLISE DE VALOR CALIBRADA
@@ -414,9 +411,9 @@ def treinar_modelo_handicap_classificacao_calibrado(history, games_today):
 
 def analisar_value_bets_calibrado(games_today):
     """
-    Análise de value CALIBRADA — PERSPECTIVA HOME.
+    Análise de value CALIBRADA CONSERVADORA — PERSPECTIVA HOME.
     """
-    st.markdown("## 💎 Análise de Value Bets Calibrada (Home Perspective)")
+    st.markdown("## 💎 Análise de Value Bets Calibrada (Versão Conservadora)")
 
     results = []
     for _, row in games_today.iterrows():
@@ -424,18 +421,18 @@ def analisar_value_bets_calibrado(games_today):
         pred_reg = row.get('Handicap_Predito_Regressao_Calibrado', 0)
         pred_cls = row.get('Handicap_Predito_Classificacao_Calibrado', 0)
 
-        # Média ponderada (predições calibradas)
-        value_gap = 0.7 * (-pred_reg * 0.5 - asian_home) + 0.3 * (-pred_cls * 0.5 - asian_home)
+        # Média ponderada CONSERVADORA
+        value_gap = 0.7 * (pred_reg - asian_home) + 0.3 * (pred_cls - asian_home)
 
-        # Interpretação coerente com a perspectiva HOME
-        if value_gap > 0.4:
-            rec, lado, conf = "STRONG HOME VALUE", "HOME", "HIGH"
-        elif value_gap > 0.2:
-            rec, lado, conf = "HOME VALUE", "HOME", "MEDIUM"
-        elif value_gap < -0.4:
-            rec, lado, conf = "STRONG AWAY VALUE", "AWAY", "HIGH"
-        elif value_gap < -0.2:
-            rec, lado, conf = "AWAY VALUE", "AWAY", "MEDIUM"
+        # 🔧 INTERPRETAÇÃO MAIS CONSERVADORA
+        if value_gap > 0.3:    # ANTES: 0.4
+            rec, lado, conf = "HOME VALUE", "HOME", "MEDIUM"  # ANTES: STRONG HOME VALUE, HIGH
+        elif value_gap > 0.15: # ANTES: 0.2
+            rec, lado, conf = "LIGHT HOME VALUE", "HOME", "LOW"  # ANTES: HOME VALUE, MEDIUM
+        elif value_gap < -0.3: # ANTES: -0.4
+            rec, lado, conf = "AWAY VALUE", "AWAY", "MEDIUM"  # ANTES: STRONG AWAY VALUE, HIGH
+        elif value_gap < -0.15: # ANTES: -0.2
+            rec, lado, conf = "LIGHT AWAY VALUE", "AWAY", "LOW"  # ANTES: AWAY VALUE, MEDIUM
         else:
             rec, lado, conf = "NO CLEAR VALUE", "PASS", "LOW"
 
