@@ -530,8 +530,6 @@ def plot_handicap_analysis_calibrado(games_today):
     plt.tight_layout()
     return fig
 
-# 🔹 Carregar histórico completo primeiro
-    history = load_all_games(GAMES_FOLDER)
 
 # ============================================================
 # 🚀 EXECUÇÃO PRINCIPAL CALIBRADA
@@ -556,6 +554,7 @@ def main_calibrado():
     @st.cache_data(ttl=3600)
     def load_cached_data(selected_file):
         games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
+        history = load_all_games(GAMES_FOLDER)
         
         # 🔧 FILTRAR LIGAS PRINCIPAIS para melhor calibração
         # ============================================================
