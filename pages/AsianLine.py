@@ -139,6 +139,7 @@ def calcular_distancias_3d(df):
 def aplicar_clusterizacao_3d(df, n_clusters=4, random_state=42):
     """
     Cria clusters espaciais com base em Aggression, Momentum Liga e Momentum Time.
+    Versão CORRIGIDA com verificação de dados suficientes.
     """
     df = df.copy()
 
@@ -155,19 +156,40 @@ def aplicar_clusterizacao_3d(df, n_clusters=4, random_state=42):
 
     X_cluster = df[['dx', 'dy', 'dz']].fillna(0).to_numpy()
 
-    kmeans = KMeans(
-        n_clusters=n_clusters,
-        random_state=random_state,
-        init='k-means++',
-        n_init=10
-    )
-    df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
+    # 🔧 CORREÇÃO: Verificar se temos dados suficientes para clustering
+    n_samples = X_cluster.shape[0]
+    if n_samples < n_clusters:
+        st.warning(f"⚠️ Dados insuficientes para clustering: {n_samples} amostras < {n_clusters} clusters")
+        df['Cluster3D_Label'] = 0  # Atribuir todos ao mesmo cluster
+        return df
 
-    centroids = pd.DataFrame(kmeans.cluster_centers_, columns=['dx', 'dy', 'dz'])
-    centroids['Cluster'] = range(n_clusters)
-    
-    st.markdown("### 🧭 Clusters 3D Criados (KMeans)")
-    st.dataframe(centroids.style.format({'dx': '{:.2f}', 'dy': '{:.2f}', 'dz': '{:.2f}'}))
+    # 🔧 CORREÇÃO: Ajustar dinamicamente o número de clusters se necessário
+    n_clusters_ajustado = min(n_clusters, n_samples)
+    if n_clusters_ajustado < n_clusters:
+        st.info(f"🔧 Ajustando n_clusters: {n_clusters} → {n_clusters_ajustado} (devido a {n_samples} amostras)")
+
+    try:
+        kmeans = KMeans(
+            n_clusters=n_clusters_ajustado,
+            random_state=random_state,
+            init='k-means++',
+            n_init=10
+        )
+        df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
+
+        # Mostrar centroides apenas se temos clusters suficientes
+        if n_clusters_ajustado > 1:
+            centroids = pd.DataFrame(kmeans.cluster_centers_, columns=['dx', 'dy', 'dz'])
+            centroids['Cluster'] = range(n_clusters_ajustado)
+            
+            st.markdown("### 🧭 Clusters 3D Criados (KMeans)")
+            st.dataframe(centroids.style.format({'dx': '{:.2f}', 'dy': '{:.2f}', 'dz': '{:.2f}'}))
+        else:
+            st.info("📊 Apenas 1 cluster criado (dados insuficientes para múltiplos clusters)")
+
+    except Exception as e:
+        st.error(f"❌ Erro no clustering: {e}")
+        df['Cluster3D_Label'] = 0  # Fallback: todos no cluster 0
 
     return df
 
