@@ -73,7 +73,11 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
 def convert_asian_line_to_decimal(value):
     """
     Converte Asian_Line (referência AWAY) para decimal na perspectiva HOME.
-    Mantém sua lógica original: inverte o sinal para ficar pró-casa.
+    Exemplo:
+        - "0"     -> 0.0
+        - "-0.5"  -> +0.5 (Home recebe vantagem)
+        - "0/0.5" -> +0.25 (Home)
+        - "-0.5/1"-> +0.75 (Home)
     """
     if pd.isna(value):
         return np.nan
@@ -87,17 +91,22 @@ def convert_asian_line_to_decimal(value):
         except ValueError:
             return np.nan
 
-    # Linha fracionada (ex: -0.5/1)
+    # Linha fracionada
     try:
-        parts = [float(p) for p in value.split("/")]
+        parts = [float(p) for p in value.replace("+", "").split("/")]
         avg = np.mean(parts)
-        if str(value).startswith("-"):
-            result = -abs(avg)
+
+        # Verifica se é negativa (ex: "-0.5/1" ou "-0.5/-1")
+        negative = value.startswith("-")
+
+        # Aplica inversão apenas se for negativa
+        if negative:
+            return abs(avg)
         else:
-            result = abs(avg)
-        return -result  # inverter
+            return -abs(avg)
     except ValueError:
         return np.nan
+
 
 # ========================= TARGET AH BASE =========================
 def calculate_ah_home_target(row):
