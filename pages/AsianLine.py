@@ -597,3 +597,117 @@ def plot_handicap_analysis_corrigido(games_today):
     return fig
 
 
+# ============================================================
+# 🚀 EXECUÇÃO PRINCIPAL - CHAMADAS DAS FUNÇÕES
+# ============================================================
+
+def main():
+    st.sidebar.header("⚙️ Configurações")
+    
+    # Carregar dados
+    with st.spinner("📂 Carregando dados históricos..."):
+        history_df = load_all_games(GAMES_FOLDER)
+        history_df = filter_leagues(history_df)
+    
+    if history_df.empty:
+        st.error("❌ Nenhum dado histórico encontrado!")
+        return
+    
+    st.success(f"✅ Dados históricos carregados: {len(history_df)} jogos")
+    
+    # Carregar jogos de hoje
+    with st.spinner("📂 Carregando jogos de hoje..."):
+        games_today = load_all_games(LIVESCORE_FOLDER)
+        games_today = filter_leagues(games_today)
+        games_today = setup_livescore_columns(games_today)
+    
+    if games_today.empty:
+        st.error("❌ Nenhum jogo de hoje encontrado!")
+        return
+    
+    st.success(f"✅ Jogos de hoje carregados: {len(games_today)} jogos")
+    
+    # Processar Asian Lines
+    if 'Asian_Line' in history_df.columns:
+        history_df['Asian_Line_Decimal'] = history_df['Asian_Line'].apply(convert_asian_line_to_decimal)
+    if 'Asian_Line' in games_today.columns:
+        games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
+    
+    # Calcular features
+    with st.spinner("🧮 Calculando métricas..."):
+        history_df = calcular_momentum_time(history_df)
+        history_df = calcular_distancias_3d(history_df)
+        history_df = aplicar_clusterizacao_3d(history_df)
+        
+        games_today = calcular_momentum_time(games_today)
+        games_today = calcular_distancias_3d(games_today)
+        games_today = aplicar_clusterizacao_3d(games_today)
+    
+    # Treinar modelos
+    with st.spinner("🤖 Treinando modelo de regressão..."):
+        model_reg, games_today, scaler_reg = treinar_modelo_handicap_regressao_calibrado(history_df, games_today)
+    
+    with st.spinner("🤖 Treinando modelo de classificação..."):
+        model_clf, games_today, le_clf = treinar_modelo_handicap_classificacao_calibrado(history_df, games_today)
+    
+    # Análise de value bets
+    if model_reg is not None and model_clf is not None:
+        with st.spinner("💎 Analisando value bets..."):
+            df_value_bets = analisar_value_bets_corrigido(games_today)
+        
+        # Mostrar resultados
+        st.markdown("## 📊 Resultados dos Value Bets")
+        
+        # Value bets fortes
+        strong_values = df_value_bets[df_value_bets['Confidence'].isin(['HIGH', 'MEDIUM'])]
+        if not strong_values.empty:
+            st.markdown("### 🎯 Value Bets Identificados")
+            st.dataframe(strong_values.style.format({
+                'Asian_Line': '{:.2f}',
+                'Handicap_Regressao': '{:.2f}', 
+                'Handicap_Classificacao': '{:.2f}',
+                'Value_Gap': '{:.2f}'
+            }))
+        else:
+            st.info("ℹ️ Nenhum value bet forte identificado hoje")
+        
+        # Todos os jogos
+        st.markdown("### 📋 Todos os Jogos Analisados")
+        st.dataframe(df_value_bets.style.format({
+            'Asian_Line': '{:.2f}',
+            'Handicap_Regressao': '{:.2f}',
+            'Handicap_Classificacao': '{:.2f}', 
+            'Value_Gap': '{:.2f}'
+        }))
+        
+        # Gráficos
+        st.markdown("### 📈 Análise Visual")
+        fig = plot_handicap_analysis_corrigido(games_today)
+        st.pyplot(fig)
+        
+        # Estatísticas
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            total_games = len(df_value_bets)
+            st.metric("Total Jogos", total_games)
+        
+        with col2:
+            value_bets_count = len(strong_values)
+            st.metric("Value Bets", value_bets_count)
+        
+        with col3:
+            if total_games > 0:
+                value_rate = (value_bets_count / total_games) * 100
+                st.metric("Taxa de Value", f"{value_rate:.1f}%")
+    
+    else:
+        st.error("❌ Falha no treinamento dos modelos!")
+
+# ============================================================
+# 🎬 INICIAR APLICAÇÃO
+# ============================================================
+
+if __name__ == "__main__":
+    main()
+
+
