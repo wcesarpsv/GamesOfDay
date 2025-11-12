@@ -555,21 +555,67 @@ def main_calibrado():
         games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
         
         # 🔧 FILTRAR LIGAS PRINCIPAIS para melhor calibração
-        ligas_principais = ['Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 
-                           'Primeira Liga', 'Eredivisie', 'Brasileirão', 'Primeira Liga']
-        pattern = '|'.join(ligas_principais)
+        # ============================================================
+        # 🎯 FILTRO INTELIGENTE DE LIGAS + ONE-HOT PARCIAL
+        # ============================================================
         
-        # Aplicar filtro apenas se a coluna League existir
-        if 'League' in games_today.columns:
-            games_today = games_today[games_today['League'].str.contains(pattern, na=False, case=False)]
+        def classificar_league_tier(league_name: str) -> int:
+            if pd.isna(league_name):
+                return 3
+            name = league_name.lower()
+            if any(x in name for x in [
+                'premier', 'la liga', 'serie a', 'bundesliga', 'ligue 1',
+                'eredivisie', 'primeira liga', 'brasileirão', 'super league',
+                'mls', 'championship', 'liga pro', 'a-league'
+            ]):
+                return 1
+            if any(x in name for x in [
+                'serie b', 'segunda', 'league 1', 'liga ii', 'liga 2', 'division 2',
+                'bundesliga 2', 'ligue 2', 'championship', 'j-league', 'k-league',
+                'superettan', '1st division', 'national league', 'liga nacional'
+            ]):
+                return 2
+            return 3
         
-        history = load_all_games(GAMES_FOLDER)
         
-        # Aplicar mesmo filtro ao histórico
-        if 'League' in history.columns:
-            history = history[history['League'].str.contains(pattern, na=False, case=False)]
+        def aplicar_filtro_tier(df: pd.DataFrame, max_tier=2) -> pd.DataFrame:
+            if 'League' not in df.columns:
+                st.warning("⚠️ Coluna 'League' ausente — filtro de tier não aplicado.")
+                df['League_Tier'] = 3
+                return df
+            df = df.copy()
+            df['League_Tier'] = df['League'].apply(classificar_league_tier)
+            filtrado = df[df['League_Tier'] <= max_tier].copy()
+            st.info(f"🎯 Ligas filtradas (Tier ≤ {max_tier}): {len(filtrado)}/{len(df)} jogos mantidos")
+            return filtrado
         
-        history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line"]).copy()
+        
+        # Aplicar o filtro
+        history = aplicar_filtro_tier(history, max_tier=2)
+        games_today = aplicar_filtro_tier(games_today, max_tier=2)
+        
+        # ============================================================
+        # 🧩 ONE-HOT PARCIAL DAS LIGAS MAIS FREQUENTES
+        # ============================================================
+        from sklearn.preprocessing import OneHotEncoder
+        
+        # Selecionar as 10 ligas mais comuns no histórico
+        top_ligas = history['League'].value_counts().head(10).index
+        history['League_Clean'] = history['League'].where(history['League'].isin(top_ligas), 'Other')
+        games_today['League_Clean'] = games_today['League'].where(games_today['League'].isin(top_ligas), 'Other')
+        
+        encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
+        encoded = encoder.fit_transform(history[['League_Clean']])
+        encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(['League']))
+        
+        # Adicionar ao histórico
+        history = pd.concat([history.reset_index(drop=True), encoded_df.reset_index(drop=True)], axis=1)
+        
+        # Aplicar o mesmo encoder aos jogos de hoje
+        encoded_today = encoder.transform(games_today[['League_Clean']])
+        encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(['League']))
+        games_today = pd.concat([games_today.reset_index(drop=True), encoded_today_df.reset_index(drop=True)], axis=1)
+
         
         return games_today, history
     
