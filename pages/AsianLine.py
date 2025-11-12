@@ -652,28 +652,28 @@ def main_calibrado():
             st.info(f"📊 Treinando com {len(history)} jogos anteriores a {selected_date_str}")
         except Exception as e:
             st.warning(f"⚠️ Erro ao aplicar filtro temporal: {e}")
-
-
+    
+    
     # ---------------- Adicionar Live Score Columns ----------------
-st.markdown("## 📊 Configurando Live Score...")
-
-# Configurar colunas de live score nos dados
-games_today = setup_livescore_columns(games_today)
-history = setup_livescore_columns(history)
-
-# Mostrar se temos dados de live score disponíveis
-live_score_games = games_today[
-    (games_today['Goals_H_Today'].notna()) | 
-    (games_today['Goals_A_Today'].notna()) |
-    (games_today['Home_Red'].notna()) | 
-    (games_today['Away_Red'].notna())
-]
-
-if not live_score_games.empty:
-    st.success(f"🎯 Dados de Live Score encontrados para {len(live_score_games)} jogos!")
-    st.dataframe(live_score_games[['Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Home_Red', 'Away_Red']])
-else:
-    st.info("ℹ️ Nenhum dado de Live Score disponível - usando apenas dados pré-jogo")
+    st.markdown("## 📊 Configurando Live Score...")
+    
+    # Configurar colunas de live score nos dados
+    games_today = setup_livescore_columns(games_today)
+    history = setup_livescore_columns(history)
+    
+    # Mostrar se temos dados de live score disponíveis
+    live_score_games = games_today[
+        (games_today['Goals_H_Today'].notna()) | 
+        (games_today['Goals_A_Today'].notna()) |
+        (games_today['Home_Red'].notna()) | 
+        (games_today['Away_Red'].notna())
+    ]
+    
+    if not live_score_games.empty:
+        st.success(f"🎯 Dados de Live Score encontrados para {len(live_score_games)} jogos!")
+        st.dataframe(live_score_games[['Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Home_Red', 'Away_Red']])
+    else:
+        st.info("ℹ️ Nenhum dado de Live Score disponível - usando apenas dados pré-jogo")
 
 
     
