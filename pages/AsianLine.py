@@ -79,7 +79,7 @@ def convert_asian_line_to_decimal(value):
     except ValueError:
         return np.nan
 
-def calcular_momentum_time(df, window=6):
+def calcular_momentum_time(df, window=1):
     """
     Calcula o Momentum do Time (MT_H / MT_A)
     """
@@ -419,7 +419,7 @@ def treinar_modelo_handicap_classificacao_calibrado_v2(history, games_today):
 def analisar_value_bets_nova_logica(games_today):
     """
     NOVA LÓGICA: Analisa value bets baseado na FORÇA RELATIVA
-    Asian_Line + Handicap_Predito = Força Relativa do HOME
+    Inclui dados de Live Score se disponíveis
     """
     st.markdown("## 💎 Análise de Value Bets - Nova Lógica (Força Relativa)")
 
@@ -455,6 +455,20 @@ def analisar_value_bets_nova_logica(games_today):
         # 📈 CALCULAR VALUE GAP TRADICIONAL (para comparação)
         value_gap_tradicional = pred_media - asian_line
         
+        # 🆕 VERIFICAR SE TEM LIVE SCORE
+        goals_h_today = row.get('Goals_H_Today')
+        goals_a_today = row.get('Goals_A_Today')
+        home_red = row.get('Home_Red')
+        away_red = row.get('Away_Red')
+        
+        live_score_info = ""
+        if pd.notna(goals_h_today) and pd.notna(goals_a_today):
+            live_score_info = f"⚽ {goals_h_today}-{goals_a_today}"
+            if pd.notna(home_red) and home_red > 0:
+                live_score_info += f " 🟥H{home_red}"
+            if pd.notna(away_red) and away_red > 0:
+                live_score_info += f " 🟥A{away_red}"
+        
         results.append({
             'League': row.get('League'),
             'Home': row.get('Home'),
@@ -468,7 +482,8 @@ def analisar_value_bets_nova_logica(games_today):
             'Recomendacao': rec,
             'Lado': lado,
             'Confidence': conf,
-            'Motivo': motivo
+            'Motivo': motivo,
+            'Live_Score': live_score_info  # 🆕 COLUNA NOVA
         })
 
     df_results = pd.DataFrame(results)
@@ -637,6 +652,31 @@ def main_calibrado():
             st.info(f"📊 Treinando com {len(history)} jogos anteriores a {selected_date_str}")
         except Exception as e:
             st.warning(f"⚠️ Erro ao aplicar filtro temporal: {e}")
+
+
+    # ---------------- Adicionar Live Score Columns ----------------
+st.markdown("## 📊 Configurando Live Score...")
+
+# Configurar colunas de live score nos dados
+games_today = setup_livescore_columns(games_today)
+history = setup_livescore_columns(history)
+
+# Mostrar se temos dados de live score disponíveis
+live_score_games = games_today[
+    (games_today['Goals_H_Today'].notna()) | 
+    (games_today['Goals_A_Today'].notna()) |
+    (games_today['Home_Red'].notna()) | 
+    (games_today['Away_Red'].notna())
+]
+
+if not live_score_games.empty:
+    st.success(f"🎯 Dados de Live Score encontrados para {len(live_score_games)} jogos!")
+    st.dataframe(live_score_games[['Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Home_Red', 'Away_Red']])
+else:
+    st.info("ℹ️ Nenhum dado de Live Score disponível - usando apenas dados pré-jogo")
+
+
+    
     
     # ---------------- Calcular Features 3D ----------------
     st.markdown("## 🧮 Calculando Features 3D Calibradas...")
