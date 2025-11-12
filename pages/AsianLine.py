@@ -414,23 +414,20 @@ def treinar_modelo_handicap_classificacao_calibrado(history, games_today):
 
 def analisar_value_bets_calibrado(games_today):
     """
-    Análise de value CALIBRADA — perspectiva HOME.
-    Asian_Line_Decimal = linha do ponto de vista do HOME.
-    Asian_Line = linha original (Away).
+    Análise de value CALIBRADA — PERSPECTIVA HOME.
     """
-    st.markdown("## 💎 Análise de Value Bets Calibrada (HOME Perspective)")
+    st.markdown("## 💎 Análise de Value Bets Calibrada (Home Perspective)")
 
     results = []
-
     for _, row in games_today.iterrows():
-        asian_line = row.get('Asian_Line_Decimal', 0)
+        asian_home = row.get('Asian_Line_Decimal', 0)
         pred_reg = row.get('Handicap_Predito_Regressao_Calibrado', 0)
         pred_cls = row.get('Handicap_Predito_Classificacao_Calibrado', 0)
 
-        # Média ponderada (regressão = 70%, classificação = 30%)
-        value_gap = 0.7 * (pred_reg - asian_line) + 0.3 * (pred_cls - asian_line)
+        # Média ponderada (predições calibradas)
+        value_gap = 0.7 * (pred_reg - asian_home) + 0.3 * (pred_cls - asian_home)
 
-        # Interpretação correta (HOME perspective)
+        # Interpretação coerente com a perspectiva HOME
         if value_gap > 0.4:
             rec, lado, conf = "STRONG HOME VALUE", "HOME", "HIGH"
         elif value_gap > 0.2:
@@ -446,8 +443,7 @@ def analisar_value_bets_calibrado(games_today):
             'League': row.get('League'),
             'Home': row.get('Home'),
             'Away': row.get('Away'),
-            'Asian_Line': row.get('Asian_Line'),
-            'Asian_Line_Decimal': asian_line,
+            'Asian_Line_Decimal': asian_home,
             'Handicap_Regressao': round(pred_reg, 2),
             'Handicap_Classificacao': round(pred_cls, 2),
             'Value_Gap': round(value_gap, 2),
@@ -463,60 +459,75 @@ def analisar_value_bets_calibrado(games_today):
     return df_results
 
 
+
 def plot_handicap_analysis_calibrado(games_today):
     """
-    Visualização CALIBRADA
+    Visualização CALIBRADA — perspectiva HOME.
+    Eixos:
+        X = Asian_Line_Decimal (mercado)
+        Y = Predição do modelo (HOME)
+    Cores:
+        🟢 HOME value → modelo acha Home mais forte
+        🔵 AWAY value → modelo acha Home mais fraco
+        ⚪ NO VALUE → equilíbrio
     """
+    import matplotlib.pyplot as plt
+
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-    
-    # Plot 1: Regressão Calibrada vs Mercado
+
+    # ============================================================
+    # 🎯 PLOT 1 — Modelo de Regressão Calibrado
+    # ============================================================
     if 'Handicap_Predito_Regressao_Calibrado' in games_today.columns:
-        colors_regressao = []
-        for gap in games_today.get('Value_Gap_Regressao_Calibrado', []):
+        colors_reg = []
+        for gap in games_today['Handicap_Predito_Regressao_Calibrado'] - games_today['Asian_Line_Decimal']:
             if gap > 0.3:
-                colors_regressao.append('green')
+                colors_reg.append('green')   # 🟢 HOME VALUE
             elif gap < -0.3:
-                colors_regressao.append('red')
+                colors_reg.append('blue')    # 🔵 AWAY VALUE
             else:
-                colors_regressao.append('gray')
-        
-        ax1.scatter(games_today['Asian_Line_Decimal'], 
-                    games_today['Handicap_Predito_Regressao_Calibrado'],
-                    c=colors_regressao, alpha=0.6, s=60)
+                colors_reg.append('lightgray')  # ⚪ NO VALUE
+
+        ax1.scatter(
+            games_today['Asian_Line_Decimal'],
+            games_today['Handicap_Predito_Regressao_Calibrado'],
+            c=colors_reg, alpha=0.7, s=60, edgecolors='k', linewidths=0.3
+        )
         ax1.plot([-2, 2], [-2, 2], 'k--', alpha=0.3, label='Mercado Perfeito')
-        ax1.set_xlabel('Handicap Mercado')
-        ax1.set_ylabel('Handicap Predito (Regressão Calibrado)')
-        ax1.set_title('Value Analysis - Modelo Regressão Calibrado')
-        ax1.set_xlim(-2.5, 2.5)
-        ax1.set_ylim(-2.5, 2.5)
-        ax1.legend()
+        ax1.set_title('Modelo de Regressão Calibrado (Home Perspective)')
+        ax1.set_xlabel('Asian Line Decimal (Mercado)')
+        ax1.set_ylabel('Predição (Modelo - Home)')
         ax1.grid(True, alpha=0.3)
-    
-    # Plot 2: Classificação Calibrada vs Mercado
+        ax1.legend()
+
+    # ============================================================
+    # 🎯 PLOT 2 — Modelo de Classificação Calibrado
+    # ============================================================
     if 'Handicap_Predito_Classificacao_Calibrado' in games_today.columns:
-        colors_class = []
-        for gap in games_today.get('Value_Gap_Classificacao_Calibrado', []):
+        colors_cls = []
+        for gap in games_today['Handicap_Predito_Classificacao_Calibrado'] - games_today['Asian_Line_Decimal']:
             if gap > 0.3:
-                colors_class.append('green')
+                colors_cls.append('green')
             elif gap < -0.3:
-                colors_class.append('red')
+                colors_cls.append('blue')
             else:
-                colors_class.append('gray')
-        
-        ax2.scatter(games_today['Asian_Line_Decimal'],
-                   games_today['Handicap_Predito_Classificacao_Calibrado'],
-                   c=colors_class, alpha=0.6, s=60)
+                colors_cls.append('lightgray')
+
+        ax2.scatter(
+            games_today['Asian_Line_Decimal'],
+            games_today['Handicap_Predito_Classificacao_Calibrado'],
+            c=colors_cls, alpha=0.7, s=60, edgecolors='k', linewidths=0.3
+        )
         ax2.plot([-2, 2], [-2, 2], 'k--', alpha=0.3, label='Mercado Perfeito')
-        ax2.set_xlabel('Handicap Mercado')
-        ax2.set_ylabel('Handicap Predito (Classificação Calibrado)')
-        ax2.set_title('Value Analysis - Modelo Classificação Calibrado')
-        ax2.set_xlim(-2.5, 2.5)
-        ax2.set_ylim(-2.5, 2.5)
-        ax2.legend()
+        ax2.set_title('Modelo de Classificação Calibrado (Home Perspective)')
+        ax2.set_xlabel('Asian Line Decimal (Mercado)')
+        ax2.set_ylabel('Predição (Modelo - Home)')
         ax2.grid(True, alpha=0.3)
-    
+        ax2.legend()
+
     plt.tight_layout()
     return fig
+
 
 
 # ============================================================
