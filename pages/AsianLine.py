@@ -414,66 +414,54 @@ def treinar_modelo_handicap_classificacao_calibrado(history, games_today):
 
 def analisar_value_bets_calibrado(games_today):
     """
-    Análise de value CALIBRADA com thresholds realistas
+    Análise de value CALIBRADA — perspectiva HOME.
+    Asian_Line_Decimal = linha do ponto de vista do HOME.
+    Asian_Line = linha original (Away).
     """
-    st.markdown("## 💎 Análise de Value Bets Calibrada")
-    
+    st.markdown("## 💎 Análise de Value Bets Calibrada (HOME Perspective)")
+
     results = []
-    
-    for idx, row in games_today.iterrows():
-        handicap_mercado = row['Asian_Line_Decimal']
-        handicap_regressao = row.get('Handicap_Predito_Regressao_Calibrado', 0)
-        handicap_classificacao = row.get('Handicap_Predito_Classificacao_Calibrado', 0)
-        
-        # Value gap de cada modelo
-        gap_regressao = handicap_regressao - handicap_mercado
-        gap_classificacao = handicap_classificacao - handicap_mercado
-        
-        # 🔧 MÉDIA PONDERADA CALIBRADA
-        value_gap_consolidado = (gap_regressao * 0.7 + gap_classificacao * 0.3)
-        
-        # 🔧 THRESHOLDS REALISTAS
-        if value_gap_consolidado > 0.4:
-            recomendacao = "STRONG HOME VALUE"
-            lado = "HOME"
-            confidence = "HIGH"
-        elif value_gap_consolidado > 0.2:
-            recomendacao = "HOME VALUE" 
-            lado = "HOME"
-            confidence = "MEDIUM"
-        elif value_gap_consolidado < -0.4:
-            recomendacao = "STRONG AWAY VALUE"
-            lado = "AWAY" 
-            confidence = "HIGH"
-        elif value_gap_consolidado < -0.2:
-            recomendacao = "AWAY VALUE"
-            lado = "AWAY"
-            confidence = "MEDIUM"
+
+    for _, row in games_today.iterrows():
+        asian_line = row.get('Asian_Line_Decimal', 0)
+        pred_reg = row.get('Handicap_Predito_Regressao_Calibrado', 0)
+        pred_cls = row.get('Handicap_Predito_Classificacao_Calibrado', 0)
+
+        # Média ponderada (regressão = 70%, classificação = 30%)
+        value_gap = 0.7 * (pred_reg - asian_line) + 0.3 * (pred_cls - asian_line)
+
+        # Interpretação correta (HOME perspective)
+        if value_gap > 0.4:
+            rec, lado, conf = "STRONG HOME VALUE", "HOME", "HIGH"
+        elif value_gap > 0.2:
+            rec, lado, conf = "HOME VALUE", "HOME", "MEDIUM"
+        elif value_gap < -0.4:
+            rec, lado, conf = "STRONG AWAY VALUE", "AWAY", "HIGH"
+        elif value_gap < -0.2:
+            rec, lado, conf = "AWAY VALUE", "AWAY", "MEDIUM"
         else:
-            recomendacao = "NO CLEAR VALUE"
-            lado = "PASS"
-            confidence = "LOW"
-        
+            rec, lado, conf = "NO CLEAR VALUE", "PASS", "LOW"
+
         results.append({
-            'League': row['League'],
-            'Home': row['Home'],
-            'Away': row['Away'],
-            'Asian_Line': handicap_mercado,
-            'Handicap_Regressao': round(handicap_regressao, 2),
-            'Handicap_Classificacao': round(handicap_classificacao, 2),
-            'Value_Gap': round(value_gap_consolidado, 2),
-            'Recomendacao': recomendacao,
+            'League': row.get('League'),
+            'Home': row.get('Home'),
+            'Away': row.get('Away'),
+            'Asian_Line': row.get('Asian_Line'),
+            'Asian_Line_Decimal': asian_line,
+            'Handicap_Regressao': round(pred_reg, 2),
+            'Handicap_Classificacao': round(pred_cls, 2),
+            'Value_Gap': round(value_gap, 2),
+            'Recomendacao': rec,
             'Lado': lado,
-            'Confidence': confidence
+            'Confidence': conf
         })
-    
+
     df_results = pd.DataFrame(results)
-    
-    # Ordenar por valor absoluto do gap
-    df_results['Value_Abs'] = abs(df_results['Value_Gap'])
+    df_results['Value_Abs'] = df_results['Value_Gap'].abs()
     df_results = df_results.sort_values('Value_Abs', ascending=False)
-    
+
     return df_results
+
 
 def plot_handicap_analysis_calibrado(games_today):
     """
