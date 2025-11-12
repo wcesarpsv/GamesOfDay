@@ -530,6 +530,9 @@ def plot_handicap_analysis_calibrado(games_today):
     plt.tight_layout()
     return fig
 
+# 🔹 Carregar histórico completo primeiro
+    history = load_all_games(GAMES_FOLDER)
+
 # ============================================================
 # 🚀 EXECUÇÃO PRINCIPAL CALIBRADA
 # ============================================================
