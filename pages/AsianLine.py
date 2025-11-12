@@ -608,14 +608,14 @@ def main_calibrado():
         
         encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
         encoded = encoder.fit_transform(history[['League_Clean']])
-        encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(['League']))
+        encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(['League_Clean']))
         
         # Adicionar ao histórico
         history = pd.concat([history.reset_index(drop=True), encoded_df.reset_index(drop=True)], axis=1)
         
         # Aplicar o mesmo encoder aos jogos de hoje
         encoded_today = encoder.transform(games_today[['League_Clean']])
-        encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(['League']))
+        encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(['League_Clean']))
         games_today = pd.concat([games_today.reset_index(drop=True), encoded_today_df.reset_index(drop=True)], axis=1)
 
         
