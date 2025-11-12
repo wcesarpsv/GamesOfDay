@@ -696,7 +696,7 @@ def main_calibrado():
             # 🔧 FILTRAR APENAS BETS CONFIAVEIS
             bets_confiaveis = df_value_bets_calibrado[
                 (df_value_bets_calibrado['Value_Abs'].between(0.2, 0.8)) &
-                (df_value_bets_calibrado['Asian_Line'].between(-1.5, 1.5)) &
+                (df_value_bets_calibrado['Asian_Line_Decimal'].between(-1.5, 1.5)) &
                 (df_value_bets_calibrado['Confidence'].isin(['HIGH', 'MEDIUM']))
             ]
             
