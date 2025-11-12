@@ -442,43 +442,36 @@ def engenhar_features_angulares(df):
     return df
 
 # ============================================================
-# 🎯 ENSEMBLE FOCADO EM FEATURES ANGULARES
+# 🎯 ENSEMBLE DUPLO (HOME + AWAY) FOCADO EM FEATURES ANGULARES
 # ============================================================
 
 def criar_ensemble_angular(history, games_today):
     """
-    Ensemble que prioriza features angulares + seleção inteligente
+    Ensemble duplo com dois modelos independentes:
+    - Model_Home: prevê se o time da casa cobre o handicap
+    - Model_Away: prevê se o time visitante cobre o handicap
+    A decisão final é baseada na comparação entre as duas probabilidades.
     """
-    st.markdown("## 🧠 Iniciando Ensemble com Features Angulares...")
-    
-    # 1. Feature Engineering Completa
+    st.markdown("## 🧠 Iniciando Ensemble Angular – Versão Dupla (Home & Away)")
+
+    # ====================================================
+    # 1️⃣ Feature Engineering (mesmo pipeline 3D + Angular)
+    # ====================================================
     with st.spinner("🧮 Calculando features 3D..."):
         history = calcular_distancias_3d(history)
         games_today = calcular_distancias_3d(games_today)
-    
+
     with st.spinner("🧭 Aplicando clusterização 3D..."):
         history = aplicar_clusterizacao_3d(history)
         games_today = aplicar_clusterizacao_3d(games_today)
-    
+
     with st.spinner("📐 Gerando features angulares..."):
         history = engenhar_features_angulares(history)
         games_today = engenhar_features_angulares(games_today)
 
-    # 2. Feature Engineering para Cluster
-    history['Cluster3D_Label'] = history['Cluster3D_Label'].astype(float)
-    games_today['Cluster3D_Label'] = games_today['Cluster3D_Label'].astype(float)
-
-    mean_c = history['Cluster3D_Label'].mean()
-    std_c = history['Cluster3D_Label'].std(ddof=0) or 1
-    history['C3D_ZScore'] = (history['Cluster3D_Label'] - mean_c) / std_c
-    games_today['C3D_ZScore'] = (games_today['Cluster3D_Label'] - mean_c) / std_c
-
-    history['C3D_Sin'] = np.sin(history['Cluster3D_Label'])
-    history['C3D_Cos'] = np.cos(history['Cluster3D_Label'])
-    games_today['C3D_Sin'] = np.sin(games_today['Cluster3D_Label'])
-    games_today['C3D_Cos'] = np.cos(games_today['Cluster3D_Label'])
-
-    # 3. Seleção de Features por Categoria
+    # ====================================================
+    # 2️⃣ Feature Set
+    # ====================================================
     feature_categories = {
         'Angular': [
             'Angle_Stability', 'Angle_Turbulence', 'Angular_Sync',
@@ -495,75 +488,88 @@ def criar_ensemble_angular(history, games_today):
         ],
         'Cluster': [
             'Cluster3D_Label', 'C3D_ZScore', 'C3D_Sin', 'C3D_Cos'
-        ],
-        'Baseline': [
-          
         ]
     }
-    # 'Asian_Line_Decimal', 'Aggression_Home', 'Aggression_Away',
-    # 'M_H', 'M_A', 'MT_H', 'MT_A'
-    
-    # Coletar todas as features disponíveis
-    all_features = []
-    for category, features in feature_categories.items():
-        available = [f for f in features if f in history.columns]
-        all_features.extend(available)
-        st.info(f"📊 {category}: {len(available)}/{len(features)} features")
 
+    all_features = []
+    for cat, feats in feature_categories.items():
+        avail = [f for f in feats if f in history.columns]
+        all_features.extend(avail)
+        st.info(f"📊 {cat}: {len(avail)}/{len(feats)} features disponíveis")
     st.success(f"🎯 Total de features disponíveis: {len(all_features)}")
 
-    # 4. Preparar dados de treino
-    X = history[all_features].fillna(0)
-    y = history['Target_AH_Home']
+    # ====================================================
+    # 3️⃣ Preparar Targets (Home e Away)
+    # ====================================================
+    history['Target_AH_Away'] = history.apply(
+        lambda r: 1 if ((r['Goals_A_FT'] - (r['Goals_H_FT'] + r['Asian_Line_Decimal'])) > 0)
+        else 0, axis=1
+    )
 
-    # 5. Feature Selection Automática
+    y_home = history['Target_AH_Home']
+    y_away = history['Target_AH_Away']
+    X = history[all_features].fillna(0)
+
+    # ====================================================
+    # 4️⃣ Seleção de Features (comum para ambos)
+    # ====================================================
     with st.spinner("🔍 Selecionando melhores features..."):
         selector_model = xgb.XGBClassifier(
-            n_estimators=100,
-            max_depth=5,
-            random_state=42
+            n_estimators=100, max_depth=5, random_state=42
         )
-        
         selector = SelectFromModel(selector_model, threshold='median')
-        X_selected = selector.fit_transform(X, y)
+        X_selected = selector.fit_transform(X, y_home)
         selected_features = np.array(all_features)[selector.get_support()]
-        
-        st.success(f"✅ Features selecionadas: {len(selected_features)}/{len(all_features)}")
+        st.success(f"✅ Features selecionadas: {len(selected_features)}")
 
-    # 6. Modelo Principal (XGBoost)
-    with st.spinner("🤖 Treinando modelo XGBoost..."):
-        modelo_principal = xgb.XGBClassifier(
-            n_estimators=300,
-            max_depth=7,
-            learning_rate=0.05,
-            subsample=0.8,
-            colsample_bytree=0.7,
-            random_state=42,
-            eval_metric='logloss'
+    # ====================================================
+    # 5️⃣ Treinar os dois modelos
+    # ====================================================
+    with st.spinner("🤖 Treinando modelo HOME..."):
+        model_home = xgb.XGBClassifier(
+            n_estimators=300, max_depth=7, learning_rate=0.05,
+            subsample=0.8, colsample_bytree=0.7,
+            random_state=42, eval_metric='logloss'
         )
-        
-        modelo_principal.fit(X_selected, y)
+        model_home.fit(X[selected_features], y_home)
 
-    # 7. Previsões para jogos de hoje
-    with st.spinner("🔮 Fazendo previsões..."):
-        X_today = games_today[all_features].fillna(0)
-        X_today_selected = selector.transform(X_today)
-        
-        probas = modelo_principal.predict_proba(X_today_selected)[:, 1]
-        
-        games_today['Prob_Ensemble_Angular'] = probas
-        games_today['ML_Side_Ensemble'] = np.where(probas > 0.5, 'HOME', 'AWAY')
-        games_today['Confidence_Ensemble'] = np.maximum(probas, 1 - probas)
+    with st.spinner("🤖 Treinando modelo AWAY..."):
+        model_away = xgb.XGBClassifier(
+            n_estimators=300, max_depth=7, learning_rate=0.05,
+            subsample=0.8, colsample_bytree=0.7,
+            random_state=99, eval_metric='logloss'
+        )
+        model_away.fit(X[selected_features], y_away)
 
-    # 8. Feature Importance
-    with st.spinner("📊 Analisando importância das features..."):
-        importancia = modelo_principal.feature_importances_
-        feat_imp_df = pd.DataFrame({
-            'Feature': selected_features,
-            'Importance': importancia
-        }).sort_values('Importance', ascending=False)
+    # ====================================================
+    # 6️⃣ Previsões para jogos de hoje
+    # ====================================================
+    X_today = games_today[all_features].fillna(0)
+    X_today_sel = X_today[selected_features]
 
-    return games_today, modelo_principal, feat_imp_df, selected_features
+    p_home = model_home.predict_proba(X_today_sel)[:, 1]
+    p_away = model_away.predict_proba(X_today_sel)[:, 1]
+
+    games_today['Prob_Home_Cover'] = p_home
+    games_today['Prob_Away_Cover'] = p_away
+
+    # Escolha final com base na probabilidade mais alta
+    games_today['Best_Side'] = np.where(p_home > p_away, 'HOME', 'AWAY')
+    games_today['Confidence_Gap'] = np.abs(p_home - p_away)
+    games_today['Prob_Chosen'] = np.maximum(p_home, p_away)
+
+    # ====================================================
+    # 7️⃣ Feature Importance (do modelo Home)
+    # ====================================================
+    importance = model_home.feature_importances_
+    feat_imp_df = pd.DataFrame({
+        'Feature': selected_features,
+        'Importance': importance
+    }).sort_values('Importance', ascending=False)
+
+    st.success("✅ Ensemble duplo (Home + Away) concluído!")
+
+    return games_today, (model_home, model_away), feat_imp_df, selected_features
 
 # ============================================================
 # 📊 VALIDAÇÃO E VISUALIZAÇÃO
@@ -638,10 +644,9 @@ def validar_ensemble(games_today, feat_imp_df, selected_features):
     # 5. Tabela de Previsões Detalhadas
     st.markdown("### ⚽ Previsões Detalhadas para Hoje")
     
-    display_cols = [
-        'Home', 'Away', 'League', 'Asian_Line_Decimal',
-        'Prob_Ensemble_Angular', 'ML_Side_Ensemble', 'Confidence_Ensemble'
-    ]
+    display_cols = ['Home','Away','League','Asian_Line_Decimal',
+                'Prob_Home_Cover','Prob_Away_Cover',
+                'Best_Side','Confidence_Gap']
     
     # Adicionar dados do Live Score se disponíveis
     if 'Goals_H_Today' in games_today.columns and 'Goals_A_Today' in games_today.columns:
