@@ -23,6 +23,155 @@ LIVESCORE_FOLDER = "LiveScore"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa", "trophy"]
 
 # ============================================================
+# 🔧 FUNÇÕES AUXILIARES ORIGINAIS
+# ============================================================
+
+def setup_livescore_columns(df):
+    if 'Goals_H_Today' not in df.columns:
+        df['Goals_H_Today'] = np.nan
+    if 'Goals_A_Today' not in df.columns:
+        df['Goals_A_Today'] = np.nan
+    if 'Home_Red' not in df.columns:
+        df['Home_Red'] = np.nan
+    if 'Away_Red' not in df.columns:
+        df['Away_Red'] = np.nan
+    return df
+
+def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    if "Goals_H_FT_x" in df.columns:
+        df = df.rename(columns={"Goals_H_FT_x": "Goals_H_FT", "Goals_A_FT_x": "Goals_A_FT"})
+    elif "Goals_H_FT_y" in df.columns:
+        df = df.rename(columns={"Goals_H_FT_y": "Goals_H_FT", "Goals_A_FT_y": "Goals_A_FT"})
+    return df
+
+def load_all_games(folder: str) -> pd.DataFrame:
+    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
+    if not files:
+        return pd.DataFrame()
+    dfs = [preprocess_df(pd.read_csv(os.path.join(folder, f))) for f in files]
+    return pd.concat(dfs, ignore_index=True)
+
+def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or "League" not in df.columns:
+        return df
+    pattern = "|".join(EXCLUDED_LEAGUE_KEYWORDS)
+    return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
+
+def convert_asian_line_to_decimal(value):
+    if pd.isna(value):
+        return np.nan
+    value = str(value).strip()
+    if "/" not in value:
+        try:
+            num = float(value)
+            return -num
+        except ValueError:
+            return np.nan
+    try:
+        parts = [float(p) for p in value.split("/")]
+        avg = np.mean(parts)
+        if str(value).startswith("-"):
+            result = -abs(avg)
+        else:
+            result = abs(avg)
+        return -result
+    except ValueError:
+        return np.nan
+
+def calcular_momentum_time(df, window=6):
+    """
+    Calcula o Momentum do Time (MT_H / MT_A)
+    """
+    df = df.copy()
+
+    if 'MT_H' not in df.columns:
+        df['MT_H'] = np.nan
+    if 'MT_A' not in df.columns:
+        df['MT_A'] = np.nan
+
+    all_teams = pd.unique(df[['Home', 'Away']].values.ravel())
+
+    for team in all_teams:
+        mask_home = df['Home'] == team
+        if mask_home.sum() > 2:
+            series = df.loc[mask_home, 'HandScore_Home'].astype(float).rolling(window, min_periods=2).mean()
+            zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
+            df.loc[mask_home, 'MT_H'] = zscore
+
+        mask_away = df['Away'] == team
+        if mask_away.sum() > 2:
+            series = df.loc[mask_away, 'HandScore_Away'].astype(float).rolling(window, min_periods=2).mean()
+            zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
+            df.loc[mask_away, 'MT_A'] = zscore
+
+    df['MT_H'] = df['MT_H'].fillna(0)
+    df['MT_A'] = df['MT_A'].fillna(0)
+    return df
+
+def calcular_distancias_3d(df):
+    """
+    Calcula distâncias e ângulos 3D
+    """
+    df = df.copy()
+    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+    missing_cols = [c for c in required_cols if c not in df.columns]
+
+    if missing_cols:
+        st.warning(f"⚠️ Colunas faltando para cálculo 3D: {missing_cols}")
+        for col in ['Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Vector_Sign', 'Magnitude_3D']:
+            df[col] = np.nan
+        return df
+
+    dx = (df['Aggression_Home'] - df['Aggression_Away']) / 2
+    dy = (df['M_H'] - df['M_A']) / 2
+    dz = (df['MT_H'] - df['MT_A']) / 2
+
+    df['Quadrant_Dist_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+    df['Quadrant_Separation_3D'] = (dx + dy + dz) / 3
+    df['Vector_Sign'] = np.sign(dx * dy * dz)
+    df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+    df['Momentum_Diff'] = dy
+    df['Momentum_Diff_MT'] = dz
+
+    return df
+
+def aplicar_clusterizacao_3d(df, n_clusters=4, random_state=42):
+    """
+    Cria clusters espaciais com base em Aggression, Momentum Liga e Momentum Time.
+    """
+    df = df.copy()
+
+    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        st.warning(f"⚠️ Colunas ausentes para clusterização 3D: {missing}")
+        df['Cluster3D_Label'] = -1
+        return df
+
+    df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
+    df['dy'] = df['M_H'] - df['M_A']
+    df['dz'] = df['MT_H'] - df['MT_A']
+
+    X_cluster = df[['dx', 'dy', 'dz']].fillna(0).to_numpy()
+
+    kmeans = KMeans(
+        n_clusters=n_clusters,
+        random_state=random_state,
+        init='k-means++',
+        n_init=10
+    )
+    df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
+
+    centroids = pd.DataFrame(kmeans.cluster_centers_, columns=['dx', 'dy', 'dz'])
+    centroids['Cluster'] = range(n_clusters)
+    
+    st.markdown("### 🧭 Clusters 3D Criados (KMeans)")
+    st.dataframe(centroids.style.format({'dx': '{:.2f}', 'dy': '{:.2f}', 'dz': '{:.2f}'}))
+
+    return df
+
+# ============================================================
 # 🎯 SISTEMA CALIBRADO: HANDICAP OPTIMIZATION
 # ============================================================
 
@@ -113,6 +262,11 @@ def treinar_modelo_handicap_regressao_calibrado(history, games_today):
     
     available_features = [f for f in features_3d if f in history_calibrado.columns]
     
+    # Verificar se temos features suficientes
+    if len(available_features) < 3:
+        st.error("❌ Features insuficientes para treinamento")
+        return None, games_today, None
+    
     X = history_calibrado[available_features].fillna(0)
     y = history_calibrado['Handicap_Otimo_Calibrado']
     
@@ -137,7 +291,15 @@ def treinar_modelo_handicap_regressao_calibrado(history, games_today):
     
     # Prever para jogos de hoje
     X_today = games_today[available_features].fillna(0)
-    X_today_scaled = scaler.transform(X_today)
+    
+    # Verificar se temos as mesmas features nos dados de hoje
+    missing_features = set(available_features) - set(X_today.columns)
+    if missing_features:
+        st.warning(f"⚠️ Features faltando nos dados de hoje: {missing_features}")
+        for feature in missing_features:
+            X_today[feature] = 0
+    
+    X_today_scaled = scaler.transform(X_today[available_features])
     
     predictions = model.predict(X_today_scaled)
     
@@ -166,6 +328,11 @@ def treinar_modelo_handicap_classificacao_calibrado(history, games_today):
     
     available_features = [f for f in features_3d if f in history.columns]
     
+    # Verificar se temos features suficientes
+    if len(available_features) < 3:
+        st.error("❌ Features insuficientes para treinamento")
+        return None, games_today, None
+    
     X = history[available_features].fillna(0)
     y = history['Handicap_Categoria_Calibrado']
     
@@ -185,8 +352,16 @@ def treinar_modelo_handicap_classificacao_calibrado(history, games_today):
     
     # Prever para jogos de hoje
     X_today = games_today[available_features].fillna(0)
-    predicoes_encoded = model.predict(X_today)
-    probas = model.predict_proba(X_today)
+    
+    # Verificar se temos as mesmas features nos dados de hoje
+    missing_features = set(available_features) - set(X_today.columns)
+    if missing_features:
+        st.warning(f"⚠️ Features faltando nos dados de hoje: {missing_features}")
+        for feature in missing_features:
+            X_today[feature] = 0
+    
+    predicoes_encoded = model.predict(X_today[available_features])
+    probas = model.predict_proba(X_today[available_features])
     
     games_today['Handicap_Categoria_Predito_Calibrado'] = le.inverse_transform(predicoes_encoded)
     games_today['Confianca_Categoria_Calibrado'] = np.max(probas, axis=1)
@@ -349,6 +524,9 @@ def main_calibrado():
     options = files[-7:] if len(files) >= 7 else files
     selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
     
+    date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
+    selected_date_str = date_match.group(0) if date_match else datetime.now().strftime("%Y-%m-%d")
+    
     # Carregar dados
     @st.cache_data(ttl=3600)
     def load_cached_data(selected_file):
@@ -356,38 +534,62 @@ def main_calibrado():
         
         # 🔧 FILTRAR LIGAS PRINCIPAIS para melhor calibração
         ligas_principais = ['Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 
-                           'Primeira Liga', 'Eredivisie', 'Brasileirão']
+                           'Primeira Liga', 'Eredivisie', 'Brasileirão', 'Primeira Liga']
         pattern = '|'.join(ligas_principais)
-        games_today = games_today[games_today['League'].str.contains(pattern, na=False, case=False)]
+        
+        # Aplicar filtro apenas se a coluna League existir
+        if 'League' in games_today.columns:
+            games_today = games_today[games_today['League'].str.contains(pattern, na=False, case=False)]
         
         history = load_all_games(GAMES_FOLDER)
-        history = history[history['League'].str.contains(pattern, na=False, case=False)]
+        
+        # Aplicar mesmo filtro ao histórico
+        if 'League' in history.columns:
+            history = history[history['League'].str.contains(pattern, na=False, case=False)]
+        
         history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line"]).copy()
         
         return games_today, history
     
     games_today, history = load_cached_data(selected_file)
     
+    if games_today.empty:
+        st.warning("⚠️ Nenhum jogo encontrado após filtrar ligas principais.")
+        return
+    
+    if history.empty:
+        st.warning("⚠️ Histórico vazio após filtrar ligas principais.")
+        return
+    
     # ---------------- Converter Asian Line ----------------
     history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
     games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
     
     history = history.dropna(subset=['Asian_Line_Decimal'])
+    games_today = games_today.dropna(subset=['Asian_Line_Decimal'])
     
     # ---------------- Aplicar Filtro Temporal ----------------
-    if "Date" in history.columns:
+    if "Date" in history.columns and "Date" in games_today.columns:
         try:
             selected_date = pd.to_datetime(selected_date_str)
             history["Date"] = pd.to_datetime(history["Date"], errors="coerce")
             history = history[history["Date"] < selected_date].copy()
-            st.info(f"📊 Treinando com {len(history)} jogos anteriores")
+            st.info(f"📊 Treinando com {len(history)} jogos anteriores a {selected_date_str}")
         except Exception as e:
-            st.error(f"Erro ao aplicar filtro temporal: {e}")
+            st.warning(f"⚠️ Erro ao aplicar filtro temporal: {e}")
     
     # ---------------- Calcular Features 3D ----------------
     st.markdown("## 🧮 Calculando Features 3D Calibradas...")
     
-    # (Manter as funções originais de cálculo 3D)
+    # Verificar se as colunas necessárias existem
+    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'HandScore_Home', 'HandScore_Away']
+    missing_history = [col for col in required_cols if col not in history.columns]
+    missing_today = [col for col in required_cols if col not in games_today.columns]
+    
+    if missing_history or missing_today:
+        st.error(f"❌ Colunas necessárias faltando: History={missing_history}, Today={missing_today}")
+        return
+    
     history = calcular_momentum_time(history)
     games_today = calcular_momentum_time(games_today)
     
@@ -405,8 +607,16 @@ def main_calibrado():
             # Treinar modelo de regressão calibrado
             modelo_regressao, games_today, scaler = treinar_modelo_handicap_regressao_calibrado(history, games_today)
             
+            if modelo_regressao is None:
+                st.error("❌ Falha no treinamento do modelo de regressão")
+                return
+            
             # Treinar modelo de classificação calibrado  
             modelo_classificacao, games_today, label_encoder = treinar_modelo_handicap_classificacao_calibrado(history, games_today)
+            
+            if modelo_classificacao is None:
+                st.error("❌ Falha no treinamento do modelo de classificação")
+                return
             
             # Analisar value bets calibrado
             df_value_bets_calibrado = analisar_value_bets_calibrado(games_today)
@@ -421,99 +631,50 @@ def main_calibrado():
                 (df_value_bets_calibrado['Confidence'].isin(['HIGH', 'MEDIUM']))
             ]
             
-            st.dataframe(bets_confiaveis, use_container_width=True)
+            if bets_confiaveis.empty:
+                st.warning("⚠️ Nenhum value bet confiável encontrado após filtragem")
+            else:
+                st.dataframe(bets_confiaveis, use_container_width=True)
             
             # Visualizações calibradas
             st.pyplot(plot_handicap_analysis_calibrado(games_today))
             
             # Estatísticas
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                strong_bets = len(bets_confiaveis[bets_confiaveis['Confidence'] == 'HIGH'])
-                st.metric("🎯 Strong Value Bets", strong_bets)
-            with col2:
-                total_bets = len(bets_confiaveis)
-                st.metric("📊 Total Recomendações", total_bets)
-            with col3:
-                home_bets = len(bets_confiaveis[bets_confiaveis['Lado'] == 'HOME'])
-                st.metric("🏠 HOME Value", home_bets)
-            with col4:
-                away_bets = len(bets_confiaveis[bets_confiaveis['Lado'] == 'AWAY'])
-                st.metric("✈️ AWAY Value", away_bets)
-            
-            # 🔧 DIAGNÓSTICO DE CALIBRAÇÃO
-            st.markdown("### 🔧 Diagnóstico de Calibração")
-            avg_value_gap = bets_confiaveis['Value_Gap'].mean()
-            max_value_gap = bets_confiaveis['Value_Gap'].abs().max()
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("📈 Value Gap Médio", f"{avg_value_gap:.2f}")
-            with col2:
-                st.metric("📊 Value Gap Máximo", f"{max_value_gap:.2f}")
-            
-            if max_value_gap > 1.0:
-                st.warning("⚠️ Ainda há alguns value gaps altos - pode precisar de mais ajustes")
-            else:
-                st.success("✅ Modelo bem calibrado! Value gaps em faixa realista")
+            if not bets_confiaveis.empty:
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    strong_bets = len(bets_confiaveis[bets_confiaveis['Confidence'] == 'HIGH'])
+                    st.metric("🎯 Strong Value Bets", strong_bets)
+                with col2:
+                    total_bets = len(bets_confiaveis)
+                    st.metric("📊 Total Recomendações", total_bets)
+                with col3:
+                    home_bets = len(bets_confiaveis[bets_confiaveis['Lado'] == 'HOME'])
+                    st.metric("🏠 HOME Value", home_bets)
+                with col4:
+                    away_bets = len(bets_confiaveis[bets_confiaveis['Lado'] == 'AWAY'])
+                    st.metric("✈️ AWAY Value", away_bets)
+                
+                # 🔧 DIAGNÓSTICO DE CALIBRAÇÃO
+                st.markdown("### 🔧 Diagnóstico de Calibração")
+                avg_value_gap = bets_confiaveis['Value_Gap'].mean()
+                max_value_gap = bets_confiaveis['Value_Gap'].abs().max()
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("📈 Value Gap Médio", f"{avg_value_gap:.2f}")
+                with col2:
+                    st.metric("📊 Value Gap Máximo", f"{max_value_gap:.2f}")
+                
+                if max_value_gap > 1.0:
+                    st.warning("⚠️ Ainda há alguns value gaps altos - pode precisar de mais ajustes")
+                else:
+                    st.success("✅ Modelo bem calibrado! Value gaps em faixa realista")
             
             st.balloons()
     
     else:
         st.info("👆 Clique no botão para executar a análise calibrada")
-
-# ============================================================
-# 🔧 FUNÇÕES ORIGINAIS (mantidas para compatibilidade)
-# ============================================================
-
-def setup_livescore_columns(df):
-    if 'Goals_H_Today' not in df.columns:
-        df['Goals_H_Today'] = np.nan
-    if 'Goals_A_Today' not in df.columns:
-        df['Goals_A_Today'] = np.nan
-    if 'Home_Red' not in df.columns:
-        df['Home_Red'] = np.nan
-    if 'Away_Red' not in df.columns:
-        df['Away_Red'] = np.nan
-    return df
-
-def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    if "Goals_H_FT_x" in df.columns:
-        df = df.rename(columns={"Goals_H_FT_x": "Goals_H_FT", "Goals_A_FT_x": "Goals_A_FT"})
-    elif "Goals_H_FT_y" in df.columns:
-        df = df.rename(columns={"Goals_H_FT_y": "Goals_H_FT", "Goals_A_FT_y": "Goals_A_FT"})
-    return df
-
-def load_all_games(folder: str) -> pd.DataFrame:
-    files = [f for f in os.listdir(folder) if f.endswith(".csv")]
-    if not files:
-        return pd.DataFrame()
-    dfs = [preprocess_df(pd.read_csv(os.path.join(folder, f))) for f in files]
-    return pd.concat(dfs, ignore_index=True)
-
-def convert_asian_line_to_decimal(value):
-    if pd.isna(value):
-        return np.nan
-    value = str(value).strip()
-    if "/" not in value:
-        try:
-            num = float(value)
-            return -num
-        except ValueError:
-            return np.nan
-    try:
-        parts = [float(p) for p in value.split("/")]
-        avg = np.mean(parts)
-        if str(value).startswith("-"):
-            result = -abs(avg)
-        else:
-            result = abs(avg)
-        return -result
-    except ValueError:
-        return np.nan
-
-# (Manter as funções calcular_momentum_time, calcular_distancias_3d, aplicar_clusterizacao_3d)
 
 if __name__ == "__main__":
     main_calibrado()
