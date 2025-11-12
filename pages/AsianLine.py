@@ -95,13 +95,13 @@ def calcular_momentum_time(df, window=1):
     for team in all_teams:
         mask_home = df['Home'] == team
         if mask_home.sum() > 2:
-            series = df.loc[mask_home, 'HandScore_Home'].astype(float).rolling(window, min_periods=2).mean()
+            series = df.loc[mask_home, 'HandScore_Home'].astype(float).rolling(window, min_periods=1).mean()
             zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
             df.loc[mask_home, 'MT_H'] = zscore
 
         mask_away = df['Away'] == team
         if mask_away.sum() > 2:
-            series = df.loc[mask_away, 'HandScore_Away'].astype(float).rolling(window, min_periods=2).mean()
+            series = df.loc[mask_away, 'HandScore_Away'].astype(float).rolling(window, min_periods=1).mean()
             zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
             df.loc[mask_away, 'MT_A'] = zscore
 
