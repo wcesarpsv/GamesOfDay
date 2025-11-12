@@ -13,11 +13,11 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.metrics import mean_absolute_error
 
-st.set_page_config(page_title="Analisador de Handicap Ótimo - NOVA LÓGICA", layout="wide")
-st.title("🎯 Analisador de Handicap Ótimo - Nova Lógica (Força Relativa)")
+st.set_page_config(page_title="Analisador de Handicap Ótimo - DUAL MODEL", layout="wide")
+st.title("🎯 Analisador de Handicap Ótimo - Dual Model (Home + Away)")
 
 # ---------------- Configurações ----------------
-PAGE_PREFIX = "HandicapOptimizer_NovaLogica"
+PAGE_PREFIX = "HandicapOptimizer_DualModel"
 GAMES_FOLDER = "GamesDay"
 LIVESCORE_FOLDER = "LiveScore"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa", "trophy"]
@@ -78,36 +78,6 @@ def convert_asian_line_to_decimal(value):
         return -result
     except ValueError:
         return np.nan
-
-def calcular_momentum_time(df, window=1):
-    """
-    Calcula o Momentum do Time (MT_H / MT_A)
-    """
-    df = df.copy()
-
-    if 'MT_H' not in df.columns:
-        df['MT_H'] = np.nan
-    if 'MT_A' not in df.columns:
-        df['MT_A'] = np.nan
-
-    all_teams = pd.unique(df[['Home', 'Away']].values.ravel())
-
-    for team in all_teams:
-        mask_home = df['Home'] == team
-        if mask_home.sum() > 2:
-            series = df.loc[mask_home, 'HandScore_Home'].astype(float).rolling(window, min_periods=1).mean()
-            zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
-            df.loc[mask_home, 'MT_H'] = zscore
-
-        mask_away = df['Away'] == team
-        if mask_away.sum() > 2:
-            series = df.loc[mask_away, 'HandScore_Away'].astype(float).rolling(window, min_periods=1).mean()
-            zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
-            df.loc[mask_away, 'MT_A'] = zscore
-
-    df['MT_H'] = df['MT_H'].fillna(0)
-    df['MT_A'] = df['MT_A'].fillna(0)
-    return df
 
 def calcular_distancias_3d(df):
     """
@@ -194,7 +164,7 @@ def aplicar_clusterizacao_3d(df, n_clusters=4, random_state=42):
     return df
 
 # ============================================================
-# 🎯 SISTEMA CALIBRADO: HANDICAP OPTIMIZATION - VERSÃO CONSERVADORA
+# 🎯 SISTEMA HOME: HANDICAP OPTIMIZATION - VERSÃO CONSERVADORA
 # ============================================================
 
 def calcular_handicap_otimo_calibrado_v2(row):
@@ -265,14 +235,80 @@ def criar_target_handicap_discreto_calibrado_v2(row):
         return 'MODERATE_AWAY'     # ANTES: 1.25
 
 # ============================================================
-# 🧠 MODELOS CALIBRADOS - VERSÃO CONSERVADORA
+# 🎯 SISTEMA AWAY: HANDICAP OPTIMIZATION - PERSPECTIVA AWAY
+# ============================================================
+
+def calcular_handicap_otimo_away(row):
+    """
+    Versão CALIBRADA para AWAY - Perspectiva do time visitante
+    """
+    gh, ga = row.get('Goals_H_FT', 0), row.get('Goals_A_FT', 0)
+    margin = ga - gh  # 🔄 INVERTIDO - perspectiva AWAY
+    
+    # 🔧 MESMOS LIMITES: Handicaps entre -1.5 e +1.5
+    handicaps_possiveis = [-1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0, +0.25, +0.5, +0.75, +1.0, +1.25, +1.5]
+    
+    melhor_handicap = 0
+    melhor_score = -10
+    
+    for handicap in handicaps_possiveis:
+        # Simula resultado com handicap (perspectiva AWAY)
+        resultado_ajustado = margin + handicap
+        
+        # 🔧 SCORE CONSERVADOR (mesma lógica do HOME)
+        if resultado_ajustado > 0:  # AWAY ganhou com handicap
+            base_score = 1.5
+            if abs(handicap) > 1.0:
+                base_score = base_score - 0.8
+            elif abs(handicap) > 0.75:
+                base_score = base_score - 0.4
+            elif abs(handicap) > 0.5:
+                base_score = base_score - 0.2
+            score = base_score - abs(handicap) * 0.1
+        elif resultado_ajustado == 0:  # Empate
+            score = 0.3
+        else:  # AWAY perdeu
+            score = -0.5 - abs(handicap) * 0.15
+        
+        if score > melhor_score:
+            melhor_score = score
+            melhor_handicap = handicap
+    
+    # 🔽 SUAVIZAÇÃO (mesma do HOME)
+    if abs(melhor_handicap) > 1.0:
+        melhor_handicap = melhor_handicap * 0.6
+    elif abs(melhor_handicap) > 0.75:
+        melhor_handicap = melhor_handicap * 0.8
+    
+    return melhor_handicap
+
+def criar_target_handicap_away_discreto_calibrado(row):
+    """
+    Versão AWAY para classificação
+    """
+    handicap_otimo = calcular_handicap_otimo_away(row)
+    
+    # 🔽 CATEGORIAS (mesmas do HOME)
+    if handicap_otimo <= -0.75:
+        return 'MODERATE_AWAY'
+    elif handicap_otimo <= -0.25:
+        return 'LIGHT_AWAY'
+    elif handicap_otimo == 0:
+        return 'NEUTRAL'
+    elif handicap_otimo < 0.5:
+        return 'LIGHT_HOME'
+    else:
+        return 'MODERATE_HOME'
+
+# ============================================================
+# 🧠 MODELOS HOME CALIBRADOS - VERSÃO CONSERVADORA
 # ============================================================
 
 def treinar_modelo_handicap_regressao_calibrado_v2(history, games_today):
     """
-    Modelo de Regressão CALIBRADO CONSERVADOR
+    Modelo de Regressão CALIBRADO CONSERVADOR - HOME
     """
-    st.markdown("### 📈 Modelo Regressão Calibrado (Versão Conservadora)")
+    st.markdown("### 📈 Modelo HOME Regressão Calibrado")
     
     # Criar target calibrado CONSERVADOR
     history['Handicap_Otimo_Calibrado'] = history.apply(calcular_handicap_otimo_calibrado_v2, axis=1)
@@ -284,7 +320,7 @@ def treinar_modelo_handicap_regressao_calibrado_v2(history, games_today):
         (history['Handicap_Otimo_Calibrado'] <= handicap_range[1])
     ].copy()
     
-    st.info(f"📊 Dados calibrados CONSERVADORES: {len(history_calibrado)} jogos (handicaps entre {handicap_range[0]} e {handicap_range[1]})")
+    st.info(f"📊 Dados HOME calibrados: {len(history_calibrado)} jogos")
     
     # Features espaciais
     features_3d = [
@@ -295,7 +331,7 @@ def treinar_modelo_handicap_regressao_calibrado_v2(history, games_today):
     available_features = [f for f in features_3d if f in history_calibrado.columns]
     
     if len(available_features) < 3:
-        st.error("❌ Features insuficientes para treinamento")
+        st.error("❌ Features insuficientes para treinamento HOME")
         return None, games_today, None
     
     X = history_calibrado[available_features].fillna(0)
@@ -318,7 +354,7 @@ def treinar_modelo_handicap_regressao_calibrado_v2(history, games_today):
     # 🔧 VALIDAÇÃO
     y_pred = model.predict(X_scaled)
     mae = mean_absolute_error(y, y_pred)
-    st.success(f"✅ MAE do modelo CONSERVADOR: {mae:.3f} (quanto menor, melhor)")
+    st.success(f"✅ MAE do modelo HOME: {mae:.3f}")
     
     # Prever para jogos de hoje
     X_today = games_today[available_features].fillna(0)
@@ -335,17 +371,14 @@ def treinar_modelo_handicap_regressao_calibrado_v2(history, games_today):
     
     # 🔧 SUAVIZAR PREDIÇÕES MAIS FORTEMENTE
     games_today['Handicap_Predito_Regressao_Calibrado'] = np.clip(predictions, -1.25, 1.25)
-    games_today['Value_Gap_Regressao_Calibrado'] = (
-        games_today['Handicap_Predito_Regressao_Calibrado'] - games_today['Asian_Line_Decimal']
-    )
     
     return model, games_today, scaler
 
 def treinar_modelo_handicap_classificacao_calibrado_v2(history, games_today):
     """
-    Modelo de Classificação CALIBRADO CONSERVADOR
+    Modelo de Classificação CALIBRADO CONSERVADOR - HOME
     """
-    st.markdown("### 🎯 Modelo Classificação Calibrado (Versão Conservadora)")
+    st.markdown("### 🎯 Modelo HOME Classificação Calibrado")
     
     # Criar target categórico calibrado CONSERVADOR
     history['Handicap_Categoria_Calibrado'] = history.apply(criar_target_handicap_discreto_calibrado_v2, axis=1)
@@ -359,7 +392,7 @@ def treinar_modelo_handicap_classificacao_calibrado_v2(history, games_today):
     available_features = [f for f in features_3d if f in history.columns]
     
     if len(available_features) < 3:
-        st.error("❌ Features insuficientes para treinamento")
+        st.error("❌ Features insuficientes para treinamento HOME")
         return None, games_today, None
     
     X = history[available_features].fillna(0)
@@ -404,58 +437,200 @@ def treinar_modelo_handicap_classificacao_calibrado_v2(history, games_today):
     }
     
     games_today['Handicap_Predito_Classificacao_Calibrado'] = games_today['Handicap_Categoria_Predito_Calibrado'].map(categoria_para_handicap_calibrado_v2)
-    games_today['Value_Gap_Classificacao_Calibrado'] = (
-        games_today['Handicap_Predito_Classificacao_Calibrado'] - games_today['Asian_Line_Decimal']
-    )
     
-    st.info(f"📊 Distribuição categorias CALIBRADAS: {dict(history['Handicap_Categoria_Calibrado'].value_counts())}")
+    st.info(f"📊 Distribuição categorias HOME: {dict(history['Handicap_Categoria_Calibrado'].value_counts())}")
     
     return model, games_today, le
 
 # ============================================================
-# 📊 ANÁLISE DE VALOR - NOVA LÓGICA (FORÇA RELATIVA)
+# 🧠 MODELOS AWAY CALIBRADOS - REGRESSÃO E CLASSIFICAÇÃO
 # ============================================================
 
-def analisar_value_bets_nova_logica(games_today):
+def treinar_modelo_away_handicap_regressao_calibrado(history, games_today):
     """
-    NOVA LÓGICA: Analisa value bets baseado na FORÇA RELATIVA
-    Inclui dados de Live Score se disponíveis
+    Modelo de Regressão CALIBRADO para AWAY
     """
-    st.markdown("## 💎 Análise de Value Bets - Nova Lógica (Força Relativa)")
+    st.markdown("### 📈 Modelo AWAY Regressão Calibrado")
+    
+    # Criar target calibrado AWAY
+    history['Handicap_Otimo_AWAY_Calibrado'] = history.apply(calcular_handicap_otimo_away, axis=1)
+    
+    # 🔧 FILTRO MAIS RESTRITIVO
+    handicap_range = [-1.25, 1.25]
+    history_calibrado_away = history[
+        (history['Handicap_Otimo_AWAY_Calibrado'] >= handicap_range[0]) & 
+        (history['Handicap_Otimo_AWAY_Calibrado'] <= handicap_range[1])
+    ].copy()
+    
+    st.info(f"📊 Dados AWAY calibrados: {len(history_calibrado_away)} jogos")
+    
+    # Features para AWAY (usamos as mesmas features 3D)
+    features_3d_away = [
+        'Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Vector_Sign', 
+        'Magnitude_3D', 'Momentum_Diff', 'Momentum_Diff_MT', 'Cluster3D_Label'
+    ]
+    
+    available_features_away = [f for f in features_3d_away if f in history_calibrado_away.columns]
+    
+    if len(available_features_away) < 3:
+        st.error("❌ Features insuficientes para treinamento AWAY")
+        return None, games_today, None
+    
+    X_away = history_calibrado_away[available_features_away].fillna(0)
+    y_away = history_calibrado_away['Handicap_Otimo_AWAY_Calibrado']
+    
+    # 🔧 NORMALIZAR FEATURES
+    scaler_away = StandardScaler()
+    X_away_scaled = scaler_away.fit_transform(X_away)
+    
+    # Treinar modelo AWAY
+    model_away = RandomForestRegressor(
+        n_estimators=100,
+        max_depth=5,
+        min_samples_leaf=20,
+        max_features=0.6,
+        random_state=42
+    )
+    model_away.fit(X_away_scaled, y_away)
+    
+    # 🔧 VALIDAÇÃO AWAY
+    y_away_pred = model_away.predict(X_away_scaled)
+    mae_away = mean_absolute_error(y_away, y_away_pred)
+    st.success(f"✅ MAE do modelo AWAY: {mae_away:.3f}")
+    
+    # Prever para jogos de hoje - AWAY
+    X_today_away = games_today[available_features_away].fillna(0)
+    
+    missing_features_away = set(available_features_away) - set(X_today_away.columns)
+    if missing_features_away:
+        for feature in missing_features_away:
+            X_today_away[feature] = 0
+    
+    X_today_away_scaled = scaler_away.transform(X_today_away[available_features_away])
+    
+    predictions_away = model_away.predict(X_today_away_scaled)
+    
+    # 🔧 SUAVIZAR PREDIÇÕES AWAY
+    games_today['Handicap_AWAY_Predito_Regressao_Calibrado'] = np.clip(predictions_away, -1.25, 1.25)
+    
+    return model_away, games_today, scaler_away
+
+def treinar_modelo_away_handicap_classificacao_calibrado(history, games_today):
+    """
+    Modelo de Classificação CALIBRADO para AWAY
+    """
+    st.markdown("### 🎯 Modelo AWAY Classificação Calibrado")
+    
+    # Criar target categórico calibrado AWAY
+    history['Handicap_Categoria_AWAY_Calibrado'] = history.apply(criar_target_handicap_away_discreto_calibrado, axis=1)
+    
+    # Features
+    features_3d_away = [
+        'Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Vector_Sign',
+        'Magnitude_3D', 'Momentum_Diff', 'Momentum_Diff_MT', 'Cluster3D_Label'
+    ]
+    
+    available_features_away = [f for f in features_3d_away if f in history.columns]
+    
+    if len(available_features_away) < 3:
+        st.error("❌ Features insuficientes para treinamento AWAY")
+        return None, games_today, None
+    
+    X_away = history[available_features_away].fillna(0)
+    y_away = history['Handicap_Categoria_AWAY_Calibrado']
+    
+    # Codificar labels AWAY
+    le_away = LabelEncoder()
+    y_away_encoded = le_away.fit_transform(y_away)
+    
+    # Treinar modelo AWAY
+    model_away = RandomForestClassifier(
+        n_estimators=100,
+        max_depth=5,
+        random_state=42,
+        class_weight='balanced',
+        min_samples_leaf=15
+    )
+    model_away.fit(X_away, y_away_encoded)
+    
+    # Prever para jogos de hoje - AWAY
+    X_today_away = games_today[available_features_away].fillna(0)
+    
+    missing_features_away = set(available_features_away) - set(X_today_away.columns)
+    if missing_features_away:
+        for feature in missing_features_away:
+            X_today_away[feature] = 0
+    
+    predicoes_away_encoded = model_away.predict(X_today_away[available_features_away])
+    probas_away = model_away.predict_proba(X_today_away[available_features_away])
+    
+    games_today['Handicap_Categoria_AWAY_Predito_Calibrado'] = le_away.inverse_transform(predicoes_away_encoded)
+    games_today['Confianca_Categoria_AWAY_Calibrado'] = np.max(probas_away, axis=1)
+    
+    # 🔧 MAPEAMENTO para handicaps numéricos AWAY
+    categoria_para_handicap_away_calibrado = {
+        'MODERATE_AWAY': -0.75,
+        'LIGHT_AWAY': -0.25,
+        'NEUTRAL': 0,
+        'LIGHT_HOME': +0.25,
+        'MODERATE_HOME': +0.75
+    }
+    
+    games_today['Handicap_AWAY_Predito_Classificacao_Calibrado'] = games_today['Handicap_Categoria_AWAY_Predito_Calibrado'].map(categoria_para_handicap_away_calibrado)
+    
+    st.info(f"📊 Distribuição categorias AWAY: {dict(history['Handicap_Categoria_AWAY_Calibrado'].value_counts())}")
+    
+    return model_away, games_today, le_away
+
+# ============================================================
+# 📊 ANÁLISE DUAL - HOME + AWAY MODELS
+# ============================================================
+
+def analisar_value_bets_dual_modelos(games_today):
+    """
+    Analisa value usando DOIS modelos independentes (HOME + AWAY)
+    """
+    st.markdown("## 💎 Análise DUAL - Home & Away Models")
 
     results = []
     for _, row in games_today.iterrows():
         asian_line = row.get('Asian_Line_Decimal', 0)
-        pred_reg = row.get('Handicap_Predito_Regressao_Calibrado', 0)
-        pred_cls = row.get('Handicap_Predito_Classificacao_Calibrado', 0)
         
-        # 🔄 NOVA LÓGICA: Média ponderada dos handicaps preditos
-        pred_media = 0.7 * pred_reg + 0.3 * pred_cls
+        # 🎯 PREDIÇÕES DO MODELO HOME
+        pred_home_reg = row.get('Handicap_Predito_Regressao_Calibrado', 0)
+        pred_home_cls = row.get('Handicap_Predito_Classificacao_Calibrado', 0)
+        pred_home = 0.7 * pred_home_reg + 0.3 * pred_home_cls
         
-        # 🔄 CÁLCULO DA FORÇA RELATIVA
-        forca_relativa = asian_line + pred_media
+        # 🎯 PREDIÇÕES DO MODELO AWAY  
+        pred_away_reg = row.get('Handicap_AWAY_Predito_Regressao_Calibrado', 0)
+        pred_away_cls = row.get('Handicap_AWAY_Predito_Classificacao_Calibrado', 0) 
+        pred_away = 0.7 * pred_away_reg + 0.3 * pred_away_cls
         
-        # 🎯 REGRAS BASEADAS NA FORÇA RELATIVA
-        if forca_relativa < -0.4:
-            rec, lado, conf = "STRONG HOME VALUE", "HOME", "HIGH"
-            motivo = "HOME MUITO mais forte que mercado pensa"
-        elif forca_relativa < -0.15:
-            rec, lado, conf = "HOME VALUE", "HOME", "MEDIUM"
-            motivo = "HOME mais forte que mercado pensa"
-        elif forca_relativa > 0.4:
-            rec, lado, conf = "STRONG AWAY VALUE", "AWAY", "HIGH" 
-            motivo = "HOME MUITO mais fraco que mercado pensa"
-        elif forca_relativa > 0.15:
-            rec, lado, conf = "AWAY VALUE", "AWAY", "MEDIUM"
-            motivo = "HOME mais fraco que mercado pensa"
+        # 📊 VALUE GAP PARA HOME
+        value_gap_home = pred_home - asian_line
+        
+        # 📊 VALUE GAP PARA AWAY (perspectiva invertida)
+        value_gap_away = pred_away - (-asian_line)
+        
+        # 🏆 DECISÃO FINAL - Quem tem mais value?
+        if value_gap_home > value_gap_away and value_gap_home > 0.15:
+            if value_gap_home > 0.4:
+                recomendacao_final, confidence = "STRONG BET HOME", "HIGH"
+            elif value_gap_home > 0.25:
+                recomendacao_final, confidence = "BET HOME", "MEDIUM"
+            else:
+                recomendacao_final, confidence = "LIGHT BET HOME", "LOW"
+        elif value_gap_away > value_gap_home and value_gap_away > 0.15:
+            if value_gap_away > 0.4:
+                recomendacao_final, confidence = "STRONG BET AWAY", "HIGH"
+            elif value_gap_away > 0.25:
+                recomendacao_final, confidence = "BET AWAY", "MEDIUM"
+            else:
+                recomendacao_final, confidence = "LIGHT BET AWAY", "LOW"
         else:
-            rec, lado, conf = "NO CLEAR VALUE", "PASS", "LOW"
-            motivo = "Próximo da expectativa do mercado"
+            recomendacao_final, confidence = "NO CLEAR EDGE", "LOW"
         
-        # 📈 CALCULAR VALUE GAP TRADICIONAL (para comparação)
-        value_gap_tradicional = pred_media - asian_line
-        
-        # 🆕 VERIFICAR SE TEM LIVE SCORE
+        # 🆕 LIVE SCORE
         goals_h_today = row.get('Goals_H_Today')
         goals_a_today = row.get('Goals_A_Today')
         home_red = row.get('Home_Red')
@@ -473,74 +648,85 @@ def analisar_value_bets_nova_logica(games_today):
             'League': row.get('League'),
             'Home': row.get('Home'),
             'Away': row.get('Away'),
-            'Asian_Line_Decimal': asian_line,
-            'Handicap_Regressao': round(pred_reg, 2),
-            'Handicap_Classificacao': round(pred_cls, 2),
-            'Handicap_Media': round(pred_media, 2),
-            'Forca_Relativa': round(forca_relativa, 2),
-            'Value_Gap_Tradicional': round(value_gap_tradicional, 2),
-            'Recomendacao': rec,
-            'Lado': lado,
-            'Confidence': conf,
-            'Motivo': motivo,
-            'Live_Score': live_score_info  # 🆕 COLUNA NOVA
+            'Asian_Line': asian_line,
+            
+            # Modelo HOME
+            'Handicap_HOME_Predito': round(pred_home, 2),
+            'Value_Gap_HOME': round(value_gap_home, 2),
+            
+            # Modelo AWAY
+            'Handicap_AWAY_Predito': round(pred_away, 2), 
+            'Value_Gap_AWAY': round(value_gap_away, 2),
+            
+            # Decisão Final
+            'Recomendacao': recomendacao_final,
+            'Confidence': confidence,
+            'Edge_Difference': round(abs(value_gap_home - value_gap_away), 2),
+            'Live_Score': live_score_info
         })
-
-    df_results = pd.DataFrame(results)
-    df_results['Forca_Abs'] = df_results['Forca_Relativa'].abs()
-    df_results = df_results.sort_values('Forca_Abs', ascending=False)
     
-    return df_results
+    df_results = pd.DataFrame(results)
+    
+    # 🔍 FILTRAR APENAS JOGOS COM VALUE
+    bets_validos = df_results[df_results['Recomendacao'] != 'NO CLEAR EDGE']
+    
+    return df_results, bets_validos
 
 # ============================================================
-# 📈 VISUALIZAÇÃO DA NOVA LÓGICA
+# 📈 VISUALIZAÇÃO DUAL
 # ============================================================
 
-def plot_nova_analise_forca_relativa(games_today):
+def plot_analise_dual_modelos(games_today):
     """
-    Visualização da NOVA lógica de força relativa
+    Visualização da análise DUAL (HOME + AWAY)
     """
     import matplotlib.pyplot as plt
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
     
-    # Plot 1: Força Relativa vs Asian Line
-    forca_relativa = games_today['Asian_Line_Decimal'] + games_today['Handicap_Predito_Regressao_Calibrado']
+    # Plot 1: Value Gaps HOME vs AWAY
+    value_gaps_home = []
+    value_gaps_away = []
     
-    colors = []
-    for fr in forca_relativa:
-        if fr < -0.3:
-            colors.append('darkgreen')  # STRONG HOME
-        elif fr < -0.1:
-            colors.append('lightgreen') # HOME VALUE
-        elif fr > 0.3:
-            colors.append('darkblue')   # STRONG AWAY  
-        elif fr > 0.1:
-            colors.append('lightblue')  # AWAY VALUE
-        else:
-            colors.append('gray')       # NO VALUE
+    for _, row in games_today.iterrows():
+        asian_line = row.get('Asian_Line_Decimal', 0)
+        pred_home = 0.7 * row.get('Handicap_Predito_Regressao_Calibrado', 0) + 0.3 * row.get('Handicap_Predito_Classificacao_Calibrado', 0)
+        pred_away = 0.7 * row.get('Handicap_AWAY_Predito_Regressao_Calibrado', 0) + 0.3 * row.get('Handicap_AWAY_Predito_Classificacao_Calibrado', 0)
+        
+        value_gaps_home.append(pred_home - asian_line)
+        value_gaps_away.append(pred_away - (-asian_line))
     
-    ax1.scatter(games_today['Asian_Line_Decimal'], forca_relativa, 
-                c=colors, alpha=0.7, s=80, edgecolors='black', linewidth=0.5)
-    ax1.axhline(y=0, color='red', linestyle='--', alpha=0.5, label='Equilíbrio')
-    ax1.axhline(y=-0.15, color='orange', linestyle=':', alpha=0.5, label='Limite HOME')
-    ax1.axhline(y=0.15, color='orange', linestyle=':', alpha=0.5, label='Limite AWAY')
-    ax1.set_xlabel('Asian Line Decimal (Mercado)')
-    ax1.set_ylabel('Força Relativa (Asian Line + Predição)')
-    ax1.set_title('Nova Análise: Força Relativa do HOME')
+    x_pos = range(len(value_gaps_home))
+    ax1.bar([x - 0.2 for x in x_pos], value_gaps_home, 0.4, label='HOME Value Gap', alpha=0.7, color='green')
+    ax1.bar([x + 0.2 for x in x_pos], value_gaps_away, 0.4, label='AWAY Value Gap', alpha=0.7, color='blue')
+    ax1.axhline(y=0, color='red', linestyle='-', alpha=0.5)
+    ax1.axhline(y=0.15, color='orange', linestyle='--', alpha=0.5, label='Value Threshold')
+    ax1.axhline(y=-0.15, color='orange', linestyle='--', alpha=0.5)
+    ax1.set_xlabel('Jogos')
+    ax1.set_ylabel('Value Gap')
+    ax1.set_title('Value Gaps: HOME vs AWAY Models')
     ax1.legend()
     ax1.grid(True, alpha=0.3)
     
-    # Plot 2: Comparação entre Lógicas
-    ax2.bar(range(len(games_today)), 
-            games_today['Handicap_Predito_Regressao_Calibrado'], 
-            alpha=0.7, label='Handicap Predito')
-    ax2.bar(range(len(games_today)), 
-            games_today['Asian_Line_Decimal'], 
-            alpha=0.7, label='Asian Line Mercado')
-    ax2.set_xlabel('Jogos')
-    ax2.set_ylabel('Valor do Handicap')
-    ax2.set_title('Comparação: Predição vs Mercado')
+    # Plot 2: Comparação Handicaps Preditos
+    handicaps_home = []
+    handicaps_away = []
+    asian_lines = []
+    
+    for _, row in games_today.iterrows():
+        pred_home = 0.7 * row.get('Handicap_Predito_Regressao_Calibrado', 0) + 0.3 * row.get('Handicap_Predito_Classificacao_Calibrado', 0)
+        pred_away = 0.7 * row.get('Handicap_AWAY_Predito_Regressao_Calibrado', 0) + 0.3 * row.get('Handicap_AWAY_Predito_Classificacao_Calibrado', 0)
+        
+        handicaps_home.append(pred_home)
+        handicaps_away.append(pred_away)
+        asian_lines.append(row.get('Asian_Line_Decimal', 0))
+    
+    ax2.scatter(asian_lines, handicaps_home, alpha=0.7, s=60, label='HOME Predito', color='green')
+    ax2.scatter(asian_lines, handicaps_away, alpha=0.7, s=60, label='AWAY Predito', color='blue')
+    ax2.plot([-1.5, 1.5], [-1.5, 1.5], 'k--', alpha=0.3, label='Linha de Mercado')
+    ax2.set_xlabel('Asian Line (Mercado)')
+    ax2.set_ylabel('Handicap Predito')
+    ax2.set_title('Handicaps Preditos vs Mercado')
     ax2.legend()
     ax2.grid(True, alpha=0.3)
     
@@ -548,12 +734,12 @@ def plot_nova_analise_forca_relativa(games_today):
     return fig
 
 # ============================================================
-# 🚀 EXECUÇÃO PRINCIPAL - NOVA LÓGICA
+# 🚀 EXECUÇÃO PRINCIPAL - DUAL MODEL
 # ============================================================
 
 def main_calibrado():
     # ---------------- Carregar Dados ----------------
-    st.info("📂 Carregando dados para Análise de Handicap Ótimo - NOVA LÓGICA...")
+    st.info("📂 Carregando dados para Análise DUAL MODEL...")
     
     files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
     if not files:
@@ -674,15 +860,12 @@ def main_calibrado():
         st.dataframe(live_score_games[['Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Home_Red', 'Away_Red']])
     else:
         st.info("ℹ️ Nenhum dado de Live Score disponível - usando apenas dados pré-jogo")
-
-
-    
     
     # ---------------- Calcular Features 3D ----------------
-    st.markdown("## 🧮 Calculando Features 3D Calibradas...")
+    st.markdown("## 🧮 Calculando Features 3D...")
     
     # Verificar se as colunas necessárias existem
-    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'HandScore_Home', 'HandScore_Away']
+    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
     missing_history = [col for col in required_cols if col not in history.columns]
     missing_today = [col for col in required_cols if col not in games_today.columns]
     
@@ -690,59 +873,57 @@ def main_calibrado():
         st.error(f"❌ Colunas necessárias faltando: History={missing_history}, Today={missing_today}")
         return
     
-    history = calcular_momentum_time(history)
-    games_today = calcular_momentum_time(games_today)
-    
+    # ❌ NÃO calcular momentum_time - MT já vem pré-calculado!
+    # ✅ Apenas calcular distâncias 3D e clusters
     history = calcular_distancias_3d(history)
     games_today = calcular_distancias_3d(games_today)
     
     history = aplicar_clusterizacao_3d(history)
     games_today = aplicar_clusterizacao_3d(games_today)
     
-    # ---------------- Treinar Modelos Calibrados ----------------
-    st.markdown("## 🧠 Treinando Modelos de Handicap CALIBRADOS...")
+    # ---------------- Treinar Modelos DUAL ----------------
+    st.markdown("## 🧠 Treinando Modelos DUAL (HOME + AWAY)...")
     
-    if st.button("🚀 Executar Análise - Nova Lógica", type="primary"):
-        with st.spinner("Treinando modelos calibrados..."):
-            # Treinar modelos (usando versões conservadoras)
-            modelo_regressao, games_today, scaler = treinar_modelo_handicap_regressao_calibrado_v2(history, games_today)
-            modelo_classificacao, games_today, label_encoder = treinar_modelo_handicap_classificacao_calibrado_v2(history, games_today)
+    if st.button("🚀 Executar Análise DUAL", type="primary"):
+        with st.spinner("Treinando modelos DUAL..."):
+            # 🎯 TREINAR MODELOS HOME
+            modelo_home_regressao, games_today, scaler_home = treinar_modelo_handicap_regressao_calibrado_v2(history, games_today)
+            modelo_home_classificacao, games_today, label_encoder_home = treinar_modelo_handicap_classificacao_calibrado_v2(history, games_today)
             
-            # 🔄 USAR NOVA LÓGICA
-            df_value_bets_nova_logica = analisar_value_bets_nova_logica(games_today)
+            # 🎯 TREINAR MODELOS AWAY
+            modelo_away_regressao, games_today, scaler_away = treinar_modelo_away_handicap_regressao_calibrado(history, games_today)
+            modelo_away_classificacao, games_today, label_encoder_away = treinar_modelo_away_handicap_classificacao_calibrado(history, games_today)
+            
+            # 🔄 USAR ANÁLISE DUAL
+            df_value_bets_dual, bets_validos_dual = analisar_value_bets_dual_modelos(games_today)
             
             # Exibir resultados
-            st.markdown("## 📊 Resultados - Nova Lógica (Força Relativa)")
+            st.markdown("## 📊 Resultados - Análise DUAL")
             
-            # Filtrar apenas recomendações com valor
-            bets_validos = df_value_bets_nova_logica[
-                df_value_bets_nova_logica['Lado'].isin(['HOME', 'AWAY'])
-            ]
-            
-            if bets_validos.empty:
+            if bets_validos_dual.empty:
                 st.warning("⚠️ Nenhuma recomendação de value bet encontrada")
             else:
-                st.dataframe(bets_validos, use_container_width=True)
+                st.dataframe(bets_validos_dual, use_container_width=True)
                 
                 # Estatísticas
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    home_bets = len(bets_validos[bets_validos['Lado'] == 'HOME'])
-                    st.metric("🏠 HOME Value", home_bets)
+                    home_bets = len(bets_validos_dual[bets_validos_dual['Recomendacao'].str.contains('HOME')])
+                    st.metric("🏠 HOME Bets", home_bets)
                 with col2:
-                    away_bets = len(bets_validos[bets_validos['Lado'] == 'AWAY'])
-                    st.metric("✈️ AWAY Value", away_bets)
+                    away_bets = len(bets_validos_dual[bets_validos_dual['Recomendacao'].str.contains('AWAY')])
+                    st.metric("✈️ AWAY Bets", away_bets)
                 with col3:
-                    strong_bets = len(bets_validos[bets_validos['Confidence'] == 'HIGH'])
+                    strong_bets = len(bets_validos_dual[bets_validos_dual['Confidence'] == 'HIGH'])
                     st.metric("🎯 Strong Bets", strong_bets)
                 with col4:
-                    total_bets = len(bets_validos)
+                    total_bets = len(bets_validos_dual)
                     st.metric("📊 Total Recomendações", total_bets)
             
             # Visualizações
-            st.pyplot(plot_nova_analise_forca_relativa(games_today))
+            st.pyplot(plot_analise_dual_modelos(games_today))
             
-            st.success("✅ Análise concluída com Nova Lógica de Força Relativa!")
+            st.success("✅ Análise DUAL concluída com sucesso!")
             st.balloons()
 
 if __name__ == "__main__":
