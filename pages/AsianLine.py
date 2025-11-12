@@ -20,7 +20,7 @@ st.title("🎯 Analisador de Handicap Ótimo - Dual Model (Home + Away)")
 PAGE_PREFIX = "HandicapOptimizer_DualModel"
 GAMES_FOLDER = "GamesDay"
 LIVESCORE_FOLDER = "LiveScore"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa", "trophy"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa", "trophy","Cup"]
 
 # ============================================================
 # 🔧 FUNÇÕES AUXILIARES ORIGINAIS
