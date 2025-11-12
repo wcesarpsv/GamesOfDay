@@ -588,47 +588,76 @@ def treinar_modelo_away_handicap_classificacao_calibrado(history, games_today):
 
 def analisar_value_bets_dual_modelos(games_today):
     """
-    Analisa value usando DOIS modelos independentes (HOME + AWAY)
+    🧠 ANÁLISE INTELIGENTE - Encontrar os CONFRONTOS CERTOS
+    Foca na RELAÇÃO entre times + DISTORÇÃO do handicap
     """
     st.markdown("## 💎 Análise DUAL - Home & Away Models")
 
     results = []
+    
     for _, row in games_today.iterrows():
         asian_line = row.get('Asian_Line_Decimal', 0)
         
-        # 🎯 PREDIÇÕES DO MODELO HOME
+        # 🎯 PREDIÇÕES DOS MODELOS (HOME + AWAY)
         pred_home_reg = row.get('Handicap_Predito_Regressao_Calibrado', 0)
         pred_home_cls = row.get('Handicap_Predito_Classificacao_Calibrado', 0)
         pred_home = 0.7 * pred_home_reg + 0.3 * pred_home_cls
         
-        # 🎯 PREDIÇÕES DO MODELO AWAY  
-        pred_away_reg = row.get('Handicap_AWAY_Predito_Regressao_Calibrado', 0)
-        pred_away_cls = row.get('Handicap_AWAY_Predito_Classificacao_Calibrado', 0) 
+        pred_away_reg = row.get('Handicap_AWAY_Predito_Regressao_Calibrado', 0) 
+        pred_away_cls = row.get('Handicap_AWAY_Predito_Classificacao_Calibrado', 0)
         pred_away = 0.7 * pred_away_reg + 0.3 * pred_away_cls
         
-        # 📊 VALUE GAP PARA HOME
+        # 🔍 ANÁLISE INTELIGENTE DA RELAÇÃO ENTRE TIMES
+        forca_relativa = pred_home - pred_away
+        equilibrio = abs(forca_relativa) < 0.2
+        
+        # 💡 DECISÕES INTELIGENTES POR CENÁRIO
+        recomendacao_final, confidence = "NO CLEAR EDGE", "LOW"
+        
+        # CENÁRIO 1: TIMES EQUILIBRADOS + HANDICAP DISTORCIDO
+        if equilibrio and abs(asian_line) > 0.25:
+            if asian_line < -0.25:  # Mercado superestima Home
+                value_gap = abs(asian_line) - abs(forca_relativa)
+                if value_gap > 0.3:
+                    recomendacao_final, confidence = "STRONG BET AWAY", "HIGH"
+                elif value_gap > 0.15:
+                    recomendacao_final, confidence = "BET AWAY", "MEDIUM"
+                    
+            elif asian_line > 0.25:  # Mercado superestima Away
+                value_gap = abs(asian_line) - abs(forca_relativa)
+                if value_gap > 0.3:
+                    recomendacao_final, confidence = "STRONG BET HOME", "HIGH"
+                elif value_gap > 0.15:
+                    recomendacao_final, confidence = "BET HOME", "MEDIUM"
+        
+        # CENÁRIO 2: TIME CLARAMENTE MAIS FORTE + HANDICAP JUSTO
+        elif not equilibrio and abs(asian_line) < 0.75:
+            if forca_relativa > 0.3 and asian_line < 0:  # Home forte, handicap razoável
+                cobertura = forca_relativa - abs(asian_line)
+                if cobertura > 0.2:
+                    recomendacao_final, confidence = "STRONG BET HOME", "HIGH"
+                elif cobertura > 0.1:
+                    recomendacao_final, confidence = "BET HOME", "MEDIUM"
+                    
+            elif forca_relativa < -0.3 and asian_line > 0:  # Away forte, handicap razoável
+                cobertura = abs(forca_relativa) - abs(asian_line)
+                if cobertura > 0.2:
+                    recomendacao_final, confidence = "STRONG BET AWAY", "HIGH"
+                elif cobertura > 0.1:
+                    recomendacao_final, confidence = "BET AWAY", "MEDIUM"
+        
+        # CENÁRIO 3: HANDICAP EXTREMO - SÓ APOSTAR COM CONVICÇÃO
+        elif abs(asian_line) >= 1.0:
+            if forca_relativa > 0.5 and asian_line < -1.0:
+                if forca_relativa > abs(asian_line) + 0.3:
+                    recomendacao_final, confidence = "STRONG BET HOME", "HIGH"
+            elif forca_relativa < -0.5 and asian_line > 1.0:
+                if abs(forca_relativa) > abs(asian_line) + 0.3:
+                    recomendacao_final, confidence = "STRONG BET AWAY", "HIGH"
+        
+        # 📊 CALCULAR VALUE GAPS (mantendo formato original)
         value_gap_home = pred_home - asian_line
-        
-        # 📊 VALUE GAP PARA AWAY (perspectiva invertida)
         value_gap_away = pred_away - (-asian_line)
-        
-        # 🏆 DECISÃO FINAL - Quem tem mais value?
-        if value_gap_home > value_gap_away and value_gap_home > 0.15:
-            if value_gap_home > 0.4:
-                recomendacao_final, confidence = "STRONG BET HOME", "HIGH"
-            elif value_gap_home > 0.25:
-                recomendacao_final, confidence = "BET HOME", "MEDIUM"
-            else:
-                recomendacao_final, confidence = "LIGHT BET HOME", "LOW"
-        elif value_gap_away > value_gap_home and value_gap_away > 0.15:
-            if value_gap_away > 0.4:
-                recomendacao_final, confidence = "STRONG BET AWAY", "HIGH"
-            elif value_gap_away > 0.25:
-                recomendacao_final, confidence = "BET AWAY", "MEDIUM"
-            else:
-                recomendacao_final, confidence = "LIGHT BET AWAY", "LOW"
-        else:
-            recomendacao_final, confidence = "NO CLEAR EDGE", "LOW"
         
         # 🆕 LIVE SCORE
         goals_h_today = row.get('Goals_H_Today')
