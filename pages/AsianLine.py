@@ -194,19 +194,19 @@ def aplicar_clusterizacao_3d(df, n_clusters=4, random_state=42):
     return df
 
 # ============================================================
-# 🎯 SISTEMA CALIBRADO: HANDICAP OPTIMIZATION
+# 🎯 SISTEMA CALIBRADO: HANDICAP OPTIMIZATION - VERSÃO CONSERVADORA
 # ============================================================
 
-def calcular_handicap_otimo_calibrado(row):
+def calcular_handicap_otimo_calibrado_v2(row):
     """
-    Versão CALIBRADA do cálculo de handicap ótimo
-    Com limites realistas e suavização
+    Versão CALIBRADA CONSERVADORA do cálculo de handicap ótimo
+    Com limites mais restritivos e suavização mais forte
     """
     gh, ga = row.get('Goals_H_FT', 0), row.get('Goals_A_FT', 0)
     margin = gh - ga
     
-    # 🔧 LIMITES REALISTAS: Handicaps entre -2.0 e +2.0
-    handicaps_possiveis = [-2.0, -1.75, -1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0, +0.25, +0.5, +0.75, +1.0, +1.25, +1.5, +1.75, +2.0]
+    # 🔧 LIMITES MAIS RESTRITIVOS: Handicaps entre -1.5 e +1.5
+    handicaps_possiveis = [-1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0, +0.25, +0.5, +0.75, +1.0, +1.25, +1.5]
     
     melhor_handicap = 0
     melhor_score = -10
@@ -215,66 +215,76 @@ def calcular_handicap_otimo_calibrado(row):
         # Simula resultado com handicap
         resultado_ajustado = margin + handicap
         
-        # 🔧 SCORE CALIBRADO: Penaliza handicaps extremos
+        # 🔧 SCORE MAIS CONSERVADOR: Penaliza MUITO handicaps extremos
         if resultado_ajustado > 0:
             # Ganhou - score positivo mas penaliza extremos
-            score = 1.5 - abs(handicap) * 0.2  # Penalidade mais suave
+            base_score = 1.5
+            # 🔽 PENALIDADE MAIS FORTE PARA EXTREMOS
+            if abs(handicap) > 1.0:
+                base_score = base_score - 0.8  # Redução de 53%
+            elif abs(handicap) > 0.75:
+                base_score = base_score - 0.4  # Redução de 27%
+            elif abs(handicap) > 0.5:
+                base_score = base_score - 0.2  # Redução de 13%
+            score = base_score - abs(handicap) * 0.1
         elif resultado_ajustado == 0:
             # Push - score neutro
             score = 0.3
         else:
             # Perdeu - score negativo
-            score = -0.5 - abs(handicap) * 0.1
+            score = -0.5 - abs(handicap) * 0.15
         
         if score > melhor_score:
             melhor_score = score
             melhor_handicap = handicap
     
+    # 🔽 SUAVIZAÇÃO FINAL - REDUZIR HANDICAPS EXTREMOS
+    if abs(melhor_handicap) > 1.0:
+        melhor_handicap = melhor_handicap * 0.6  # Reduzir 40%
+    elif abs(melhor_handicap) > 0.75:
+        melhor_handicap = melhor_handicap * 0.8  # Reduzir 20%
+    
     return melhor_handicap
 
-def criar_target_handicap_discreto_calibrado(row):
+def criar_target_handicap_discreto_calibrado_v2(row):
     """
-    Versão calibrada para classificação
+    Versão MAIS CONSERVADORA para classificação
     """
-    handicap_otimo = calcular_handicap_otimo_calibrado(row)
+    handicap_otimo = calcular_handicap_otimo_calibrado_v2(row)
     
-    # 🔧 CATEGORIAS MAIS EQUILIBRADAS
-    if handicap_otimo <= -1.25:
-        return 'STRONG_HOME'
-    elif handicap_otimo <= -0.5:
-        return 'MODERATE_HOME' 
-    elif handicap_otimo < 0:
+    # 🔽 CATEGORIAS MAIS CONSERVADORAS E EQUILIBRADAS
+    if handicap_otimo <= -0.75:    # ANTES: -1.25
+        return 'MODERATE_HOME'
+    elif handicap_otimo <= -0.25:  # ANTES: -0.5  
         return 'LIGHT_HOME'
     elif handicap_otimo == 0:
         return 'NEUTRAL'
-    elif handicap_otimo < 0.5:
+    elif handicap_otimo < 0.5:     # ANTES: 0.5 (ajustado)
         return 'LIGHT_AWAY'
-    elif handicap_otimo < 1.25:
-        return 'MODERATE_AWAY'
     else:
-        return 'STRONG_AWAY'
+        return 'MODERATE_AWAY'     # ANTES: 1.25
 
 # ============================================================
-# 🧠 MODELOS CALIBRADOS
+# 🧠 MODELOS CALIBRADOS - VERSÃO CONSERVADORA
 # ============================================================
 
-def treinar_modelo_handicap_regressao_calibrado(history, games_today):
+def treinar_modelo_handicap_regressao_calibrado_v2(history, games_today):
     """
-    Modelo de Regressão CALIBRADO
+    Modelo de Regressão CALIBRADO CONSERVADOR
     """
-    st.markdown("### 📈 Modelo Regressão Calibrado")
+    st.markdown("### 📈 Modelo Regressão Calibrado (Versão Conservadora)")
     
-    # Criar target calibrado
-    history['Handicap_Otimo_Calibrado'] = history.apply(calcular_handicap_otimo_calibrado, axis=1)
+    # Criar target calibrado CONSERVADOR
+    history['Handicap_Otimo_Calibrado'] = history.apply(calcular_handicap_otimo_calibrado_v2, axis=1)
     
-    # 🔧 FILTRAR HANDICAPS EXTREMOS
-    handicap_range = [-2.0, 2.0]
+    # 🔧 FILTRO MAIS RESTRITIVO
+    handicap_range = [-1.25, 1.25]  # ANTES: [-2.0, 2.0]
     history_calibrado = history[
         (history['Handicap_Otimo_Calibrado'] >= handicap_range[0]) & 
         (history['Handicap_Otimo_Calibrado'] <= handicap_range[1])
     ].copy()
     
-    st.info(f"📊 Dados calibrados: {len(history_calibrado)} jogos (handicaps entre {handicap_range[0]} e {handicap_range[1]})")
+    st.info(f"📊 Dados calibrados CONSERVADORES: {len(history_calibrado)} jogos (handicaps entre {handicap_range[0]} e {handicap_range[1]})")
     
     # Features espaciais
     features_3d = [
@@ -284,7 +294,6 @@ def treinar_modelo_handicap_regressao_calibrado(history, games_today):
     
     available_features = [f for f in features_3d if f in history_calibrado.columns]
     
-    # Verificar se temos features suficientes
     if len(available_features) < 3:
         st.error("❌ Features insuficientes para treinamento")
         return None, games_today, None
@@ -296,12 +305,12 @@ def treinar_modelo_handicap_regressao_calibrado(history, games_today):
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     
-    # Treinar modelo com MAIS REGULARIZAÇÃO
+    # Treinar modelo COM MAIS REGULARIZAÇÃO
     model = RandomForestRegressor(
-        n_estimators=150,  # Menos árvores
-        max_depth=6,       # Menos profundidade
-        min_samples_leaf=15,  # Mais amostras por folha
-        max_features=0.7,  # Limitar features
+        n_estimators=100,  # MENOS árvores (antes: 150)
+        max_depth=5,       # MENOS profundidade (antes: 6)
+        min_samples_leaf=20,  # MAIS amostras por folha (antes: 15)
+        max_features=0.6,  # MENOS features (antes: 0.7)
         random_state=42
     )
     model.fit(X_scaled, y)
@@ -309,12 +318,11 @@ def treinar_modelo_handicap_regressao_calibrado(history, games_today):
     # 🔧 VALIDAÇÃO
     y_pred = model.predict(X_scaled)
     mae = mean_absolute_error(y, y_pred)
-    st.success(f"✅ MAE do modelo: {mae:.3f} (quanto menor, melhor)")
+    st.success(f"✅ MAE do modelo CONSERVADOR: {mae:.3f} (quanto menor, melhor)")
     
     # Prever para jogos de hoje
     X_today = games_today[available_features].fillna(0)
     
-    # Verificar se temos as mesmas features nos dados de hoje
     missing_features = set(available_features) - set(X_today.columns)
     if missing_features:
         st.warning(f"⚠️ Features faltando nos dados de hoje: {missing_features}")
@@ -325,15 +333,15 @@ def treinar_modelo_handicap_regressao_calibrado(history, games_today):
     
     predictions = model.predict(X_today_scaled)
     
-    # 🔧 SUAVIZAR PREDIÇÕES (evitar saltos grandes)
-    games_today['Handicap_Predito_Regressao_Calibrado'] = np.clip(predictions, -2.0, 2.0)
+    # 🔧 SUAVIZAR PREDIÇÕES MAIS FORTEMENTE
+    games_today['Handicap_Predito_Regressao_Calibrado'] = np.clip(predictions, -1.25, 1.25)
     games_today['Value_Gap_Regressao_Calibrado'] = (
         games_today['Handicap_Predito_Regressao_Calibrado'] - games_today['Asian_Line_Decimal']
     )
     
     return model, games_today, scaler
 
-def treinar_modelo_handicap_classificacao_calibrado(history, games_today):
+def treinar_modelo_handicap_classificacao_calibrado_v2(history, games_today):
     """
     Modelo de Classificação CALIBRADO CONSERVADOR
     """
@@ -404,12 +412,11 @@ def treinar_modelo_handicap_classificacao_calibrado(history, games_today):
     
     return model, games_today, le
 
-
 # ============================================================
-# 📊 ANÁLISE DE VALOR CALIBRADA
+# 📊 ANÁLISE DE VALOR CALIBRADA CONSERVADORA
 # ============================================================
 
-def analisar_value_bets_calibrado(games_today):
+def analisar_value_bets_calibrado_v2(games_today):
     """
     Análise de value CALIBRADA CONSERVADORA — PERSPECTIVA HOME.
     """
@@ -671,21 +678,21 @@ def main_calibrado():
     if st.button("🚀 Executar Análise Calibrada", type="primary"):
         with st.spinner("Treinando modelos calibrados..."):
             # Treinar modelo de regressão calibrado
-            modelo_regressao, games_today, scaler = treinar_modelo_handicap_regressao_calibrado(history, games_today)
+            modelo_regressao, games_today, scaler = treinar_modelo_handicap_regressao_calibrado_v2(history, games_today)
             
             if modelo_regressao is None:
                 st.error("❌ Falha no treinamento do modelo de regressão")
                 return
             
             # Treinar modelo de classificação calibrado  
-            modelo_classificacao, games_today, label_encoder = treinar_modelo_handicap_classificacao_calibrado(history, games_today)
+            modelo_classificacao, games_today, label_encoder = treinar_modelo_handicap_classificacao_calibrado_v2(history, games_today)
             
             if modelo_classificacao is None:
                 st.error("❌ Falha no treinamento do modelo de classificação")
                 return
             
             # Analisar value bets calibrado
-            df_value_bets_calibrado = analisar_value_bets_calibrado(games_today)
+            df_value_bets_calibrado = analisar_value_bets_calibrado_v2(games_today)
             
             # Exibir resultados
             st.markdown("## 📊 Resultados da Análise Calibrada")
