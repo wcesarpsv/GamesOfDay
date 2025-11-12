@@ -786,7 +786,11 @@ def main_calibrado():
     def load_cached_data(selected_file):
         games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
         history = load_all_games(GAMES_FOLDER)
-        
+    
+        # 🔥 AQUI: aplicar filtro para remover copas e torneios não-liga
+        history = filter_leagues(history)
+        games_today = filter_leagues(games_today)
+    
         def classificar_league_tier(league_name: str) -> int:
             if pd.isna(league_name):
                 return 3
@@ -804,7 +808,7 @@ def main_calibrado():
             ]):
                 return 2
             return 3
-        
+    
         def aplicar_filtro_tier(df: pd.DataFrame, max_tier=3) -> pd.DataFrame:
             if 'League' not in df.columns:
                 st.warning("⚠️ Coluna 'League' ausente — filtro de tier não aplicado.")
@@ -815,10 +819,13 @@ def main_calibrado():
             filtrado = df[df['League_Tier'] <= max_tier].copy()
             st.info(f"🎯 Ligas filtradas (Tier ≤ {max_tier}): {len(filtrado)}/{len(df)} jogos mantidos")
             return filtrado
-        
-        # Aplicar o filtro
+    
+        # Aplicar o filtro por tier também
         history = aplicar_filtro_tier(history, max_tier=3)
         games_today = aplicar_filtro_tier(games_today, max_tier=3)
+    
+        # --- (restante do encoder e one-hot continua igual) ---
+
         
         from sklearn.preprocessing import OneHotEncoder
         
