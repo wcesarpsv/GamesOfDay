@@ -820,7 +820,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         if feature in history.columns:
             available_features.append(feature)
             
-    X = pd.concat([ligas_dummies, history[available_features]], axis=1).fillna(0)
+    X = pd.concat([ligas_dummies, history[available_features], 'Asian_Line_Decimal'], axis=1).fillna(0)
     y_home = history['Target_AH_Home'].astype(int)
 
     model_home = RandomForestClassifier(
@@ -983,13 +983,6 @@ def treinar_modelos_multi_target(history, games_today):
     return modelos, resultados
 
 
-# ============================================================
-# 📊 PAINEL COMPARATIVO DE RESULTADOS
-# ============================================================
-
-# ============================================================
-# 📊 PAINEL COMPARATIVO DE RESULTADOS (CORRIGIDO)
-# ============================================================
 
 # ============================================================
 # 📊 PAINEL COMPARATIVO DE RESULTADOS (CORRIGIDO DEFINITIVO)
