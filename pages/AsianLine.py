@@ -13,11 +13,11 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.metrics import mean_absolute_error
 
-st.set_page_config(page_title="Analisador de Handicap Ótimo - CALIBRADO", layout="wide")
-st.title("🎯 Analisador de Handicap Ótimo - Modelo Calibrado")
+st.set_page_config(page_title="Analisador de Handicap Ótimo - NOVA LÓGICA", layout="wide")
+st.title("🎯 Analisador de Handicap Ótimo - Nova Lógica (Força Relativa)")
 
 # ---------------- Configurações ----------------
-PAGE_PREFIX = "HandicapOptimizer_Calibrado"
+PAGE_PREFIX = "HandicapOptimizer_NovaLogica"
 GAMES_FOLDER = "GamesDay"
 LIVESCORE_FOLDER = "LiveScore"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa", "trophy"]
@@ -413,134 +413,132 @@ def treinar_modelo_handicap_classificacao_calibrado_v2(history, games_today):
     return model, games_today, le
 
 # ============================================================
-# 📊 ANÁLISE DE VALOR CALIBRADA CONSERVADORA
+# 📊 ANÁLISE DE VALOR - NOVA LÓGICA (FORÇA RELATIVA)
 # ============================================================
 
-def analisar_value_bets_calibrado_v2(games_today):
+def analisar_value_bets_nova_logica(games_today):
     """
-    Análise de value CALIBRADA CONSERVADORA — PERSPECTIVA HOME.
+    NOVA LÓGICA: Analisa value bets baseado na FORÇA RELATIVA
+    Asian_Line + Handicap_Predito = Força Relativa do HOME
     """
-    st.markdown("## 💎 Análise de Value Bets Calibrada (Versão Conservadora)")
+    st.markdown("## 💎 Análise de Value Bets - Nova Lógica (Força Relativa)")
 
     results = []
     for _, row in games_today.iterrows():
-        asian_home = row.get('Asian_Line_Decimal', 0)
+        asian_line = row.get('Asian_Line_Decimal', 0)
         pred_reg = row.get('Handicap_Predito_Regressao_Calibrado', 0)
         pred_cls = row.get('Handicap_Predito_Classificacao_Calibrado', 0)
-
-        # Média ponderada CONSERVADORA
-        value_gap = 0.7 * (pred_reg - asian_home) + 0.3 * (pred_cls - asian_home)
-
-        # 🔧 INTERPRETAÇÃO MAIS CONSERVADORA
-        if value_gap > 0.3:    # ANTES: 0.4
-            rec, lado, conf = "HOME VALUE", "HOME", "MEDIUM"  # ANTES: STRONG HOME VALUE, HIGH
-        elif value_gap > 0.15: # ANTES: 0.2
-            rec, lado, conf = "LIGHT HOME VALUE", "HOME", "LOW"  # ANTES: HOME VALUE, MEDIUM
-        elif value_gap < -0.3: # ANTES: -0.4
-            rec, lado, conf = "AWAY VALUE", "AWAY", "MEDIUM"  # ANTES: STRONG AWAY VALUE, HIGH
-        elif value_gap < -0.15: # ANTES: -0.2
-            rec, lado, conf = "LIGHT AWAY VALUE", "AWAY", "LOW"  # ANTES: AWAY VALUE, MEDIUM
+        
+        # 🔄 NOVA LÓGICA: Média ponderada dos handicaps preditos
+        pred_media = 0.7 * pred_reg + 0.3 * pred_cls
+        
+        # 🔄 CÁLCULO DA FORÇA RELATIVA
+        forca_relativa = asian_line + pred_media
+        
+        # 🎯 REGRAS BASEADAS NA FORÇA RELATIVA
+        if forca_relativa < -0.4:
+            rec, lado, conf = "STRONG HOME VALUE", "HOME", "HIGH"
+            motivo = "HOME MUITO mais forte que mercado pensa"
+        elif forca_relativa < -0.15:
+            rec, lado, conf = "HOME VALUE", "HOME", "MEDIUM"
+            motivo = "HOME mais forte que mercado pensa"
+        elif forca_relativa > 0.4:
+            rec, lado, conf = "STRONG AWAY VALUE", "AWAY", "HIGH" 
+            motivo = "HOME MUITO mais fraco que mercado pensa"
+        elif forca_relativa > 0.15:
+            rec, lado, conf = "AWAY VALUE", "AWAY", "MEDIUM"
+            motivo = "HOME mais fraco que mercado pensa"
         else:
             rec, lado, conf = "NO CLEAR VALUE", "PASS", "LOW"
-
+            motivo = "Próximo da expectativa do mercado"
+        
+        # 📈 CALCULAR VALUE GAP TRADICIONAL (para comparação)
+        value_gap_tradicional = pred_media - asian_line
+        
         results.append({
             'League': row.get('League'),
             'Home': row.get('Home'),
             'Away': row.get('Away'),
-            'Asian_Line_Decimal': asian_home,
+            'Asian_Line_Decimal': asian_line,
             'Handicap_Regressao': round(pred_reg, 2),
             'Handicap_Classificacao': round(pred_cls, 2),
-            'Value_Gap': round(value_gap, 2),
+            'Handicap_Media': round(pred_media, 2),
+            'Forca_Relativa': round(forca_relativa, 2),
+            'Value_Gap_Tradicional': round(value_gap_tradicional, 2),
             'Recomendacao': rec,
             'Lado': lado,
-            'Confidence': conf
+            'Confidence': conf,
+            'Motivo': motivo
         })
 
     df_results = pd.DataFrame(results)
-    df_results['Value_Abs'] = df_results['Value_Gap'].abs()
-    df_results = df_results.sort_values('Value_Abs', ascending=False)
-
+    df_results['Forca_Abs'] = df_results['Forca_Relativa'].abs()
+    df_results = df_results.sort_values('Forca_Abs', ascending=False)
+    
     return df_results
 
+# ============================================================
+# 📈 VISUALIZAÇÃO DA NOVA LÓGICA
+# ============================================================
 
-
-def plot_handicap_analysis_calibrado(games_today):
+def plot_nova_analise_forca_relativa(games_today):
     """
-    Visualização CALIBRADA — perspectiva HOME.
-    Eixos:
-        X = Asian_Line_Decimal (mercado)
-        Y = Predição do modelo (HOME)
-    Cores:
-        🟢 HOME value → modelo acha Home mais forte
-        🔵 AWAY value → modelo acha Home mais fraco
-        ⚪ NO VALUE → equilíbrio
+    Visualização da NOVA lógica de força relativa
     """
     import matplotlib.pyplot as plt
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-
-    # ============================================================
-    # 🎯 PLOT 1 — Modelo de Regressão Calibrado
-    # ============================================================
-    if 'Handicap_Predito_Regressao_Calibrado' in games_today.columns:
-        colors_reg = []
-        for gap in games_today['Handicap_Predito_Regressao_Calibrado'] - games_today['Asian_Line_Decimal']:
-            if gap > 0.3:
-                colors_reg.append('green')   # 🟢 HOME VALUE
-            elif gap < -0.3:
-                colors_reg.append('blue')    # 🔵 AWAY VALUE
-            else:
-                colors_reg.append('lightgray')  # ⚪ NO VALUE
-
-        ax1.scatter(
-            games_today['Asian_Line_Decimal'],
-            games_today['Handicap_Predito_Regressao_Calibrado'],
-            c=colors_reg, alpha=0.7, s=60, edgecolors='k', linewidths=0.3
-        )
-        ax1.plot([-2, 2], [-2, 2], 'k--', alpha=0.3, label='Mercado Perfeito')
-        ax1.set_title('Modelo de Regressão Calibrado (Home Perspective)')
-        ax1.set_xlabel('Asian Line Decimal (Mercado)')
-        ax1.set_ylabel('Predição (Modelo - Home)')
-        ax1.grid(True, alpha=0.3)
-        ax1.legend()
-
-    # ============================================================
-    # 🎯 PLOT 2 — Modelo de Classificação Calibrado
-    # ============================================================
-    if 'Handicap_Predito_Classificacao_Calibrado' in games_today.columns:
-        colors_cls = []
-        for gap in games_today['Handicap_Predito_Classificacao_Calibrado'] - games_today['Asian_Line_Decimal']:
-            if gap > 0.3:
-                colors_cls.append('green')
-            elif gap < -0.3:
-                colors_cls.append('blue')
-            else:
-                colors_cls.append('lightgray')
-
-        ax2.scatter(
-            games_today['Asian_Line_Decimal'],
-            games_today['Handicap_Predito_Classificacao_Calibrado'],
-            c=colors_cls, alpha=0.7, s=60, edgecolors='k', linewidths=0.3
-        )
-        ax2.plot([-2, 2], [-2, 2], 'k--', alpha=0.3, label='Mercado Perfeito')
-        ax2.set_title('Modelo de Classificação Calibrado (Home Perspective)')
-        ax2.set_xlabel('Asian Line Decimal (Mercado)')
-        ax2.set_ylabel('Predição (Modelo - Home)')
-        ax2.grid(True, alpha=0.3)
-        ax2.legend()
-
+    
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    
+    # Plot 1: Força Relativa vs Asian Line
+    forca_relativa = games_today['Asian_Line_Decimal'] + games_today['Handicap_Predito_Regressao_Calibrado']
+    
+    colors = []
+    for fr in forca_relativa:
+        if fr < -0.3:
+            colors.append('darkgreen')  # STRONG HOME
+        elif fr < -0.1:
+            colors.append('lightgreen') # HOME VALUE
+        elif fr > 0.3:
+            colors.append('darkblue')   # STRONG AWAY  
+        elif fr > 0.1:
+            colors.append('lightblue')  # AWAY VALUE
+        else:
+            colors.append('gray')       # NO VALUE
+    
+    ax1.scatter(games_today['Asian_Line_Decimal'], forca_relativa, 
+                c=colors, alpha=0.7, s=80, edgecolors='black', linewidth=0.5)
+    ax1.axhline(y=0, color='red', linestyle='--', alpha=0.5, label='Equilíbrio')
+    ax1.axhline(y=-0.15, color='orange', linestyle=':', alpha=0.5, label='Limite HOME')
+    ax1.axhline(y=0.15, color='orange', linestyle=':', alpha=0.5, label='Limite AWAY')
+    ax1.set_xlabel('Asian Line Decimal (Mercado)')
+    ax1.set_ylabel('Força Relativa (Asian Line + Predição)')
+    ax1.set_title('Nova Análise: Força Relativa do HOME')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    
+    # Plot 2: Comparação entre Lógicas
+    ax2.bar(range(len(games_today)), 
+            games_today['Handicap_Predito_Regressao_Calibrado'], 
+            alpha=0.7, label='Handicap Predito')
+    ax2.bar(range(len(games_today)), 
+            games_today['Asian_Line_Decimal'], 
+            alpha=0.7, label='Asian Line Mercado')
+    ax2.set_xlabel('Jogos')
+    ax2.set_ylabel('Valor do Handicap')
+    ax2.set_title('Comparação: Predição vs Mercado')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    
     plt.tight_layout()
     return fig
 
-
-
 # ============================================================
-# 🚀 EXECUÇÃO PRINCIPAL CALIBRADA
+# 🚀 EXECUÇÃO PRINCIPAL - NOVA LÓGICA
 # ============================================================
 
 def main_calibrado():
     # ---------------- Carregar Dados ----------------
-    st.info("📂 Carregando dados para Análise de Handicap Ótimo CALIBRADO...")
+    st.info("📂 Carregando dados para Análise de Handicap Ótimo - NOVA LÓGICA...")
     
     files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
     if not files:
@@ -558,11 +556,6 @@ def main_calibrado():
     def load_cached_data(selected_file):
         games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
         history = load_all_games(GAMES_FOLDER)
-        
-        # 🔧 FILTRAR LIGAS PRINCIPAIS para melhor calibração
-        # ============================================================
-        # 🎯 FILTRO INTELIGENTE DE LIGAS + ONE-HOT PARCIAL
-        # ============================================================
         
         def classificar_league_tier(league_name: str) -> int:
             if pd.isna(league_name):
@@ -582,7 +575,6 @@ def main_calibrado():
                 return 2
             return 3
         
-        
         def aplicar_filtro_tier(df: pd.DataFrame, max_tier=2) -> pd.DataFrame:
             if 'League' not in df.columns:
                 st.warning("⚠️ Coluna 'League' ausente — filtro de tier não aplicado.")
@@ -594,14 +586,10 @@ def main_calibrado():
             st.info(f"🎯 Ligas filtradas (Tier ≤ {max_tier}): {len(filtrado)}/{len(df)} jogos mantidos")
             return filtrado
         
-        
         # Aplicar o filtro
         history = aplicar_filtro_tier(history, max_tier=2)
         games_today = aplicar_filtro_tier(games_today, max_tier=2)
         
-        # ============================================================
-        # 🧩 ONE-HOT PARCIAL DAS LIGAS MAIS FREQUENTES
-        # ============================================================
         from sklearn.preprocessing import OneHotEncoder
         
         # Selecionar as 10 ligas mais comuns no histórico
@@ -621,7 +609,6 @@ def main_calibrado():
         encoded_today_df = pd.DataFrame(encoded_today, columns=encoder.get_feature_names_out(['League_Clean']))
         games_today = pd.concat([games_today.reset_index(drop=True), encoded_today_df.reset_index(drop=True)], axis=1)
 
-        
         return games_today, history
     
     games_today, history = load_cached_data(selected_file)
@@ -675,79 +662,48 @@ def main_calibrado():
     # ---------------- Treinar Modelos Calibrados ----------------
     st.markdown("## 🧠 Treinando Modelos de Handicap CALIBRADOS...")
     
-    if st.button("🚀 Executar Análise Calibrada", type="primary"):
+    if st.button("🚀 Executar Análise - Nova Lógica", type="primary"):
         with st.spinner("Treinando modelos calibrados..."):
-            # Treinar modelo de regressão calibrado
+            # Treinar modelos (usando versões conservadoras)
             modelo_regressao, games_today, scaler = treinar_modelo_handicap_regressao_calibrado_v2(history, games_today)
-            
-            if modelo_regressao is None:
-                st.error("❌ Falha no treinamento do modelo de regressão")
-                return
-            
-            # Treinar modelo de classificação calibrado  
             modelo_classificacao, games_today, label_encoder = treinar_modelo_handicap_classificacao_calibrado_v2(history, games_today)
             
-            if modelo_classificacao is None:
-                st.error("❌ Falha no treinamento do modelo de classificação")
-                return
-            
-            # Analisar value bets calibrado
-            df_value_bets_calibrado = analisar_value_bets_calibrado_v2(games_today)
+            # 🔄 USAR NOVA LÓGICA
+            df_value_bets_nova_logica = analisar_value_bets_nova_logica(games_today)
             
             # Exibir resultados
-            st.markdown("## 📊 Resultados da Análise Calibrada")
+            st.markdown("## 📊 Resultados - Nova Lógica (Força Relativa)")
             
-            # 🔧 FILTRAR APENAS BETS CONFIAVEIS
-            bets_confiaveis = df_value_bets_calibrado[
-                (df_value_bets_calibrado['Value_Abs'].between(0.2, 0.8)) &
-                (df_value_bets_calibrado['Asian_Line_Decimal'].between(-1.5, 1.5)) &
-                (df_value_bets_calibrado['Confidence'].isin(['HIGH', 'MEDIUM']))
+            # Filtrar apenas recomendações com valor
+            bets_validos = df_value_bets_nova_logica[
+                df_value_bets_nova_logica['Lado'].isin(['HOME', 'AWAY'])
             ]
             
-            if bets_confiaveis.empty:
-                st.warning("⚠️ Nenhum value bet confiável encontrado após filtragem")
+            if bets_validos.empty:
+                st.warning("⚠️ Nenhuma recomendação de value bet encontrada")
             else:
-                st.dataframe(bets_confiaveis, use_container_width=True)
-            
-            # Visualizações calibradas
-            st.pyplot(plot_handicap_analysis_calibrado(games_today))
-            
-            # Estatísticas
-            if not bets_confiaveis.empty:
+                st.dataframe(bets_validos, use_container_width=True)
+                
+                # Estatísticas
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    strong_bets = len(bets_confiaveis[bets_confiaveis['Confidence'] == 'HIGH'])
-                    st.metric("🎯 Strong Value Bets", strong_bets)
-                with col2:
-                    total_bets = len(bets_confiaveis)
-                    st.metric("📊 Total Recomendações", total_bets)
-                with col3:
-                    home_bets = len(bets_confiaveis[bets_confiaveis['Lado'] == 'HOME'])
+                    home_bets = len(bets_validos[bets_validos['Lado'] == 'HOME'])
                     st.metric("🏠 HOME Value", home_bets)
-                with col4:
-                    away_bets = len(bets_confiaveis[bets_confiaveis['Lado'] == 'AWAY'])
-                    st.metric("✈️ AWAY Value", away_bets)
-                
-                # 🔧 DIAGNÓSTICO DE CALIBRAÇÃO
-                st.markdown("### 🔧 Diagnóstico de Calibração")
-                avg_value_gap = bets_confiaveis['Value_Gap'].mean()
-                max_value_gap = bets_confiaveis['Value_Gap'].abs().max()
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("📈 Value Gap Médio", f"{avg_value_gap:.2f}")
                 with col2:
-                    st.metric("📊 Value Gap Máximo", f"{max_value_gap:.2f}")
-                
-                if max_value_gap > 1.0:
-                    st.warning("⚠️ Ainda há alguns value gaps altos - pode precisar de mais ajustes")
-                else:
-                    st.success("✅ Modelo bem calibrado! Value gaps em faixa realista")
+                    away_bets = len(bets_validos[bets_validos['Lado'] == 'AWAY'])
+                    st.metric("✈️ AWAY Value", away_bets)
+                with col3:
+                    strong_bets = len(bets_validos[bets_validos['Confidence'] == 'HIGH'])
+                    st.metric("🎯 Strong Bets", strong_bets)
+                with col4:
+                    total_bets = len(bets_validos)
+                    st.metric("📊 Total Recomendações", total_bets)
             
+            # Visualizações
+            st.pyplot(plot_nova_analise_forca_relativa(games_today))
+            
+            st.success("✅ Análise concluída com Nova Lógica de Força Relativa!")
             st.balloons()
-    
-    else:
-        st.info("👆 Clique no botão para executar a análise calibrada")
 
 if __name__ == "__main__":
     main_calibrado()
