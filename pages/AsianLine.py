@@ -412,11 +412,11 @@ def treinar_modelo_handicap_classificacao_calibrado(history, games_today):
 # 📊 ANÁLISE DE VALOR CALIBRADA
 # ============================================================
 
-def analisar_value_bets_calibrado(games_today):
+def analisar_value_bets_corrigido(games_today):
     """
-    Análise de value CALIBRADA com thresholds realistas
+    Versão CORRIGIDA da análise de value - com interpretação correta dos handicaps
     """
-    st.markdown("## 💎 Análise de Value Bets Calibrada")
+    st.markdown("## 💎 Análise de Value Bets CORRIGIDA")
     
     results = []
     
@@ -425,27 +425,38 @@ def analisar_value_bets_calibrado(games_today):
         handicap_regressao = row.get('Handicap_Predito_Regressao_Calibrado', 0)
         handicap_classificacao = row.get('Handicap_Predito_Classificacao_Calibrado', 0)
         
-        # Value gap de cada modelo
+        # 🔧 CORREÇÃO CRUCIAL: Interpretar corretamente o handicap predito
+        # O modelo prediz handicaps do ponto de vista do HOME
+        # handicap_predito > 0 = HOME favorito, handicap_predito < 0 = AWAY favorito
+        
+        # Value gap CORRIGIDO - comparação direta
         gap_regressao = handicap_regressao - handicap_mercado
         gap_classificacao = handicap_classificacao - handicap_mercado
         
-        # 🔧 MÉDIA PONDERADA CALIBRADA
-        value_gap_consolidado = (gap_regressao * 0.7 + gap_classificacao * 0.3)
+        # 🔧 CORREÇÃO: Se os sinais estão fundamentalmente opostos, é um sinal forte
+        if (handicap_mercado < 0 and handicap_regressao > 0) or (handicap_mercado > 0 and handicap_regressao < 0):
+            # Sinais opostos - value muito forte
+            value_gap_consolidado = (abs(gap_regressao) * 0.8 + abs(gap_classificacao) * 0.2)
+            # Mantém o sinal original do gap_regressao
+            value_gap_consolidado = gap_regressao if abs(gap_regressao) > abs(gap_classificacao) else gap_classificacao
+        else:
+            # Sinais alinhados - média ponderada normal
+            value_gap_consolidado = (gap_regressao * 0.7 + gap_classificacao * 0.3)
         
-        # 🔧 THRESHOLDS REALISTAS
-        if value_gap_consolidado > 0.4:
+        # 🔧 THRESHOLDS REALISTAS CORRIGIDOS
+        if value_gap_consolidado > 0.3:
             recomendacao = "STRONG HOME VALUE"
             lado = "HOME"
             confidence = "HIGH"
-        elif value_gap_consolidado > 0.2:
+        elif value_gap_consolidado > 0.15:
             recomendacao = "HOME VALUE" 
             lado = "HOME"
             confidence = "MEDIUM"
-        elif value_gap_consolidado < -0.4:
+        elif value_gap_consolidado < -0.3:
             recomendacao = "STRONG AWAY VALUE"
             lado = "AWAY" 
             confidence = "HIGH"
-        elif value_gap_consolidado < -0.2:
+        elif value_gap_consolidado < -0.15:
             recomendacao = "AWAY VALUE"
             lado = "AWAY"
             confidence = "MEDIUM"
@@ -453,6 +464,9 @@ def analisar_value_bets_calibrado(games_today):
             recomendacao = "NO CLEAR VALUE"
             lado = "PASS"
             confidence = "LOW"
+        
+        # 🔧 ADICIONAR DIAGNÓSTICO DE SINAL
+        sinal_alinhado = "✅" if (handicap_mercado * handicap_regressao) >= 0 else "⚠️"
         
         results.append({
             'League': row['League'],
@@ -462,6 +476,7 @@ def analisar_value_bets_calibrado(games_today):
             'Handicap_Regressao': round(handicap_regressao, 2),
             'Handicap_Classificacao': round(handicap_classificacao, 2),
             'Value_Gap': round(value_gap_consolidado, 2),
+            'Sinal_Alinhado': sinal_alinhado,
             'Recomendacao': recomendacao,
             'Lado': lado,
             'Confidence': confidence
@@ -475,57 +490,108 @@ def analisar_value_bets_calibrado(games_today):
     
     return df_results
 
-def plot_handicap_analysis_calibrado(games_today):
+def plot_handicap_analysis_corrigido(games_today):
     """
-    Visualização CALIBRADA
+    Visualização CORRIGIDA com diagnóstico de sinais
     """
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
     
-    # Plot 1: Regressão Calibrada vs Mercado
+    # Plot 1: Regressão vs Mercado (CORRIGIDO)
     if 'Handicap_Predito_Regressao_Calibrado' in games_today.columns:
         colors_regressao = []
-        for gap in games_today.get('Value_Gap_Regressao_Calibrado', []):
+        sizes_regressao = []
+        
+        for idx, row in games_today.iterrows():
+            handicap_mercado = row['Asian_Line_Decimal']
+            handicap_predito = row['Handicap_Predito_Regressao_Calibrado']
+            gap = handicap_predito - handicap_mercado
+            
+            # Cores baseadas no value gap CORRIGIDO
             if gap > 0.3:
-                colors_regressao.append('green')
+                colors_regressao.append('green')  # STRONG HOME VALUE
+                sizes_regressao.append(80)
+            elif gap > 0.15:
+                colors_regressao.append('lightgreen')  # HOME VALUE
+                sizes_regressao.append(60)
             elif gap < -0.3:
-                colors_regressao.append('red')
+                colors_regressao.append('red')  # STRONG AWAY VALUE
+                sizes_regressao.append(80)
+            elif gap < -0.15:
+                colors_regressao.append('lightcoral')  # AWAY VALUE
+                sizes_regressao.append(60)
             else:
-                colors_regressao.append('gray')
+                colors_regressao.append('gray')  # NO VALUE
+                sizes_regressao.append(40)
         
         ax1.scatter(games_today['Asian_Line_Decimal'], 
                     games_today['Handicap_Predito_Regressao_Calibrado'],
-                    c=colors_regressao, alpha=0.6, s=60)
+                    c=colors_regressao, alpha=0.7, s=sizes_regressao)
         ax1.plot([-2, 2], [-2, 2], 'k--', alpha=0.3, label='Mercado Perfeito')
         ax1.set_xlabel('Handicap Mercado')
-        ax1.set_ylabel('Handicap Predito (Regressão Calibrado)')
-        ax1.set_title('Value Analysis - Modelo Regressão Calibrado')
+        ax1.set_ylabel('Handicap Predito (Regressão)')
+        ax1.set_title('Value Analysis - Modelo Regressão (Corrigido)')
         ax1.set_xlim(-2.5, 2.5)
         ax1.set_ylim(-2.5, 2.5)
         ax1.legend()
         ax1.grid(True, alpha=0.3)
     
-    # Plot 2: Classificação Calibrada vs Mercado
+    # Plot 2: Classificação vs Mercado
     if 'Handicap_Predito_Classificacao_Calibrado' in games_today.columns:
         colors_class = []
         for gap in games_today.get('Value_Gap_Classificacao_Calibrado', []):
             if gap > 0.3:
                 colors_class.append('green')
+            elif gap > 0.15:
+                colors_class.append('lightgreen')
             elif gap < -0.3:
                 colors_class.append('red')
+            elif gap < -0.15:
+                colors_class.append('lightcoral')
             else:
                 colors_class.append('gray')
         
         ax2.scatter(games_today['Asian_Line_Decimal'],
                    games_today['Handicap_Predito_Classificacao_Calibrado'],
-                   c=colors_class, alpha=0.6, s=60)
+                   c=colors_class, alpha=0.7, s=60)
         ax2.plot([-2, 2], [-2, 2], 'k--', alpha=0.3, label='Mercado Perfeito')
         ax2.set_xlabel('Handicap Mercado')
-        ax2.set_ylabel('Handicap Predito (Classificação Calibrado)')
-        ax2.set_title('Value Analysis - Modelo Classificação Calibrado')
+        ax2.set_ylabel('Handicap Predito (Classificação)')
+        ax2.set_title('Value Analysis - Modelo Classificação')
         ax2.set_xlim(-2.5, 2.5)
         ax2.set_ylim(-2.5, 2.5)
         ax2.legend()
         ax2.grid(True, alpha=0.3)
+    
+    # Plot 3: Diagnóstico de Sinais
+    sinais_alinhados = 0
+    sinais_opostos = 0
+    
+    for idx, row in games_today.iterrows():
+        handicap_mercado = row['Asian_Line_Decimal']
+        handicap_regressao = row.get('Handicap_Predito_Regressao_Calibrado', 0)
+        
+        if (handicap_mercado * handicap_regressao) >= 0:  # Mesmo sinal
+            sinais_alinhados += 1
+        else:
+            sinais_opostos += 1
+    
+    labels = ['Sinais Alinhados', 'Sinais Opostos']
+    sizes = [sinais_alinhados, sinais_opostos]
+    colors = ['lightblue', 'lightcoral']
+    
+    ax3.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
+    ax3.set_title('Diagnóstico: Alinhamento de Sinais\n(Mercado vs Modelo)')
+    
+    # Plot 4: Distribuição de Value Gaps
+    if 'Value_Gap_Regressao_Calibrado' in games_today.columns:
+        gaps = games_today['Value_Gap_Regressao_Calibrado']
+        ax4.hist(gaps, bins=20, alpha=0.7, color='skyblue', edgecolor='black')
+        ax4.axvline(x=0, color='red', linestyle='--', alpha=0.8, label='Linha Zero')
+        ax4.set_xlabel('Value Gap')
+        ax4.set_ylabel('Frequência')
+        ax4.set_title('Distribuição dos Value Gaps')
+        ax4.legend()
+        ax4.grid(True, alpha=0.3)
     
     plt.tight_layout()
     return fig
@@ -641,25 +707,31 @@ def main_calibrado():
                 return
             
             # Analisar value bets calibrado
-            df_value_bets_calibrado = analisar_value_bets_calibrado(games_today)
+            df_value_bets_corrigido = analisar_value_bets_corrigido(games_today)
             
-            # Exibir resultados
-            st.markdown("## 📊 Resultados da Análise Calibrada")
+            # E mostre os resultados corrigidos:
+            st.markdown("## 📊 Resultados da Análise CORRIGIDA")
             
-            # 🔧 FILTRAR APENAS BETS CONFIAVEIS
-            bets_confiaveis = df_value_bets_calibrado[
-                (df_value_bets_calibrado['Value_Abs'].between(0.2, 0.8)) &
-                (df_value_bets_calibrado['Asian_Line'].between(-1.5, 1.5)) &
-                (df_value_bets_calibrado['Confidence'].isin(['HIGH', 'MEDIUM']))
+            bets_confiaveis_corrigidos = df_value_bets_corrigido[
+                (df_value_bets_corrigido['Value_Abs'].between(0.15, 0.8)) &
+                (df_value_bets_corrigido['Asian_Line'].between(-1.5, 1.5)) &
+                (df_value_bets_corrigido['Confidence'].isin(['HIGH', 'MEDIUM']))
             ]
             
-            if bets_confiaveis.empty:
-                st.warning("⚠️ Nenhum value bet confiável encontrado após filtragem")
-            else:
-                st.dataframe(bets_confiaveis, use_container_width=True)
+            st.dataframe(bets_confiaveis_corrigidos, use_container_width=True)
             
-            # Visualizações calibradas
-            st.pyplot(plot_handicap_analysis_calibrado(games_today))
+            # Mostrar diagnóstico
+            st.markdown("### 🔍 Diagnóstico de Sinais")
+            col1, col2 = st.columns(2)
+            with col1:
+                sinais_alinhados = len(df_value_bets_corrigido[df_value_bets_corrigido['Sinal_Alinhado'] == '✅'])
+                st.metric("✅ Sinais Alinhados", sinais_alinhados)
+            with col2:
+                sinais_opostos = len(df_value_bets_corrigido[df_value_bets_corrigido['Sinal_Alinhado'] == '⚠️'])
+                st.metric("⚠️ Sinais Opostos", sinais_opostos)
+            
+            # Visualização corrigida
+            st.pyplot(plot_handicap_analysis_corrigido(games_today))
             
             # Estatísticas
             if not bets_confiaveis.empty:
