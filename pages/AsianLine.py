@@ -596,11 +596,4 @@ def plot_handicap_analysis_corrigido(games_today):
     plt.tight_layout()
     return fig
 
-# ============================================================
-# 🚀 EXECUÇÃO PRINCIPAL CALIBRADA
-# ============================================================
 
-        st.info("👆 Clique no botão para executar a análise calibrada")
-
-if __name__ == "__main__":
-    main_calibrado()
