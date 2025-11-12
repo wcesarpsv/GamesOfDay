@@ -805,7 +805,7 @@ def main_calibrado():
                 return 2
             return 3
         
-        def aplicar_filtro_tier(df: pd.DataFrame, max_tier=2) -> pd.DataFrame:
+        def aplicar_filtro_tier(df: pd.DataFrame, max_tier=3) -> pd.DataFrame:
             if 'League' not in df.columns:
                 st.warning("⚠️ Coluna 'League' ausente — filtro de tier não aplicado.")
                 df['League_Tier'] = 3
@@ -817,8 +817,8 @@ def main_calibrado():
             return filtrado
         
         # Aplicar o filtro
-        history = aplicar_filtro_tier(history, max_tier=2)
-        games_today = aplicar_filtro_tier(games_today, max_tier=2)
+        history = aplicar_filtro_tier(history, max_tier=3)
+        games_today = aplicar_filtro_tier(games_today, max_tier=3)
         
         from sklearn.preprocessing import OneHotEncoder
         
