@@ -425,7 +425,7 @@ def analisar_value_bets_calibrado(games_today):
         pred_cls = row.get('Handicap_Predito_Classificacao_Calibrado', 0)
 
         # Média ponderada (predições calibradas)
-        value_gap = 0.7 * (pred_reg - asian_home) + 0.3 * (pred_cls - asian_home)
+        value_gap = 0.7 * (-pred_reg * 0.5 - asian_home) + 0.3 * (-pred_cls * 0.5 - asian_home)
 
         # Interpretação coerente com a perspectiva HOME
         if value_gap > 0.4:
