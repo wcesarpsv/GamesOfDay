@@ -586,120 +586,174 @@ def treinar_modelo_away_handicap_classificacao_calibrado(history, games_today):
 # 📊 ANÁLISE DUAL - HOME + AWAY MODELS
 # ============================================================
 
-def analisar_value_bets_dual_modelos(games_today):
+# ============================================================
+# 💎 ANÁLISE DUAL - HOME + AWAY (com lógica em eixo HOME)
+# ============================================================
+def analisar_value_bets_dual_modelos(games_today: pd.DataFrame, league_thresholds: dict):
     """
-    🧠 ANÁLISE INTELIGENTE - Encontrar os CONFRONTOS CERTOS
-    Foca na RELAÇÃO entre times + DISTORÇÃO do handicap
+    Lógica DUAL revisada:
+    - Eixo principal: handicap HOME (negativo = casa favorita)
+    - Modelo HOME já está no eixo HOME.
+    - Modelo AWAY é convertido para eixo HOME multiplicando por -1.
+    - Só recomenda aposta quando ambos os modelos concordam no lado (HOME ou AWAY).
+    - Usa thresholds por liga + ajuste pela linha para definir BET / STRONG BET.
     """
-    st.markdown("## 💎 Análise DUAL - Home & Away Models")
-
+    st.markdown("## 💎 Análise DUAL - Home & Away Models (Eixo HOME unificado)")
     results = []
-    
+
     for _, row in games_today.iterrows():
-        asian_line = row.get('Asian_Line_Decimal', 0)
-        
-        # 🎯 PREDIÇÕES DOS MODELOS (HOME + AWAY)
-        pred_home_reg = row.get('Handicap_Predito_Regressao_Calibrado', 0)
-        pred_home_cls = row.get('Handicap_Predito_Classificacao_Calibrado', 0)
-        pred_home = 0.7 * pred_home_reg + 0.3 * pred_home_cls
-        
-        pred_away_reg = row.get('Handicap_AWAY_Predito_Regressao_Calibrado', 0) 
-        pred_away_cls = row.get('Handicap_AWAY_Predito_Classificacao_Calibrado', 0)
-        pred_away = 0.7 * pred_away_reg + 0.3 * pred_away_cls
-        
-        # 🔍 ANÁLISE INTELIGENTE DA RELAÇÃO ENTRE TIMES
-        forca_relativa = pred_home - pred_away
-        equilibrio = abs(forca_relativa) < 0.2
-        
-        # 💡 DECISÕES INTELIGENTES POR CENÁRIO
-        recomendacao_final, confidence = "NO CLEAR EDGE", "LOW"
-        
-        # CENÁRIO 1: TIMES EQUILIBRADOS + HANDICAP DISTORCIDO
-        if equilibrio and abs(asian_line) > 0.25:
-            if asian_line < -0.25:  # Mercado superestima Home
-                value_gap = abs(asian_line) - abs(forca_relativa)
-                if value_gap > 0.3:
-                    recomendacao_final, confidence = "STRONG BET AWAY", "HIGH"
-                elif value_gap > 0.15:
-                    recomendacao_final, confidence = "BET AWAY", "MEDIUM"
-                    
-            elif asian_line > 0.25:  # Mercado superestima Away
-                value_gap = abs(asian_line) - abs(forca_relativa)
-                if value_gap > 0.3:
-                    recomendacao_final, confidence = "STRONG BET HOME", "HIGH"
-                elif value_gap > 0.15:
-                    recomendacao_final, confidence = "BET HOME", "MEDIUM"
-        
-        # CENÁRIO 2: TIME CLARAMENTE MAIS FORTE + HANDICAP JUSTO
-        elif not equilibrio and abs(asian_line) < 0.75:
-            if forca_relativa > 0.3 and asian_line < 0:  # Home forte, handicap razoável
-                cobertura = forca_relativa - abs(asian_line)
-                if cobertura > 0.2:
-                    recomendacao_final, confidence = "STRONG BET HOME", "HIGH"
-                elif cobertura > 0.1:
-                    recomendacao_final, confidence = "BET HOME", "MEDIUM"
-                    
-            elif forca_relativa < -0.3 and asian_line > 0:  # Away forte, handicap razoável
-                cobertura = abs(forca_relativa) - abs(asian_line)
-                if cobertura > 0.2:
-                    recomendacao_final, confidence = "STRONG BET AWAY", "HIGH"
-                elif cobertura > 0.1:
-                    recomendacao_final, confidence = "BET AWAY", "MEDIUM"
-        
-        # CENÁRIO 3: HANDICAP EXTREMO - SÓ APOSTAR COM CONVICÇÃO
-        elif abs(asian_line) >= 1.0:
-            if forca_relativa > 0.5 and asian_line < -1.0:
-                if forca_relativa > abs(asian_line) + 0.3:
-                    recomendacao_final, confidence = "STRONG BET HOME", "HIGH"
-            elif forca_relativa < -0.5 and asian_line > 1.0:
-                if abs(forca_relativa) > abs(asian_line) + 0.3:
-                    recomendacao_final, confidence = "STRONG BET AWAY", "HIGH"
-        
-        # 📊 CALCULAR VALUE GAPS (mantendo formato original)
+        asian_line = float(row.get('Asian_Line_Decimal', 0) or 0.0)
+
+        # -----------------------------
+        # 🔢 Predições combinadas brutas
+        # -----------------------------
+        # HOME: já no eixo HOME
+        pred_home = (
+            0.7 * float(row.get('Handicap_Predito_Regressao_Calibrado', 0) or 0.0) +
+            0.3 * float(row.get('Handicap_Predito_Classificacao_Calibrado', 0) or 0.0)
+        )
+
+        # AWAY: eixo AWAY → converter para eixo HOME
+        pred_away_raw = (
+            0.7 * float(row.get('Handicap_AWAY_Predito_Regressao_Calibrado', 0) or 0.0) +
+            0.3 * float(row.get('Handicap_AWAY_Predito_Classificacao_Calibrado', 0) or 0.0)
+        )
+        pred_away_home_axis = -pred_away_raw  # agora também representa handicap HOME
+
+        # -----------------------------
+        # 📏 Gaps em relação à linha (sempre em eixo HOME)
+        # -----------------------------
+        # gap < 0  → modelo acha que casa deveria ser MAIS favorita do que o mercado → valor HOME
+        # gap > 0  → modelo acha que casa deveria ser MENOS favorita / mais zebra do que o mercado → valor AWAY
         value_gap_home = pred_home - asian_line
-        value_gap_away = pred_away - (-asian_line)
-        
-        # 🆕 LIVE SCORE
-        goals_h_today = row.get('Goals_H_Today')
-        goals_a_today = row.get('Goals_A_Today')
-        home_red = row.get('Home_Red')
-        away_red = row.get('Away_Red')
-        
+        value_gap_away_home = pred_away_home_axis - asian_line
+
+        # (opcional, para monitorar consistência com versão antiga em eixo AWAY)
+        value_gap_away_orig_axis = pred_away_raw - (-asian_line)
+
+        # -----------------------------
+        # 🧠 Linha "justa" DUAL e consenso
+        # -----------------------------
+        # Dois estimadores independentes para o handicap HOME → fazemos uma média
+        fair_line_dual = (pred_home + pred_away_home_axis) / 2.0
+
+        # Medida de desacordo entre os modelos (quanto divergem na handic. HOME)
+        models_disagreement = abs(pred_home - pred_away_home_axis)
+
+        # Consenso de direção:
+        sign_home = np.sign(value_gap_home)
+        sign_away = np.sign(value_gap_away_home)
+        same_direction = (sign_home == sign_away) and (sign_home != 0)
+
+        # -----------------------------
+        # ⚖️ Thresholds dinâmicos por liga e lado
+        # -----------------------------
+        league = row.get('League')
+        thr_pack = league_thresholds.get(league, league_thresholds.get('_GLOBAL', {}))
+
+        # thresholds base vindos do histórico
+        thr_home_base = float(thr_pack.get('HOME', 0.15))
+        thr_home_str_base = float(thr_pack.get('HOME_STRONG', 0.30))
+        thr_away_base = float(thr_pack.get('AWAY', 0.15))
+        thr_away_str_base = float(thr_pack.get('AWAY_STRONG', 0.30))
+
+        # ajuste fino pelo tipo de linha (even, heavy, etc.)
+        thr_home = adjust_threshold_by_line(thr_home_base, asian_line)
+        thr_home_str = adjust_threshold_by_line(thr_home_str_base, asian_line)
+        thr_away = adjust_threshold_by_line(thr_away_base, asian_line)
+        thr_away_str = adjust_threshold_by_line(thr_away_str_base, asian_line)
+
+        # -----------------------------
+        # 🧮 Lógica de decisão DUAL
+        # -----------------------------
+        recomendacao_final = "NO CLEAR EDGE"
+        confidence = "LOW"
+        side_consensus = "NONE"
+
+        # edge "conservador": usa o menor gap em módulo entre os dois modelos
+        edge_mag_home = abs(value_gap_home)
+        edge_mag_away = abs(value_gap_away_home)
+        edge_mag_dual = min(edge_mag_home, edge_mag_away)
+
+        # Regra de consenso mínimo: se os modelos discordam MUITO, não apostar
+        # (limite de 0.40 pode ser ajustado depois se você quiser)
+        strong_disagreement = models_disagreement > 0.40
+
+        if same_direction and not strong_disagreement:
+            # Se o gap for negativo nos dois → valor HOME
+            if sign_home < 0:
+                side_consensus = "HOME"
+                if edge_mag_dual >= thr_home_str:
+                    recomendacao_final = "STRONG BET HOME"
+                    confidence = "HIGH"
+                elif edge_mag_dual >= thr_home:
+                    recomendacao_final = "BET HOME"
+                    confidence = "MEDIUM"
+
+            # Se o gap for positivo nos dois → valor AWAY
+            elif sign_home > 0:
+                side_consensus = "AWAY"
+                if edge_mag_dual >= thr_away_str:
+                    recomendacao_final = "STRONG BET AWAY"
+                    confidence = "HIGH"
+                elif edge_mag_dual >= thr_away:
+                    recomendacao_final = "BET AWAY"
+                    confidence = "MEDIUM"
+
+        # -----------------------------
+        # 🎯 Live score em string
+        # -----------------------------
+        g_h = row.get('Goals_H_Today')
+        g_a = row.get('Goals_A_Today')
+        h_r = row.get('Home_Red')
+        a_r = row.get('Away_Red')
         live_score_info = ""
-        if pd.notna(goals_h_today) and pd.notna(goals_a_today):
-            live_score_info = f"⚽ {goals_h_today}-{goals_a_today}"
-            if pd.notna(home_red) and home_red > 0:
-                live_score_info += f" 🟥H{home_red}"
-            if pd.notna(away_red) and away_red > 0:
-                live_score_info += f" 🟥A{away_red}"
-        
+        if pd.notna(g_h) and pd.notna(g_a):
+            live_score_info = f"⚽ {int(g_h)}-{int(g_a)}"
+            if pd.notna(h_r) and int(h_r) > 0:
+                live_score_info += f" 🟥H{int(h_r)}"
+            if pd.notna(a_r) and int(a_r) > 0:
+                live_score_info += f" 🟥A{int(a_r)}"
+
         results.append({
-            'League': row.get('League'),
+            'League': league,
             'Home': row.get('Home'),
             'Away': row.get('Away'),
-            'Asian_Line': asian_line,
-            
-            # Modelo HOME
+            'Asian_Line': row.get('Asian_Line'),
+            'Asian_Line_Decimal': asian_line,
+
+            # 👀 Monitor dos dois modelos:
             'Handicap_HOME_Predito': round(pred_home, 2),
-            'Value_Gap_HOME': round(value_gap_home, 2),
-            
-            # Modelo AWAY
-            'Handicap_AWAY_Predito': round(pred_away, 2), 
-            'Value_Gap_AWAY': round(value_gap_away, 2),
-            
-            # Decisão Final
+            'Handicap_AWAY_Predito'         : round(pred_away_raw, 2),       # eixo AWAY (como vinha do modelo)
+            'Handicap_AWAY_Predito_HomeAxis': round(pred_away_home_axis, 2), # mesmo eixo do HOME
+
+            # Gaps em eixo HOME:
+            'Value_Gap_HOME'        : round(value_gap_home, 2),
+            'Value_Gap_AWAY_HomeAxis': round(value_gap_away_home, 2),
+
+            # Gap "antigo" em eixo AWAY (só para você monitorar se quiser comparar):
+            'Value_Gap_AWAY_OrigAxis': round(value_gap_away_orig_axis, 2),
+
+            # Linha justa DUAL (média dos dois em eixo HOME):
+            'Fair_Line_Dual': round(fair_line_dual, 2),
+
+            # Diferença entre os modelos no eixo HOME (quanto eles discordam):
+            'Models_Disagreement': round(models_disagreement, 2),
+
             'Recomendacao': recomendacao_final,
             'Confidence': confidence,
-            'Edge_Difference': round(abs(value_gap_home - value_gap_away), 2),
+            'Side_Consensus': side_consensus,
+
+            # Quanto os gaps divergem entre si:
+            'Edge_Difference': round(abs(value_gap_home - value_gap_away_home), 2),
+
             'Live_Score': live_score_info
         })
-    
+
     df_results = pd.DataFrame(results)
-    
-    # 🔍 FILTRAR APENAS JOGOS COM VALUE
     bets_validos = df_results[df_results['Recomendacao'] != 'NO CLEAR EDGE']
-    
     return df_results, bets_validos
+
 
 # ============================================================
 # 📈 VISUALIZAÇÃO DUAL
