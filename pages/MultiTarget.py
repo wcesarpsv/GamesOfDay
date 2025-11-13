@@ -1829,8 +1829,7 @@ def calcular_features_dual_model(df):
 def prepare_home_features_dual(df):
     """Features apenas do HOME + linha"""
     features = [
-        'Aggression_Home', 'HandScore_Home', 'M_H', 'MT_H', 'Quadrante_Home',
-        'Asian_Line_Decimal'
+        'Aggression_Home', 'HandScore_Home', 'M_H', 'MT_H', 'Quadrante_Home'
     ]
     available = [f for f in features if f in df.columns]
     X = df[available].fillna(0)
@@ -1840,8 +1839,8 @@ def prepare_home_features_dual(df):
 def prepare_away_features_dual(df):
     """Features apenas do AWAY + linha"""
     features = [
-        'Aggression_Away', 'HandScore_Away', 'M_A', 'MT_A', 'Quadrante_Away',
-        'Asian_Line_Decimal'  
+        'Aggression_Away', 'HandScore_Away', 'M_A', 'MT_A', 'Quadrante_Away'
+        
     ]
     available = [f for f in features if f in df.columns]
     X = df[available].fillna(0)
