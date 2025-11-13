@@ -587,7 +587,8 @@ def plot_quadrantes_16(df, side="Home"):
 
     # Definir cores por categoria
     cores_categorias = {
-        'Fav Forte': 'gold',
+        'Fav Forte Forte': 'gold',
+        'Fav Forte': 'yellow',
         'Fav Moderado': 'black', 
         'Under Moderado': 'black',
         'Under Forte': 'red'
