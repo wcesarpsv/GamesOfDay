@@ -800,8 +800,8 @@ def main_calibrado():
             hist_for_pred['VG_AWAY'] = hist_for_pred['Pred_AWAY'] - (-hist_for_pred['Asian_Line_Decimal'])
 
             league_thresholds = find_league_thresholds(hist_for_pred, min_bets=60)
-            st.markdown("### ⚖️ Thresholds por Liga (dinâmicos híbridos)")
-            st.write({k:v for k,v in league_thresholds.items() if k!='_GLOBAL'})
+            # st.markdown("### ⚖️ Thresholds por Liga (dinâmicos híbridos)")
+            # st.write({k:v for k,v in league_thresholds.items() if k!='_GLOBAL'})
 
             # Análise dual com thresholds
             df_value_bets_dual, bets_validos_dual = analisar_value_bets_dual_modelos(games_today, league_thresholds)
