@@ -651,13 +651,6 @@ def main_calibrado():
 
     df_final = analisar_value_bets_dual(games_today, league_thresholds)
     st.dataframe(df_final, use_container_width=True)
-    st.markdown("### 📡 LiveScore do Dia (tempo real)")
-    
-    cols = ['League','Home','Away','Status','Goals_H_Today','Goals_A_Today','Home_Red','Away_Red']
-    live_df = games_today[cols].copy()
-    
-    st.dataframe(live_df, use_container_width=True)
-
 
     st.pyplot(plot_dual(df_final))
 
