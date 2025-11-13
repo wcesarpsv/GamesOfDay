@@ -465,38 +465,65 @@ def find_league_thresholds(history: pd.DataFrame, min_bets=60):
 # ============================================================
 # 📡 LIVE SCORE INTEGRATION (apenas FT, inteiros)
 # ============================================================
-def load_and_merge_livescore(games_today: pd.DataFrame, selected_date_str: str) -> pd.DataFrame:
+def load_and_merge_livescore(games_today, selected_date_str):
+    """Carrega e faz merge dos dados do Live Score"""
+
     livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
+
+    # Inicializar colunas
     games_today = setup_livescore_columns(games_today)
+
     if os.path.exists(livescore_file):
         st.info(f"📡 LiveScore file found: {livescore_file}")
         results_df = pd.read_csv(livescore_file)
-        # filtra cancelados/adiados
-        if 'status' in results_df.columns:
-            results_df = results_df[~results_df['status'].isin(['Cancel','Postp.'])]
-        required = ['Id','status','home_goal','away_goal','home_ht_goal','away_ht_goal',
-                    'home_corners','away_corners','home_yellow','away_yellow','home_red','away_red']
-        miss = [c for c in required if c not in results_df.columns]
-        if miss:
-            st.error(f"❌ LiveScore file missing columns: {miss}")
-            return games_today
 
-        games_today = games_today.merge(results_df, on='Id', how='left', suffixes=('', '_RAW'))
+        # Normalizar Status
+        results_df['status'] = (
+            results_df['status']
+            .astype(str)
+            .str.upper()
+            .str.strip()
+        )
 
-        # apenas FT; manter inteiros
-        is_ft = games_today['status'].eq('FT')
-        games_today.loc[is_ft, 'Goals_H_Today'] = games_today.loc[is_ft, 'home_goal'].fillna(0).astype('Int64')
-        games_today.loc[is_ft, 'Goals_A_Today'] = games_today.loc[is_ft, 'away_goal'].fillna(0).astype('Int64')
-        games_today.loc[~is_ft, ['Goals_H_Today','Goals_A_Today']] = np.nan
+        # Garantir tipos inteiros
+        int_cols = ['home_goal','away_goal','home_red','away_red']
+        for c in int_cols:
+            if c in results_df.columns:
+                results_df[c] = pd.to_numeric(results_df[c], errors='coerce').fillna(0).astype(int)
 
-        games_today['Home_Red'] = games_today['home_red'].fillna(0).astype('Int64')
-        games_today['Away_Red'] = games_today['away_red'].fillna(0).astype('Int64')
+        # Merge
+        games_today = games_today.merge(
+            results_df,
+            left_on='Id',     # << SUA COLUNA É Id (UPPERCASE)
+            right_on='Id',
+            how='left',
+            suffixes=('', '_RAW')
+        )
 
-        st.success(f"✅ LiveScore merged: {len(results_df)} games loaded")
+        # Normalizar novo status vindo do merge
+        games_today['status'] = (
+            games_today['status']
+            .astype(str)
+            .str.upper()
+            .str.strip()
+        )
+
+        # Preencher dados APENAS para FT
+        mask_ft = games_today['status'] == 'FT'
+
+        games_today.loc[mask_ft, 'Goals_H_Today'] = games_today.loc[mask_ft, 'home_goal']
+        games_today.loc[mask_ft, 'Goals_A_Today'] = games_today.loc[mask_ft, 'away_goal']
+
+        games_today.loc[mask_ft, 'Home_Red'] = games_today.loc[mask_ft, 'home_red']
+        games_today.loc[mask_ft, 'Away_Red'] = games_today.loc[mask_ft, 'away_red']
+
+        st.success(f"✅ LiveScore merged: {mask_ft.sum()} jogos FT carregados")
         return games_today
+
     else:
         st.warning(f"⚠️ No LiveScore file found for: {selected_date_str}")
         return games_today
+
 
 # ============================================================
 # 💎 ANÁLISE DUAL - HOME + AWAY (com thresholds híbridos)
