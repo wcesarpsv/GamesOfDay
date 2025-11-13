@@ -1789,6 +1789,31 @@ def calcular_features_dual_model(df):
     if 'Asian_Line_Decimal' not in df.columns:
         df['Asian_Line_Decimal'] = df['Asian_Line'].apply(convert_asian_line_to_decimal)
     
+    # 4. CRIAR TARGET Home_Covered (SE NÃO EXISTIR)
+    if 'Home_Covered' not in df.columns and 'Goals_H_FT' in df.columns and 'Goals_A_FT' in df.columns:
+        st.info("🔄 Criando target Home_Covered...")
+        
+        def calc_handicap_result(margin, asian_line_str, invert=False):
+            if pd.isna(asian_line_str): return np.nan
+            if invert: margin = -margin
+            
+            # Para linha decimal, simplificar
+            try:
+                line = float(asian_line_str)
+                if margin > line: return 1.0
+                elif margin == line: return 0.5
+                else: return 0.0
+            except:
+                return np.nan
+        
+        df['Margin'] = df['Goals_H_FT'] - df['Goals_A_FT']
+        df['Home_Covered'] = df.apply(
+            lambda r: calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"], invert=False) > 0.5, 
+            axis=1
+        ).astype(int)
+        
+        st.success(f"✅ Target criado: Home cobre {df['Home_Covered'].mean():.1%} dos jogos")
+    
     st.success(f"✅ Features calculadas: {len(df)} jogos")
     return df
 
@@ -1822,32 +1847,38 @@ def train_dual_side_models_independent(history):
     # 1. CALCULAR TODAS AS FEATURES NO HISTÓRICO
     history_with_features = calcular_features_dual_model(history)
     
+    # Verificar se temos o target
+    if 'Home_Covered' not in history_with_features.columns:
+        st.error("❌ Não foi possível criar o target Home_Covered. Verifique se existem colunas Goals_H_FT e Goals_A_FT.")
+        return None, None
+    
     # 2. MODELO HOME - prevê se HOME cobre
     X_home = prepare_home_features_dual(history_with_features)
-    y_home = (history_with_features['Home_Covered'] == 1).astype(int)
+    y_home = history_with_features['Home_Covered'].astype(int)
     
     model_home = RandomForestClassifier(
         n_estimators=200, 
         max_depth=12, 
         random_state=42,
         class_weight='balanced_subsample'
-    ).fit(X_home, y_home)
+    )
+    model_home.fit(X_home, y_home)
+    home_acc = model_home.score(X_home, y_home)
+    st.success(f"✅ Modelo Home: {home_acc:.1%}")
     
     # 3. MODELO AWAY - prevê se AWAY cobre  
     X_away = prepare_away_features_dual(history_with_features)
-    y_away = (history_with_features['Home_Covered'] == 0).astype(int)
+    y_away = (1 - history_with_features['Home_Covered']).astype(int)  # Away cobre = Home não cobre
     
     model_away = RandomForestClassifier(
         n_estimators=200, 
         max_depth=12, 
         random_state=42,
         class_weight='balanced_subsample'
-    ).fit(X_away, y_away)
-    
-    # Validação
-    home_acc = model_home.score(X_home, y_home)
+    )
+    model_away.fit(X_away, y_away)
     away_acc = model_away.score(X_away, y_away)
-    st.success(f"✅ Modelo Home: {home_acc:.1%} | Modelo Away: {away_acc:.1%}")
+    st.success(f"✅ Modelo Away: {away_acc:.1%}")
     
     return model_home, model_away
 
@@ -1891,78 +1922,81 @@ if len(history_for_dual) > 100:
     # Treinar modelos dual independentes
     model_home, model_away = train_dual_side_models_independent(history_for_dual)
     
-    # Aplicar aos jogos de hoje
-    games_dual = find_best_side_dual_model_independent(games_today_for_dual, model_home, model_away)
-    
-    # FILTRAR APENAS HANDICAPS COMUNS
-    games_dual_filtered = games_dual[
-        (games_dual['Asian_Line_Decimal'] >= -1.5) & 
-        (games_dual['Asian_Line_Decimal'] <= 1.5)
-    ]
-    
-    # Exibir resultados DETALHADOS
-    st.markdown("#### 📊 Resultados Detalhados - Dual Model")
-    
-    # Todos os jogos com probabilidades
-    st.markdown("##### 📈 Todas as Probabilidades")
-    cols_all = [
-        'Home', 'Away', 'League', 'Asian_Line_Decimal',
-        'Dual_Home_Prob', 'Dual_Away_Prob', 'Dual_Best_Side', 
-        'Dual_Best_Probability', 'Dual_Probability_Diff'
-    ]
-    
-    st.dataframe(
-        games_dual_filtered[cols_all].sort_values('Dual_Best_Probability', ascending=False)
-        .style.format({
-            'Asian_Line_Decimal': '{:.2f}',
-            'Dual_Home_Prob': '{:.1%}', 'Dual_Away_Prob': '{:.1%}',
-            'Dual_Best_Probability': '{:.1%}', 'Dual_Probability_Diff': '{:.3f}'
-        })
-        .background_gradient(subset=['Dual_Best_Probability'], cmap='RdYlGn')
-        .background_gradient(subset=['Dual_Probability_Diff'], cmap='Blues'),
-        use_container_width=True
-    )
-    
-    # Value bets
-    st.markdown("##### 💎 Value Bets Identificados")
-    dual_value_bets = games_dual_filtered[games_dual_filtered['Dual_Value_Bet']].sort_values('Dual_Best_Probability', ascending=False)
-    
-    if not dual_value_bets.empty:
-        cols_value = [
+    if model_home is not None and model_away is not None:
+        # Aplicar aos jogos de hoje
+        games_dual = find_best_side_dual_model_independent(games_today_for_dual, model_home, model_away)
+        
+        # FILTRAR APENAS HANDICAPS COMUNS
+        games_dual_filtered = games_dual[
+            (games_dual['Asian_Line_Decimal'] >= -1.5) & 
+            (games_dual['Asian_Line_Decimal'] <= 1.5)
+        ]
+        
+        # Exibir resultados DETALHADOS
+        st.markdown("#### 📊 Resultados Detalhados - Dual Model")
+        
+        # Todos os jogos com probabilidades
+        st.markdown("##### 📈 Todas as Probabilidades")
+        cols_all = [
             'Home', 'Away', 'League', 'Asian_Line_Decimal',
             'Dual_Home_Prob', 'Dual_Away_Prob', 'Dual_Best_Side', 
-            'Dual_Best_Probability', 'Dual_Value_Score'
+            'Dual_Best_Probability', 'Dual_Probability_Diff'
         ]
         
         st.dataframe(
-            dual_value_bets[cols_value]
+            games_dual_filtered[cols_all].sort_values('Dual_Best_Probability', ascending=False)
             .style.format({
                 'Asian_Line_Decimal': '{:.2f}',
                 'Dual_Home_Prob': '{:.1%}', 'Dual_Away_Prob': '{:.1%}',
-                'Dual_Best_Probability': '{:.1%}', 'Dual_Value_Score': '{:.3f}'
+                'Dual_Best_Probability': '{:.1%}', 'Dual_Probability_Diff': '{:.3f}'
             })
-            .background_gradient(subset=['Dual_Best_Probability'], cmap='RdYlGn'),
+            .background_gradient(subset=['Dual_Best_Probability'], cmap='RdYlGn')
+            .background_gradient(subset=['Dual_Probability_Diff'], cmap='Blues'),
             use_container_width=True
         )
         
-        # Estatísticas
-        st.markdown("##### 📈 Estatísticas")
-        col1, col2, col3, col4 = st.columns(4)
+        # Value bets
+        st.markdown("##### 💎 Value Bets Identificados")
+        dual_value_bets = games_dual_filtered[games_dual_filtered['Dual_Value_Bet']].sort_values('Dual_Best_Probability', ascending=False)
         
-        with col1:
-            st.metric("Total Value Bets", len(dual_value_bets))
-        with col2:
-            home_bets = dual_value_bets[dual_value_bets['Dual_Best_Side'] == 'HOME'].shape[0]
-            st.metric("Value Home", home_bets)
-        with col3:
-            away_bets = dual_value_bets[dual_value_bets['Dual_Best_Side'] == 'AWAY'].shape[0]
-            st.metric("Value Away", away_bets)
-        with col4:
-            avg_prob = dual_value_bets['Dual_Best_Probability'].mean()
-            st.metric("Probabilidade Média", f"{avg_prob:.1%}")
+        if not dual_value_bets.empty:
+            cols_value = [
+                'Home', 'Away', 'League', 'Asian_Line_Decimal',
+                'Dual_Home_Prob', 'Dual_Away_Prob', 'Dual_Best_Side', 
+                'Dual_Best_Probability', 'Dual_Value_Score'
+            ]
             
+            st.dataframe(
+                dual_value_bets[cols_value]
+                .style.format({
+                    'Asian_Line_Decimal': '{:.2f}',
+                    'Dual_Home_Prob': '{:.1%}', 'Dual_Away_Prob': '{:.1%}',
+                    'Dual_Best_Probability': '{:.1%}', 'Dual_Value_Score': '{:.3f}'
+                })
+                .background_gradient(subset=['Dual_Best_Probability'], cmap='RdYlGn'),
+                use_container_width=True
+            )
+            
+            # Estatísticas
+            st.markdown("##### 📈 Estatísticas")
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total Value Bets", len(dual_value_bets))
+            with col2:
+                home_bets = dual_value_bets[dual_value_bets['Dual_Best_Side'] == 'HOME'].shape[0]
+                st.metric("Value Home", home_bets)
+            with col3:
+                away_bets = dual_value_bets[dual_value_bets['Dual_Best_Side'] == 'AWAY'].shape[0]
+                st.metric("Value Away", away_bets)
+            with col4:
+                avg_prob = dual_value_bets['Dual_Best_Probability'].mean()
+                st.metric("Probabilidade Média", f"{avg_prob:.1%}")
+                
+        else:
+            st.info("🤷 Dual Model não identificou value bets claros")
     else:
-        st.info("🤷 Dual Model não identificou value bets claros")
+        st.error("❌ Falha no treinamento dos modelos dual")
         
 else:
     st.warning("⚠️ Dados insuficientes para Dual Model Independente")
