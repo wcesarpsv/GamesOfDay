@@ -287,7 +287,7 @@ def treinar_modelo_away_handicap_regressao_calibrado(history, games_today):
     Xs = scaler.fit_transform(X)
 
     model = RandomForestRegressor(
-        n_estimators=100, max_depth=5, min_samples_leaf=20, max_features=0.6, random_state=42
+        n_estimators=300, max_depth=5, min_samples_leaf=20, max_features=0.6, random_state=42
     )
     model.fit(Xs, y)
     mae = mean_absolute_error(y, model.predict(Xs))
@@ -316,7 +316,7 @@ def treinar_modelo_away_handicap_classificacao_calibrado(history, games_today):
     y_enc = le.fit_transform(y)
 
     model = RandomForestClassifier(
-        n_estimators=100, max_depth=5, random_state=42, class_weight='balanced', min_samples_leaf=15
+        n_estimators=300, max_depth=5, random_state=42, class_weight='balanced', min_samples_leaf=15
     )
     model.fit(X, y_enc)
 
