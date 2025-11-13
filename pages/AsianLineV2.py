@@ -466,21 +466,17 @@ def find_league_thresholds(history: pd.DataFrame, min_bets=60):
 # 📡 LIVE SCORE INTEGRATION (apenas FT, inteiros)
 # ============================================================
 def load_and_merge_livescore(games_today, selected_date_str):
-    """Carrega e faz merge dos dados do Live Score"""
 
     livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
-
-    # Inicializar colunas vazias
     games_today = setup_livescore_columns(games_today)
 
     if not os.path.exists(livescore_file):
         st.warning(f"⚠️ No LiveScore file found for: {selected_date_str}")
         return games_today
 
-    st.info(f"📡 LiveScore file found: {livescore_file}")
     results_df = pd.read_csv(livescore_file)
 
-    # 1️⃣ Normalizar status
+    # Normalizar status
     results_df['status'] = (
         results_df['status']
         .astype(str)
@@ -488,31 +484,32 @@ def load_and_merge_livescore(games_today, selected_date_str):
         .str.strip()
     )
 
-    # 2️⃣ MANTER APENAS JOGOS FT (os outros só estragam o merge)
-    results_df_ft = results_df[results_df['status'] == 'FT'].copy()
+    # Filtrar FT
+    df_ft = results_df[results_df['status'] == 'FT'].copy()
 
-    # 3️⃣ Garantir tipos inteiros
+    # Garantir inteiros
     for c in ['home_goal','away_goal','home_red','away_red']:
-        results_df_ft[c] = pd.to_numeric(results_df_ft[c], errors='coerce').fillna(0).astype(int)
+        df_ft[c] = pd.to_numeric(df_ft[c], errors='coerce').fillna(0).astype(int)
 
-    # 4️⃣ MERGE APENAS COM JOGOS FT
+    # MERGE — mas salvando status com outro nome para evitar conflito
     games_today = games_today.merge(
-        results_df_ft[['Id','status','home_goal','away_goal','home_red','away_red']],
+        df_ft[['Id','status','home_goal','away_goal','home_red','away_red']],
         on='Id',
-        how='left'
+        how='left',
+        suffixes=('', '_ls')
     )
 
-    # 5️⃣ Preencher somente para FT
-    mask_ft = games_today['status'] == 'FT'
+    # Agora a coluna correta é: status_ls
+    mask_ft = games_today['status_ls'] == 'FT'
 
-    games_today.loc[mask_ft, 'Goals_H_Today'] = games_today['home_goal']
-    games_today.loc[mask_ft, 'Goals_A_Today'] = games_today['away_goal']
-    games_today.loc[mask_ft, 'Home_Red'] = games_today['home_red']
-    games_today.loc[mask_ft, 'Away_Red'] = games_today['away_red']
-
-    st.success(f"✅ LiveScore merged: {mask_ft.sum()} jogos FT aplicados")
+    # Preencher apenas FT
+    games_today.loc[mask_ft, 'Goals_H_Today'] = games_today.loc[mask_ft, 'home_goal']
+    games_today.loc[mask_ft, 'Goals_A_Today'] = games_today.loc[mask_ft, 'away_goal']
+    games_today.loc[mask_ft, 'Home_Red']        = games_today.loc[mask_ft, 'home_red']
+    games_today.loc[mask_ft, 'Away_Red']        = games_today.loc[mask_ft, 'away_red']
 
     return games_today
+
 
 
 
