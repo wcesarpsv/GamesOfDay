@@ -1441,32 +1441,66 @@ def create_universal_target(df):
     
     return df
 
-def prepare_universal_features(df):
-    """Prepara features balanceadas para ambos os lados"""
-    features = []
+# def prepare_universal_features(df):
+#     """Prepara features balanceadas para ambos os lados"""
+#     features = []
     
-    # Features de vantagem relativa (já são balanceadas)
-    relative_features = [
+#     # Features de vantagem relativa (já são balanceadas)
+#     relative_features = [
+#         'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
+#         'Momentum_Diff', 'Momentum_Diff_MT', 'Magnitude_3D',
+#         'Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ'
+#     ]
+    
+#     # Features individuais (ambos os lados)
+#     home_features = ['Aggression_Home', 'HandScore_Home', 'M_H', 'MT_H', 'Quadrante_Home']
+#     away_features = ['Aggression_Away', 'HandScore_Away', 'M_A', 'MT_A', 'Quadrante_Away']
+    
+#     # Garantir que todas as features existem
+#     all_features = relative_features + home_features + away_features
+#     available_features = [f for f in all_features if f in df.columns]
+    
+#     missing = set(all_features) - set(available_features)
+#     if missing:
+#         st.warning(f"⚠️ Features faltando: {missing}")
+    
+#     X = df[available_features].fillna(0)
+    
+#     return X, available_features
+
+
+def prepare_universal_features(df):
+    """Prepara features INCLUINDO quadrantes como dummies (igual ao sistema principal)"""
+    
+    # 1. Features básicas
+    basic_features = [
+        'Aggression_Home', 'Aggression_Away',
+        'HandScore_Home', 'HandScore_Away', 
+        'M_H', 'M_A', 'MT_H', 'MT_A'
+    ]
+    
+    # 2. 🔥 QUADRANTES COMO DUMMIES (IGUAL AO SISTEMA PRINCIPAL)
+    quadrante_dummies_home = pd.get_dummies(df['Quadrante_Home'], prefix='QH')
+    quadrante_dummies_away = pd.get_dummies(df['Quadrante_Away'], prefix='QA')
+    
+    # 3. Features 3D
+    advanced_3d_features = [
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
         'Momentum_Diff', 'Momentum_Diff_MT', 'Magnitude_3D',
         'Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ'
     ]
     
-    # Features individuais (ambos os lados)
-    home_features = ['Aggression_Home', 'HandScore_Home', 'M_H', 'MT_H', 'Quadrante_Home']
-    away_features = ['Aggression_Away', 'HandScore_Away', 'M_A', 'MT_A', 'Quadrante_Away']
+    # Combinar tudo
+    X_basic = df[basic_features].fillna(0)
+    X_3d = df[[f for f in advanced_3d_features if f in df.columns]].fillna(0)
     
-    # Garantir que todas as features existem
-    all_features = relative_features + home_features + away_features
-    available_features = [f for f in all_features if f in df.columns]
+    X = pd.concat([X_basic, quadrante_dummies_home, quadrante_dummies_away, X_3d], axis=1)
     
-    missing = set(all_features) - set(available_features)
-    if missing:
-        st.warning(f"⚠️ Features faltando: {missing}")
+    st.success(f"✅ Universal Target usando {X.shape[1]} features (incluindo {quadrante_dummies_home.shape[1] + quadrante_dummies_away.shape[1]} dummies de quadrantes)")
     
-    X = df[available_features].fillna(0)
-    
-    return X, available_features
+    return X, X.columns.tolist()
+
+
 
 def train_universal_model(X, y):
     """Treina modelo para detectar qual lado tem vantagem real"""
