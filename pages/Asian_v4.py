@@ -495,64 +495,109 @@ def combinar_preds(row):
 
 
 # ============================================================
-# 📊 ENGINE DE RECOMENDAÇÃO FINAL
+# 📊 ENGINE DE RECOMENDAÇÃO FINAL (VERSÃO VG_DIFF PRIORITÁRIO)
 # ============================================================
 def analisar_value_bets_dual(games_today, league_thresholds):
     results = []
+
+    # parâmetros para força do VG_DIFF
+    VG_DIFF_STRONG = 0.45
+    VG_DIFF_GOOD   = 0.25
+    VG_DIFF_WEAK   = 0.12     # margem mínima para LEAN
+
     for _, row in games_today.iterrows():
 
-        pred_home, pred_away = combinar_preds(row)
+        # ======================
+        # 1) Predições combinadas
+        # ======================
+        pred_home, pred_away = combinar_preds(row)  # pred_away já está no eixo HOME
 
+        # ======================
+        # 2) Linha do mercado
+        # ======================
         asian = float(row['Asian_Line_Decimal'])
 
+        # ======================
+        # 3) Value Gaps tradicionais
+        # ======================
         vg_home = pred_home - asian
         vg_away = pred_away - asian
 
+        # ======================
+        # 4) Novo indicador principal: VG_DIFF
+        # ======================
+        vg_diff = pred_home - pred_away   # HOME - AWAY (eixo HOME puro)
+
+        # ======================
+        # 5) Thresholds da liga
+        # ======================
         lg = row['League']
         thr_pack = league_thresholds.get(lg, league_thresholds['_GLOBAL'])
 
-        thrH = thr_pack['HOME']
+        thrH  = thr_pack['HOME']
         thrHS = thr_pack['HOME_STRONG']
-        thrA = thr_pack['AWAY']
+        thrA  = thr_pack['AWAY']
         thrAS = thr_pack['AWAY_STRONG']
 
+        # ======================
+        # 6) ENGINE DE DECISÃO FINAL
+        # ======================
         rec = "NO BET"
         conf = "LOW"
 
-        if vg_home >= thrHS:
+        # ------------- PRIORIDADE: VG_DIFF ----------------
+        # HOME forte
+        if vg_diff >= VG_DIFF_STRONG:
             rec, conf = "STRONG HOME", "HIGH"
-        elif vg_home >= thrH:
-            rec, conf = "BET HOME", "MEDIUM"
-        elif vg_away >= thrAS:
-            rec, conf = "STRONG AWAY", "HIGH"
-        elif vg_away >= thrA:
-            rec, conf = "BET AWAY", "MEDIUM"
-        #########
-        results.append({
-        'League': lg,
-        'Home': row['Home'],
-        'Away': row['Away'],
-        'Asian_Line': row['Asian_Line'],
-        'Asian_Line_Decimal': asian,
-    
-        'Pred_HOME': pred_home,
-        'Pred_AWAY_HOME_AXIS': pred_away,
-    
-        'VG_HOME': vg_home,
-        'VG_AWAY': vg_away,
-    
-        'Rec': rec,
-        'Confidence': conf,
-    
-        # LIVE INFO 🔥
-        'Live_Score': f"{int(row.get('Goals_H_Today',0))}-{int(row.get('Goals_A_Today',0))}",
-        'Home_Red': row.get('Home_Red', 0),
-        'Away_Red': row.get('Away_Red', 0),
-        'Status': row.get('status_ls', 'NO DATA')
-    })
 
+        elif vg_diff >= VG_DIFF_GOOD:
+            rec, conf = "BET HOME", "MEDIUM"
+
+        # AWAY forte
+        elif vg_diff <= -VG_DIFF_STRONG:
+            rec, conf = "STRONG AWAY", "HIGH"
+
+        elif vg_diff <= -VG_DIFF_GOOD:
+            rec, conf = "BET AWAY", "MEDIUM"
+
+        else:
+            # --------- fallback (apoio do modelo antigo) ---------
+            if vg_home >= thrH:
+                rec, conf = "LEAN HOME", "LOW"
+            elif vg_away >= thrA:
+                rec, conf = "LEAN AWAY", "LOW"
+            else:
+                rec, conf = "NO BET", "LOW"
+
+        # ======================
+        # 7) Registrar resultado
+        # ======================
+        results.append({
+            'League': lg,
+            'Home': row['Home'],
+            'Away': row['Away'],
+            'Asian_Line': row['Asian_Line'],
+            'Asian_Line_Decimal': asian,
+
+            'Pred_HOME': pred_home,
+            'Pred_AWAY_HOME_AXIS': pred_away,
+
+            'VG_HOME': vg_home,
+            'VG_AWAY': vg_away,
+            'VG_DIFF': vg_diff,
+
+            'Rec': rec,
+            'Confidence': conf,
+
+            # LIVE INFO 🔥
+            'Live_Score': f"{int(row.get('Goals_H_Today',0))}-{int(row.get('Goals_A_Today',0))}",
+            'Home_Red': row.get('Home_Red', 0),
+            'Away_Red': row.get('Away_Red', 0),
+            'Status': row.get('status_ls', 'NO DATA')
+        })
 
     return pd.DataFrame(results)
+
 
 
 # ============================================================
