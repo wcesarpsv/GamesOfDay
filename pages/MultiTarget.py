@@ -1916,8 +1916,8 @@ if len(history_for_dual) > 100:
         
         # FILTRAR APENAS HANDICAPS COMUNS
         games_dual_filtered = games_dual[
-            (games_dual['Asian_Line_Decimal'] >= -1.5) & 
-            (games_dual['Asian_Line_Decimal'] <= 1.5)
+            (games_dual['Asian_Line_Decimal'] >= -1) & 
+            (games_dual['Asian_Line_Decimal'] <= 1)
         ]
         
         # Exibir comparação com Universal Model
