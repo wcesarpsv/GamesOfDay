@@ -121,8 +121,8 @@ def aplicar_clusterizacao_3d(df: pd.DataFrame, n_clusters=4, random_state=42) ->
         if k > 1:
             cents = pd.DataFrame(km.cluster_centers_, columns=['dx','dy','dz'])
             cents['Cluster'] = range(k)
-            st.markdown("### 🧭 Clusters 3D (KMeans)")
-            st.dataframe(cents.style.format({'dx':'{:.2f}','dy':'{:.2f}','dz':'{:.2f}'}))
+            # st.markdown("### 🧭 Clusters 3D (KMeans)")
+            # st.dataframe(cents.style.format({'dx':'{:.2f}','dy':'{:.2f}','dz':'{:.2f}'}))
     except Exception as e:
         st.error(f"❌ Erro no clustering: {e}")
         df['Cluster3D_Label'] = 0
