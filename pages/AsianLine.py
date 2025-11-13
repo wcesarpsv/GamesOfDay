@@ -810,55 +810,55 @@ def main_calibrado():
             return 3
 
         # ---------------- LIVE SCORE INTEGRATION ----------------
-    def load_and_merge_livescore(games_today, selected_date_str):
-        """Carrega e faz merge dos dados do Live Score"""
-        livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
-    
-        games_today = setup_livescore_columns(games_today)
-    
-        if os.path.exists(livescore_file):
-            st.info(f"📡 LiveScore file found: {livescore_file}")
-            results_df = pd.read_csv(livescore_file)
-    
-            # Filtrar jogos cancelados/adiados
-            results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
-    
-            required_cols = [
-                'Id', 'status', 'home_goal', 'away_goal',
-                'home_ht_goal', 'away_ht_goal',
-                'home_corners', 'away_corners',
-                'home_yellow', 'away_yellow',
-                'home_red', 'away_red'
-            ]
-    
-            missing_cols = [col for col in required_cols if col not in results_df.columns]
-            if missing_cols:
-                st.error(f"❌ LiveScore file missing columns: {missing_cols}")
+        def load_and_merge_livescore(games_today, selected_date_str):
+            """Carrega e faz merge dos dados do Live Score"""
+            livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
+        
+            games_today = setup_livescore_columns(games_today)
+        
+            if os.path.exists(livescore_file):
+                st.info(f"📡 LiveScore file found: {livescore_file}")
+                results_df = pd.read_csv(livescore_file)
+        
+                # Filtrar jogos cancelados/adiados
+                results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
+        
+                required_cols = [
+                    'Id', 'status', 'home_goal', 'away_goal',
+                    'home_ht_goal', 'away_ht_goal',
+                    'home_corners', 'away_corners',
+                    'home_yellow', 'away_yellow',
+                    'home_red', 'away_red'
+                ]
+        
+                missing_cols = [col for col in required_cols if col not in results_df.columns]
+                if missing_cols:
+                    st.error(f"❌ LiveScore file missing columns: {missing_cols}")
+                    return games_today
+        
+                # Merge com jogos do dia
+                games_today = games_today.merge(
+                    results_df,
+                    on='Id',
+                    how='left',
+                    suffixes=('', '_RAW')
+                )
+        
+                # Atualizar gols e cartões
+                games_today['Goals_H_Today'] = games_today['home_goal']
+                games_today['Goals_A_Today'] = games_today['away_goal']
+                games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
+                games_today['Home_Red'] = games_today['home_red']
+                games_today['Away_Red'] = games_today['away_red']
+        
+                st.success(f"✅ LiveScore merged: {len(results_df)} games loaded")
                 return games_today
-    
-            # Merge com jogos do dia
-            games_today = games_today.merge(
-                results_df,
-                on='Id',
-                how='left',
-                suffixes=('', '_RAW')
-            )
-    
-            # Atualizar gols e cartões
-            games_today['Goals_H_Today'] = games_today['home_goal']
-            games_today['Goals_A_Today'] = games_today['away_goal']
-            games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
-            games_today['Home_Red'] = games_today['home_red']
-            games_today['Away_Red'] = games_today['away_red']
-    
-            st.success(f"✅ LiveScore merged: {len(results_df)} games loaded")
-            return games_today
-        else:
-            st.warning(f"⚠️ No LiveScore file found for: {selected_date_str}")
-            return games_today
-    
-    # 🚀 Integrar logo após o carregamento
-    games_today = load_and_merge_livescore(games_today, selected_date_str)
+            else:
+                st.warning(f"⚠️ No LiveScore file found for: {selected_date_str}")
+                return games_today
+        
+        # 🚀 Integrar logo após o carregamento
+        games_today = load_and_merge_livescore(games_today, selected_date_str)
 
     
         def aplicar_filtro_tier(df: pd.DataFrame, max_tier=3) -> pd.DataFrame:
