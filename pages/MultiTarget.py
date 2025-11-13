@@ -1470,52 +1470,32 @@ def create_universal_target(df):
 
 
 def prepare_universal_features(df):
-    """Prepara features garantindo mesmas colunas para treino e predição"""
+    """Versão simples usando quadrantes como features categóricas normais"""
     
-    # 1. Features básicas
-    basic_features = [
+    # Features básicas + quadrantes como categorias normais
+    features = [
         'Aggression_Home', 'Aggression_Away',
         'HandScore_Home', 'HandScore_Away', 
-        'M_H', 'M_A', 'MT_H', 'MT_A'
+        'M_H', 'M_A', 'MT_H', 'MT_A',
+        'Quadrante_Home', 'Quadrante_Away'  # ← Quadrantes como números
     ]
     
-    # 2. Quadrantes como dummies - GARANTIR MESMAS COLUNAS
-    # Criar todas as colunas possíveis de quadrantes (0-16)
-    all_quadrante_cols = []
-    for i in range(0, 17):  # 0 a 16
-        all_quadrante_cols.extend([f'QH_{i}', f'QA_{i}'])
-    
-    # Criar dummies para os quadrantes atuais
-    quadrante_dummies_home = pd.get_dummies(df['Quadrante_Home'], prefix='QH')
-    quadrante_dummies_away = pd.get_dummies(df['Quadrante_Away'], prefix='QA')
-    
-    # Juntar e garantir todas as colunas
-    quadrante_dummies = pd.concat([quadrante_dummies_home, quadrante_dummies_away], axis=1)
-    
-    # Adicionar colunas faltantes com zeros
-    for col in all_quadrante_cols:
-        if col not in quadrante_dummies.columns:
-            quadrante_dummies[col] = 0
-    
-    # Reordenar colunas para consistência
-    quadrante_dummies = quadrante_dummies[all_quadrante_cols]
-    
-    # 3. Features 3D
+    # Features 3D
     advanced_3d_features = [
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
         'Momentum_Diff', 'Momentum_Diff_MT', 'Magnitude_3D',
         'Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ'
     ]
     
-    # Combinar tudo
-    X_basic = df[basic_features].fillna(0)
-    X_3d = df[[f for f in advanced_3d_features if f in df.columns]].fillna(0)
+    # Combinar
+    all_features = features + [f for f in advanced_3d_features if f in df.columns]
+    available_features = [f for f in all_features if f in df.columns]
     
-    X = pd.concat([X_basic, quadrante_dummies, X_3d], axis=1)
+    st.success(f"✅ Features disponíveis: {len(available_features)} (quadrantes como categorias)")
     
-    st.success(f"✅ Features: {X.shape[1]} (incluindo {len(all_quadrante_cols)} colunas de quadrantes)")
+    X = df[available_features].fillna(0)
     
-    return X, X.columns.tolist()
+    return X, available_features
 
 
 
