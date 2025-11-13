@@ -57,6 +57,54 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
     pattern = "|".join(EXCLUDED_LEAGUE_KEYWORDS)
     return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
 
+
+# ============================================================
+# 📡 LIVE SCORE: Integração com Resultados_RAW_YYYY-MM-DD
+# ============================================================
+def load_and_merge_livescore(games_today, selected_date_str):
+
+    livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
+    games_today = setup_livescore_columns(games_today)
+
+    if not os.path.exists(livescore_file):
+        st.warning(f"⚠️ Nenhum LiveScore encontrado para {selected_date_str}")
+        return games_today
+
+    df_ls = pd.read_csv(livescore_file)
+
+    # normalizar colunas
+    df_ls['status'] = (
+        df_ls['status']
+        .astype(str)
+        .str.upper()
+        .str.strip()
+    )
+
+    # só FT + Live válido
+    df_ls = df_ls[df_ls['status'].isin(['FT', 'LIVE', 'HT', 'ET'])].copy()
+
+    # converter valores
+    for c in ['home_goal', 'away_goal', 'home_red', 'away_red']:
+        df_ls[c] = pd.to_numeric(df_ls[c], errors='coerce').fillna(0).astype(int)
+
+    # merge usando Id
+    games_today = games_today.merge(
+        df_ls[['Id','status','home_goal','away_goal','home_red','away_red']],
+        on='Id', how='left', suffixes=('', '_ls')
+    )
+
+    # atualizar info em tempo real
+    mask = games_today['status_ls'].notna()
+
+    games_today.loc[mask, 'Goals_H_Today'] = games_today.loc[mask, 'home_goal']
+    games_today.loc[mask, 'Goals_A_Today'] = games_today.loc[mask, 'away_goal']
+    games_today.loc[mask, 'Home_Red']        = games_today.loc[mask, 'home_red']
+    games_today.loc[mask, 'Away_Red']        = games_today.loc[mask, 'away_red']
+
+    return games_today
+
+
+
 # ============================================================
 # 🔢 CONVERSÃO DE LINHA ASIÁTICA PARA DECIMAL (PADRÃO HOME)
 # ============================================================
@@ -479,20 +527,30 @@ def analisar_value_bets_dual(games_today, league_thresholds):
             rec, conf = "STRONG AWAY", "HIGH"
         elif vg_away >= thrA:
             rec, conf = "BET AWAY", "MEDIUM"
-
+        #########
         results.append({
-            'League': lg,
-            'Home': row['Home'],
-            'Away': row['Away'],
-            'Asian_Line': row['Asian_Line'],
-            'Asian_Line_Decimal': asian,
-            'Pred_HOME': pred_home,
-            'Pred_AWAY_HOME_AXIS': pred_away,
-            'VG_HOME': vg_home,
-            'VG_AWAY': vg_away,
-            'Rec': rec,
-            'Confidence': conf
-        })
+        'League': lg,
+        'Home': row['Home'],
+        'Away': row['Away'],
+        'Asian_Line': row['Asian_Line'],
+        'Asian_Line_Decimal': asian,
+    
+        'Pred_HOME': pred_home,
+        'Pred_AWAY_HOME_AXIS': pred_away,
+    
+        'VG_HOME': vg_home,
+        'VG_AWAY': vg_away,
+    
+        'Rec': rec,
+        'Confidence': conf,
+    
+        # LIVE INFO 🔥
+        'Live_Score': f"{int(row.get('Goals_H_Today',0))}-{int(row.get('Goals_A_Today',0))}",
+        'Home_Red': row.get('Home_Red', 0),
+        'Away_Red': row.get('Away_Red', 0),
+        'Status': row.get('status_ls', 'NO DATA')
+    })
+
 
     return pd.DataFrame(results)
 
@@ -550,6 +608,11 @@ def main_calibrado():
 
     history.dropna(subset=['Asian_Line_Decimal'], inplace=True)
     games_today.dropna(subset=['Asian_Line_Decimal'], inplace=True)
+    # carregar e aplicar LiveScore (gols, cartões, status)
+    games_today = load_and_merge_livescore(games_today, selected_date_str)
+
+
+    
 
     # filtrar passado
     history['Date'] = pd.to_datetime(history['Date'], errors='coerce')
@@ -588,6 +651,13 @@ def main_calibrado():
 
     df_final = analisar_value_bets_dual(games_today, league_thresholds)
     st.dataframe(df_final, use_container_width=True)
+    st.markdown("### 📡 LiveScore do Dia (tempo real)")
+    
+    cols = ['League','Home','Away','Status','Goals_H_Today','Goals_A_Today','Home_Red','Away_Red']
+    live_df = games_today[cols].copy()
+    
+    st.dataframe(live_df, use_container_width=True)
+
 
     st.pyplot(plot_dual(df_final))
 
