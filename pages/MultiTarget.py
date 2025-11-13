@@ -1545,7 +1545,7 @@ def find_universal_value_bets(games_today, model, features):
     games['Model_Away_Advantage'] = 1 - probas
     
     # Valor Score = Confiança do modelo (distância de 50%)
-    games['Value_Score'] = np.abs(probas - 0.5)
+    games['Value_Score'] = np.abs(probas - 0.6)
     
     # Identificar value bets
     games['Value_Bet_Home'] = (probas > 0.58) & (games['Asian_Line_Decimal'] < 0)  # Modelo acredita no Home mas não é favorito pesado
@@ -1698,6 +1698,133 @@ if not history_with_target.empty and 'Universal_Target' in history_with_target.c
     st.dataframe(bin_accuracy.to_frame("Acurácia").style.format("{:.1%}"), use_container_width=True)
 
 
+
+
+
+
+
+# ... todo o código atual ...
+
+# ---------------- SISTEMA DUAL MODEL (NOVA ABORDAGEM) ----------------
+st.markdown("## 🔄 DUAL MODEL - Perspectivas Separadas Home/Away")
+
+def prepare_home_features(df):
+    """Features apenas do HOME + linha"""
+    features = [
+        'Aggression_Home', 'HandScore_Home', 'M_H', 'MT_H', 'Quadrante_Home',
+        'Asian_Line_Decimal'  # Linha do ponto de vista HOME
+    ]
+    available = [f for f in features if f in df.columns]
+    return df[available].fillna(0)
+
+def prepare_away_features(df):
+    """Features apenas do AWAY + linha (invertida)"""
+    features = [
+        'Aggression_Away', 'HandScore_Away', 'M_A', 'MT_A', 'Quadrante_Away', 
+        'Asian_Line_Decimal'  # Já está do ponto de vista HOME, mantemos igual
+        # O modelo Away aprenderá a interpretar essa linha
+    ]
+    available = [f for f in features if f in df.columns]
+    return df[available].fillna(0)
+
+def train_dual_side_models(history):
+    """Treina modelos separados para Home e Away"""
+    
+    st.markdown("### 🤖 Treinando Modelos Dual (Home + Away)")
+    
+    # 1. MODELO HOME - prevê se HOME cobre
+    X_home = prepare_home_features(history)
+    y_home = (history['Home_Covered'] == 1).astype(int)
+    model_home = RandomForestClassifier(
+        n_estimators=200, max_depth=10, random_state=42
+    ).fit(X_home, y_home)
+    
+    # 2. MODELO AWAY - prevê se AWAY cobre  
+    X_away = prepare_away_features(history)
+    y_away = (history['Home_Covered'] == 0).astype(int)
+    model_away = RandomForestClassifier(
+        n_estimators=200, max_depth=10, random_state=42
+    ).fit(X_away, y_away)
+    
+    # Validação
+    home_acc = model_home.score(X_home, y_home)
+    away_acc = model_away.score(X_away, y_away)
+    st.success(f"✅ Modelo Home: {home_acc:.1%} | Modelo Away: {away_acc:.1%}")
+    
+    return model_home, model_away
+
+def find_best_side_dual_model(games_today, model_home, model_away):
+    """Encontra o melhor lado usando ambos modelos"""
+    
+    games = games_today.copy()
+    
+    # Previsões de cada modelo
+    proba_home_cover = model_home.predict_proba(prepare_home_features(games))[:, 1]
+    proba_away_cover = model_away.predict_proba(prepare_away_features(games))[:, 1]
+    
+    # Escolhe o lado com maior probabilidade
+    games['Dual_Home_Prob'] = proba_home_cover
+    games['Dual_Away_Prob'] = proba_away_cover
+    games['Dual_Best_Side'] = np.where(proba_home_cover > proba_away_cover, 'HOME', 'AWAY')
+    games['Dual_Best_Probability'] = np.maximum(proba_home_cover, proba_away_cover)
+    games['Dual_Probability_Diff'] = np.abs(proba_home_cover - proba_away_cover)
+    
+    # Value bets dual
+    games['Dual_Value_Bet'] = games['Dual_Best_Probability'] > 0.58
+    games['Dual_Value_Score'] = np.abs(games['Dual_Best_Probability'] - 0.5)
+    
+    st.success(f"🎯 Dual Model: {games['Dual_Value_Bet'].sum()} value bets identificados")
+    
+    return games
+
+# ---------------- APLICAÇÃO DO DUAL MODEL ----------------
+
+if len(history_with_target) > 100:
+    st.markdown("### 🔄 Resultados Dual Model")
+    
+    # Treinar modelos dual
+    model_home, model_away = train_dual_side_models(history_with_target)
+    
+    # Aplicar aos jogos de hoje
+    games_dual = find_best_side_dual_model(games_today_filtered, model_home, model_away)
+    
+    # Exibir comparação
+    st.markdown("#### 📊 Comparação: Universal vs Dual Model")
+    
+    dual_value_bets = games_dual[games_dual['Dual_Value_Bet']].sort_values('Dual_Value_Score', ascending=False)
+    
+    if not dual_value_bets.empty:
+        cols_dual = [
+            'Home', 'Away', 'League', 'Asian_Line_Decimal',
+            'Dual_Home_Prob', 'Dual_Away_Prob', 'Dual_Best_Side', 
+            'Dual_Best_Probability', 'Dual_Value_Score'
+        ]
+        
+        st.dataframe(
+            dual_value_bets[cols_dual].style.format({
+                'Asian_Line_Decimal': '{:.2f}',
+                'Dual_Home_Prob': '{:.1%}', 'Dual_Away_Prob': '{:.1%}',
+                'Dual_Best_Probability': '{:.1%}', 'Dual_Value_Score': '{:.3f}'
+            }).background_gradient(subset=['Dual_Value_Score'], cmap='YlOrRd'),
+            use_container_width=True
+        )
+        
+        # Comparação estatística
+        st.markdown("#### 📈 Estatísticas Comparativas")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            universal_count = len(value_bets) if 'value_bets' in locals() else 0
+            st.metric("Universal Model Value Bets", universal_count)
+            
+        with col2:
+            st.metric("Dual Model Value Bets", len(dual_value_bets))
+            
+    else:
+        st.info("🤷 Dual Model não identificou value bets claros")
+
+st.markdown("---")
+st.success("🎯 **Sistema 3D + Universal Target + Dual Model** implementados!")
 
 
 st.markdown("---")
