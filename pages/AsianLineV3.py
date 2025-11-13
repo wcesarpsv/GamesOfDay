@@ -759,62 +759,7 @@ def analisar_value_bets_dual_modelos(games_today: pd.DataFrame, league_threshold
 # 📈 VISUALIZAÇÃO DUAL
 # ============================================================
 
-def plot_analise_dual_modelos(games_today):
-    """
-    Visualização da análise DUAL (HOME + AWAY)
-    """
-    import matplotlib.pyplot as plt
-    
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-    
-    # Plot 1: Value Gaps HOME vs AWAY
-    value_gaps_home = []
-    value_gaps_away = []
-    
-    for _, row in games_today.iterrows():
-        asian_line = row.get('Asian_Line_Decimal', 0)
-        pred_home = 0.7 * row.get('Handicap_Predito_Regressao_Calibrado', 0) + 0.3 * row.get('Handicap_Predito_Classificacao_Calibrado', 0)
-        pred_away = 0.7 * row.get('Handicap_AWAY_Predito_Regressao_Calibrado', 0) + 0.3 * row.get('Handicap_AWAY_Predito_Classificacao_Calibrado', 0)
-        
-        value_gaps_home.append(pred_home - asian_line)
-        value_gaps_away.append(pred_away - (-asian_line))
-    
-    x_pos = range(len(value_gaps_home))
-    ax1.bar([x - 0.2 for x in x_pos], value_gaps_home, 0.4, label='HOME Value Gap', alpha=0.7, color='green')
-    ax1.bar([x + 0.2 for x in x_pos], value_gaps_away, 0.4, label='AWAY Value Gap', alpha=0.7, color='blue')
-    ax1.axhline(y=0, color='red', linestyle='-', alpha=0.5)
-    ax1.axhline(y=0.15, color='orange', linestyle='--', alpha=0.5, label='Value Threshold')
-    ax1.axhline(y=-0.15, color='orange', linestyle='--', alpha=0.5)
-    ax1.set_xlabel('Jogos')
-    ax1.set_ylabel('Value Gap')
-    ax1.set_title('Value Gaps: HOME vs AWAY Models')
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
-    
-    # Plot 2: Comparação Handicaps Preditos
-    handicaps_home = []
-    handicaps_away = []
-    asian_lines = []
-    
-    for _, row in games_today.iterrows():
-        pred_home = 0.7 * row.get('Handicap_Predito_Regressao_Calibrado', 0) + 0.3 * row.get('Handicap_Predito_Classificacao_Calibrado', 0)
-        pred_away = 0.7 * row.get('Handicap_AWAY_Predito_Regressao_Calibrado', 0) + 0.3 * row.get('Handicap_AWAY_Predito_Classificacao_Calibrado', 0)
-        
-        handicaps_home.append(pred_home)
-        handicaps_away.append(pred_away)
-        asian_lines.append(row.get('Asian_Line_Decimal', 0))
-    
-    ax2.scatter(asian_lines, handicaps_home, alpha=0.7, s=60, label='HOME Predito', color='green')
-    ax2.scatter(asian_lines, handicaps_away, alpha=0.7, s=60, label='AWAY Predito', color='blue')
-    ax2.plot([-1.5, 1.5], [-1.5, 1.5], 'k--', alpha=0.3, label='Linha de Mercado')
-    ax2.set_xlabel('Asian Line (Mercado)')
-    ax2.set_ylabel('Handicap Predito')
-    ax2.set_title('Handicaps Preditos vs Mercado')
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    return fig
+plot_analise_dual_modelos
 
 # ============================================================
 # 🚀 EXECUÇÃO PRINCIPAL - DUAL MODEL
