@@ -264,64 +264,75 @@ def combinar_reg_class(reg_values, cls_values, confidences):
 # ============================================================
 # 🧠 MODELOS HOME — Regressão e Classificação
 # ============================================================
-def treinar_modelo_handicap_regressao_calibrado_v2(history, games_today):
-    """
-    Modelo HOME (regressão) com alvo contínuo matemático.
-    """
-    st.markdown("### 📈 Modelo HOME – Regressão (alvo contínuo novo)")
-    history = history.copy()
+def treinar_modelo_handicap_regressao_calibrado_v2(history: pd.DataFrame,
+                                                   games_today: pd.DataFrame):
 
-    # alvo contínuo
+    st.subheader("📈 Modelo HOME – Regressão (alvo contínuo novo)")
+
+    # 🔥 REMOVER jogos sem gols FT (ESSENCIAL)
+    history = history.copy()
+    history = history[
+        history['Goals_H_FT'].notna() &
+        history['Goals_A_FT'].notna()
+    ]
+
+    # Alvo contínuo HOME
     history['Handicap_Home_Cont'] = history.apply(
         calcular_handicap_otimo_home_continuo, axis=1
     )
 
-    history_reg = history.copy()
-    st.info(f"📊 Dados HOME (regressão contínua): {len(history_reg)} jogos")
+    # 🔥 Remover linhas que ficaram NaN por segurança
+    history = history[history['Handicap_Home_Cont'].notna()]
 
+    st.info(f"📊 Jogos usados no treino HOME: {len(history)}")
+
+    # FEATURES
     features = [
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Vector_Sign',
         'Magnitude_3D', 'Momentum_Diff', 'Momentum_Diff_MT', 'Cluster3D_Label'
     ]
-    avail = [f for f in features if f in history_reg.columns]
+    features = [f for f in features if f in history.columns]
 
-    if len(avail) < 3:
-        st.error("❌ Features insuficientes para treinamento HOME (regressão)")
+    if len(features) < 3:
+        st.error("❌ Features insuficientes para treinar HOME")
         return None, games_today, None
 
-    X = history_reg[avail].fillna(0.0)
-    y = history_reg['Handicap_Home_Cont']
+    X = history[features].fillna(0.0)
+    y = history['Handicap_Home_Cont']
 
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
 
     model = RandomForestRegressor(
-        n_estimators=150,
+        n_estimators=200,
         max_depth=7,
-        min_samples_leaf=25,
+        min_samples_leaf=20,
         max_features=0.7,
         random_state=42,
         n_jobs=-1
     )
     model.fit(Xs, y)
 
-    preds_in_sample = model.predict(Xs)
-    mae = mean_absolute_error(y, preds_in_sample)
-    st.success(f"✅ MAE HOME (contínuo): {mae:.3f}")
+    # Predições in-sample
+    preds_in = model.predict(Xs)
+    mae = mean_absolute_error(y, preds_in)
+    st.success(f"MAE HOME = {mae:.3f}")
 
-    # previsões hoje
+    # ========================
+    # PREVER HOJE
+    # ========================
     X_today = games_today.copy()
-    for f in avail:
+    for f in features:
         if f not in X_today.columns:
             X_today[f] = 0.0
-    X_today = X_today[avail].fillna(0.0)
 
-    preds_today = model.predict(scaler.transform(X_today))
+    preds_today = model.predict(scaler.transform(X_today[features]))
     preds_today = np.clip(preds_today, -MAX_ABS_HANDICAP, MAX_ABS_HANDICAP)
 
     games_today['Handicap_Predito_Regressao_Calibrado'] = preds_today
 
     return model, games_today, scaler
+
 
 
 def treinar_modelo_handicap_classificacao_calibrado_v2(history, games_today):
@@ -401,63 +412,79 @@ def treinar_modelo_handicap_classificacao_calibrado_v2(history, games_today):
 # ============================================================
 # 🧠 MODELOS AWAY — Regressão e Classificação
 # ============================================================
-def treinar_modelo_away_handicap_regressao_calibrado(history, games_today):
-    """
-    Modelo AWAY (regressão) com alvo contínuo matemático (eixo AWAY).
-    """
-    st.markdown("### 📈 Modelo AWAY – Regressão (alvo contínuo novo)")
-    history = history.copy()
+# ============================================================
+# 🔧 BLOCO B — Regressão AWAY (corrigido)
+# ============================================================
 
+def treinar_modelo_away_handicap_regressao_calibrado(history: pd.DataFrame,
+                                                        games_today: pd.DataFrame):
+
+    st.subheader("📈 Modelo AWAY – Regressão (alvo contínuo novo)")
+
+    # 1) 🔥 Remover jogos sem FT
+    history = history.copy()
+    history = history[
+        history['Goals_H_FT'].notna() &
+        history['Goals_A_FT'].notna()
+    ]
+
+    # 2) Alvo contínuo AWAY (eixo AWAY)
     history['Handicap_Away_Cont'] = history.apply(
         calcular_handicap_otimo_away_continuo, axis=1
     )
 
-    history_reg = history.copy()
-    st.info(f"📊 Dados AWAY (regressão contínua): {len(history_reg)} jogos")
+    # 3) Remover possíveis NaNs
+    history = history[history['Handicap_Away_Cont'].notna()]
 
+    st.info(f"📊 Jogos usados no treino AWAY: {len(history)}")
+
+    # 4) Features
     features = [
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Vector_Sign',
         'Magnitude_3D', 'Momentum_Diff', 'Momentum_Diff_MT', 'Cluster3D_Label'
     ]
-    avail = [f for f in features if f in history_reg.columns]
+    features = [f for f in features if f in history.columns]
 
-    if len(avail) < 3:
-        st.error("❌ Features insuficientes para treinamento AWAY (regressão)")
+    if len(features) < 3:
+        st.error("❌ Features insuficientes para treinar AWAY")
         return None, games_today, None
 
-    X = history_reg[avail].fillna(0.0)
-    y = history_reg['Handicap_Away_Cont']
+    X = history[features].fillna(0.0)
+    y = history['Handicap_Away_Cont']
 
+    # 5) Scaling
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X)
 
+    # 6) Modelo
     model = RandomForestRegressor(
         n_estimators=200,
         max_depth=7,
-        min_samples_leaf=25,
+        min_samples_leaf=20,
         max_features=0.7,
         random_state=42,
         n_jobs=-1
     )
     model.fit(Xs, y)
 
-    preds_in_sample = model.predict(Xs)
-    mae = mean_absolute_error(y, preds_in_sample)
-    st.success(f"✅ MAE AWAY (contínuo): {mae:.3f}")
+    # 7) Validar no histórico
+    preds_in = model.predict(Xs)
+    mae = mean_absolute_error(y, preds_in)
+    st.success(f"MAE AWAY = {mae:.3f}")
 
-    # previsões hoje (eixo AWAY)
+    # 8) Prever jogos do dia (eixo AWAY)
     X_today = games_today.copy()
-    for f in avail:
+    for f in features:
         if f not in X_today.columns:
             X_today[f] = 0.0
-    X_today = X_today[avail].fillna(0.0)
 
-    preds_today = model.predict(scaler.transform(X_today))
+    preds_today = model.predict(scaler.transform(X_today[features]))
     preds_today = np.clip(preds_today, -MAX_ABS_HANDICAP, MAX_ABS_HANDICAP)
 
     games_today['Handicap_AWAY_Predito_Regressao_Calibrado'] = preds_today
 
     return model, games_today, scaler
+
 
 
 def treinar_modelo_away_handicap_classificacao_calibrado(history, games_today):
