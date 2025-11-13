@@ -1516,7 +1516,6 @@ def prepare_universal_features(df):
     # Features básicas + quadrantes como categorias normais
     features = [
         'Aggression_Home', 'Aggression_Away',
-        'HandScore_Home', 'HandScore_Away', 
         'M_H', 'M_A', 'MT_H', 'MT_A',
         'Quadrante_Home', 'Quadrante_Away'  # ← Quadrantes como números
     ]
@@ -1533,6 +1532,7 @@ def prepare_universal_features(df):
     available_features = [f for f in all_features if f in df.columns]
     
     st.success(f"✅ Features disponíveis: {len(available_features)} (quadrantes como categorias)")
+    #'HandScore_Home', 'HandScore_Away', 
     
     X = df[available_features].fillna(0)
     
