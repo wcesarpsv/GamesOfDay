@@ -75,25 +75,59 @@ def convert_asian_line(line_str):
     except:
         return None
 
-def calc_handicap_result(margin, asian_line_str, invert=False):
-    """Retorna média de pontos por linha (1 win, 0.5 push, 0 loss)"""
-    if pd.isna(asian_line_str):
+def calc_handicap_result(margin, asian_line_decimal, invert=False):
+    """
+    Calcula resultado do handicap asiático CORRETAMENTE
+    PUSH é considerado como 0 (não cobre) para classificação binária
+    """
+    if pd.isna(asian_line_decimal):
         return np.nan
+    
     if invert:
         margin = -margin
-    try:
-        parts = [float(x) for x in str(asian_line_str).split('/')]
-    except:
-        return np.nan
-    results = []
-    for line in parts:
+        asian_line_decimal = -asian_line_decimal
+    
+    line = asian_line_decimal
+    
+    # LINHAS INTEIRAS (-1, 0, +1, etc)
+    if line % 1 == 0:
         if margin > line:
-            results.append(1.0)
+            return 1.0  # Ganhou
         elif margin == line:
-            results.append(0.5)
+            return 0.0  # Push → considerado NÃO COBRE (0)
         else:
-            results.append(0.0)
-    return np.mean(results)
+            return 0.0  # Perdeu
+    
+    # LINHAS QUEBRADAS (-0.25, -0.75, +0.25, +0.75)
+    else:
+        # Para -0.25: split em 0 e -0.5
+        if line == -0.25 or line == 0.25:
+            line1 = math.floor(line)
+            line2 = math.ceil(line)
+            
+            result1 = 1.0 if margin > line1 else (0.0 if margin == line1 else 0.0)  # Push = 0
+            result2 = 1.0 if margin > line2 else (0.0 if margin == line2 else 0.0)  # Push = 0
+            
+            return (result1 + result2) / 2
+        
+        # Para -0.75: split em -0.5 e -1.0
+        elif line == -0.75 or line == 0.75:
+            line1 = -0.5 if line == -0.75 else 0.5
+            line2 = -1.0 if line == -0.75 else 1.0
+            
+            result1 = 1.0 if margin > line1 else (0.0 if margin == line1 else 0.0)  # Push = 0
+            result2 = 1.0 if margin > line2 else (0.0 if margin == line2 else 0.0)  # Push = 0
+            
+            return (result1 + result2) / 2
+        
+        # Outras linhas quebradas
+        else:
+            if margin > line:
+                return 1.0
+            elif margin == line:
+                return 0.0  # Push → considerado NÃO COBRE (0)
+            else:
+                return 0.0
 
 def convert_asian_line_to_decimal(value):
     """Converte Asian Line para decimal - INVERTE SINAL para ponto de vista HOME"""
