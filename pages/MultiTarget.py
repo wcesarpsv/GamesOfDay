@@ -1644,13 +1644,18 @@ if len(history_with_target) > 100:  # Mínimo de dados
     st.markdown("### 📊 5. Análise Completa de Todos os Jogos")
     
     all_games_analysis = games_with_value[[
-        'Home', 'Away', 'League', 'Asian_Line_Decimal', 
+        'League','Time',
+        'Home', 'Away',
+        'Goals_H_Today',  'Goals_A_Today',
+        'Asian_Line_Decimal', 
         'Model_Home_Advantage', 'Model_Away_Advantage', 'Value_Score',
         'Value_Recommendation', 'Value_Rank'
     ]].sort_values('Value_Rank')
     
     st.dataframe(
         all_games_analysis.style.format({
+            'Goals_H_Today': '{:.0f}',
+            'Goals_A_Today': '{:.0f}',
             'Asian_Line_Decimal': '{:.2f}',
             'Model_Home_Advantage': '{:.1%}',
             'Model_Away_Advantage': '{:.1%}',
