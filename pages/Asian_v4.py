@@ -570,7 +570,25 @@ def analisar_value_bets_dual(games_today, league_thresholds):
                 rec, conf = "NO BET", "LOW"
 
         # ======================
-        # 7) Registrar resultado
+        # 7) LIVE INFO (tratando NaN!)
+        # ======================
+        g_h = row.get('Goals_H_Today', np.nan)
+        g_a = row.get('Goals_A_Today', np.nan)
+
+        if pd.notna(g_h) and pd.notna(g_a):
+            try:
+                live_score = f"{int(g_h)}-{int(g_a)}"
+            except Exception:
+                live_score = f"{g_h}-{g_a}"
+        else:
+            live_score = "N/A"
+
+        home_red = row.get('Home_Red', 0)
+        away_red = row.get('Away_Red', 0)
+        status = row.get('status_ls', row.get('status', 'NO DATA'))
+
+        # ======================
+        # 8) Registrar resultado
         # ======================
         results.append({
             'League': lg,
@@ -589,14 +607,14 @@ def analisar_value_bets_dual(games_today, league_thresholds):
             'Rec': rec,
             'Confidence': conf,
 
-            # LIVE INFO 🔥
-            'Live_Score': f"{int(row.get('Goals_H_Today',0))}-{int(row.get('Goals_A_Today',0))}",
-            'Home_Red': row.get('Home_Red', 0),
-            'Away_Red': row.get('Away_Red', 0),
-            'Status': row.get('status_ls', 'NO DATA')
+            'Live_Score': live_score,
+            'Home_Red': home_red,
+            'Away_Red': away_red,
+            'Status': status,
         })
 
     return pd.DataFrame(results)
+
 
 
 
