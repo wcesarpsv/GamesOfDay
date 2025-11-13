@@ -1961,7 +1961,8 @@ if len(history_for_dual) > 100:
         
         if not dual_value_bets.empty:
             cols_value = [
-                'Home', 'Away', 'League', 'Asian_Line_Decimal',
+                'League',
+                'Home', 'Away', 'Goals_H_Today','Goals_A_Today', 'Asian_Line_Decimal',
                 'Dual_Home_Prob', 'Dual_Away_Prob', 'Dual_Best_Side', 
                 'Dual_Best_Probability', 'Dual_Value_Score'
             ]
@@ -1969,6 +1970,8 @@ if len(history_for_dual) > 100:
             st.dataframe(
                 dual_value_bets[cols_value]
                 .style.format({
+                    'Goals_H_Today': '{:.0f}',
+                    'Goals_H_Today': '{:.0f}',
                     'Asian_Line_Decimal': '{:.2f}',
                     'Dual_Home_Prob': '{:.1%}', 'Dual_Away_Prob': '{:.1%}',
                     'Dual_Best_Probability': '{:.1%}', 'Dual_Value_Score': '{:.3f}'
