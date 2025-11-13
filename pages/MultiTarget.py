@@ -1854,7 +1854,7 @@ def train_dual_side_models_independent(history):
     
     # 2. MODELO HOME - prevê se HOME cobre
     X_home = prepare_home_features_dual(history_with_features)
-    y_home = history_with_features['Home_Covered'].astype(int)
+    y_home = history_with_features['Universal_Target'].astype(int)  # Se Universal_Target existir
     
     model_home = RandomForestClassifier(
         n_estimators=200, 
