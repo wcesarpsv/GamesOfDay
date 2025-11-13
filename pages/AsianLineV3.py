@@ -487,27 +487,6 @@ def find_league_thresholds(history: pd.DataFrame, min_bets=60):
 
 
 
-st.markdown("### 🔎 Debug: Value Gaps reais do dia")
-
-df_debug = games_today.copy()
-
-df_debug['Pred_HOME'] = (
-    df_debug['Handicap_Predito_Regressao_Calibrado'] * 0.7 +
-    df_debug['Handicap_Predito_Classificacao_Calibrado'] * 0.3
-)
-
-df_debug['Pred_AWAY'] = (
-    df_debug['Handicap_AWAY_Predito_Regressao_Calibrado'] * 0.7 +
-    df_debug['Handicap_AWAY_Predito_Classificacao_Calibrado'] * 0.3
-)
-
-df_debug['VG_HOME'] = df_debug['Pred_HOME'] - df_debug['Asian_Line_Decimal']
-df_debug['VG_AWAY'] = df_debug['Pred_AWAY'] - (-df_debug['Asian_Line_Decimal'])
-
-st.dataframe(df_debug[['Home','Away','Asian_Line','Asian_Line_Decimal',
-                       'Pred_HOME','Pred_AWAY','VG_HOME','VG_AWAY']])
-
-
 
 
 
@@ -959,6 +938,29 @@ def main_calibrado():
                 with c4: st.metric("📊 Total Recomendações", len(bets_validos_dual))
     
             st.pyplot(plot_analise_dual_modelos(games_today))
+
+                        
+            st.markdown("### 🔎 Debug: Value Gaps reais do dia")
+            
+            df_debug = games_today.copy()
+            
+            df_debug['Pred_HOME'] = (
+                df_debug['Handicap_Predito_Regressao_Calibrado'] * 0.7 +
+                df_debug['Handicap_Predito_Classificacao_Calibrado'] * 0.3
+            )
+            
+            df_debug['Pred_AWAY'] = (
+                df_debug['Handicap_AWAY_Predito_Regressao_Calibrado'] * 0.7 +
+                df_debug['Handicap_AWAY_Predito_Classificacao_Calibrado'] * 0.3
+            )
+            
+            df_debug['VG_HOME'] = df_debug['Pred_HOME'] - df_debug['Asian_Line_Decimal']
+            df_debug['VG_AWAY'] = df_debug['Pred_AWAY'] - (-df_debug['Asian_Line_Decimal'])
+            
+            st.dataframe(df_debug[['Home','Away','Asian_Line','Asian_Line_Decimal',
+                                   'Pred_HOME','Pred_AWAY','VG_HOME','VG_AWAY']])
+            
+
             st.success("✅ Análise DUAL concluída com sucesso!")
             st.balloons()
 
