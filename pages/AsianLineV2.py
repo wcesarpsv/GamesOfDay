@@ -610,10 +610,10 @@ def analisar_value_bets_dual_modelos(games_today: pd.DataFrame, league_threshold
             'Confidence': confidence,
             'Edge_Difference': round(abs(value_gap_home - value_gap_away), 2),
 
-            'Goals_H_Today': int(g_h) if pd.notna(g_h) else np.nan,
-            'Goals_A_Today': int(g_a) if pd.notna(g_a) else np.nan,
-            'Home_Red': int(h_r) if pd.notna(h_r) else 0,
-            'Away_Red': int(a_r) if pd.notna(a_r) else 0,
+            #'Goals_H_Today': int(g_h) if pd.notna(g_h) else np.nan,
+            #'Goals_A_Today': int(g_a) if pd.notna(g_a) else np.nan,
+            #'Home_Red': int(h_r) if pd.notna(h_r) else 0,
+            #'Away_Red': int(a_r) if pd.notna(a_r) else 0,
             'Live_Score': live_score_info
         })
 
