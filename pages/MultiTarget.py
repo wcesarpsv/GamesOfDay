@@ -1470,7 +1470,7 @@ def create_universal_target(df):
 
 
 def prepare_universal_features(df):
-    """Prepara features INCLUINDO quadrantes como dummies (igual ao sistema principal)"""
+    """Prepara features garantindo mesmas colunas para treino e predição"""
     
     # 1. Features básicas
     basic_features = [
@@ -1479,9 +1479,26 @@ def prepare_universal_features(df):
         'M_H', 'M_A', 'MT_H', 'MT_A'
     ]
     
-    # 2. 🔥 QUADRANTES COMO DUMMIES (IGUAL AO SISTEMA PRINCIPAL)
+    # 2. Quadrantes como dummies - GARANTIR MESMAS COLUNAS
+    # Criar todas as colunas possíveis de quadrantes (0-16)
+    all_quadrante_cols = []
+    for i in range(0, 17):  # 0 a 16
+        all_quadrante_cols.extend([f'QH_{i}', f'QA_{i}'])
+    
+    # Criar dummies para os quadrantes atuais
     quadrante_dummies_home = pd.get_dummies(df['Quadrante_Home'], prefix='QH')
     quadrante_dummies_away = pd.get_dummies(df['Quadrante_Away'], prefix='QA')
+    
+    # Juntar e garantir todas as colunas
+    quadrante_dummies = pd.concat([quadrante_dummies_home, quadrante_dummies_away], axis=1)
+    
+    # Adicionar colunas faltantes com zeros
+    for col in all_quadrante_cols:
+        if col not in quadrante_dummies.columns:
+            quadrante_dummies[col] = 0
+    
+    # Reordenar colunas para consistência
+    quadrante_dummies = quadrante_dummies[all_quadrante_cols]
     
     # 3. Features 3D
     advanced_3d_features = [
@@ -1494,9 +1511,9 @@ def prepare_universal_features(df):
     X_basic = df[basic_features].fillna(0)
     X_3d = df[[f for f in advanced_3d_features if f in df.columns]].fillna(0)
     
-    X = pd.concat([X_basic, quadrante_dummies_home, quadrante_dummies_away, X_3d], axis=1)
+    X = pd.concat([X_basic, quadrante_dummies, X_3d], axis=1)
     
-    st.success(f"✅ Universal Target usando {X.shape[1]} features (incluindo {quadrante_dummies_home.shape[1] + quadrante_dummies_away.shape[1]} dummies de quadrantes)")
+    st.success(f"✅ Features: {X.shape[1]} (incluindo {len(all_quadrante_cols)} colunas de quadrantes)")
     
     return X, X.columns.tolist()
 
