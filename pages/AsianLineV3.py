@@ -427,9 +427,16 @@ def _evaluate_threshold_side(df, side, thr):
 
 def find_league_thresholds(history: pd.DataFrame, min_bets=60):
 
-    # threshold MAIS SUAVE para a nova lógica sem ABS incorreto
-    thr_norm_grid = np.arange(0.05, 0.30, 0.05)
-    thr_strong_grid = np.arange(0.10, 0.50, 0.05)
+    # ============================
+    # 🧭 MODO MODERADO – calibrado
+    # ============================
+
+    # Bets normais: sensibilidade média (≥ 0.10)
+    thr_norm_grid = np.arange(0.10, 0.25, 0.05)
+
+    # Strong bets: exigência maior (≥ 0.20)
+    thr_strong_grid = np.arange(0.20, 0.40, 0.05)
+
 
 
     leagues = sorted(history['League'].dropna().unique().tolist())
