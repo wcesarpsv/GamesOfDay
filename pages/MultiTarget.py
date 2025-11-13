@@ -95,24 +95,31 @@ def calc_handicap_result(margin, asian_line_str, invert=False):
             results.append(0.0)
     return np.mean(results)
 
-def convert_asian_line_to_decimal(line_str):
-    """Converte qualquer formato de Asian Line para valor decimal único"""
-    if pd.isna(line_str) or line_str == "":
-        return None
+def convert_asian_line_to_decimal(value):
+    """Converte Asian Line para decimal - INVERTE SINAL para ponto de vista HOME"""
+    if pd.isna(value):
+        return np.nan
+    s = str(value).strip()
 
+    # se não é split
+    if "/" not in s:
+        try:
+            num = float(s)
+            # padroniza: negativo = favorece HOME
+            return -num  # ←✅ INVERTE SINAL
+        except:
+            return np.nan
+
+    # split ex: "-0.5/1"
     try:
-        line_str = str(line_str).strip()
+        parts = [float(p) for p in s.replace("+","").replace("-","").split("/")]
+        avg = np.mean(parts)
+        sign = -1 if s.startswith("-") else 1
+        result = sign * avg
+        return -result  # ←✅ INVERTE SINAL
+    except:
+        return np.nan
 
-        # Se não tem "/" é valor único
-        if "/" not in line_str:
-            return float(line_str)
-
-        # Se tem "/" é linha fracionada - calcular média
-        parts = [float(x) for x in line_str.split("/")]
-        return sum(parts) / len(parts)
-
-    except (ValueError, TypeError):
-        return None
 
 # ---------------- Carregar Dados ----------------
 st.info("📂 Carregando dados para análise 3D de 16 quadrantes...")
