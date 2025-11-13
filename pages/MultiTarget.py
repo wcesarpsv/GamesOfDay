@@ -1704,7 +1704,7 @@ if not history_with_target.empty and 'Universal_Target' in history_with_target.c
 
 
 # ---------------- SISTEMA DUAL MODEL INDEPENDENTE ----------------
-st.markdown("## 🔄 DUAL MODEL INDEPENDENTE - Features Separadas")
+st.markdown("## 🔄 DUAL MODEL INDEPENDENTE - Usando Universal_Target")
 
 def calcular_features_dual_model(df):
     """Calcula TODAS as features necessárias para o Dual Model"""
@@ -1789,31 +1789,6 @@ def calcular_features_dual_model(df):
     if 'Asian_Line_Decimal' not in df.columns:
         df['Asian_Line_Decimal'] = df['Asian_Line'].apply(convert_asian_line_to_decimal)
     
-    # 4. CRIAR TARGET Home_Covered (SE NÃO EXISTIR)
-    if 'Home_Covered' not in df.columns and 'Goals_H_FT' in df.columns and 'Goals_A_FT' in df.columns:
-        st.info("🔄 Criando target Home_Covered...")
-        
-        def calc_handicap_result(margin, asian_line_str, invert=False):
-            if pd.isna(asian_line_str): return np.nan
-            if invert: margin = -margin
-            
-            # Para linha decimal, simplificar
-            try:
-                line = float(asian_line_str)
-                if margin > line: return 1.0
-                elif margin == line: return 0.5
-                else: return 0.0
-            except:
-                return np.nan
-        
-        df['Margin'] = df['Goals_H_FT'] - df['Goals_A_FT']
-        df['Home_Covered'] = df.apply(
-            lambda r: calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"], invert=False) > 0.5, 
-            axis=1
-        ).astype(int)
-        
-        st.success(f"✅ Target criado: Home cobre {df['Home_Covered'].mean():.1%} dos jogos")
-    
     st.success(f"✅ Features calculadas: {len(df)} jogos")
     return df
 
@@ -1840,21 +1815,26 @@ def prepare_away_features_dual(df):
     return X
 
 def train_dual_side_models_independent(history):
-    """Treina modelos separados para Home e Away - VERSÃO INDEPENDENTE"""
+    """Treina modelos separados para Home e Away - USANDO UNIVERSAL_TARGET"""
     
-    st.markdown("### 🤖 Treinando Modelos Dual Independentes")
+    st.markdown("### 🤖 Treinando Modelos Dual com Universal_Target")
     
     # 1. CALCULAR TODAS AS FEATURES NO HISTÓRICO
     history_with_features = calcular_features_dual_model(history)
     
-    # Verificar se temos o target
-    if 'Home_Covered' not in history_with_features.columns:
-        st.error("❌ Não foi possível criar o target Home_Covered. Verifique se existem colunas Goals_H_FT e Goals_A_FT.")
-        return None, None
+    # 2. VERIFICAR SE UNIVERSAL_TARGET EXISTE - SE NÃO, CRIAR
+    if 'Universal_Target' not in history_with_features.columns:
+        st.warning("⚠️ Universal_Target não encontrado. Criando a partir de Home_Covered...")
+        if 'Home_Covered' in history_with_features.columns:
+            history_with_features['Universal_Target'] = history_with_features['Home_Covered'].astype(int)
+            st.success(f"✅ Universal_Target criado: {history_with_features['Universal_Target'].mean():.1%} Home cobre")
+        else:
+            st.error("❌ Não foi possível criar Universal_Target. Verifique se existem colunas Goals_H_FT e Goals_A_FT.")
+            return None, None
     
-    # 2. MODELO HOME - prevê se HOME cobre
+    # 3. MODELO HOME - prevê se HOME cobre (Universal_Target = 1)
     X_home = prepare_home_features_dual(history_with_features)
-    y_home = history_with_features['Universal_Target'].astype(int)  # Se Universal_Target existir
+    y_home = history_with_features['Universal_Target'].astype(int)  # ← USA UNIVERSAL_TARGET
     
     model_home = RandomForestClassifier(
         n_estimators=200, 
@@ -1864,11 +1844,11 @@ def train_dual_side_models_independent(history):
     )
     model_home.fit(X_home, y_home)
     home_acc = model_home.score(X_home, y_home)
-    st.success(f"✅ Modelo Home: {home_acc:.1%}")
+    st.success(f"✅ Modelo Home (Universal_Target): {home_acc:.1%}")
     
-    # 3. MODELO AWAY - prevê se AWAY cobre  
+    # 4. MODELO AWAY - prevê se AWAY cobre (Universal_Target = 0)  
     X_away = prepare_away_features_dual(history_with_features)
-    y_away = (1 - history_with_features['Home_Covered']).astype(int)  # Away cobre = Home não cobre
+    y_away = (1 - history_with_features['Universal_Target']).astype(int)  # ← OPOSTO DO UNIVERSAL_TARGET
     
     model_away = RandomForestClassifier(
         n_estimators=200, 
@@ -1878,19 +1858,22 @@ def train_dual_side_models_independent(history):
     )
     model_away.fit(X_away, y_away)
     away_acc = model_away.score(X_away, y_away)
-    st.success(f"✅ Modelo Away: {away_acc:.1%}")
+    st.success(f"✅ Modelo Away (Universal_Target): {away_acc:.1%}")
+    
+    # Comparação com modelo único
+    st.info(f"📊 Distribuição do Universal_Target: {y_home.mean():.1%} Home vs {y_away.mean():.1%} Away")
     
     return model_home, model_away
 
 def find_best_side_dual_model_independent(games_today, model_home, model_away):
-    """Encontra o melhor lado - VERSÃO INDEPENDENTE"""
+    """Encontra o melhor lado usando Universal_Target"""
     
     # CALCULAR FEATURES NOS JOGOS DE HOJE
     games_with_features = calcular_features_dual_model(games_today)
     
     games = games_with_features.copy()
     
-    # Previsões de cada modelo
+    # Previsões de cada modelo (baseadas no Universal_Target)
     proba_home_cover = model_home.predict_proba(prepare_home_features_dual(games))[:, 1]
     proba_away_cover = model_away.predict_proba(prepare_away_features_dual(games))[:, 1]
     
@@ -1901,25 +1884,30 @@ def find_best_side_dual_model_independent(games_today, model_home, model_away):
     games['Dual_Best_Probability'] = np.maximum(proba_home_cover, proba_away_cover)
     games['Dual_Probability_Diff'] = np.abs(proba_home_cover - proba_away_cover)
     
-    # Value bets com critério mais conservador
+    # Value bets com critério consistente
     games['Dual_Value_Bet'] = games['Dual_Best_Probability'] > 0.60
     games['Dual_Strong_Value'] = games['Dual_Best_Probability'] > 0.65
     games['Dual_Value_Score'] = np.abs(games['Dual_Best_Probability'] - 0.5)
     
-    st.success(f"🎯 Dual Model: {games['Dual_Value_Bet'].sum()} value bets | {games['Dual_Strong_Value'].sum()} strong")
+    st.success(f"🎯 Dual Model (Universal_Target): {games['Dual_Value_Bet'].sum()} value bets | {games['Dual_Strong_Value'].sum()} strong")
     
     return games
 
-# ---------------- APLICAÇÃO DO DUAL MODEL INDEPENDENTE ----------------
+# ---------------- APLICAÇÃO DO DUAL MODEL COM UNIVERSAL_TARGET ----------------
 
-st.markdown("### 🔄 Executando Dual Model Independente")
+st.markdown("### 🔄 Executando Dual Model com Universal_Target")
 
-# Garantir que temos dados suficientes
-history_for_dual = history.copy()
+# Usar o mesmo histórico que já tem Universal_Target
+history_for_dual = history_with_target.copy() if 'history_with_target' in locals() else history.copy()
 games_today_for_dual = games_today.copy()
 
 if len(history_for_dual) > 100:
-    # Treinar modelos dual independentes
+    # Verificar se temos Universal_Target
+    if 'Universal_Target' not in history_for_dual.columns:
+        st.warning("🔄 Criando Universal_Target no histórico...")
+        history_for_dual = create_universal_target(history_for_dual)
+    
+    # Treinar modelos dual com Universal_Target
     model_home, model_away = train_dual_side_models_independent(history_for_dual)
     
     if model_home is not None and model_away is not None:
@@ -1932,11 +1920,22 @@ if len(history_for_dual) > 100:
             (games_dual['Asian_Line_Decimal'] <= 1.5)
         ]
         
-        # Exibir resultados DETALHADOS
-        st.markdown("#### 📊 Resultados Detalhados - Dual Model")
+        # Exibir comparação com Universal Model
+        st.markdown("#### 📊 Comparação: Universal Model vs Dual Model")
+        
+        # Se temos resultados do Universal Model, comparar
+        if 'games_with_value' in locals():
+            universal_count = games_with_value['Value_Bet_Home'].sum() + games_with_value['Value_Bet_Away'].sum()
+            dual_count = games_dual_filtered['Dual_Value_Bet'].sum()
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Universal Model Value Bets", universal_count)
+            with col2:
+                st.metric("Dual Model Value Bets", dual_count)
         
         # Todos os jogos com probabilidades
-        st.markdown("##### 📈 Todas as Probabilidades")
+        st.markdown("##### 📈 Todas as Probabilidades - Dual Model")
         cols_all = [
             'Home', 'Away', 'League', 'Asian_Line_Decimal',
             'Dual_Home_Prob', 'Dual_Away_Prob', 'Dual_Best_Side', 
@@ -1956,13 +1955,12 @@ if len(history_for_dual) > 100:
         )
         
         # Value bets
-        st.markdown("##### 💎 Value Bets Identificados")
+        st.markdown("##### 💎 Value Bets Identificados - Dual Model")
         dual_value_bets = games_dual_filtered[games_dual_filtered['Dual_Value_Bet']].sort_values('Dual_Best_Probability', ascending=False)
         
         if not dual_value_bets.empty:
             cols_value = [
-                'League',
-                'Home', 'Away', 'Goals_H_Today','Goals_A_Today', 'Asian_Line_Decimal',
+                'Home', 'Away', 'League', 'Asian_Line_Decimal',
                 'Dual_Home_Prob', 'Dual_Away_Prob', 'Dual_Best_Side', 
                 'Dual_Best_Probability', 'Dual_Value_Score'
             ]
@@ -1970,8 +1968,6 @@ if len(history_for_dual) > 100:
             st.dataframe(
                 dual_value_bets[cols_value]
                 .style.format({
-                    'Goals_H_Today': '{:.0f}',
-                    'Goals_A_Today': '{:.0f}',
                     'Asian_Line_Decimal': '{:.2f}',
                     'Dual_Home_Prob': '{:.1%}', 'Dual_Away_Prob': '{:.1%}',
                     'Dual_Best_Probability': '{:.1%}', 'Dual_Value_Score': '{:.3f}'
@@ -1980,29 +1976,13 @@ if len(history_for_dual) > 100:
                 use_container_width=True
             )
             
-            # Estatísticas
-            st.markdown("##### 📈 Estatísticas")
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Total Value Bets", len(dual_value_bets))
-            with col2:
-                home_bets = dual_value_bets[dual_value_bets['Dual_Best_Side'] == 'HOME'].shape[0]
-                st.metric("Value Home", home_bets)
-            with col3:
-                away_bets = dual_value_bets[dual_value_bets['Dual_Best_Side'] == 'AWAY'].shape[0]
-                st.metric("Value Away", away_bets)
-            with col4:
-                avg_prob = dual_value_bets['Dual_Best_Probability'].mean()
-                st.metric("Probabilidade Média", f"{avg_prob:.1%}")
-                
         else:
             st.info("🤷 Dual Model não identificou value bets claros")
     else:
         st.error("❌ Falha no treinamento dos modelos dual")
         
 else:
-    st.warning("⚠️ Dados insuficientes para Dual Model Independente")
+    st.warning("⚠️ Dados insuficientes para Dual Model")
 
 st.markdown("---")
 
