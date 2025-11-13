@@ -756,10 +756,74 @@ def analisar_value_bets_dual_modelos(games_today: pd.DataFrame, league_threshold
 
 
 # ============================================================
-# 📈 VISUALIZAÇÃO DUAL
+# 📈 VISUALIZAÇÕES DUAL (eixo HOME unificado)
 # ============================================================
+def plot_analise_dual_modelos(games_today: pd.DataFrame):
+    """
+    Gráfico revisado:
+    - Subplot 1: Value Gap HOME vs AWAY (já convertendo AWAY para eixo HOME)
+    - Subplot 2: Predito HOME e Predito AWAY (em eixo HOME) vs linha do mercado
+    """
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
-plot_analise_dual_modelos
+    value_gaps_home, value_gaps_away_home = [], []
+    asian_lines = []
+    fair_lines_dual = []
+
+    for _, row in games_today.iterrows():
+        asian_line = float(row.get('Asian_Line_Decimal', 0) or 0.0)
+
+        pred_home = (
+            0.7 * float(row.get('Handicap_Predito_Regressao_Calibrado', 0) or 0.0) +
+            0.3 * float(row.get('Handicap_Predito_Classificacao_Calibrado', 0) or 0.0)
+        )
+        pred_away_raw = (
+            0.7 * float(row.get('Handicap_AWAY_Predito_Regressao_Calibrado', 0) or 0.0) +
+            0.3 * float(row.get('Handicap_AWAY_Predito_Classificacao_Calibrado', 0) or 0.0)
+        )
+        pred_away_home_axis = -pred_away_raw
+
+        vg_home = pred_home - asian_line
+        vg_away_home = pred_away_home_axis - asian_line
+        value_gaps_home.append(vg_home)
+        value_gaps_away_home.append(vg_away_home)
+
+        asian_lines.append(asian_line)
+        fair_lines_dual.append((pred_home + pred_away_home_axis) / 2.0)
+
+    # ---------------- Subplot 1: Value Gaps ----------------
+    x_pos = list(range(len(value_gaps_home)))
+    ax1.bar([x - 0.2 for x in x_pos], value_gaps_home, 0.4, label='HOME Value Gap', alpha=0.7)
+    ax1.bar([x + 0.2 for x in x_pos], value_gaps_away_home, 0.4, label='AWAY Value Gap (eixo HOME)', alpha=0.7)
+    ax1.axhline(y=0, linestyle='-', alpha=0.5)
+    ax1.set_xlabel('Jogos')
+    ax1.set_ylabel('Value Gap (eixo HOME)')
+    ax1.set_title('Value Gaps: HOME vs AWAY (em eixo HOME)')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+
+    # ---------------- Subplot 2: Predito vs Mercado ----------------
+    ax2.scatter(asian_lines, fair_lines_dual, alpha=0.7, s=60, label='Fair Line DUAL (HOME-axis)')
+    ax2.scatter(asian_lines, [ph for ph in [  # lista com os preds HOME
+        0.7 * float(row.get('Handicap_Predito_Regressao_Calibrado', 0) or 0.0) +
+        0.3 * float(row.get('Handicap_Predito_Classificacao_Calibrado', 0) or 0.0)
+        for _, row in games_today.iterrows()
+    ]], alpha=0.6, s=40, label='HOME Predito (modelo HOME)')
+    ax2.scatter(asian_lines, [ -(
+        0.7 * float(row.get('Handicap_AWAY_Predito_Regressao_Calibrado', 0) or 0.0) +
+        0.3 * float(row.get('Handicap_AWAY_Predito_Classificacao_Calibrado', 0) or 0.0)
+    ) for _, row in games_today.iterrows()], alpha=0.6, s=40, label='AWAY Predito (convertido p/ HOME)')
+
+    ax2.plot([-1.5, 1.5], [-1.5, 1.5], 'k--', alpha=0.3, label='Linha Mercado (y=x)')
+    ax2.set_xlabel('Asian Line (Mercado, eixo HOME)')
+    ax2.set_ylabel('Handicap Predito (eixo HOME)')
+    ax2.set_title('Predito vs Mercado (HOME & AWAY em eixo HOME)')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    return fig
+
 
 # ============================================================
 # 🚀 EXECUÇÃO PRINCIPAL - DUAL MODEL
