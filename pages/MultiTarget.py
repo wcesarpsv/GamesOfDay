@@ -1703,47 +1703,145 @@ if not history_with_target.empty and 'Universal_Target' in history_with_target.c
 
 
 
-# ... todo o código atual ...
+# ---------------- SISTEMA DUAL MODEL INDEPENDENTE ----------------
+st.markdown("## 🔄 DUAL MODEL INDEPENDENTE - Features Separadas")
 
-# ---------------- SISTEMA DUAL MODEL (NOVA ABORDAGEM) ----------------
-st.markdown("## 🔄 DUAL MODEL - Perspectivas Separadas Home/Away")
+def calcular_features_dual_model(df):
+    """Calcula TODAS as features necessárias para o Dual Model"""
+    df = df.copy()
+    
+    # 1. CALCULAR QUADRANTES (igual ao sistema principal)
+    QUADRANTES_16 = {
+        1: {"nome": "Fav Forte Muito Forte", "agg_min": 0.75, "agg_max": 1.0, "hs_min": 45, "hs_max": 60},
+        2: {"nome": "Fav Forte Forte", "agg_min": 0.75, "agg_max": 1.0, "hs_min": 30, "hs_max": 45},
+        3: {"nome": "Fav Forte Moderado", "agg_min": 0.75, "agg_max": 1.0, "hs_min": 15, "hs_max": 30},
+        4: {"nome": "Fav Forte Neutro", "agg_min": 0.75, "agg_max": 1.0, "hs_min": -15, "hs_max": 15},
+        5: {"nome": "Fav Moderado Muito Forte", "agg_min": 0.25, "agg_max": 0.75, "hs_min": 45, "hs_max": 60},
+        6: {"nome": "Fav Moderado Forte", "agg_min": 0.25, "agg_max": 0.75, "hs_min": 30, "hs_max": 45},
+        7: {"nome": "Fav Moderado Moderado", "agg_min": 0.25, "agg_max": 0.75, "hs_min": 15, "hs_max": 30},
+        8: {"nome": "Fav Moderado Neutro", "agg_min": 0.25, "agg_max": 0.75, "hs_min": -15, "hs_max": 15},
+        9: {"nome": "Under Moderado Neutro", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -15, "hs_max": 15},
+        10: {"nome": "Under Moderado Moderado", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -30, "hs_max": -15},
+        11: {"nome": "Under Moderado Forte", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -45, "hs_max": -30},
+        12: {"nome": "Under Moderado Muito Forte", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -60, "hs_max": -45},
+        13: {"nome": "Under Forte Neutro", "agg_min": -1.0, "agg_max": -0.75, "hs_min": -15, "hs_max": 15},
+        14: {"nome": "Under Forte Moderado", "agg_min": -1.0, "agg_max": -0.75, "hs_min": -30, "hs_max": -15},
+        15: {"nome": "Under Forte Forte", "agg_min": -1.0, "agg_max": -0.75, "hs_min": -45, "hs_max": -30},
+        16: {"nome": "Under Forte Muito Forte", "agg_min": -1.0, "agg_max": -0.75, "hs_min": -60, "hs_max": -45}
+    }
+    
+    def classificar_quadrante_16(agg, hs):
+        if pd.isna(agg) or pd.isna(hs): return 0
+        for quadrante_id, config in QUADRANTES_16.items():
+            agg_ok = (config['agg_min'] <= agg <= config['agg_max'])
+            hs_ok = (config['hs_min'] <= hs <= config['hs_max'])
+            if agg_ok and hs_ok: return quadrante_id
+        return 0
+    
+    # Aplicar quadrantes
+    df['Quadrante_Home'] = df.apply(lambda x: classificar_quadrante_16(x.get('Aggression_Home'), x.get('HandScore_Home')), axis=1)
+    df['Quadrante_Away'] = df.apply(lambda x: classificar_quadrante_16(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1)
+    
+    # 2. CALCULAR MOMENTUM DO TIME (MT_H, MT_A)
+    def calcular_momentum_time(df, window=6):
+        df = df.copy()
+        if 'MT_H' not in df.columns: df['MT_H'] = np.nan
+        if 'MT_A' not in df.columns: df['MT_A'] = np.nan
+        
+        all_teams = pd.unique(df[['Home', 'Away']].values.ravel())
+        
+        for team in all_teams:
+            # HOME
+            mask_home = df['Home'] == team
+            if mask_home.sum() > 2:
+                series = df.loc[mask_home, 'HandScore_Home'].astype(float).rolling(window, min_periods=2).mean()
+                zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
+                df.loc[mask_home, 'MT_H'] = zscore
+            
+            # AWAY
+            mask_away = df['Away'] == team
+            if mask_away.sum() > 2:
+                series = df.loc[mask_away, 'HandScore_Away'].astype(float).rolling(window, min_periods=2).mean()
+                zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
+                df.loc[mask_away, 'MT_A'] = zscore
+        
+        df['MT_H'] = df['MT_H'].fillna(0)
+        df['MT_A'] = df['MT_A'].fillna(0)
+        return df
+    
+    df = calcular_momentum_time(df)
+    
+    # 3. CONVERTER ASIAN LINE (garantir que existe)
+    def convert_asian_line_to_decimal(value):
+        if pd.isna(value): return np.nan
+        s = str(value).strip()
+        if "/" not in s:
+            try: return -float(s)  # Inverte para ponto de vista HOME
+            except: return np.nan
+        try:
+            parts = [float(p) for p in s.replace("+","").replace("-","").split("/")]
+            avg = np.mean(parts)
+            sign = -1 if s.startswith("-") else 1
+            result = sign * avg
+            return -result  # Inverte para ponto de vista HOME
+        except: return np.nan
+    
+    if 'Asian_Line_Decimal' not in df.columns:
+        df['Asian_Line_Decimal'] = df['Asian_Line'].apply(convert_asian_line_to_decimal)
+    
+    st.success(f"✅ Features calculadas: {len(df)} jogos")
+    return df
 
-def prepare_home_features(df):
+def prepare_home_features_dual(df):
     """Features apenas do HOME + linha"""
     features = [
         'Aggression_Home', 'HandScore_Home', 'M_H', 'MT_H', 'Quadrante_Home',
-        'Asian_Line_Decimal'  # Linha do ponto de vista HOME
+        'Asian_Line_Decimal'
     ]
     available = [f for f in features if f in df.columns]
-    return df[available].fillna(0)
+    X = df[available].fillna(0)
+    st.info(f"🏠 Home Features: {len(available)} features")
+    return X
 
-def prepare_away_features(df):
-    """Features apenas do AWAY + linha (invertida)"""
+def prepare_away_features_dual(df):
+    """Features apenas do AWAY + linha"""
     features = [
-        'Aggression_Away', 'HandScore_Away', 'M_A', 'MT_A', 'Quadrante_Away', 
-        'Asian_Line_Decimal'  # Já está do ponto de vista HOME, mantemos igual
-        # O modelo Away aprenderá a interpretar essa linha
+        'Aggression_Away', 'HandScore_Away', 'M_A', 'MT_A', 'Quadrante_Away',
+        'Asian_Line_Decimal'  
     ]
     available = [f for f in features if f in df.columns]
-    return df[available].fillna(0)
+    X = df[available].fillna(0)
+    st.info(f"✈️ Away Features: {len(available)} features")
+    return X
 
-def train_dual_side_models(history):
-    """Treina modelos separados para Home e Away"""
+def train_dual_side_models_independent(history):
+    """Treina modelos separados para Home e Away - VERSÃO INDEPENDENTE"""
     
-    st.markdown("### 🤖 Treinando Modelos Dual (Home + Away)")
+    st.markdown("### 🤖 Treinando Modelos Dual Independentes")
     
-    # 1. MODELO HOME - prevê se HOME cobre
-    X_home = prepare_home_features(history)
-    y_home = (history['Home_Covered'] == 1).astype(int)
+    # 1. CALCULAR TODAS AS FEATURES NO HISTÓRICO
+    history_with_features = calcular_features_dual_model(history)
+    
+    # 2. MODELO HOME - prevê se HOME cobre
+    X_home = prepare_home_features_dual(history_with_features)
+    y_home = (history_with_features['Home_Covered'] == 1).astype(int)
+    
     model_home = RandomForestClassifier(
-        n_estimators=200, max_depth=10, random_state=42
+        n_estimators=200, 
+        max_depth=12, 
+        random_state=42,
+        class_weight='balanced_subsample'
     ).fit(X_home, y_home)
     
-    # 2. MODELO AWAY - prevê se AWAY cobre  
-    X_away = prepare_away_features(history)
-    y_away = (history['Home_Covered'] == 0).astype(int)
+    # 3. MODELO AWAY - prevê se AWAY cobre  
+    X_away = prepare_away_features_dual(history_with_features)
+    y_away = (history_with_features['Home_Covered'] == 0).astype(int)
+    
     model_away = RandomForestClassifier(
-        n_estimators=200, max_depth=10, random_state=42
+        n_estimators=200, 
+        max_depth=12, 
+        random_state=42,
+        class_weight='balanced_subsample'
     ).fit(X_away, y_away)
     
     # Validação
@@ -1753,78 +1851,123 @@ def train_dual_side_models(history):
     
     return model_home, model_away
 
-def find_best_side_dual_model(games_today, model_home, model_away):
-    """Encontra o melhor lado usando ambos modelos"""
+def find_best_side_dual_model_independent(games_today, model_home, model_away):
+    """Encontra o melhor lado - VERSÃO INDEPENDENTE"""
     
-    games = games_today.copy()
+    # CALCULAR FEATURES NOS JOGOS DE HOJE
+    games_with_features = calcular_features_dual_model(games_today)
+    
+    games = games_with_features.copy()
     
     # Previsões de cada modelo
-    proba_home_cover = model_home.predict_proba(prepare_home_features(games))[:, 1]
-    proba_away_cover = model_away.predict_proba(prepare_away_features(games))[:, 1]
+    proba_home_cover = model_home.predict_proba(prepare_home_features_dual(games))[:, 1]
+    proba_away_cover = model_away.predict_proba(prepare_away_features_dual(games))[:, 1]
     
-    # Escolhe o lado com maior probabilidade
+    # Análise detalhada
     games['Dual_Home_Prob'] = proba_home_cover
     games['Dual_Away_Prob'] = proba_away_cover
     games['Dual_Best_Side'] = np.where(proba_home_cover > proba_away_cover, 'HOME', 'AWAY')
     games['Dual_Best_Probability'] = np.maximum(proba_home_cover, proba_away_cover)
     games['Dual_Probability_Diff'] = np.abs(proba_home_cover - proba_away_cover)
     
-    # Value bets dual
-    games['Dual_Value_Bet'] = games['Dual_Best_Probability'] > 0.58
+    # Value bets com critério mais conservador
+    games['Dual_Value_Bet'] = games['Dual_Best_Probability'] > 0.60
+    games['Dual_Strong_Value'] = games['Dual_Best_Probability'] > 0.65
     games['Dual_Value_Score'] = np.abs(games['Dual_Best_Probability'] - 0.5)
     
-    st.success(f"🎯 Dual Model: {games['Dual_Value_Bet'].sum()} value bets identificados")
+    st.success(f"🎯 Dual Model: {games['Dual_Value_Bet'].sum()} value bets | {games['Dual_Strong_Value'].sum()} strong")
     
     return games
 
-# ---------------- APLICAÇÃO DO DUAL MODEL ----------------
+# ---------------- APLICAÇÃO DO DUAL MODEL INDEPENDENTE ----------------
 
-if len(history_with_target) > 100:
-    st.markdown("### 🔄 Resultados Dual Model")
-    
-    # Treinar modelos dual
-    model_home, model_away = train_dual_side_models(history_with_target)
+st.markdown("### 🔄 Executando Dual Model Independente")
+
+# Garantir que temos dados suficientes
+history_for_dual = history.copy()
+games_today_for_dual = games_today.copy()
+
+if len(history_for_dual) > 100:
+    # Treinar modelos dual independentes
+    model_home, model_away = train_dual_side_models_independent(history_for_dual)
     
     # Aplicar aos jogos de hoje
-    games_dual = find_best_side_dual_model(games_today_filtered, model_home, model_away)
+    games_dual = find_best_side_dual_model_independent(games_today_for_dual, model_home, model_away)
     
-    # Exibir comparação
-    st.markdown("#### 📊 Comparação: Universal vs Dual Model")
+    # FILTRAR APENAS HANDICAPS COMUNS
+    games_dual_filtered = games_dual[
+        (games_dual['Asian_Line_Decimal'] >= -1.5) & 
+        (games_dual['Asian_Line_Decimal'] <= 1.5)
+    ]
     
-    dual_value_bets = games_dual[games_dual['Dual_Value_Bet']].sort_values('Dual_Value_Score', ascending=False)
+    # Exibir resultados DETALHADOS
+    st.markdown("#### 📊 Resultados Detalhados - Dual Model")
+    
+    # Todos os jogos com probabilidades
+    st.markdown("##### 📈 Todas as Probabilidades")
+    cols_all = [
+        'Home', 'Away', 'League', 'Asian_Line_Decimal',
+        'Dual_Home_Prob', 'Dual_Away_Prob', 'Dual_Best_Side', 
+        'Dual_Best_Probability', 'Dual_Probability_Diff'
+    ]
+    
+    st.dataframe(
+        games_dual_filtered[cols_all].sort_values('Dual_Best_Probability', ascending=False)
+        .style.format({
+            'Asian_Line_Decimal': '{:.2f}',
+            'Dual_Home_Prob': '{:.1%}', 'Dual_Away_Prob': '{:.1%}',
+            'Dual_Best_Probability': '{:.1%}', 'Dual_Probability_Diff': '{:.3f}'
+        })
+        .background_gradient(subset=['Dual_Best_Probability'], cmap='RdYlGn')
+        .background_gradient(subset=['Dual_Probability_Diff'], cmap='Blues'),
+        use_container_width=True
+    )
+    
+    # Value bets
+    st.markdown("##### 💎 Value Bets Identificados")
+    dual_value_bets = games_dual_filtered[games_dual_filtered['Dual_Value_Bet']].sort_values('Dual_Best_Probability', ascending=False)
     
     if not dual_value_bets.empty:
-        cols_dual = [
+        cols_value = [
             'Home', 'Away', 'League', 'Asian_Line_Decimal',
             'Dual_Home_Prob', 'Dual_Away_Prob', 'Dual_Best_Side', 
             'Dual_Best_Probability', 'Dual_Value_Score'
         ]
         
         st.dataframe(
-            dual_value_bets[cols_dual].style.format({
+            dual_value_bets[cols_value]
+            .style.format({
                 'Asian_Line_Decimal': '{:.2f}',
                 'Dual_Home_Prob': '{:.1%}', 'Dual_Away_Prob': '{:.1%}',
                 'Dual_Best_Probability': '{:.1%}', 'Dual_Value_Score': '{:.3f}'
-            }).background_gradient(subset=['Dual_Value_Score'], cmap='YlOrRd'),
+            })
+            .background_gradient(subset=['Dual_Best_Probability'], cmap='RdYlGn'),
             use_container_width=True
         )
         
-        # Comparação estatística
-        st.markdown("#### 📈 Estatísticas Comparativas")
-        col1, col2 = st.columns(2)
+        # Estatísticas
+        st.markdown("##### 📈 Estatísticas")
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            universal_count = len(value_bets) if 'value_bets' in locals() else 0
-            st.metric("Universal Model Value Bets", universal_count)
-            
+            st.metric("Total Value Bets", len(dual_value_bets))
         with col2:
-            st.metric("Dual Model Value Bets", len(dual_value_bets))
+            home_bets = dual_value_bets[dual_value_bets['Dual_Best_Side'] == 'HOME'].shape[0]
+            st.metric("Value Home", home_bets)
+        with col3:
+            away_bets = dual_value_bets[dual_value_bets['Dual_Best_Side'] == 'AWAY'].shape[0]
+            st.metric("Value Away", away_bets)
+        with col4:
+            avg_prob = dual_value_bets['Dual_Best_Probability'].mean()
+            st.metric("Probabilidade Média", f"{avg_prob:.1%}")
             
     else:
         st.info("🤷 Dual Model não identificou value bets claros")
+        
+else:
+    st.warning("⚠️ Dados insuficientes para Dual Model Independente")
 
 st.markdown("---")
-st.success("🎯 **Sistema 3D + Universal Target + Dual Model** implementados!")
 
 
 st.markdown("---")
