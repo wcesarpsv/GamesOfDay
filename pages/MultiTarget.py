@@ -1402,7 +1402,7 @@ if not games_today.empty and 'Classificacao_Potencial_3D' in games_today.columns
 
 
 
-
+history = calcular_distancias_3d(history)
 
 # ---------------- SISTEMA UNIVERSAL TARGET ----------------
 st.markdown("## 🎯 UNIVERSAL TARGET - Valor Real vs Handicap")
