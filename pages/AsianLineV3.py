@@ -602,7 +602,7 @@ def analisar_value_bets_dual_modelos(games_today: pd.DataFrame, league_threshold
         # 🔥 CENÁRIO 2 — Valor DIRETO (LÓGICA PRINCIPAL DO SISTEMA)
         # (não exige mais força_relativa!)
         # =========================================================
-        if recomandacao_final == "NO CLEAR EDGE" and abs(asian_line) < 1.0:
+        if recomendacao_final == "NO CLEAR EDGE" and abs(asian_line) < 1.0:
 
             # ---- HOME
             if value_gap_home >= thr_home_str:
