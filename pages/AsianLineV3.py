@@ -425,17 +425,108 @@ def _evaluate_threshold_side(df, side, thr):
     roi = pick['unit'].mean() if n else 0.0
     return roi, n, win
 
+def classify_league_stability(df_league):
+    """
+    Classifica cada liga em níveis de estabilidade.
+    🟢 TIER_1 = Confiável
+    🟡 TIER_2 = Moderada
+    🔴 TIER_3 = Instável
+    """
+    n = len(df_league)
+
+    # Variância total de gols (queremos ligas com jogos mais previsíveis)
+    var_goals = df_league[['Goals_H_FT', 'Goals_A_FT']].fillna(0).values.var()
+
+    # Margem média de gols (ligas com goleadas frequentes são instáveis)
+    margin = (df_league['Goals_H_FT'] - df_league['Goals_A_FT']).abs().mean()
+
+    # Blowouts (gols de diferença >= 3)
+    blowouts = ((df_league['Goals_H_FT'] - df_league['Goals_A_FT']).abs() >= 3).mean()
+
+    # Score de instabilidade consolidado
+    instability = (
+        (var_goals * 0.5) +
+        (margin * 0.3) +
+        (blowouts * 2.0) +
+        (1.0 / max(n, 1)) * 10
+    )
+
+    # Faixas definidas empiricamente
+    if instability < 2.0:
+        return "TIER_1"   # 🟢 Confiável
+    elif instability < 4.0:
+        return "TIER_2"   # 🟡 Moderada
+    else:
+        return "TIER_3"   # 🔴 Instável
+
+
+# ===============================================================
+#   BLOCO PRINCIPAL: Thresholds por Liga (com TIER automático)
+# ===============================================================
 def find_league_thresholds(history: pd.DataFrame, min_bets=60):
 
-    # ============================
-    # 🧭 MODO MODERADO – calibrado
-    # ============================
+    leagues = sorted(history['League'].dropna().unique().tolist())
 
-    # Bets normais: sensibilidade média (≥ 0.10)
-    thr_norm_grid = np.arange(0.10, 0.25, 0.05)
+    # === Classificar ligas por estabilidade ===
+    league_stability = {}
+    for lg in leagues:
+        df_lg = history[history['League'] == lg]
+        league_stability[lg] = classify_league_stability(df_lg)
 
-    # Strong bets: exigência maior (≥ 0.20)
-    thr_strong_grid = np.arange(0.20, 0.40, 0.05)
+    # === Tabela base de thresholds por TIER (MODO MODERADO) ===
+    TIER_THRESHOLDS = {
+        "TIER_1": {     # 🟢 Confiável
+            "HOME": 0.10,
+            "AWAY": 0.10,
+            "HOME_STRONG": 0.25,
+            "AWAY_STRONG": 0.25
+        },
+        "TIER_2": {     # 🟡 Moderada
+            "HOME": 0.15,
+            "AWAY": 0.15,
+            "HOME_STRONG": 0.30,
+            "AWAY_STRONG": 0.30
+        },
+        "TIER_3": {     # 🔴 Instável
+            "HOME": 0.22,
+            "AWAY": 0.22,
+            "HOME_STRONG": 0.35,
+            "AWAY_STRONG": 0.35
+        }
+    }
+
+    # ===== Fallback global (caso liga venha sem jogos suficientes) =====
+    global_tier = "TIER_2"
+    global_pack = TIER_THRESHOLDS[global_tier]
+
+    out = {}
+
+    for lg in leagues:
+        df_lg = history[history['League'] == lg].copy()
+        tier = league_stability.get(lg, "TIER_2")  # default moderado
+        base = TIER_THRESHOLDS[tier]
+
+        out[lg] = {
+            "TIER": tier,
+            "HOME": base["HOME"],
+            "AWAY": base["AWAY"],
+            "HOME_STRONG": base["HOME_STRONG"],
+            "AWAY_STRONG": base["AWAY_STRONG"],
+            "N": len(df_lg)
+        }
+
+    # Thresholds globais (fallback geral)
+    out["_GLOBAL"] = {
+        "TIER": global_tier,
+        "HOME": global_pack["HOME"],
+        "AWAY": global_pack["AWAY"],
+        "HOME_STRONG": global_pack["HOME_STRONG"],
+        "AWAY_STRONG": global_pack["AWAY_STRONG"],
+        "N": len(history)
+    }
+
+    return out
+
 
 
 
