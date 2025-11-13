@@ -426,8 +426,11 @@ def _evaluate_threshold_side(df, side, thr):
     return roi, n, win
 
 def find_league_thresholds(history: pd.DataFrame, min_bets=60):
-    thr_norm_grid = np.arange(0.10, 0.55, 0.05)
-    thr_strong_grid = np.arange(0.25, 0.90, 0.05)
+
+    # threshold MAIS SUAVE para a nova lógica sem ABS incorreto
+    thr_norm_grid = np.arange(0.05, 0.30, 0.05)
+    thr_strong_grid = np.arange(0.10, 0.50, 0.05)
+
 
     leagues = sorted(history['League'].dropna().unique().tolist())
 
