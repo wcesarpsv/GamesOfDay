@@ -1046,7 +1046,11 @@ def main_calibrado():
             modelo_away_classificacao, games_today, label_encoder_away = treinar_modelo_away_handicap_classificacao_calibrado(history, games_today)
             
             # 🔄 USAR ANÁLISE DUAL
-            df_value_bets_dual, bets_validos_dual = analisar_value_bets_dual_modelos(games_today)
+            df_value_bets_dual, bets_validos_dual = analisar_value_bets_dual_modelos(
+            games_today,
+            league_thresholds
+            )
+
             
             # Exibir resultados
             st.markdown("## 📊 Resultados - Análise DUAL")
