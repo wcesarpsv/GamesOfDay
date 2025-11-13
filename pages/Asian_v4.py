@@ -105,10 +105,8 @@ def load_and_merge_livescore(games_today, selected_date_str):
 
 
 
-# ============================================================
-# 🔢 CONVERSÃO DE LINHA ASIÁTICA PARA DECIMAL (PADRÃO HOME)
-# ============================================================
 def convert_asian_line_to_decimal(value):
+    """Converte Asian Line para decimal - INVERTE SINAL para ponto de vista HOME"""
     if pd.isna(value):
         return np.nan
     s = str(value).strip()
@@ -118,7 +116,7 @@ def convert_asian_line_to_decimal(value):
         try:
             num = float(s)
             # padroniza: negativo = favorece HOME
-            return -num
+            return -num  # ←✅ INVERTE SINAL
         except:
             return np.nan
 
@@ -128,7 +126,7 @@ def convert_asian_line_to_decimal(value):
         avg = np.mean(parts)
         sign = -1 if s.startswith("-") else 1
         result = sign * avg
-        return -result
+        return -result  # ←✅ INVERTE SINAL
     except:
         return np.nan
 
