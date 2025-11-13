@@ -632,136 +632,131 @@ def load_and_merge_livescore(games_today, selected_date_str):
 
 
 
+# ============================================================
+# 🔥 NOVO MÓDULO DUAL 100% CONSISTENTE NO EIXO HOME
+# ============================================================
+
 def analisar_value_bets_dual_modelos(games_today: pd.DataFrame, league_thresholds: dict):
-    st.markdown("## 💎 Análise DUAL - Home & Away Models")
+
+    st.markdown("## 💎 Análise DUAL – Eixo HOME Unificado")
+
     results = []
 
     for _, row in games_today.iterrows():
-        asian_line = float(row.get('Asian_Line_Decimal', 0) or 0.0)
 
-        # ====== PREDIÇÕES COMBINADAS (cada modelo no seu referencial natural)
+        # ============================
+        # 1) Linha do mercado (HOME)
+        # ============================
+        asian_line = float(row.get("Asian_Line_Decimal", 0))
+
+        # ============================
+        # 2) Predições combinadas HOME
+        # ============================
         pred_home = (
             0.7 * float(row.get('Handicap_Predito_Regressao_Calibrado', 0)) +
             0.3 * float(row.get('Handicap_Predito_Classificacao_Calibrado', 0))
         )
-        pred_away = (
+
+        # ============================
+        # 3) Predições combinadas AWAY → eixo HOME!
+        # ============================
+        pred_away_raw = (
             0.7 * float(row.get('Handicap_AWAY_Predito_Regressao_Calibrado', 0)) +
             0.3 * float(row.get('Handicap_AWAY_Predito_Classificacao_Calibrado', 0))
         )
 
-        # ====== VALUE GAPS CORRETOS (sem ABS!)
-        value_gap_home = pred_home - asian_line
-        value_gap_away = pred_away - (-asian_line)
+        pred_away = -pred_away_raw  # conversão AWAY → HOME
 
-        # ====== THRESHOLDS DA LIGA
-        league = row.get('League')
-        thr_pack = league_thresholds.get(league, league_thresholds.get('_GLOBAL', {}))
+        # ============================
+        # 4) VALUE GAPS NO EIXO HOME
+        # ============================
+        vg_home = pred_home - asian_line
+        vg_away = pred_away - asian_line
 
-        thr_home      = adjust_threshold_by_line(float(thr_pack.get('HOME', 0.15)), asian_line)
-        thr_home_str  = adjust_threshold_by_line(float(thr_pack.get('HOME_STRONG', 0.30)), asian_line)
-        thr_away      = adjust_threshold_by_line(float(thr_pack.get('AWAY', 0.15)), asian_line)
-        thr_away_str  = adjust_threshold_by_line(float(thr_pack.get('AWAY_STRONG', 0.30)), asian_line)
+        # ============================
+        # 5) THRESHOLDS da Liga
+        # ============================
+        lg = row.get("League")
+        thr_pack = league_thresholds.get(lg, league_thresholds["_GLOBAL"])
+        
+        thr_home     = thr_pack["HOME"]
+        thr_home_str = thr_pack["HOME_STRONG"]
+        thr_away     = thr_pack["AWAY"]
+        thr_away_str = thr_pack["AWAY_STRONG"]
 
-        # ====== CENÁRIOS PROFISSIONAIS ======
+        # Aplicar ajuste por linha (opcional)
+        thr_home     = adjust_threshold_by_line(thr_home, asian_line)
+        thr_home_str = adjust_threshold_by_line(thr_home_str, asian_line)
+        thr_away     = adjust_threshold_by_line(thr_away, asian_line)
+        thr_away_str = adjust_threshold_by_line(thr_away_str, asian_line)
 
-        recomendacao_final = "NO CLEAR EDGE"
+        # ============================================================
+        # 6) LÓGICA DE DECISÃO FINAL – AGORA UNIFICADA E CONSISTENTE!
+        # ============================================================
+
+        recomendacao = "NO CLEAR EDGE"
         confidence = "LOW"
 
-        # =========================================================
-        # 🔥 CENÁRIO 1 — Empurrão do mercado + equilíbrio dos modelos
-        # (mercado força um lado e o modelo não tem convicção contrária)
-        # =========================================================
-        forca_relativa = pred_home - pred_away
-        equilibrio = abs(forca_relativa) < 0.20
+        # -------- HOME STRONG --------
+        if vg_home >= thr_home_str:
+            recomendacao = "STRONG BET HOME"
+            confidence = "HIGH"
 
-        if equilibrio and abs(asian_line) > 0.25:
-            
-            if asian_line < -0.25:  # mercado empurra HOME → valor tende AWAY
-                if value_gap_away >= thr_away_str:
-                    recomendacao_final, confidence = "STRONG BET AWAY", "HIGH"
-                elif value_gap_away >= thr_away:
-                    recomendacao_final, confidence = "BET AWAY", "MEDIUM"
+        # -------- HOME LIGHT --------
+        elif vg_home >= thr_home:
+            recomendacao = "BET HOME"
+            confidence = "MEDIUM"
 
-            elif asian_line > 0.25:  # mercado empurra AWAY → valor tende HOME
-                if value_gap_home >= thr_home_str:
-                    recomendacao_final, confidence = "STRONG BET HOME", "HIGH"
-                elif value_gap_home >= thr_home:
-                    recomendacao_final, confidence = "BET HOME", "MEDIUM"
+        # -------- AWAY STRONG --------
+        elif vg_away >= thr_away_str:
+            recomendacao = "STRONG BET AWAY"
+            confidence = "HIGH"
 
+        # -------- AWAY LIGHT --------
+        elif vg_away >= thr_away:
+            recomendacao = "BET AWAY"
+            confidence = "MEDIUM"
 
-        # =========================================================
-        # 🔥 CENÁRIO 2 — Valor DIRETO (LÓGICA PRINCIPAL DO SISTEMA)
-        # (não exige mais força_relativa!)
-        # =========================================================
-        if recomendacao_final == "NO CLEAR EDGE" and abs(asian_line) < 1.0:
-
-            # ---- HOME
-            if value_gap_home >= thr_home_str:
-                recomendacao_final, confidence = "STRONG BET HOME", "HIGH"
-            elif value_gap_home >= thr_home:
-                recomendacao_final, confidence = "BET HOME", "MEDIUM"
-
-            # ---- AWAY
-            elif value_gap_away >= thr_away_str:
-                recomendacao_final, confidence = "STRONG BET AWAY", "HIGH"
-            elif value_gap_away >= thr_away:
-                recomendacao_final, confidence = "BET AWAY", "MEDIUM"
-
-
-        # =========================================================
-        # 🔥 CENÁRIO 3 — Linhas extremas (≥ 1.0)
-        # =========================================================
-        if recomendacao_final == "NO CLEAR EDGE" and abs(asian_line) >= 1.0:
-
-            if asian_line <= -1.0:
-                if value_gap_home >= thr_home_str:
-                    recomendacao_final, confidence = "STRONG BET HOME", "HIGH"
-
-            elif asian_line >= 1.0:
-                if value_gap_away >= thr_away_str:
-                    recomendacao_final, confidence = "STRONG BET AWAY", "HIGH"
-
-
-        # =========================================================
-        # LIVE SCORE
-        # =========================================================
+        # ============================================================
+        # 7) LIVE SCORE
+        # ============================================================
         g_h = row.get('Goals_H_Today')
         g_a = row.get('Goals_A_Today')
         h_r = row.get('Home_Red')
         a_r = row.get('Away_Red')
 
-        live_score_info = ""
+        live_info = ""
         if pd.notna(g_h) and pd.notna(g_a):
-            live_score_info = f"⚽ {int(g_h)}-{int(g_a)}"
-            if pd.notna(h_r) and int(h_r) > 0: live_score_info += f" 🟥H{int(h_r)}"
-            if pd.notna(a_r) and int(a_r) > 0: live_score_info += f" 🟥A{int(a_r)}"
+            live_info = f"{int(g_h)}-{int(g_a)}"
+        if pd.notna(h_r) and h_r > 0: live_info += f" 🟥H{int(h_r)}"
+        if pd.notna(a_r) and a_r > 0: live_info += f" 🟥A{int(a_r)}"
 
-        # =========================================================
-        # REGISTRO FINAL
-        # =========================================================
+        # ============================================================
+        # 8) REGISTRO FINAL (TUDO NO EIXO HOME)
+        # ============================================================
         results.append({
-            'League': league,
-            'Home': row.get('Home'),
-            'Away': row.get('Away'),
-            'Asian_Line': row.get('Asian_Line'),
-            'Asian_Line_Decimal': asian_line,
+            "League": lg,
+            "Home": row.get("Home"),
+            "Away": row.get("Away"),
+            "Asian_Line": row.get("Asian_Line"),
+            "Asian_Line_Decimal": asian_line,
 
-            'Pred_HOME': round(pred_home, 3),
-            'Pred_AWAY': round(pred_away, 3),
+            "Pred_HOME": round(pred_home, 3),
+            "Pred_AWAY_HOME_AXIS": round(pred_away, 3),
 
-            'Value_Gap_HOME': round(value_gap_home, 3),
-            'Value_Gap_AWAY': round(value_gap_away, 3),
+            "VG_HOME": round(vg_home, 3),
+            "VG_AWAY": round(vg_away, 3),
 
-            'Recomendacao': recomendacao_final,
-            'Confidence': confidence,
-            'Edge_Difference': round(abs(value_gap_home - value_gap_away), 3),
-
-            'Live_Score': live_score_info
+            "Recomendacao": recomendacao,
+            "Confidence": confidence,
+            "Live_Score": live_info,
         })
 
-    df_results = pd.DataFrame(results)
-    bets_validos = df_results[df_results['Recomendacao'] != 'NO CLEAR EDGE']
-    return df_results, bets_validos
+    df = pd.DataFrame(results)
+    bets = df[df["Recomendacao"] != "NO CLEAR EDGE"]
+
+    return df, bets
+
 
 
 
@@ -769,71 +764,39 @@ def analisar_value_bets_dual_modelos(games_today: pd.DataFrame, league_threshold
 # ============================================================
 # 📈 VISUALIZAÇÕES DUAL (eixo HOME unificado)
 # ============================================================
-def plot_analise_dual_modelos(games_today: pd.DataFrame):
-    """
-    Gráfico revisado:
-    - Subplot 1: Value Gap HOME vs AWAY (já convertendo AWAY para eixo HOME)
-    - Subplot 2: Predito HOME e Predito AWAY (em eixo HOME) vs linha do mercado
-    """
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+def plot_analise_dual_modelos(games_today):
 
-    value_gaps_home, value_gaps_away_home = [], []
-    asian_lines = []
-    fair_lines_dual = []
+    fig, ax = plt.subplots(figsize=(12,6))
 
-    for _, row in games_today.iterrows():
-        asian_line = float(row.get('Asian_Line_Decimal', 0) or 0.0)
+    asian = games_today["Asian_Line_Decimal"].tolist()
 
-        pred_home = (
-            0.7 * float(row.get('Handicap_Predito_Regressao_Calibrado', 0) or 0.0) +
-            0.3 * float(row.get('Handicap_Predito_Classificacao_Calibrado', 0) or 0.0)
-        )
-        pred_away_raw = (
-            0.7 * float(row.get('Handicap_AWAY_Predito_Regressao_Calibrado', 0) or 0.0) +
-            0.3 * float(row.get('Handicap_AWAY_Predito_Classificacao_Calibrado', 0) or 0.0)
-        )
-        pred_away_home_axis = -pred_away_raw
+    pred_home = (
+        0.7 * games_today['Handicap_Predito_Regressao_Calibrado'] +
+        0.3 * games_today['Handicap_Predito_Classificacao_Calibrado']
+    )
 
-        vg_home = pred_home - asian_line
-        vg_away_home = pred_away_home_axis - asian_line
-        value_gaps_home.append(vg_home)
-        value_gaps_away_home.append(vg_away_home)
+    pred_away_home = -(
+        0.7 * games_today['Handicap_AWAY_Predito_Regressao_Calibrado'] +
+        0.3 * games_today['Handicap_AWAY_Predito_Classificacao_Calibrado']
+    )
 
-        asian_lines.append(asian_line)
-        fair_lines_dual.append((pred_home + pred_away_home_axis) / 2.0)
+    # Fair Line Dual:
+    fair_line_dual = (pred_home + pred_away_home) / 2
 
-    # ---------------- Subplot 1: Value Gaps ----------------
-    x_pos = list(range(len(value_gaps_home)))
-    ax1.bar([x - 0.2 for x in x_pos], value_gaps_home, 0.4, label='HOME Value Gap', alpha=0.7)
-    ax1.bar([x + 0.2 for x in x_pos], value_gaps_away_home, 0.4, label='AWAY Value Gap (eixo HOME)', alpha=0.7)
-    ax1.axhline(y=0, linestyle='-', alpha=0.5)
-    ax1.set_xlabel('Jogos')
-    ax1.set_ylabel('Value Gap (eixo HOME)')
-    ax1.set_title('Value Gaps: HOME vs AWAY (em eixo HOME)')
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
+    ax.scatter(asian, pred_home, s=70, label="Pred HOME (eixo HOME)", alpha=0.75)
+    ax.scatter(asian, pred_away_home, s=70, label="Pred AWAY (convertido eixo HOME)", alpha=0.75)
+    ax.scatter(asian, fair_line_dual, s=90, label="Fair Line Dual", marker="x")
 
-    # ---------------- Subplot 2: Predito vs Mercado ----------------
-    ax2.scatter(asian_lines, fair_lines_dual, alpha=0.7, s=60, label='Fair Line DUAL (HOME-axis)')
-    ax2.scatter(asian_lines, [ph for ph in [  # lista com os preds HOME
-        0.7 * float(row.get('Handicap_Predito_Regressao_Calibrado', 0) or 0.0) +
-        0.3 * float(row.get('Handicap_Predito_Classificacao_Calibrado', 0) or 0.0)
-        for _, row in games_today.iterrows()
-    ]], alpha=0.6, s=40, label='HOME Predito (modelo HOME)')
-    ax2.scatter(asian_lines, [ -(
-        0.7 * float(row.get('Handicap_AWAY_Predito_Regressao_Calibrado', 0) or 0.0) +
-        0.3 * float(row.get('Handicap_AWAY_Predito_Classificacao_Calibrado', 0) or 0.0)
-    ) for _, row in games_today.iterrows()], alpha=0.6, s=40, label='AWAY Predito (convertido p/ HOME)')
+    ax.plot([-1.5, 1.5], [-1.5, 1.5], "k--", alpha=0.3, label="Mercado (y = x)")
 
-    ax2.plot([-1.5, 1.5], [-1.5, 1.5], 'k--', alpha=0.3, label='Linha Mercado (y=x)')
-    ax2.set_xlabel('Asian Line (Mercado, eixo HOME)')
-    ax2.set_ylabel('Handicap Predito (eixo HOME)')
-    ax2.set_title('Predito vs Mercado (HOME & AWAY em eixo HOME)')
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
+    ax.set_title("Predições DUAL – Tudo no eixo HOME")
+    ax.set_xlabel("Asian Line (Mercado – HOME)")
+    ax.set_ylabel("Handicap Predito (Eixo HOME)")
+    ax.grid(alpha=0.3)
+    ax.legend()
 
-    plt.tight_layout()
     return fig
+
 
 
 # ============================================================
