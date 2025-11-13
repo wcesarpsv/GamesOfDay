@@ -366,21 +366,34 @@ def settle_ah_bet(margin, line, side):
         else: scores.append(-1.0)
     return sum(scores)/len(scores)
 
-def _predict_block(history, features, scaler, model_reg, model_cls, label_enc):
+def _predict_block(history, features, scaler, model_reg, model_cls, label_enc, map_cat_num):
+    """
+    history        : DataFrame com linhas para prever (histórico com FT).
+    features       : lista de features numéricas usadas no modelo.
+    scaler         : scaler usado no modelo de regressão (StandardScaler).
+    model_reg      : modelo de regressão treinado (HOME ou AWAY).
+    model_cls      : modelo de classificação treinado (HOME ou AWAY).
+    label_enc      : LabelEncoder correspondente ao modelo de classificação.
+    map_cat_num    : dicionário label -> valor numérico (no referencial NATIVO desse modelo).
+    """
     Xh = history.copy()
     for f in features:
-        if f not in Xh.columns: Xh[f] = 0
+        if f not in Xh.columns:
+            Xh[f] = 0
     X = Xh[features].fillna(0)
+
+    # regressão no espaço escalado
     Xs = scaler.transform(X)
     pred_reg = np.clip(model_reg.predict(Xs), -1.25, 1.25)
+
+    # classificação → labels → valores numéricos
     pred_cls_enc = model_cls.predict(X)
-    pred_cls = label_enc.inverse_transform(pred_cls_enc)
-    map_cat = {'MODERATE_HOME': -0.75, 'LIGHT_HOME': -0.25, 'NEUTRAL': 0.0, 'LIGHT_AWAY': +0.25, 'MODERATE_AWAY': +0.75,
-               'MODERATE_AWAY': -0.75, 'LIGHT_AWAY': -0.25, 'LIGHT_HOME': +0.25, 'MODERATE_HOME': +0.75}
-    # o dicionário acima cobre ambos encoders; garantimos fallback:
-    mnum = {'MODERATE_HOME': -0.75, 'LIGHT_HOME': -0.25, 'NEUTRAL': 0.0, 'LIGHT_AWAY': +0.25, 'MODERATE_AWAY': +0.75}
-    pred_cls_num = np.array([mnum.get(c, 0.0) for c in pred_cls])
-    return 0.7*pred_reg + 0.3*pred_cls_num
+    pred_cls_labels = label_enc.inverse_transform(pred_cls_enc)
+    pred_cls_num = np.array([map_cat_num.get(lbl, 0.0) for lbl in pred_cls_labels])
+
+    # combinação (mesma lógica: 70% reg, 30% cls)
+    return 0.7 * pred_reg + 0.3 * pred_cls_num
+
 
 def bucket_line(asian_line_decimal: float) -> str:
     # buckets largos e estáveis
@@ -837,61 +850,94 @@ def main_calibrado():
     st.markdown("## 🧠 Treinando Modelos DUAL (HOME + AWAY)")
     if st.button("🚀 Executar Análise DUAL", type="primary"):
         with st.spinner("Treinando modelos..."):
-            # HOME
+    
+            # TREINO DOS MODELOS
             modelo_home_reg, games_today, scaler_home = treinar_modelo_handicap_regressao_calibrado_v2(history, games_today)
             modelo_home_cls, games_today, le_home = treinar_modelo_handicap_classificacao_calibrado_v2(history, games_today)
-            # AWAY
+    
             modelo_away_reg, games_today, scaler_away = treinar_modelo_away_handicap_regressao_calibrado(history, games_today)
             modelo_away_cls, games_today, le_away = treinar_modelo_away_handicap_classificacao_calibrado(history, games_today)
-
-            # ===== Build thresholds dinâmicos a partir do HISTÓRICO com esses mesmos modelos
-            features_3d_common = ['Quadrant_Dist_3D','Quadrant_Separation_3D','Vector_Sign','Magnitude_3D','Momentum_Diff','Momentum_Diff_MT','Cluster3D_Label']
-
+    
+            # ===== Features comuns (mesmo pipeline aplicado nas previsões)
+            features_3d_common = [
+                'Quadrant_Dist_3D','Quadrant_Separation_3D','Vector_Sign',
+                'Magnitude_3D','Momentum_Diff','Momentum_Diff_MT','Cluster3D_Label'
+            ]
+    
+            # HISTÓRICO para calibrar thresholds
             hist_for_pred = history.dropna(subset=['Goals_H_FT','Goals_A_FT']).copy()
             if hist_for_pred.empty:
                 st.error("❌ Histórico sem FT para calibrar thresholds.")
                 return
-
-            # predições no histórico (mesmo pipeline do dia)
-            # HOME
-            Xh = hist_for_pred.copy()
-            for f in features_3d_common:
-                if f not in Xh.columns: Xh[f] = 0
-            pred_home_hist = _predict_block(Xh, features_3d_common, scaler_home, modelo_home_reg, modelo_home_cls, le_home)
-            # AWAY
-            pred_away_hist = _predict_block(Xh, features_3d_common, scaler_away, modelo_away_reg, modelo_away_cls, le_away)
-
+    
+            # MAPEAMENTOS DE CLASSES PARA HOME e AWAY
+            map_cat_home_num = {
+                'MODERATE_HOME': -0.75,
+                'LIGHT_HOME': -0.25,
+                'NEUTRAL': 0.0,
+                'LIGHT_AWAY': +0.25,
+                'MODERATE_AWAY': +0.75,
+            }
+    
+            map_cat_away_num = {
+                'MODERATE_AWAY': -0.75,
+                'LIGHT_AWAY': -0.25,
+                'NEUTRAL': 0.0,
+                'LIGHT_HOME': +0.25,
+                'MODERATE_HOME': +0.75,
+            }
+    
+            # ===== PREVER O HISTÓRICO (HOME e AWAY SEPARADOS)
+            pred_home_hist = _predict_block(
+                hist_for_pred,
+                features_3d_common,
+                scaler_home,
+                modelo_home_reg,
+                modelo_home_cls,
+                le_home,
+                map_cat_home_num
+            )
+    
+            pred_away_hist = _predict_block(
+                hist_for_pred,
+                features_3d_common,
+                scaler_away,
+                modelo_away_reg,
+                modelo_away_cls,
+                le_away,
+                map_cat_away_num
+            )
+    
+            # Armazenar
             hist_for_pred['Pred_HOME'] = pred_home_hist
             hist_for_pred['Pred_AWAY'] = pred_away_hist
+    
+            # VG no referencial natural dos modelos (HOME e AWAY)
             hist_for_pred['VG_HOME'] = hist_for_pred['Pred_HOME'] - hist_for_pred['Asian_Line_Decimal']
             hist_for_pred['VG_AWAY'] = hist_for_pred['Pred_AWAY'] - (-hist_for_pred['Asian_Line_Decimal'])
-
+    
+            # ===== CALCULAR THRESHOLDS POR LIGA
             league_thresholds = find_league_thresholds(hist_for_pred, min_bets=60)
-            # st.markdown("### ⚖️ Thresholds por Liga (dinâmicos híbridos)")
-            # st.write({k:v for k,v in league_thresholds.items() if k!='_GLOBAL'})
-
-            # Análise dual com thresholds
+    
+            # ===== ANALISAR VALUE BETS COM O DUAL
             df_value_bets_dual, bets_validos_dual = analisar_value_bets_dual_modelos(games_today, league_thresholds)
-
-            # Resultados
+    
             st.markdown("## 📊 Resultados - Análise DUAL")
             if bets_validos_dual.empty:
                 st.warning("⚠️ Nenhuma recomendação de value bet encontrada")
             else:
                 st.dataframe(bets_validos_dual, use_container_width=True)
+    
                 c1,c2,c3,c4 = st.columns(4)
-                with c1:
-                    st.metric("🏠 HOME Bets", int((bets_validos_dual['Recomendacao'].str.contains('HOME')).sum()))
-                with c2:
-                    st.metric("✈️ AWAY Bets", int((bets_validos_dual['Recomendacao'].str.contains('AWAY')).sum()))
-                with c3:
-                    st.metric("🎯 Strong Bets", int((bets_validos_dual['Confidence'].eq('HIGH')).sum()))
-                with c4:
-                    st.metric("📊 Total Recomendações", int(len(bets_validos_dual)))
-
+                with c1: st.metric("🏠 HOME Bets", int(bets_validos_dual['Recomendacao'].str.contains('HOME').sum()))
+                with c2: st.metric("✈️ AWAY Bets", int(bets_validos_dual['Recomendacao'].str.contains('AWAY').sum()))
+                with c3: st.metric("🎯 Strong Bets", int(bets_validos_dual['Confidence'].eq('HIGH').sum()))
+                with c4: st.metric("📊 Total Recomendações", len(bets_validos_dual))
+    
             st.pyplot(plot_analise_dual_modelos(games_today))
             st.success("✅ Análise DUAL concluída com sucesso!")
             st.balloons()
+
 
 if __name__ == "__main__":
     main_calibrado()
