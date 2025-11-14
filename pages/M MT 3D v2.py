@@ -80,8 +80,6 @@ def convert_asian_line(line_str):
 def convert_asian_line_to_decimal_corrigido(line_str):
     """
     Converte handicaps asiáticos (Away) no formato string para decimal invertido (Home).
-
-    CORREÇÃO: Para split handicaps como "1.5/2", NÃO calcular média!
     """
     if pd.isna(line_str) or line_str == "":
         return None
@@ -92,27 +90,31 @@ def convert_asian_line_to_decimal_corrigido(line_str):
     if line_str == "0" or line_str == "0.0":
         return 0.0
 
-    # ✅ CORREÇÃO: Tratar quarter handicaps explicitamente
-    quarter_handicaps = {
-        '0.75': -0.75,    # Away dá 0.75 → Home recebe -0.75
-        '-0.75': 0.75,    # Away dá -0.75 → Home recebe +0.75
-        '0.25': -0.25,    # Away dá 0.25 → Home recebe -0.25
-        '-0.25': 0.25,    # Away dá -0.25 → Home recebe +0.25
-    }
-    
-    if line_str in quarter_handicaps:
-        return quarter_handicaps[line_str]
-
-    # ✅ CORREÇÃO CRÍTICA: Para split handicaps, NÃO calcular média!
-    # Exemplos: "1.5/2", "2/2.5", "0.5/1" etc.
+    # ✅ CORREÇÃO: Mapeamento COMPLETO de todos os splits comuns
     common_splits = {
-        '0.5/1': -0.75,      # Away 0.5/1 → Home -0.75
-        '1/1.5': -1.25,      # Away 1/1.5 → Home -1.25  
-        '1.5/2': -1.75,      # Away 1.5/2 → Home -1.75
-        '2/2.5': -2.25,      # Away 2/2.5 → Home -2.25
-        '-0.5/-1': 0.75,     # Away -0.5/-1 → Home +0.75
-        '-1/-1.5': 1.25,     # Away -1/-1.5 → Home +1.25
-        '-1.5/-2': 1.75,     # Away -1.5/-2 → Home +1.75
+        # Splits positivos (Away dá handicap)
+        '0/0.5': -0.25,      # ✅ CORREÇÃO: Faltava este!
+        '0.5/1': -0.75,      
+        '1/1.5': -1.25,      
+        '1.5/2': -1.75,      
+        '2/2.5': -2.25,      
+        '2.5/3': -2.75,
+        '3/3.5': -3.25,
+        
+        # Splits negativos (Away recebe handicap)  
+        '0/-0.5': 0.25,      # ✅ CORREÇÃO: Faltava este!
+        '-0.5/-1': 0.75,     
+        '-1/-1.5': 1.25,     
+        '-1.5/-2': 1.75,     
+        '-2/-2.5': 2.25,
+        '-2.5/-3': 2.75,
+        '-3/-3.5': 3.25,
+        
+        # Quarter handicaps (já incluídos para consistência)
+        '0.75': -0.75,    
+        '-0.75': 0.75,    
+        '0.25': -0.25,    
+        '-0.25': 0.25,
     }
     
     if line_str in common_splits:
@@ -126,10 +128,23 @@ def convert_asian_line_to_decimal_corrigido(line_str):
         except ValueError:
             return None
 
-    # ❌ REMOVER cálculo de média para splits não mapeados
-    # Se chegou aqui, é um split não reconhecido
-    st.warning(f"⚠️ Split handicap não reconhecido: {line_str}")
-    return None
+    # Se chegou aqui, é um split não reconhecido - tentar cálculo genérico
+    try:
+        parts = [float(p) for p in line_str.split("/")]
+        avg = sum(parts) / len(parts)
+        
+        # Determinar sinal base
+        first_part = parts[0]
+        if first_part < 0:
+            result = -abs(avg)
+        else:
+            result = abs(avg)
+            
+        return -result
+        
+    except (ValueError, TypeError):
+        st.warning(f"⚠️ Split handicap não reconhecido: {line_str}")
+        return None
 
 def calc_handicap_result_corrigido(margin, asian_line_decimal, is_home_perspective=True):
     """
