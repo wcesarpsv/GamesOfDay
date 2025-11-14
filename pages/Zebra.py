@@ -145,36 +145,72 @@ def convert_asian_line_to_decimal_corrigido(line_str):
         st.warning(f"⚠️ Split handicap não reconhecido: {line_str}")
         return None
 
-def calc_handicap_result_corrigido(margin, asian_line_decimal):
+def _single_leg_home(margin, line):
     """
-    Calcula o resultado do Handicap Asiático do ponto de vista do HOME.
+    Calcula o resultado de UM handicap (sem split) do ponto de vista do HOME.
+
+    margin = Goals_H_FT - Goals_A_FT
+    line   = handicap do HOME (Asian_Line_Decimal, já convertido)
 
     Retorno:
-    1.0  -> Full Win
-    0.5  -> Half Win / Push
-    0.0  -> Full Loss
+      1.0  -> full win
+      0.5  -> push
+      0.0  -> full loss
+    """
+    adj = margin + line  # gols_home - gols_away + handicap_home
+
+    # Linhas inteiras (.0): podem ter push
+    if abs(line * 2) % 2 == 0:  # múltiplo de 1.0 (ex: -2, -1, 0, 1, 2...)
+        if adj > 0:
+            return 1.0
+        elif abs(adj) < 1e-9:
+            return 0.5
+        else:
+            return 0.0
+
+    # Linhas .5: não têm push
+    else:
+        return 1.0 if adj > 0 else 0.0
+
+
+def calc_handicap_result_corrigido(margin, asian_line_decimal):
+    """
+    Calcula o resultado do Handicap Asiático do ponto de vista do HOME,
+    considerando também quarter-lines (0.25, 0.75, etc).
+
+    Retorno:
+      0.0   -> full loss
+      0.25  -> half loss
+      0.5   -> push
+      0.75  -> half win
+      1.0   -> full win
     """
     if pd.isna(margin) or pd.isna(asian_line_decimal):
         return np.nan
 
-    line = asian_line_decimal
-    abs_line = abs(line)
+    line = float(asian_line_decimal)
 
-    # 🔹 LINHAS .0 (ex: 0, -1.0, +2.0) -> POSSUI PUSH
-    if abs_line % 1 == 0:
-        if margin > line:
-            return 1.0  # win
-        elif margin == line:
-            return 0.5  # push
-        else:
-            return 0.0  # loss
+    # Quarter-lines: |line * 2| NÃO é inteiro (ex: 0.25, 0.75, 1.25...)
+    if abs(line * 2) % 1 != 0:
+        sign = 1 if line > 0 else -1
+        base = abs(line)
 
-    # 🔸 LINHAS .5 (ex: -0.5, +1.5) -> NÃO TEM PUSH
-    if abs_line % 1 == 0.5:
-        if margin > line:
-            return 1.0  # full win
-        else:
-            return 0.0  # full loss
+        lower = math.floor(base * 2) / 2.0  # ex: 0.25 -> 0.0, 0.75 -> 0.5
+        upper = math.ceil(base * 2) / 2.0   # ex: 0.25 -> 0.5, 0.75 -> 1.0
+
+        l1 = sign * lower
+        l2 = sign * upper
+
+        r1 = _single_leg_home(margin, l1)
+        r2 = _single_leg_home(margin, l2)
+
+        return 0.5 * (r1 + r2)
+
+    # Linhas normais (.0 ou .5)
+    else:
+        return _single_leg_home(margin, line)
+
+    
 
     # 🟢 QUARTER LINES (0.25, 0.75, 1.25 etc)
     full_step = math.floor(abs_line * 2) / 2  # menor .5
@@ -291,19 +327,20 @@ def load_and_filter_history(selected_date_str):
 
 def create_better_target_corrigido(df):
     """
-    Cria targets 100% binários (sem push), com Zebra:
+    Cria targets 100% binários (sem push puro), com Zebra:
 
-    - Target_AH_Home: 1 se o HOME cobrir o handicap (full win)
+    - Target_AH_Home: 1 se o HOME cobrir o handicap (win/half-win),
+                      0 se não cobrir (loss/half-loss)
     - Expected_Favorite: HOME se linha < 0, AWAY se linha > 0
-    - Zebra: 1 se o favorito do mercado falhar
-    - Full push e quarter push são EXCLUÍDOS do dataset
+    - Zebra: 1 se o favorito do mercado falhar (não cobrir)
+    - Jogos com AH_Result == 0.5 (push puro) são EXCLUÍDOS do dataset
     """
     df = df.copy()
 
     # Margem real de gols
     df["Margin"] = df["Goals_H_FT"] - df["Goals_A_FT"]
 
-    # Calcular o resultado asiático completo (0.0, 0.5, 1.0)
+    # Calcular o resultado asiático completo (0.0, 0.25, 0.5, 0.75, 1.0)
     df["AH_Result"] = df.apply(
         lambda r: calc_handicap_result_corrigido(
             r["Margin"], r["Asian_Line_Decimal"]
@@ -313,14 +350,16 @@ def create_better_target_corrigido(df):
 
     total = len(df)
 
-    # EXCLUIR QUALQUER PUSH (0.5)
-    df = df[df["AH_Result"].isin([0, 1])].copy()
+    # EXCLUIR APENAS PUSH PURO (0.5)
+    df = df[df["AH_Result"] != 0.5].copy()
     clean = len(df)
 
-    # Target binário 1.0 → cobre | 0.0 → não cobre
-    df["Target_AH_Home"] = (df["AH_Result"] == 1.0).astype(int)
+    # Target binário:
+    # AH_Result > 0.5 (0.75 ou 1.0) -> vitória
+    # AH_Result < 0.5 (0.0 ou 0.25) -> derrota
+    df["Target_AH_Home"] = (df["AH_Result"] > 0.5).astype(int)
 
-    # Quem o mercado aponta como favorito
+    # Quem o mercado aponta como favorito (já usando Asian_Line_Decimal convertida p/ HOME)
     df["Expected_Favorite"] = np.where(
         df["Asian_Line_Decimal"] < 0,
         "HOME",
@@ -343,7 +382,7 @@ def create_better_target_corrigido(df):
     zebra_rate = df["Zebra"].mean() if len(df) > 0 else 0.0
 
     st.info(f"🎯 Total analisado: {total} jogos")
-    st.info(f"🗑️ Excluídos por Push: {total-clean} jogos ({(total-clean)/total:.1%})")
+    st.info(f"🗑️ Excluídos por Push puro: {total-clean} jogos ({(total-clean)/total:.1%})")
     st.info(f"📊 Treino com: {clean} jogos restantes")
     st.info(f"🏠 Win rate HOME cobrindo: {win_rate:.1%}")
     st.info(f"🦓 Taxa de Zebra (favorito falhou): {zebra_rate:.1%}")
@@ -357,10 +396,11 @@ def create_better_target_corrigido(df):
     ]
     debug_cols = [c for c in debug_cols if c in df.columns]
 
-    st.write("🔍 Exemplos (após correção PUSH):")
-    st.dataframe(df.head(6)[debug_cols])
+    st.write("🔍 Exemplos (após correção PUSH & Zebra):")
+    st.dataframe(df.head(10)[debug_cols])
 
     return df
+
 
 
 def create_robust_features(df):
