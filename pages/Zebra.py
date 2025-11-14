@@ -295,6 +295,96 @@ def testar_conversao_asian_line():
     st.dataframe(pd.DataFrame(results))
     st.success("Conversões e resultados validados!")
 
+
+
+def calcular_zscores_detalhados(df):
+    """
+    Calcula Z-scores a partir do HandScore:
+    - M_H, M_A: Z-score do time em relação à liga (performance relativa)
+    - MT_H, MT_A: Z-score do time em relação a si mesmo (consistência)
+    """
+    df = df.copy()
+    
+    st.info("📊 Calculando Z-scores a partir do HandScore...")
+    
+    # 1. ✅ Z-SCORE POR LIGA (M_H, M_A) - Performance relativa à liga
+    if 'League' in df.columns and 'HandScore_Home' in df.columns and 'HandScore_Away' in df.columns:
+        # Para cada liga, calcular estatísticas do HandScore
+        league_stats = df.groupby('League').agg({
+            'HandScore_Home': ['mean', 'std'],
+            'HandScore_Away': ['mean', 'std']
+        }).round(3)
+        
+        # Renomear colunas para facilitar
+        league_stats.columns = ['HS_H_mean', 'HS_H_std', 'HS_A_mean', 'HS_A_std']
+        
+        # Juntar estatísticas de volta ao DataFrame
+        df = df.merge(league_stats, on='League', how='left')
+        
+        # Calcular Z-scores em relação à liga
+        df['M_H'] = (df['HandScore_Home'] - df['HS_H_mean']) / df['HS_H_std']
+        df['M_A'] = (df['HandScore_Away'] - df['HS_A_mean']) / df['HS_A_std']
+        
+        # Tratar casos onde std = 0 (substituir por 1 para evitar divisão por zero)
+        df['M_H'] = df['M_H'].fillna(0)
+        df['M_A'] = df['M_A'].fillna(0)
+        
+        st.success(f"✅ Z-score por liga calculado para {len(df)} jogos")
+        
+        # Debug: mostrar estatísticas por liga
+        st.write("📈 Estatísticas HandScore por Liga:")
+        st.dataframe(league_stats.head(10))
+    else:
+        st.warning("⚠️ Colunas League ou HandScore não encontradas para cálculo de Z-score por liga")
+        df['M_H'] = 0
+        df['M_A'] = 0
+    
+    # 2. ✅ Z-SCORE POR TIME (MT_H, MT_A) - Consistência do time
+    if 'Home' in df.columns and 'Away' in df.columns:
+        # Para o time da casa: Z-score baseado no histórico do time como HOME
+        home_team_stats = df.groupby('Home').agg({
+            'HandScore_Home': ['mean', 'std']
+        }).round(3)
+        home_team_stats.columns = ['HT_mean', 'HT_std']
+        
+        # Para o time visitante: Z-score baseado no histórico do time como AWAY  
+        away_team_stats = df.groupby('Away').agg({
+            'HandScore_Away': ['mean', 'std']
+        }).round(3)
+        away_team_stats.columns = ['AT_mean', 'AT_std']
+        
+        # Juntar estatísticas dos times
+        df = df.merge(home_team_stats, left_on='Home', right_index=True, how='left')
+        df = df.merge(away_team_stats, left_on='Away', right_index=True, how='left')
+        
+        # Calcular Z-scores em relação ao próprio time
+        df['MT_H'] = (df['HandScore_Home'] - df['HT_mean']) / df['HT_std']
+        df['MT_A'] = (df['HandScore_Away'] - df['AT_mean']) / df['AT_std']
+        
+        # Tratar casos onde std = 0 ou NaN
+        df['MT_H'] = df['MT_H'].fillna(0)
+        df['MT_A'] = df['MT_A'].fillna(0)
+        
+        st.success(f"✅ Z-score por time calculado para {len(df)} jogos")
+        
+        # Limpar colunas temporárias
+        df = df.drop(['HS_H_mean', 'HS_H_std', 'HS_A_mean', 'HS_A_std', 
+                     'HT_mean', 'HT_std', 'AT_mean', 'AT_std'], axis=1, errors='ignore')
+        
+        # Debug: mostrar exemplos dos Z-scores calculados
+        st.write("🔍 Amostra dos Z-scores calculados:")
+        debug_cols = ['League', 'Home', 'Away', 'HandScore_Home', 'HandScore_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+        debug_cols = [c for c in debug_cols if c in df.columns]
+        st.dataframe(df[debug_cols].head(8))
+    else:
+        st.warning("⚠️ Colunas Home ou Away não encontradas para cálculo de Z-score por time")
+        df['MT_H'] = 0
+        df['MT_A'] = 0
+    
+    return df
+
+
+
 # ---------------- CORREÇÕES CRÍTICAS PARA ML ----------------
 def load_and_filter_history(selected_date_str):
     """Carrega histórico APENAS com jogos anteriores à data selecionada - CORRIGIDO"""
@@ -680,6 +770,22 @@ if not history.empty:
     history['Quadrante_Away'] = history.apply(
         lambda x: classificar_quadrante_16(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
     )
+
+
+# ---------------- CÁLCULO DE Z-SCORES ----------------
+st.markdown("## 📊 Calculando Z-scores a partir do HandScore")
+
+# Aplicar cálculo de Z-scores ao histórico
+if not history.empty:
+    st.subheader("Para Histórico")
+    history = calcular_zscores_detalhados(history)
+
+# Aplicar cálculo de Z-scores aos jogos de hoje  
+if not games_today.empty:
+    st.subheader("Para Jogos de Hoje")
+    games_today = calcular_zscores_detalhados(games_today)
+
+
 
 # ---------------- CÁLCULO DE DISTÂNCIAS 3D ----------------
 def calcular_distancias_3d(df):
