@@ -732,127 +732,181 @@ games_today = calcular_distancias_3d(games_today)
 if not history.empty:
     history = calcular_distancias_3d(history)
 
+
+
+# ---------------- THRESHOLD DINÂMICO POR HANDICAP (ESTRATÉGIA B - AGRESSIVA) ----------------
+def min_confidence_by_line(line):
+    """
+    Threshold mínimo de confiança para aprovar aposta, de forma agressiva,
+    baseado apenas na magnitude do Asian_Line_Decimal (Home).
+    """
+    try:
+        if pd.isna(line):
+            return 0.60
+        abs_line = abs(float(line))
+    except Exception:
+        return 0.60
+
+    if abs_line >= 1.50:
+        return 0.60
+    if abs_line >= 1.00:
+        return 0.58
+    if abs_line >= 0.75:
+        return 0.56
+    if abs_line >= 0.50:
+        return 0.54
+    if abs_line >= 0.25:
+        return 0.52
+    return 0.50
+
+
+
 # ---------------- MODELO ML 3D CORRIGIDO — NOVA VERSÃO ----------------
+# ---------------- MODELO ML 3D CORRIGIDO (HOME / AWAY + APOSTA) ----------------
 def treinar_modelo_3d_quadrantes_16_corrigido(history, games_today):
     """
-    Treino e Previsão:
-    - Modelo HOME → Probabilidade do Home cobrir o AH
-    - Modelo AWAY → Probabilidade do Away cobrir o AH
-    - Modelo ZEBRA → Probabilidade do favorito falhar
-    """
+    Treina modelo ML 3D CORRIGIDO (Estratégia B - agressiva):
 
+    - Modelo HOME: probabilidade do HOME cobrir o AH
+    - Modelo AWAY: probabilidade do AWAY cobrir o AH (complementar)
+    - Aposta sempre segue a ML (Bet_Side), nunca a linha da casa
+    - Threshold de aprovação dinâmico por linha (min_confidence_by_line)
+    - Zebra = quando a aposta da ML vai contra o favorito da casa
+    """
     st.markdown("## 🤖 TREINAMENTO DO MODELO ML (CORRIGIDO)")
 
     if history.empty:
         st.error("❌ Histórico vazio - não é possível treinar modelo")
-        return None, None, None, games_today
+        return None, None, games_today
 
-    # ---------------- TARGET BINÁRIO + ZEBRA
+    # 1. Criar target binário & Zebra (para análise, não para predição direta)
     history_clean = create_better_target_corrigido(history)
+
     if history_clean.empty:
         st.error("❌ Nenhum jogo válido após criação do target (sem push)")
-        return None, None, None, games_today
+        return None, None, games_today
 
-    # ---------------- FEATURES
+    # 2. Criar features robustas
     X_history = create_robust_features(history_clean)
     if X_history.empty:
-        st.error("❌ Zero features disponíveis")
-        return None, None, None, games_today
+        st.error("❌ Nenhuma feature disponível para treinamento")
+        return None, None, games_today
 
+    # HOME cobre (1) ou não cobre (0)
     y_home = history_clean["Target_AH_Home"]
+    # AWAY cobre quando HOME não cobre
     y_away = 1 - y_home
-    y_zebra = history_clean["Zebra"]
 
-    st.success(f"Treino: {X_history.shape[0]} amostras | {X_history.shape[1]} features")
+    st.success(f"✅ Dados de treino: {X_history.shape[0]} amostras, {X_history.shape[1]} features")
 
-    # ---------------- TREINAMENTO
-    st.subheader("Modelo HOME")
+    # 3. Treinar modelos
+    st.subheader("Modelo HOME (Home cobre AH)")
     model_home = train_improved_model(X_history, y_home, X_history.columns.tolist())
 
-    st.subheader("Modelo AWAY")
+    st.subheader("Modelo AWAY (Away cobre AH)")
     model_away = train_improved_model(X_history, y_away, X_history.columns.tolist())
 
-    st.subheader("Modelo ZEBRA")
-    model_zebra = train_improved_model(X_history, y_zebra, X_history.columns.tolist())
+    # 4. Preparar dados de hoje e aplicar lógica de aposta
+    if not games_today.empty:
+        # Expected_Favorite hoje
+        if 'Asian_Line_Decimal' in games_today.columns:
+            games_today["Expected_Favorite"] = np.where(
+                games_today["Asian_Line_Decimal"] < 0,
+                "HOME",
+                np.where(games_today["Asian_Line_Decimal"] > 0, "AWAY", "NONE")
+            )
 
-    # ---------------- APPLY TO TODAY
-    if games_today.empty:
-        return model_home, model_away, model_zebra, games_today
+        X_today = create_robust_features(games_today)
 
-    X_today = create_robust_features(games_today)
+        missing_cols = set(X_history.columns) - set(X_today.columns)
+        for col in missing_cols:
+            X_today[col] = 0
 
-    # Garantia de alinhamento de features
-    missing_cols = set(X_history.columns) - set(X_today.columns)
-    for col in missing_cols:
-        X_today[col] = 0
-    X_today = X_today[X_history.columns]
+        X_today = X_today[X_history.columns]  # mesma ordem
 
-    # Probabilidades
-    probas_home = model_home.predict_proba(X_today)[:, 1]
-    probas_away = model_away.predict_proba(X_today)[:, 1]
-    probas_zebra = model_zebra.predict_proba(X_today)[:, 1]
+        # Probabilidades ML
+        probas_home = model_home.predict_proba(X_today)[:, 1]
+        probas_away = model_away.predict_proba(X_today)[:, 1]
 
-    games_today['Prob_HomeCover'] = probas_home
-    games_today['Prob_AwayCover'] = probas_away
-    games_today['Prob_Zebra'] = probas_zebra
+        # Guardar com nomes já usados no painel 3D
+        games_today['Quadrante_ML_Score_Home'] = probas_home
+        games_today['Quadrante_ML_Score_Away'] = probas_away
+        games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
 
-    games_today['Prob_Main'] = np.maximum(probas_home, probas_away)
-    games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
+        # Probabilidade do lado da aposta (quem a ML manda apostar)
+        games_today['Bet_Side'] = np.where(
+            probas_home >= probas_away,
+            'HOME',
+            'AWAY'
+        )
+        games_today['Bet_Confidence'] = games_today['Quadrante_ML_Score_Main']
 
-    # ---------------- EXPECTED FAVORITE DA BOOKIE — CORRIGIDO
-    def compute_expected_favorite(line):
-        if pd.isna(line):
-            return "NONE"
-        if line < 0:
-            return "HOME"
-        if line > 0:
-            return "AWAY"
-        return "NONE"
+        # Threshold dinâmico por linha
+        if 'Asian_Line_Decimal' in games_today.columns:
+            games_today['Min_Conf_Required'] = games_today['Asian_Line_Decimal'].apply(min_confidence_by_line)
+        else:
+            games_today['Min_Conf_Required'] = 0.60
 
+        # Aposta aprovada pela ML
+        games_today['Bet_Approved'] = games_today['Bet_Confidence'] >= games_today['Min_Conf_Required']
 
-    games_today["Expected_Favorite"] = games_today["Asian_Line_Decimal"].apply(compute_expected_favorite)
+        # Zebra agressiva: ML indo contra o favorito da casa em aposta aprovada
+        if 'Expected_Favorite' in games_today.columns:
+            games_today['Is_Zebra_Bet'] = np.where(
+                (games_today['Bet_Approved']) &
+                (games_today['Expected_Favorite'].isin(['HOME', 'AWAY'])) &
+                (games_today['Bet_Side'] != games_today['Expected_Favorite']),
+                1,
+                0
+            )
+        else:
+            games_today['Is_Zebra_Bet'] = 0
 
-    # ---------------- ZEBRA FINAL — Correto com favorito
-    def compute_zebra(row):
-        fav = row["Expected_Favorite"]
-        if fav == "HOME":
-            return 1 if row["Prob_HomeCover"] < 0.5 else 0
-        if fav == "AWAY":
-            return 1 if row["Prob_AwayCover"] < 0.5 else 0
-        return 0
+        # Label textual da aposta
+        games_today['Bet_Label'] = np.where(
+            ~games_today['Bet_Approved'],
+            'NO BET',
+            np.where(games_today['Bet_Side'] == 'HOME', 'BET HOME', 'BET AWAY')
+        )
 
-    games_today["Zebra_Flag"] = games_today.apply(compute_zebra, axis=1)
+        st.success(f"✅ Previsões e lógica de aposta geradas para {len(games_today)} jogos de hoje")
 
-    st.success(f"Previsões geradas para {len(games_today)} jogos")
+        # Pequeno resumo rápido
+        aprovados = games_today['Bet_Approved'].sum()
+        zebras = games_today['Is_Zebra_Bet'].sum()
+        st.info(f"Apostas aprovadas hoje: {aprovados} | Zebras agressivas sinalizadas: {zebras}")
 
-    return model_home, model_away, model_zebra, games_today
+    return model_home, model_away, games_today
+
 
 
 
 # ---------------- EXECUÇÃO DO MODELO CORRIGIDO ----------------
 if not history.empty:
-    modelo_home, modelo_away, modelo_zebra, games_today = treinar_modelo_3d_quadrantes_16_corrigido(history, games_today)
+    modelo_home, modelo_away, games_today = treinar_modelo_3d_quadrantes_16_corrigido(history, games_today)
 
     if modelo_home is not None:
         st.success("✅ Modelo 3D corrigido treinado com sucesso!")
 
         if 'Quadrante_ML_Score_Main' in games_today.columns:
             avg_score = games_today['Quadrante_ML_Score_Main'].mean()
-            high_confidence = len(games_today[games_today['Quadrante_ML_Score_Main'] > 0.65])
+            high_confidence = len(games_today[games_today['Bet_Approved'] == True])
 
             col1, col2 = st.columns(2)
             with col1:
                 st.metric("📊 Score Médio", f"{avg_score:.1%}")
             with col2:
-                st.metric("🎯 Alto Confiança (Home/Away)", high_confidence)
+                st.metric("🎯 Apostas aprovadas (Home/Away)", high_confidence)
     else:
         st.error("❌ Falha no treinamento do modelo")
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
 
+
+# ---------------- SISTEMA DE INDICAÇÕES 3D ----------------
 # ---------------- SISTEMA DE INDICAÇÕES 3D ----------------
 def adicionar_indicadores_explicativos_3d_16_dual(df):
-    """Adiciona classificações e recomendações explícitas para sistema 3D"""
+    """Adiciona classificações e recomendações explícitas para sistema 3D (com Bet_Side e Zebra agressiva)."""
     if df.empty:
         return df
 
@@ -865,7 +919,7 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
         lambda x: QUADRANTES_16.get(x, {}).get('nome', 'Neutro')
     )
 
-    # CLASSIFICAÇÃO DE VALOR HOME
+    # Classificação simples de valor por probabilidade
     conditions_home = [
         df['Quadrante_ML_Score_Home'] >= 0.65,
         df['Quadrante_ML_Score_Home'] >= 0.58,
@@ -873,10 +927,9 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
         df['Quadrante_ML_Score_Home'] >= 0.48,
         df['Quadrante_ML_Score_Home'] < 0.48
     ]
-    choices_home = ['🏆 ALTO VALOR', '✅ BOM VALOR', '⚖️ NEUTRO', '⚠️ CAUTELA', '🔴 ALTO RISCO']
-    df['Classificacao_Valor_Home'] = np.select(conditions_home, choices_home, default='⚖️ NEUTRO')
+    choices_home = ['ALTO VALOR', 'BOM VALOR', 'NEUTRO', 'CAUTELA', 'ALTO RISCO']
+    df['Classificacao_Valor_Home'] = np.select(conditions_home, choices_home, default='NEUTRO')
 
-    # CLASSIFICAÇÃO DE VALOR AWAY
     conditions_away = [
         df['Quadrante_ML_Score_Away'] >= 0.65,
         df['Quadrante_ML_Score_Away'] >= 0.58,
@@ -884,97 +937,152 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
         df['Quadrante_ML_Score_Away'] >= 0.48,
         df['Quadrante_ML_Score_Away'] < 0.48
     ]
-    choices_away = ['🏆 ALTO VALOR', '✅ BOM VALOR', '⚖️ NEUTRO', '⚠️ CAUTELA', '🔴 ALTO RISCO']
-    df['Classificacao_Valor_Away'] = np.select(conditions_away, choices_away, default='⚖️ NEUTRO')
+    choices_away = ['ALTO VALOR', 'BOM VALOR', 'NEUTRO', 'CAUTELA', 'ALTO RISCO']
+    df['Classificacao_Valor_Away'] = np.select(conditions_away, choices_away, default='NEUTRO')
 
     def gerar_recomendacao_3d_16_dual(row):
         home_q = row.get('Quadrante_Home_Label', 'Neutro')
         away_q = row.get('Quadrante_Away_Label', 'Neutro')
         score_home = row.get('Quadrante_ML_Score_Home', 0.5)
         score_away = row.get('Quadrante_ML_Score_Away', 0.5)
-        ml_side = row.get('ML_Side', 'HOME')
+        bet_side = row.get('Bet_Side', 'HOME')
+        bet_conf = row.get('Bet_Confidence', 0.5)
+        bet_approved = bool(row.get('Bet_Approved', False))
         momentum_h = row.get('M_H', 0)
         momentum_a = row.get('M_A', 0)
-        prob_zebra = row.get('Prob_Zebra', 0.0)
         expected_fav = row.get('Expected_Favorite', 'NONE')
+        is_zebra = int(row.get('Is_Zebra_Bet', 0))
 
-        # ALERTA ZEBRA ANTES DE TUDO
-        if prob_zebra >= 0.65 and expected_fav in ['HOME', 'AWAY']:
-            return f'🦓 ALTA PROB. ZEBRA contra {expected_fav} ({prob_zebra:.1%})'
+        if not bet_approved:
+            return f'NO BET (H:{score_home:.1%} A:{score_away:.1%})'
 
-        if 'Fav Forte' in home_q and 'Under Forte' in away_q and momentum_h > 1.0:
-            return f'💪 FAVORITO HOME SUPER FORTE (+Momentum) ({score_home:.1%})'
-        elif 'Under Forte' in home_q and 'Fav Forte' in away_q and momentum_a > 1.0:
-            return f'💪 FAVORITO AWAY SUPER FORTE (+Momentum) ({score_away:.1%})'
-        elif 'Fav Moderado' in home_q and 'Under Moderado' in away_q and momentum_h > 0.5:
-            return f'🎯 VALUE NO HOME (+Momentum) ({score_home:.1%})'
-        elif 'Under Moderado' in home_q and 'Fav Moderado' in away_q and momentum_a > 0.5:
-            return f'🎯 VALUE NO AWAY (+Momentum) ({score_away:.1%})'
-        elif ml_side == 'HOME' and score_home >= 0.60 and momentum_h > 0:
-            return f'📈 MODELO CONFIA HOME (+Momentum) ({score_home:.1%})'
-        elif ml_side == 'AWAY' and score_away >= 0.60 and momentum_a > 0:
-            return f'📈 MODELO CONFIA AWAY (+Momentum) ({score_away:.1%})'
-        elif momentum_h < -1.0 and score_away >= 0.55:
-            return f'🔻 HOME EM MOMENTUM NEGATIVO → AWAY ({score_away:.1%})'
-        elif momentum_a < -1.0 and score_home >= 0.55:
-            return f'🔻 AWAY EM MOMENTUM NEGATIVO → HOME ({score_home:.1%})'
-        else:
-            return f'⚖️ ANALISAR (H:{score_home:.1%} A:{score_away:.1%} Z:{prob_zebra:.1%})'
+        # Zebra agressiva vem primeiro
+        if is_zebra and expected_fav in ['HOME', 'AWAY']:
+            return f'ZEBRA contra {expected_fav} ({bet_side}, {bet_conf:.1%})'
+
+        # Cenários fortes de favorito + momentum
+        if 'Fav Forte' in home_q and 'Under Forte' in away_q and momentum_h > 1.0 and bet_side == 'HOME':
+            return f'Favorito HOME muito forte (+Momentum, {bet_conf:.1%})'
+        if 'Under Forte' in home_q and 'Fav Forte' in away_q and momentum_a > 1.0 and bet_side == 'AWAY':
+            return f'Favorito AWAY muito forte (+Momentum, {bet_conf:.1%})'
+
+        # Valor moderado
+        if bet_side == 'HOME' and bet_conf >= 0.60 and momentum_h > 0:
+            return f'ML confia em HOME (+Momentum, {bet_conf:.1%})'
+        if bet_side == 'AWAY' and bet_conf >= 0.60 and momentum_a > 0:
+            return f'ML confia em AWAY (+Momentum, {bet_conf:.1%})'
+
+        # Momentum negativo do lado oposto
+        if momentum_h < -1.0 and bet_side == 'AWAY' and bet_conf >= 0.55:
+            return f'HOME em má fase → aposta AWAY ({bet_conf:.1%})'
+        if momentum_a < -1.0 and bet_side == 'HOME' and bet_conf >= 0.55:
+            return f'AWAY em má fase → aposta HOME ({bet_conf:.1%})'
+
+        return f'Analisar (Bet:{bet_side}, {bet_conf:.1%})'
 
     df['Recomendacao'] = df.apply(gerar_recomendacao_3d_16_dual, axis=1)
-    df['Ranking'] = df['Quadrante_ML_Score_Main'].rank(ascending=False, method='dense').astype(int)
+    df['Ranking'] = df['Bet_Confidence'].rank(ascending=False, method='dense').astype(int)
 
     return df
 
+
 # ---------------- EXIBIÇÃO DOS RESULTADOS (LIMPO) ----------------
-st.markdown("## 🏆 Melhorias e Sinais para Hoje")
+# ---------------- EXIBIÇÃO DOS RESULTADOS ----------------
+st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes ML")
 
-if not games_today.empty and "Prob_HomeCover" in games_today.columns:
+if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
+    ranking_3d = adicionar_indicadores_explicativos_3d_16_dual(games_today)
 
-    df_show = games_today.copy()
+    # Ordenar pelo que realmente manda: confiança da aposta
+    ranking_3d = ranking_3d.sort_values('Bet_Confidence', ascending=False)
 
-    # Ranking baseado em prob. mais forte
-    df_show["Rank"] = df_show[["Prob_HomeCover", "Prob_AwayCover"]].max(axis=1).rank(
-        method="first", ascending=False
-    ).astype(int)
-
-    df_show = df_show.sort_values("Rank")
-
-    cols_final = [
-        "Rank", "League", "Home", "Away",
-        "ML_Side_Final",
-        "Prob_HomeCover", "Prob_AwayCover", "Prob_Zebra",
-        "Expected_Favorite", "Asian_Line", "Asian_Line_Decimal",
-        "Goals_H_Today", "Goals_A_Today"
+    colunas_3d = [
+        'Ranking', 'League', 'Home', 'Away',
+        'Goals_H_Today', 'Goals_A_Today',
+        'Bet_Label', 'Bet_Side', 'Bet_Confidence', 'Bet_Approved',
+        'Expected_Favorite', 'Is_Zebra_Bet',
+        'Quadrante_Home_Label', 'Quadrante_Away_Label',
+        'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away',
+        'Min_Conf_Required',
+        'Recomendacao',
+        'M_H', 'M_A', 'Quadrant_Dist_3D', 'Momentum_Diff',
+        'Asian_Line', 'Asian_Line_Decimal'
     ]
 
-    cols_final = [c for c in cols_final if c in df_show.columns]
+    cols_finais_3d = [c for c in colunas_3d if c in ranking_3d.columns]
 
-    # Gradiente apenas para probabilidades
-    def highlight_probs(s):
-        return [
-            "background-color: rgba(0,0,0,0)"  # transparente fora das probabs
-            for _ in s
-        ]
+    def estilo_tabela_3d_quadrantes(df):
+        # Apenas gradiente nas probabilidades (sem fundo em texto)
+        prob_cols = [c for c in [
+            'Quadrante_ML_Score_Home',
+            'Quadrante_ML_Score_Away',
+            'Bet_Confidence',
+            'Min_Conf_Required'
+        ] if c in df.columns]
 
-    styler = df_show[cols_final].style \
-        .format({
-            "Prob_HomeCover": "{:.1%}",
-            "Prob_AwayCover": "{:.1%}",
-            "Prob_Zebra": "{:.1%}",
-            "Asian_Line_Decimal": "{:.2f}",
-            "Goals_H_Today": "{:.0f}",
-            "Goals_A_Today": "{:.0f}"
-        }, na_rep="-") \
-        .background_gradient(
-            cmap="RdYlGn",
-            subset=["Prob_HomeCover", "Prob_AwayCover", "Prob_Zebra"]
-        )
+        styler = df.style
+        if prob_cols:
+            styler = styler.background_gradient(subset=prob_cols, cmap='RdYlGn')
 
-    st.dataframe(styler, use_container_width=True, height=600)
+        return styler
+
+    st.dataframe(
+        estilo_tabela_3d_quadrantes(ranking_3d[cols_finais_3d]).format({
+            'Goals_H_Today': '{:.0f}',
+            'Goals_A_Today': '{:.0f}',
+            'Asian_Line_Decimal': '{:.2f}',
+            'Quadrante_ML_Score_Home': '{:.1%}',
+            'Quadrante_ML_Score_Away': '{:.1%}',
+            'Bet_Confidence': '{:.1%}',
+            'Min_Conf_Required': '{:.1%}',
+            'M_H': '{:.2f}',
+            'M_A': '{:.2f}',
+            'Quadrant_Dist_3D': '{:.2f}',
+            'Momentum_Diff': '{:.2f}'
+        }, na_rep="-"),
+        use_container_width=True,
+        height=600
+    )
+
+    # ---------------- CARDS DE PICKS APROVADOS ----------------
+    st.markdown("## 🎴 Cards de Picks (Apostas aprovadas pela ML)")
+
+    aprovados = ranking_3d[ranking_3d['Bet_Approved'] == True].copy()
+    aprovados = aprovados.sort_values('Bet_Confidence', ascending=False)
+
+    if aprovados.empty:
+        st.info("Nenhuma aposta aprovada pela estratégia hoje.")
+    else:
+        # Limitar p/ visual (p.ex. top 20)
+        for _, row in aprovados.head(20).iterrows():
+            titulo = f"{row.get('League', '')}: {row.get('Home', '')} vs {row.get('Away', '')}"
+            with st.expander(titulo):
+                linha = row.get('Asian_Line_Decimal', np.nan)
+                try:
+                    linha_str = f"{linha:+.2f}"
+                except Exception:
+                    linha_str = str(linha)
+
+                st.write(f"Aposta sugerida: **{row.get('Bet_Label', 'NO BET')}**")
+                st.write(f"Lado da aposta (ML): **{row.get('Bet_Side', '')}** na linha {linha_str}")
+                st.write(
+                    f"Confiança ML: **{row.get('Bet_Confidence', 0):.1%}** "
+                    f"(Home: {row.get('Quadrante_ML_Score_Home', 0):.1%} | "
+                    f"Away: {row.get('Quadrante_ML_Score_Away', 0):.1%})"
+                )
+                st.write(f"Threshold mínimo p/ essa linha: **{row.get('Min_Conf_Required', 0):.1%}**")
+                st.write(f"Favorito da casa (linha): **{row.get('Expected_Favorite', 'NONE')}**")
+
+                zebra_txt = "Sim, ML contra o favorito da casa" if row.get('Is_Zebra_Bet', 0) == 1 else "Não"
+                st.write(f"Zebra agressiva: **{zebra_txt}**")
+
+                st.write(f"Quadrante HOME: {row.get('Quadrante_Home_Label', 'Neutro')}")
+                st.write(f"Quadrante AWAY: {row.get('Quadrante_Away_Label', 'Neutro')}")
+                st.write(f"Recomendação: {row.get('Recomendacao', '')}")
 
 else:
-    st.info("⚠️ Aguardando previsões para exibir tabela...")
+    st.info("⚠️ Aguardando dados para gerar ranking 3D")
+
 
 # ---------------- RESUMO EXECUTIVO ----------------
 def resumo_3d_16_quadrantes_hoje(df):
