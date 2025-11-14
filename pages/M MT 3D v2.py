@@ -146,54 +146,61 @@ def convert_asian_line_to_decimal_corrigido(line_str):
         st.warning(f"⚠️ Split handicap não reconhecido: {line_str}")
         return None
 
-def calc_handicap_result_corrigido(margin, asian_line_decimal, is_home_perspective=True):
+def calc_handicap_result_corrigido(margin, asian_line_decimal):
     """
-    CORREÇÃO: Calcula resultado do handicap considerando perspectiva E quarter handicaps
+    Retorna:
+    1.0  = full win
+    0.5  = half win (quarter line)
+    0.0  = full loss
     """
-    if pd.isna(asian_line_decimal) or pd.isna(margin):
+
+    if pd.isna(margin) or pd.isna(asian_line_decimal):
         return np.nan
-    
-    # ✅ CORREÇÃO: A linha JÁ ESTÁ na perspectiva do Home (após conversão)
-    # Não precisa inverter novamente!
-    line_for_calc = asian_line_decimal
-    
-    # ✅ CORREÇÃO: Tratamento especial para quarter handicaps
-    def is_quarter_handicap(line):
-        return abs(line) in [0.25, 0.75, 1.25, 1.75, 2.25, 2.75]  # Todos quarters
-    
-    if is_quarter_handicap(asian_line_decimal):
-        # Quarter handicap: split em duas apostas
-        line1 = math.floor(abs(asian_line_decimal) * 2) / 2  # Arredonda para 0.5 abaixo
-        line2 = math.ceil(abs(asian_line_decimal) * 2) / 2   # Arredonda para 0.5 acima
-        
-        # Aplicar sinal correto (já está na perspectiva Home)
-        if asian_line_decimal > 0:
-            line1, line2 = line1, line2  # Mantém positivo
+
+    line = asian_line_decimal
+
+    # --------- FULL LINE (inteiros ou .5) ----------
+    if line % 0.5 == 0 and line % 1 != 0:
+        # Example: -0.5, +1.5
+        if margin > line:
+            return 1.0
+        elif margin == line:
+            return 0.5  # push
         else:
-            line1, line2 = -line1, -line2  # Mantém negativo
-        
-        # Calcular resultado para cada linha
-        def single_line_result(margin, line):
-            if margin > line:
-                return 1.0  # Win
-            elif margin == line:
-                return 0.5  # Push
-            else:
-                return 0.0  # Loss
-        
-        result1 = single_line_result(margin, line1)
-        result2 = single_line_result(margin, line2)
-        
-        return (result1 + result2) / 2
-    
+            return 0.0
+
+    if line % 1 == 0:
+        # Example: -1, +2, 0
+        if margin > line:
+            return 1.0
+        elif margin == line:
+            return 0.5  # push
+        else:
+            return 0.0
+
+    # --------- QUARTER LINE (0.25, 0.75, 1.25, etc.) ----------
+    # Quebra exata segundo o mercado
+    # Ex: -0.75 -> (-1.0, -0.5)
+    ceil_line = math.ceil(abs(line) * 2) / 2
+    floor_line = math.floor(abs(line) * 2) / 2
+
+    if line < 0:
+        line_big = -ceil_line
+        line_small = -floor_line
     else:
-        # Handicap normal
-        if margin > line_for_calc:
-            return 1.0      # Home cobre
-        elif margin == line_for_calc:
-            return 0.5      # Push
+        line_big = floor_line
+        line_small = ceil_line
+
+    def single(margin, l):
+        if margin > l:
+            return 1.0
+        elif margin == l:
+            return 0.5
         else:
-            return 0.0      # Home não cobre
+            return 0.0
+
+    return (single(margin, line_big) + single(margin, line_small)) / 2
+
 
 def testar_conversao_asian_line():
     """Testa se a conversão está correta com TODOS os casos"""
