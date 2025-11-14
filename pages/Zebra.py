@@ -694,98 +694,96 @@ if not history.empty:
 
 # ---------------- MODELO ML 3D CORRIGIDO — NOVA VERSÃO ----------------
 def treinar_modelo_3d_quadrantes_16_corrigido(history, games_today):
-    st.markdown("## 🤖 TREINAMENTO DO MODELO ML (HOME | AWAY | ZEBRA)")
+    """
+    Treino e Previsão:
+    - Modelo HOME → Probabilidade do Home cobrir o AH
+    - Modelo AWAY → Probabilidade do Away cobrir o AH
+    - Modelo ZEBRA → Probabilidade do favorito falhar
+    """
+
+    st.markdown("## 🤖 TREINAMENTO DO MODELO ML (CORRIGIDO)")
 
     if history.empty:
         st.error("❌ Histórico vazio - não é possível treinar modelo")
         return None, None, None, games_today
 
-    # 1️⃣ Criar targets binários & Zebra
+    # ---------------- TARGET BINÁRIO + ZEBRA
     history_clean = create_better_target_corrigido(history)
-
     if history_clean.empty:
-        st.error("❌ Nenhum jogo válido após criação de targets (push removido)")
+        st.error("❌ Nenhum jogo válido após criação do target (sem push)")
         return None, None, None, games_today
 
-    # 2️⃣ Criar features robustas
+    # ---------------- FEATURES
     X_history = create_robust_features(history_clean)
-    features = X_history.columns.tolist()
+    if X_history.empty:
+        st.error("❌ Zero features disponíveis")
+        return None, None, None, games_today
 
     y_home = history_clean["Target_AH_Home"]
     y_away = 1 - y_home
     y_zebra = history_clean["Zebra"]
 
-    st.success(f"Treino: {X_history.shape[0]} jogos | {X_history.shape[1]} features")
+    st.success(f"Treino: {X_history.shape[0]} amostras | {X_history.shape[1]} features")
 
-    # 3️⃣ Treinar modelos
-    st.subheader("📌 Home cobre AH")
-    model_home = train_improved_model(X_history, y_home, features)
+    # ---------------- TREINAMENTO
+    st.subheader("Modelo HOME")
+    model_home = train_improved_model(X_history, y_home, X_history.columns.tolist())
 
-    st.subheader("📌 Away cobre AH")
-    model_away = train_improved_model(X_history, y_away, features)
+    st.subheader("Modelo AWAY")
+    model_away = train_improved_model(X_history, y_away, X_history.columns.tolist())
 
-    st.subheader("📌 Prob. Zebra (mercado Falha)")
-    model_zebra = train_improved_model(X_history, y_zebra, features)
+    st.subheader("Modelo ZEBRA")
+    model_zebra = train_improved_model(X_history, y_zebra, X_history.columns.tolist())
 
-    # 4️⃣ Previsões
-    if not games_today.empty:
-        X_today = create_robust_features(games_today)
-        for col in set(features) - set(X_today.columns):
-            X_today[col] = 0
-        X_today = X_today[features]
+    # ---------------- APPLY TO TODAY
+    if games_today.empty:
+        return model_home, model_away, model_zebra, games_today
 
-        games_today["Prob_HomeCover"] = model_home.predict_proba(X_today)[:, 1]
-        games_today["Prob_AwayCover"] = model_away.predict_proba(X_today)[:, 1]
-        games_today["Prob_Zebra"] = model_zebra.predict_proba(X_today)[:, 1]
-        # ---------------- ZEBRA — baseada na casa de apostas ----------------
-        def compute_zebra(row):
-            fav = row["Expected_Favorite"]
-            if fav == "HOME":
-                # Zebra se HOME falhar
-                return 1 if row["Prob_HomeCover"] < 0.5 else 0
-            elif fav == "AWAY":
-                # Zebra se AWAY falhar
-                return 1 if row["Prob_AwayCover"] < 0.5 else 0
-            return 0
-        
-        games_today["Zebra_Flag"] = games_today.apply(compute_zebra, axis=1)
+    X_today = create_robust_features(games_today)
 
+    # Garantia de alinhamento de features
+    missing_cols = set(X_history.columns) - set(X_today.columns)
+    for col in missing_cols:
+        X_today[col] = 0
+    X_today = X_today[X_history.columns]
 
-        # ---------------- FAVORITO DA BOOKIE — CORRIGIDO ----------------
-        def compute_expected_favorite(line):
-            try:
-                if abs(line) >= 0.5:
-                    return "HOME" if line < 0 else "AWAY"
-                else:
-                    return "NONE"
-            except:
-                return "NONE"
-        
-        games_today["Expected_Favorite"] = games_today["Asian_Line_Decimal"].apply(compute_expected_favorite)
-        
+    # Probabilidades
+    probas_home = model_home.predict_proba(X_today)[:, 1]
+    probas_away = model_away.predict_proba(X_today)[:, 1]
+    probas_zebra = model_zebra.predict_proba(X_today)[:, 1]
 
+    games_today['Prob_HomeCover'] = probas_home
+    games_today['Prob_AwayCover'] = probas_away
+    games_today['Prob_Zebra'] = probas_zebra
 
-        # Decisão final
-        def final_decision(row):
-            ph, pa, pz = row["Prob_HomeCover"], row["Prob_AwayCover"], row["Prob_Zebra"]
-            fav = row["Expected_Favorite"]
+    games_today['Prob_Main'] = np.maximum(probas_home, probas_away)
+    games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
 
-            pz = row["Prob_Zebra"]
-            if pz >= 0.65 and row["Zebra_Flag"] == 1:
-                return f"*{('AWAY' if fav=='HOME' else 'HOME')} 🚨*"
+    # ---------------- EXPECTED FAVORITE DA BOOKIE — CORRIGIDO
+    def compute_expected_favorite(line):
+        if pd.isna(line):
+            return "NONE"
+        if abs(line) >= 0.5:
+            return "HOME" if line < 0 else "AWAY"
+        return "NONE"
 
-            if ph > pa and ph >= 0.65:
-                return "**HOME**"
-            if pa > ph and pa >= 0.65:
-                return "*AWAY*"
+    games_today["Expected_Favorite"] = games_today["Asian_Line_Decimal"].apply(compute_expected_favorite)
 
-            return "⚖️ Analisar"
+    # ---------------- ZEBRA FINAL — Correto com favorito
+    def compute_zebra(row):
+        fav = row["Expected_Favorite"]
+        if fav == "HOME":
+            return 1 if row["Prob_HomeCover"] < 0.5 else 0
+        if fav == "AWAY":
+            return 1 if row["Prob_AwayCover"] < 0.5 else 0
+        return 0
 
-        games_today["ML_Side_Final"] = games_today.apply(final_decision, axis=1)
+    games_today["Zebra_Flag"] = games_today.apply(compute_zebra, axis=1)
 
-        st.success("Previsões geradas com sucesso!")
+    st.success(f"Previsões geradas para {len(games_today)} jogos")
 
     return model_home, model_away, model_zebra, games_today
+
 
 
 # ---------------- EXECUÇÃO DO MODELO CORRIGIDO ----------------
