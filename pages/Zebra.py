@@ -692,87 +692,79 @@ games_today = calcular_distancias_3d(games_today)
 if not history.empty:
     history = calcular_distancias_3d(history)
 
-# ---------------- MODELO ML 3D CORRIGIDO ----------------
+# ---------------- MODELO ML 3D CORRIGIDO — NOVA VERSÃO ----------------
 def treinar_modelo_3d_quadrantes_16_corrigido(history, games_today):
-    """
-    Treina modelo ML 3D CORRIGIDO:
-    - Modelo HOME: probabilidade do HOME cobrir AH
-    - Modelo AWAY: probabilidade do AWAY cobrir AH (inverso)
-    - Modelo ZEBRA: probabilidade do favorito falhar (mercado errar)
-    """
-    st.markdown("## 🤖 TREINAMENTO DO MODELO ML (CORRIGIDO)")
+    st.markdown("## 🤖 TREINAMENTO DO MODELO ML (HOME | AWAY | ZEBRA)")
 
     if history.empty:
         st.error("❌ Histórico vazio - não é possível treinar modelo")
         return None, None, None, games_today
 
-    # 1. Criar target binário & Zebra
+    # 1️⃣ Criar targets binários & Zebra
     history_clean = create_better_target_corrigido(history)
 
     if history_clean.empty:
-        st.error("❌ Nenhum jogo válido após criação do target (sem push)")
+        st.error("❌ Nenhum jogo válido após criação de targets (push removido)")
         return None, None, None, games_today
 
-    # 2. Criar features robustas
+    # 2️⃣ Criar features robustas
     X_history = create_robust_features(history_clean)
-    if X_history.empty:
-        st.error("❌ Nenhuma feature disponível para treinamento")
-        return None, None, None, games_today
+    features = X_history.columns.tolist()
 
     y_home = history_clean["Target_AH_Home"]
-    y_away = 1 - y_home  # inverso: Away cobre quando Home não cobre
+    y_away = 1 - y_home
     y_zebra = history_clean["Zebra"]
 
-    st.success(f"✅ Dados de treino: {X_history.shape[0]} amostras, {X_history.shape[1]} features")
+    st.success(f"Treino: {X_history.shape[0]} jogos | {X_history.shape[1]} features")
 
-    # 3. Treinar modelos
-    st.subheader("📌 Modelo HOME (Home cobre AH)")
-    model_home = train_improved_model(X_history, y_home, X_history.columns.tolist())
+    # 3️⃣ Treinar modelos
+    st.subheader("📌 Home cobre AH")
+    model_home = train_improved_model(X_history, y_home, features)
 
-    st.subheader("📌 Modelo AWAY (Away cobre AH)")
-    model_away = train_improved_model(X_history, y_away, X_history.columns.tolist())
+    st.subheader("📌 Away cobre AH")
+    model_away = train_improved_model(X_history, y_away, features)
 
-    st.subheader("📌 Modelo ZEBRA (Favorito falha)")
-    model_zebra = train_improved_model(X_history, y_zebra, X_history.columns.tolist())
+    st.subheader("📌 Prob. Zebra (mercado Falha)")
+    model_zebra = train_improved_model(X_history, y_zebra, features)
 
-    # 4. Preparar dados de hoje
+    # 4️⃣ Previsões
     if not games_today.empty:
-        # Garantir Expected_Favorite hoje também
-        if 'Asian_Line_Decimal' in games_today.columns:
-            games_today["Expected_Favorite"] = np.where(
-                games_today["Asian_Line_Decimal"] < 0,
-                "HOME",
-                np.where(games_today["Asian_Line_Decimal"] > 0, "AWAY", "NONE")
-            )
-
         X_today = create_robust_features(games_today)
-
-        missing_cols = set(X_history.columns) - set(X_today.columns)
-        for col in missing_cols:
+        for col in set(features) - set(X_today.columns):
             X_today[col] = 0
+        X_today = X_today[features]
 
-        X_today = X_today[X_history.columns]  # mesma ordem
+        games_today["Prob_HomeCover"] = model_home.predict_proba(X_today)[:, 1]
+        games_today["Prob_AwayCover"] = model_away.predict_proba(X_today)[:, 1]
+        games_today["Prob_Zebra"] = model_zebra.predict_proba(X_today)[:, 1]
 
-        # Previsões
-        probas_home = model_home.predict_proba(X_today)[:, 1]
-        probas_away = model_away.predict_proba(X_today)[:, 1]
-        probas_zebra = model_zebra.predict_proba(X_today)[:, 1]
-
-        games_today['Quadrante_ML_Score_Home'] = probas_home
-        games_today['Quadrante_ML_Score_Away'] = probas_away
-        games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
-        games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
-
-        games_today['Prob_Zebra'] = probas_zebra
-        games_today['Flag_Zebra'] = np.where(
-            games_today['Prob_Zebra'] >= 0.65,
-            '🦓 ZEBRA RISCO',
-            ''
+        # Favorito
+        games_today["Expected_Favorite"] = np.where(
+            games_today["Asian_Line_Decimal"] < 0, "HOME",
+            np.where(games_today["Asian_Line_Decimal"] > 0, "AWAY", "NONE")
         )
 
-        st.success(f"✅ Previsões geradas para {len(games_today)} jogos de hoje")
+        # Decisão final
+        def final_decision(row):
+            ph, pa, pz = row["Prob_HomeCover"], row["Prob_AwayCover"], row["Prob_Zebra"]
+            fav = row["Expected_Favorite"]
+
+            if pz >= 0.65 and fav in ["HOME", "AWAY"]:
+                return f"*{('AWAY' if fav=='HOME' else 'HOME')} 🚨*"
+
+            if ph > pa and ph >= 0.65:
+                return "**HOME**"
+            if pa > ph and pa >= 0.65:
+                return "*AWAY*"
+
+            return "⚖️ Analisar"
+
+        games_today["ML_Side_Final"] = games_today.apply(final_decision, axis=1)
+
+        st.success("Previsões geradas com sucesso!")
 
     return model_home, model_away, model_zebra, games_today
+
 
 # ---------------- EXECUÇÃO DO MODELO CORRIGIDO ----------------
 if not history.empty:
