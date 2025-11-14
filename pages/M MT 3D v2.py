@@ -148,83 +148,153 @@ def convert_asian_line_to_decimal_corrigido(line_str):
 
 def calc_handicap_result_corrigido(margin, asian_line_decimal, is_home_perspective=True):
     """
-    CORREÇÃO: Calcular resultado considerando que Asian Line já vem do Away
+    CORREÇÃO: Calcula resultado do handicap considerando perspectiva E quarter handicaps
     """
-    if pd.isna(asian_line_decimal):
+    if pd.isna(asian_line_decimal) or pd.isna(margin):
         return np.nan
     
-    # Se estamos na perspectiva do Home, inverter a linha
-    if is_home_perspective:
-        line_for_calc = -asian_line_decimal
-    else:
-        line_for_calc = asian_line_decimal
+    # ✅ CORREÇÃO: A linha JÁ ESTÁ na perspectiva do Home (após conversão)
+    # Não precisa inverter novamente!
+    line_for_calc = asian_line_decimal
     
-    # Para linhas split, simular o comportamento
-    def single_line_result(margin, line):
-        if margin > line:
-            return 1.0  # Home cobre
-        elif margin == line:
-            return 0.5  # Push
-        else:
-            return 0.0  # Home não cobre
+    # ✅ CORREÇÃO: Tratamento especial para quarter handicaps
+    def is_quarter_handicap(line):
+        return abs(line) in [0.25, 0.75, 1.25, 1.75, 2.25, 2.75]  # Todos quarters
     
-    # Verificar se é linha split (quarter handicaps)
-    abs_line = abs(asian_line_decimal)
-    if abs_line % 0.25 == 0 and abs_line % 0.5 != 0:
-        # Quarter handicap (ex: 0.25, 0.75, 1.25, etc.)
-        line1 = math.floor(abs_line * 2) / 2  # Arredonda para baixo para 0.5
-        line2 = math.ceil(abs_line * 2) / 2   # Arredonda para cima para 0.5
+    if is_quarter_handicap(asian_line_decimal):
+        # Quarter handicap: split em duas apostas
+        line1 = math.floor(abs(asian_line_decimal) * 2) / 2  # Arredonda para 0.5 abaixo
+        line2 = math.ceil(abs(asian_line_decimal) * 2) / 2   # Arredonda para 0.5 acima
         
+        # Aplicar sinal correto (já está na perspectiva Home)
         if asian_line_decimal > 0:
-            line1, line2 = -line1, -line2
+            line1, line2 = line1, line2  # Mantém positivo
         else:
-            line1, line2 = line1, line2
-            
+            line1, line2 = -line1, -line2  # Mantém negativo
+        
+        # Calcular resultado para cada linha
+        def single_line_result(margin, line):
+            if margin > line:
+                return 1.0  # Win
+            elif margin == line:
+                return 0.5  # Push
+            else:
+                return 0.0  # Loss
+        
         result1 = single_line_result(margin, line1)
         result2 = single_line_result(margin, line2)
+        
         return (result1 + result2) / 2
+    
     else:
         # Handicap normal
-        return single_line_result(margin, line_for_calc)
+        if margin > line_for_calc:
+            return 1.0      # Home cobre
+        elif margin == line_for_calc:
+            return 0.5      # Push
+        else:
+            return 0.0      # Home não cobre
 
 def testar_conversao_asian_line():
-    """Testa se a conversão está correta"""
-    st.markdown("### 🧪 TESTE DE CONVERSÃO ASIAN LINE")
+    """Testa se a conversão está correta com TODOS os casos"""
+    st.markdown("### 🧪 TESTE COMPLETO DE CONVERSÃO ASIAN LINE")
     
     test_cases = [
-        ("0.5", "Away dá 0.5 → Home recebe -0.5"),
-        ("-0.5", "Away dá -0.5 → Home recebe +0.5"), 
-        ("1.0", "Away dá 1.0 → Home recebe -1.0"),
-        ("-1.0", "Away dá -1.0 → Home recebe +1.0"),
-        ("0.5/1", "Away dá 0.5/1 → Home recebe -0.75"),
-        ("-0.5/1", "Away dá -0.5/1 → Home recebe +0.75"),
-        ("0", "Away dá 0 → Home recebe 0"),
-        ("0.25", "Away dá 0.25 → Home recebe -0.25"),
-        ("-0.25", "Away dá -0.25 → Home recebe +0.25")
+        # Handicaps simples
+        ("0.5", "Away 0.5 → Home -0.5"),
+        ("-0.5", "Away -0.5 → Home +0.5"),
+        ("1.0", "Away 1.0 → Home -1.0"),
+        ("-1.0", "Away -1.0 → Home +1.0"),
+        
+        # ✅ SPLITS CRÍTICOS QUE ESTAVAM FALTANDO
+        ("0/0.5", "Away 0/0.5 → Home -0.25"),
+        ("0/-0.5", "Away 0/-0.5 → Home +0.25"),
+        
+        # Splits comuns
+        ("0.5/1", "Away 0.5/1 → Home -0.75"),
+        ("-0.5/-1", "Away -0.5/-1 → Home +0.75"),
+        ("1/1.5", "Away 1/1.5 → Home -1.25"),
+        ("-1/-1.5", "Away -1/-1.5 → Home +1.25"),
+        ("1.5/2", "Away 1.5/2 → Home -1.75"),
+        ("-1.5/-2", "Away -1.5/-2 → Home +1.75"),
+        
+        # Quarter handicaps
+        ("0.25", "Away 0.25 → Home -0.25"),
+        ("-0.25", "Away -0.25 → Home +0.25"),
+        ("0.75", "Away 0.75 → Home -0.75"),
+        ("-0.75", "Away -0.75 → Home +0.75"),
+        
+        # Caso zero
+        ("0", "Away 0 → Home 0"),
     ]
     
     resultados = []
     for line, desc in test_cases:
         convertido = convert_asian_line_to_decimal_corrigido(line)
         
-        # Testar com margem exemplo
+        # Testar com diferentes margens para casos complexos
         if convertido is not None:
-            if "0.5" in line and "/" not in line:
-                margin_test = 1.0  # Home ganha por 1 gol
-                result = calc_handicap_result_corrigido(margin_test, convertido, is_home_perspective=True)
+            if "/" in line or line in ["0.25", "0.75", "-0.25", "-0.75"]:
+                # Testar múltiplas margens para splits e quarters
+                test_margins = [0.0, 0.5, 1.0, 1.5]
+                test_results = []
+                for margin in test_margins:
+                    result = calc_handicap_result_corrigido(margin, convertido, is_home_perspective=True)
+                    symbol = "✅" if result == 1.0 else "⚖️" if result == 0.5 else "❌"
+                    test_results.append(f"{margin}g:{symbol}")
+                result_str = " | ".join(test_results)
             else:
-                result = "N/A"
+                # Teste simples para handicaps normais
+                margin_test = 1.0
+                result = calc_handicap_result_corrigido(margin_test, convertido, is_home_perspective=True)
+                result_str = f"Margin 1.0: {'✅' if result == 1.0 else '⚖️' if result == 0.5 else '❌'}"
         else:
-            result = "Erro"
+            result_str = "❌ ERRO"
             
         resultados.append({
             'Asian_Line (Away)': line,
             'Descrição': desc,
             'Convertido (Home)': convertido,
-            'Teste Result': result
+            'Testes': result_str
         })
     
-    st.dataframe(pd.DataFrame(resultados))
+    df_result = pd.DataFrame(resultados)
+    st.dataframe(df_result)
+    
+    # Verificação específica dos casos mais complexos
+    st.markdown("#### 🔍 Verificação Detalhada dos Casos Complexos:")
+    
+    complex_cases = [
+        ("0/0.5", "Home -0.25", [
+            (0.0, "0x0 → ❌❌ DOUBLE LOSS"),
+            (0.25, "0.25x0 → ❌✅ HALF LOSS"), 
+            (0.5, "0.5x0 → ✅✅ DOUBLE WIN")
+        ]),
+        ("0/-0.5", "Home +0.25", [
+            (0.0, "0x0 → ✅✅ DOUBLE WIN"),
+            (-0.25, "-0.25x0 → ✅❌ HALF WIN"),
+            (-0.5, "-0.5x0 → ❌❌ DOUBLE LOSS")
+        ]),
+        ("0.75", "Home -0.75", [
+            (0.5, "0.5x0 → ❌❌ DOUBLE LOSS"),
+            (1.0, "1x0 → ✅✅ DOUBLE WIN"),
+            (0.75, "0.75x0 → ❌✅? (0.5 LOSS + 1.0 WIN = 0.5)")
+        ])
+    ]
+    
+    for line, converted_desc, scenarios in complex_cases:
+        st.write(f"**{line} → {converted_desc}:**")
+        converted = convert_asian_line_to_decimal_corrigido(line)
+        for margin, expected in scenarios:
+            result = calc_handicap_result_corrigido(margin, converted, is_home_perspective=True)
+            result_desc = f"Result: {result} → "
+            if result == 1.0:
+                result_desc += "DOUBLE WIN"
+            elif result == 0.5:
+                result_desc += "HALF WIN/LOSS" 
+            else:
+                result_desc += "DOUBLE LOSS"
+            st.write(f"  Margin {margin}: {expected} | {result_desc}")
 
 # ---------------- CORREÇÕES CRÍTICAS PARA ML ----------------
 def load_and_filter_history(selected_date_str):
