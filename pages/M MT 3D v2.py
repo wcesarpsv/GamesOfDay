@@ -77,43 +77,59 @@ def convert_asian_line(line_str):
         return None
 
 # ---------------- CORREÇÕES CRÍTICAS ASIAN LINE ----------------
-def convert_asian_line_to_decimal_corrigido(value):
+def convert_asian_line_to_decimal_corrigido(line_str):
     """
-    CORREÇÃO: Base já vem pela perspectiva do AWAY
-    Asian_Line = +0.5 → Away dá +0.5, Home recebe -0.5
-    Asian_Line = -0.5 → Away dá -0.5, Home recebe +0.5
+    Converte handicaps asiáticos (Away) no formato string para decimal invertido (Home).
+
+    CORREÇÃO: Para split handicaps como "1.5/2", NÃO calcular média!
     """
-    if pd.isna(value): 
-        return np.nan
+    if pd.isna(line_str) or line_str == "":
+        return None
+
+    line_str = str(line_str).strip()
+
+    # Caso especial: linha zero
+    if line_str == "0" or line_str == "0.0":
+        return 0.0
+
+    # ✅ CORREÇÃO: Tratar quarter handicaps explicitamente
+    quarter_handicaps = {
+        '0.75': -0.75,    # Away dá 0.75 → Home recebe -0.75
+        '-0.75': 0.75,    # Away dá -0.75 → Home recebe +0.75
+        '0.25': -0.25,    # Away dá 0.25 → Home recebe -0.25
+        '-0.25': 0.25,    # Away dá -0.25 → Home recebe +0.25
+    }
     
-    s = str(value).strip()
+    if line_str in quarter_handicaps:
+        return quarter_handicaps[line_str]
+
+    # ✅ CORREÇÃO CRÍTICA: Para split handicaps, NÃO calcular média!
+    # Exemplos: "1.5/2", "2/2.5", "0.5/1" etc.
+    common_splits = {
+        '0.5/1': -0.75,      # Away 0.5/1 → Home -0.75
+        '1/1.5': -1.25,      # Away 1/1.5 → Home -1.25  
+        '1.5/2': -1.75,      # Away 1.5/2 → Home -1.75
+        '2/2.5': -2.25,      # Away 2/2.5 → Home -2.25
+        '-0.5/-1': 0.75,     # Away -0.5/-1 → Home +0.75
+        '-1/-1.5': 1.25,     # Away -1/-1.5 → Home +1.25
+        '-1.5/-2': 1.75,     # Away -1.5/-2 → Home +1.75
+    }
     
-    # Linha simples (ex: "0.5", "-1.0")
-    if "/" not in s:
+    if line_str in common_splits:
+        return common_splits[line_str]
+
+    # Caso simples — número único
+    if "/" not in line_str:
         try:
-            num = float(s)
-            # CORREÇÃO: Não inverter! Base já vem do Away
-            return num  # ← REMOVER A INVERSÃO!
-        except:
-            return np.nan
-    
-    # Linha split (ex: "0.5/1", "-0.5/1")
-    try:
-        # Remover sinais negativos para calcular média corretamente
-        clean_parts = []
-        for p in s.split("/"):
-            clean_p = p.replace("+", "").replace("-", "")
-            clean_parts.append(float(clean_p))
-        
-        avg = np.mean(clean_parts)
-        
-        # Aplicar sinal base (assumindo que todos os parts têm o mesmo sinal)
-        if s.startswith("-"):
-            avg = -avg
-            
-        return avg
-    except:
-        return np.nan
+            num = float(line_str)
+            return -num  # Inverte sinal (Away → Home)
+        except ValueError:
+            return None
+
+    # ❌ REMOVER cálculo de média para splits não mapeados
+    # Se chegou aqui, é um split não reconhecido
+    st.warning(f"⚠️ Split handicap não reconhecido: {line_str}")
+    return None
 
 def calc_handicap_result_corrigido(margin, asian_line_decimal, is_home_perspective=True):
     """
