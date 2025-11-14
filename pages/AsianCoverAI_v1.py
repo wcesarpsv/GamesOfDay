@@ -787,6 +787,35 @@ def main_calibrado():
             hist_for_pred['VG_AWAY'] = hist_for_pred['P_Away_Cover'] - 0.5
 
             league_thresholds = find_league_thresholds(hist_for_pred, min_bets=60)
+            # ====================================================
+            # 📥 DOWNLOAD DA BASE FINAL DE TREINO
+            # ====================================================
+            export_cols = [
+                'League','Date','Home','Away',
+                'Goals_H_FT','Goals_A_FT',
+                'Asian_Line','Asian_Line_Decimal',
+                'Aggression_Home','Aggression_Away',
+                'HandScore_Home','HandScore_Away',
+                'M_H','M_A','MT_H','MT_A',
+                'Quadrant_Dist_3D','Quadrant_Separation_3D',
+                'Vector_Sign','Magnitude_3D',
+                'Momentum_Diff','Momentum_Diff_MT',
+                'Cluster3D_Label',
+                'Cover_Home','Cover_Away'
+            ]
+            
+            df_export = hist_for_pred[export_cols].copy()
+            
+            file_name = f"TrainingBase_Final_{selected_date_str}.csv"
+            df_export_csv = df_export.to_csv(index=False).encode('utf-8')
+            
+            st.download_button(
+                label="📥 Download da Base Final para Debug (CSV)",
+                data=df_export_csv,
+                file_name=file_name,
+                mime="text/csv"
+            )
+
 
             df_value_bets_dual, bets_validos_dual = analisar_value_bets_dual_modelos(games_today, league_thresholds)
 
