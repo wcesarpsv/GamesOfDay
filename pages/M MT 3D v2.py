@@ -148,58 +148,62 @@ def convert_asian_line_to_decimal_corrigido(line_str):
 
 def calc_handicap_result_corrigido(margin, asian_line_decimal):
     """
-    Retorna:
-    1.0  = full win
-    0.5  = half win (quarter line)
-    0.0  = full loss
-    """
+    Calcula o resultado do Handicap Asiático do ponto de vista do HOME.
 
+    Retorno:
+    1.0  -> Full Win
+    0.5  -> Half Win / Push
+    0.0  -> Full Loss
+    """
     if pd.isna(margin) or pd.isna(asian_line_decimal):
         return np.nan
 
     line = asian_line_decimal
+    abs_line = abs(line)
 
-    # --------- FULL LINE (inteiros ou .5) ----------
-    if line % 0.5 == 0 and line % 1 != 0:
-        # Example: -0.5, +1.5
+    # 🔹 LINHAS .0 (ex: 0, -1.0, +2.0) -> POSSUI PUSH
+    if abs_line % 1 == 0:
         if margin > line:
-            return 1.0
+            return 1.0  # win
         elif margin == line:
             return 0.5  # push
         else:
-            return 0.0
+            return 0.0  # loss
 
-    if line % 1 == 0:
-        # Example: -1, +2, 0
+    # 🔸 LINHAS .5 (ex: -0.5, +1.5) -> NÃO TEM PUSH
+    if abs_line % 1 == 0.5:
         if margin > line:
-            return 1.0
-        elif margin == line:
-            return 0.5  # push
+            return 1.0  # full win
         else:
-            return 0.0
+            return 0.0  # full loss
 
-    # --------- QUARTER LINE (0.25, 0.75, 1.25, etc.) ----------
-    # Quebra exata segundo o mercado
-    # Ex: -0.75 -> (-1.0, -0.5)
-    ceil_line = math.ceil(abs(line) * 2) / 2
-    floor_line = math.floor(abs(line) * 2) / 2
+    # 🟢 QUARTER LINES (0.25, 0.75, 1.25 etc)
+    # Regra exata do mercado:
+    # Ex: -0.75 => (-1.0, -0.5)
+    full_step = math.floor(abs_line * 2) / 2  # menor .5
+    half_step = math.ceil(abs_line * 2) / 2   # maior .5
 
     if line < 0:
-        line_big = -ceil_line
-        line_small = -floor_line
+        line1 = -half_step
+        line2 = -full_step
     else:
-        line_big = floor_line
-        line_small = ceil_line
+        line1 = full_step
+        line2 = half_step
 
-    def single(margin, l):
-        if margin > l:
-            return 1.0
-        elif margin == l:
-            return 0.5
-        else:
+    def single_result(m, l):
+        # full-line logic (can have push)
+        if abs(l % 1) == 0:
+            if m > l: return 1.0
+            if m == l: return 0.5
             return 0.0
+        # half-line logic (no push)
+        if m > l: return 1.0
+        return 0.0
 
-    return (single(margin, line_big) + single(margin, line_small)) / 2
+    # Média das duas apostas (quarter handicap)
+    result = (single_result(margin, line1) + single_result(margin, line2)) / 2
+    return result
+
 
 
 def testar_conversao_asian_line():
