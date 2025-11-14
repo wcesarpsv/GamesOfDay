@@ -763,9 +763,12 @@ def treinar_modelo_3d_quadrantes_16_corrigido(history, games_today):
     def compute_expected_favorite(line):
         if pd.isna(line):
             return "NONE"
-        if abs(line) >= 0.5:
-            return "HOME" if line < 0 else "AWAY"
+        if line < 0:
+            return "HOME"
+        if line > 0:
+            return "AWAY"
         return "NONE"
+
 
     games_today["Expected_Favorite"] = games_today["Asian_Line_Decimal"].apply(compute_expected_favorite)
 
