@@ -737,19 +737,41 @@ def treinar_modelo_3d_quadrantes_16_corrigido(history, games_today):
         games_today["Prob_HomeCover"] = model_home.predict_proba(X_today)[:, 1]
         games_today["Prob_AwayCover"] = model_away.predict_proba(X_today)[:, 1]
         games_today["Prob_Zebra"] = model_zebra.predict_proba(X_today)[:, 1]
+        # ---------------- ZEBRA — baseada na casa de apostas ----------------
+        def compute_zebra(row):
+            fav = row["Expected_Favorite"]
+            if fav == "HOME":
+                # Zebra se HOME falhar
+                return 1 if row["Prob_HomeCover"] < 0.5 else 0
+            elif fav == "AWAY":
+                # Zebra se AWAY falhar
+                return 1 if row["Prob_AwayCover"] < 0.5 else 0
+            return 0
+        
+        games_today["Zebra_Flag"] = games_today.apply(compute_zebra, axis=1)
 
-        # Favorito
-        games_today["Expected_Favorite"] = np.where(
-            games_today["Asian_Line_Decimal"] < 0, "HOME",
-            np.where(games_today["Asian_Line_Decimal"] > 0, "AWAY", "NONE")
-        )
+
+        # ---------------- FAVORITO DA BOOKIE — CORRIGIDO ----------------
+        def compute_expected_favorite(line):
+            try:
+                if abs(line) >= 0.5:
+                    return "HOME" if line < 0 else "AWAY"
+                else:
+                    return "NONE"
+            except:
+                return "NONE"
+        
+        games_today["Expected_Favorite"] = games_today["Asian_Line_Decimal"].apply(compute_expected_favorite)
+        
+
 
         # Decisão final
         def final_decision(row):
             ph, pa, pz = row["Prob_HomeCover"], row["Prob_AwayCover"], row["Prob_Zebra"]
             fav = row["Expected_Favorite"]
 
-            if pz >= 0.65 and fav in ["HOME", "AWAY"]:
+            pz = row["Prob_Zebra"]
+            if pz >= 0.65 and row["Zebra_Flag"] == 1:
                 return f"*{('AWAY' if fav=='HOME' else 'HOME')} 🚨*"
 
             if ph > pa and ph >= 0.65:
