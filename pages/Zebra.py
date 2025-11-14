@@ -299,15 +299,13 @@ def testar_conversao_asian_line():
 
 def calcular_zscores_detalhados(df):
     """
-    Calcula Z-scores a partir do HandScore:
-    - M_H, M_A: Z-score do time em relação à liga (performance relativa)
-    - MT_H, MT_A: Z-score do time em relação a si mesmo (consistência)
+    Calcula Z-scores a partir do HandScore com tratamento de infinitos
     """
     df = df.copy()
     
     st.info("📊 Calculando Z-scores a partir do HandScore...")
     
-    # 1. ✅ Z-SCORE POR LIGA (M_H, M_A) - Performance relativa à liga
+    # 1. ✅ Z-SCORE POR LIGA (M_H, M_A)
     if 'League' in df.columns and 'HandScore_Home' in df.columns and 'HandScore_Away' in df.columns:
         # Para cada liga, calcular estatísticas do HandScore
         league_stats = df.groupby('League').agg({
@@ -315,55 +313,55 @@ def calcular_zscores_detalhados(df):
             'HandScore_Away': ['mean', 'std']
         }).round(3)
         
-        # Renomear colunas para facilitar
         league_stats.columns = ['HS_H_mean', 'HS_H_std', 'HS_A_mean', 'HS_A_std']
         
-        # Juntar estatísticas de volta ao DataFrame
+        # ✅ TRATAR STD = 0 ANTES do cálculo
+        league_stats['HS_H_std'] = league_stats['HS_H_std'].replace(0, 1)  # Evitar divisão por zero
+        league_stats['HS_A_std'] = league_stats['HS_A_std'].replace(0, 1)
+        
         df = df.merge(league_stats, on='League', how='left')
         
-        # Calcular Z-scores em relação à liga
+        # Calcular Z-scores
         df['M_H'] = (df['HandScore_Home'] - df['HS_H_mean']) / df['HS_H_std']
         df['M_A'] = (df['HandScore_Away'] - df['HS_A_mean']) / df['HS_A_std']
         
-        # Tratar casos onde std = 0 (substituir por 1 para evitar divisão por zero)
-        df['M_H'] = df['M_H'].fillna(0)
-        df['M_A'] = df['M_A'].fillna(0)
+        # ✅ LIMITAR VALORES EXTREMOS
+        df['M_H'] = np.clip(df['M_H'], -5, 5)  # Limitar entre -5 e 5 desvios padrão
+        df['M_A'] = np.clip(df['M_A'], -5, 5)
         
         st.success(f"✅ Z-score por liga calculado para {len(df)} jogos")
         
-        # Debug: mostrar estatísticas por liga
-        st.write("📈 Estatísticas HandScore por Liga:")
-        st.dataframe(league_stats.head(10))
     else:
-        st.warning("⚠️ Colunas League ou HandScore não encontradas para cálculo de Z-score por liga")
+        st.warning("⚠️ Colunas League ou HandScore não encontradas")
         df['M_H'] = 0
         df['M_A'] = 0
     
-    # 2. ✅ Z-SCORE POR TIME (MT_H, MT_A) - Consistência do time
+    # 2. ✅ Z-SCORE POR TIME (MT_H, MT_A)
     if 'Home' in df.columns and 'Away' in df.columns:
-        # Para o time da casa: Z-score baseado no histórico do time como HOME
         home_team_stats = df.groupby('Home').agg({
             'HandScore_Home': ['mean', 'std']
         }).round(3)
         home_team_stats.columns = ['HT_mean', 'HT_std']
         
-        # Para o time visitante: Z-score baseado no histórico do time como AWAY  
         away_team_stats = df.groupby('Away').agg({
             'HandScore_Away': ['mean', 'std']
         }).round(3)
         away_team_stats.columns = ['AT_mean', 'AT_std']
         
-        # Juntar estatísticas dos times
+        # ✅ TRATAR STD = 0
+        home_team_stats['HT_std'] = home_team_stats['HT_std'].replace(0, 1)
+        away_team_stats['AT_std'] = away_team_stats['AT_std'].replace(0, 1)
+        
         df = df.merge(home_team_stats, left_on='Home', right_index=True, how='left')
         df = df.merge(away_team_stats, left_on='Away', right_index=True, how='left')
         
-        # Calcular Z-scores em relação ao próprio time
+        # Calcular Z-scores
         df['MT_H'] = (df['HandScore_Home'] - df['HT_mean']) / df['HT_std']
         df['MT_A'] = (df['HandScore_Away'] - df['AT_mean']) / df['AT_std']
         
-        # Tratar casos onde std = 0 ou NaN
-        df['MT_H'] = df['MT_H'].fillna(0)
-        df['MT_A'] = df['MT_A'].fillna(0)
+        # ✅ LIMITAR VALORES EXTREMOS
+        df['MT_H'] = np.clip(df['MT_H'], -5, 5)
+        df['MT_A'] = np.clip(df['MT_A'], -5, 5)
         
         st.success(f"✅ Z-score por time calculado para {len(df)} jogos")
         
@@ -371,17 +369,74 @@ def calcular_zscores_detalhados(df):
         df = df.drop(['HS_H_mean', 'HS_H_std', 'HS_A_mean', 'HS_A_std', 
                      'HT_mean', 'HT_std', 'AT_mean', 'AT_std'], axis=1, errors='ignore')
         
-        # Debug: mostrar exemplos dos Z-scores calculados
-        st.write("🔍 Amostra dos Z-scores calculados:")
-        debug_cols = ['League', 'Home', 'Away', 'HandScore_Home', 'HandScore_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
-        debug_cols = [c for c in debug_cols if c in df.columns]
-        st.dataframe(df[debug_cols].head(8))
     else:
-        st.warning("⚠️ Colunas Home ou Away não encontradas para cálculo de Z-score por time")
+        st.warning("⚠️ Colunas Home ou Away não encontradas")
         df['MT_H'] = 0
         df['MT_A'] = 0
     
     return df
+
+
+
+def clean_features_for_training(X):
+    """
+    Remove infinitos, NaNs e valores extremos das features
+    """
+    X_clean = X.copy()
+    
+    # Converter para DataFrame se for numpy array
+    if isinstance(X_clean, np.ndarray):
+        X_clean = pd.DataFrame(X_clean, columns=X.columns if hasattr(X, 'columns') else range(X.shape[1]))
+    
+    # 1. Substituir infinitos por NaN
+    X_clean = X_clean.replace([np.inf, -np.inf], np.nan)
+    
+    # 2. Contar problemas antes da limpeza
+    inf_count = (X_clean == np.inf).sum().sum() + (X_clean == -np.inf).sum().sum()
+    nan_count = X_clean.isna().sum().sum()
+    
+    if inf_count > 0 or nan_count > 0:
+        st.warning(f"⚠️ Encontrados {inf_count} infinitos e {nan_count} NaNs nas features")
+    
+    # 3. Estratégia de preenchimento: usar mediana da coluna
+    for col in X_clean.columns:
+        if X_clean[col].isna().any():
+            # Preencher NaNs com mediana
+            median_val = X_clean[col].median()
+            X_clean[col] = X_clean[col].fillna(median_val)
+            
+            # Se ainda tiver NaN (toda coluna era NaN), preencher com 0
+            if X_clean[col].isna().any():
+                X_clean[col] = X_clean[col].fillna(0)
+    
+    # 4. Limitar valores extremos (cap outliers)
+    for col in X_clean.columns:
+        if X_clean[col].dtype in [np.float64, np.float32]:
+            # Calcular limites robustos (usando IQR)
+            Q1 = X_clean[col].quantile(0.25)
+            Q3 = X_clean[col].quantile(0.75)
+            IQR = Q3 - Q1
+            lower_bound = Q1 - 3 * IQR
+            upper_bound = Q3 + 3 * IQR
+            
+            # Aplicar limites
+            X_clean[col] = np.clip(X_clean[col], lower_bound, upper_bound)
+    
+    # 5. Verificar se ainda há problemas
+    final_inf_count = (X_clean == np.inf).sum().sum() + (X_clean == -np.inf).sum().sum()
+    final_nan_count = X_clean.isna().sum().sum()
+    
+    if final_inf_count > 0 or final_nan_count > 0:
+        st.error(f"❌ Ainda existem {final_inf_count} infinitos e {final_nan_count} NaNs após limpeza")
+        # Forçar preenchimento final
+        X_clean = X_clean.fillna(0)
+        X_clean = X_clean.replace([np.inf, -np.inf], 0)
+    
+    st.success(f"✅ Features limpas: {X_clean.shape}")
+    
+    return X_clean
+
+
 
 
 
@@ -546,11 +601,22 @@ def create_robust_features(df):
     return df[available_features].fillna(0)
 
 def train_improved_model(X, y, feature_names):
-    """Modelo com melhor configuração para dados esportivos - CORRIGIDO"""
-
+    """Modelo com melhor configuração e tratamento de dados"""
     from sklearn.ensemble import RandomForestClassifier
 
     st.info("🤖 Treinando modelo otimizado...")
+
+    # ✅ LIMPEZA DAS FEATURES ANTES DO TREINAMENTO
+    X_clean = clean_features_for_training(X)
+    
+    # Verificar se y também tem problemas
+    y_clean = y.copy()
+    if hasattr(y_clean, 'isna') and y_clean.isna().any():
+        st.warning(f"⚠️ Encontrados {y_clean.isna().sum()} NaNs no target - removendo")
+        # Manter apenas linhas onde X e y são válidos
+        valid_mask = ~y_clean.isna()
+        X_clean = X_clean[valid_mask]
+        y_clean = y_clean[valid_mask]
 
     model = RandomForestClassifier(
         n_estimators=200,
@@ -565,7 +631,7 @@ def train_improved_model(X, y, feature_names):
 
     # Validação cruzada
     try:
-        scores = cross_val_score(model, X, y, cv=5, scoring='accuracy')
+        scores = cross_val_score(model, X_clean, y_clean, cv=5, scoring='accuracy')
         st.write(f"📊 Validação Cruzada: {scores.mean():.3f} (+/- {scores.std() * 2:.3f})")
 
         if scores.mean() < 0.55:
@@ -575,13 +641,73 @@ def train_improved_model(X, y, feature_names):
     except Exception as e:
         st.warning(f"⚠️ Validação cruzada falhou: {e}")
 
-    model.fit(X, y)
+    model.fit(X_clean, y_clean)
 
     importances = pd.Series(model.feature_importances_, index=feature_names).sort_values(ascending=False)
     st.write("🔍 **Top Features mais importantes:**")
     st.dataframe(importances.head(10).to_frame("Importância"))
 
     return model
+
+
+
+def train_margin_regressor(X, y, feature_names):
+    """Treina modelo de regressão com tratamento de dados"""
+    st.info("📈 Treinando modelo de REGRESSÃO para margem...")
+    
+    # ✅ LIMPEZA DAS FEATURES
+    X_clean = clean_features_for_training(X)
+    y_clean = y.copy()
+    
+    # Verificar target de regressão
+    if hasattr(y_clean, 'isna') and y_clean.isna().any():
+        st.warning(f"⚠️ Encontrados {y_clean.isna().sum()} NaNs no target de regressão")
+        valid_mask = ~y_clean.isna()
+        X_clean = X_clean[valid_mask]
+        y_clean = y_clean[valid_mask]
+    
+    model = RandomForestRegressor(
+        n_estimators=150,
+        max_depth=12,
+        min_samples_split=15,
+        min_samples_leaf=5,
+        max_features='sqrt',
+        random_state=42,
+        n_jobs=-1
+    )
+    
+    # Validação para regressão
+    try:
+        from sklearn.model_selection import cross_val_score
+        mse_scores = -cross_val_score(model, X_clean, y_clean, cv=5, scoring='neg_mean_squared_error')
+        r2_scores = cross_val_score(model, X_clean, y_clean, cv=5, scoring='r2')
+        
+        st.write(f"📊 MSE Validação: {mse_scores.mean():.3f} (+/- {mse_scores.std() * 2:.3f})")
+        st.write(f"📈 R² Validação: {r2_scores.mean():.3f} (+/- {r2_scores.std() * 2:.3f})")
+        
+        if r2_scores.mean() > 0.1:
+            st.success("🎯 Modelo de regressão com boa explicação!")
+        elif r2_scores.mean() > 0:
+            st.info("📈 Modelo de regressão com alguma explicação")
+        else:
+            st.warning("⚠️ Modelo de regressão com baixo poder explicativo")
+            
+    except Exception as e:
+        st.warning(f"⚠️ Validação cruzada de regressão falhou: {e}")
+    
+    model.fit(X_clean, y_clean)
+    
+    # Importância das features
+    importances = pd.Series(model.feature_importances_, index=feature_names).sort_values(ascending=False)
+    st.write("🔍 **Top Features para Regressão (Margem):**")
+    st.dataframe(importances.head(10).to_frame("Importância"))
+    
+    return model
+
+
+
+
+
 
 def data_quality_report(df, target_col='Target_AH_Home'):
     """Diagnóstico completo da qualidade dos dados"""
