@@ -402,9 +402,8 @@ def create_better_target_corrigido(df):
     return df
 
 
-
 def create_robust_features(df):
-    """Cria features mais robustas e elimina colinearidade - CORRIGIDO"""
+    """Cria features mais robustas INCLUINDO seno/cosseno 3D"""
 
     # 1. Features básicas essenciais
     basic_features = [
@@ -433,9 +432,13 @@ def create_robust_features(df):
         'Momentum_Advantage', 'Aggression_Total'
     ]
 
-    # 3. Apenas as melhores features 3D
+    # 3. ✅ AGORA INCLUINDO FEATURES TRIGONOMÉTRICAS 3D
     vector_features = [
-        'Quadrant_Dist_3D', 'Momentum_Diff', 'Magnitude_3D'
+        'Quadrant_Dist_3D', 'Momentum_Diff', 'Magnitude_3D',
+        # Novas features de direção/orientação 3D
+        'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
+        'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
+        'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ'
     ]
 
     all_features = basic_features + derived_features + vector_features
@@ -444,6 +447,11 @@ def create_robust_features(df):
     available_features = [f for f in all_features if f in df.columns]
 
     st.info(f"📋 Features disponíveis: {len(available_features)}/{len(all_features)}")
+    
+    # Debug: mostrar features trigonométricas disponíveis
+    trig_features = [f for f in available_features if 'Sin' in f or 'Cos' in f]
+    if trig_features:
+        st.success(f"✅ Features trigonométricas incluídas: {len(trig_features)}")
 
     return df[available_features].fillna(0)
 
@@ -675,7 +683,7 @@ if not history.empty:
 
 # ---------------- CÁLCULO DE DISTÂNCIAS 3D ----------------
 def calcular_distancias_3d(df):
-    """Calcula distância 3D e ângulos usando Aggression, Momentum (liga) e Momentum (time)"""
+    """Calcula distância 3D e ângulos GARANTINDO features trigonométricas"""
     df = df.copy()
 
     required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
@@ -683,6 +691,7 @@ def calcular_distancias_3d(df):
 
     if missing_cols:
         st.warning(f"⚠️ Colunas faltando para cálculo 3D: {missing_cols}")
+        # ✅ AGORA garantindo que TODAS as features são criadas (mesmo com NaN)
         for col in [
             'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
             'Quadrant_Angle_XY', 'Quadrant_Angle_XZ', 'Quadrant_Angle_YZ',
@@ -698,14 +707,17 @@ def calcular_distancias_3d(df):
     dy = df['M_H'] - df['M_A']
     dz = df['MT_H'] - df['MT_A']
 
+    # Distância 3D ponderada
     df['Quadrant_Dist_3D'] = np.sqrt(
         (dx)**2 * 1.5 + (dy/3.5)**2 * 2.0 + (dz/3.5)**2 * 1.8
     ) * 10
 
+    # Ângulos em graus (para análise)
     df['Quadrant_Angle_XY'] = np.degrees(np.arctan2(dy, dx))
     df['Quadrant_Angle_XZ'] = np.degrees(np.arctan2(dz, dx))
     df['Quadrant_Angle_YZ'] = np.degrees(np.arctan2(dz, dy))
 
+    # ✅ GARANTIR cálculo das features trigonométricas (para ML)
     angle_xy = np.arctan2(dy, dx)
     angle_xz = np.arctan2(dz, dx)
     angle_yz = np.arctan2(dz, dy)
@@ -717,6 +729,7 @@ def calcular_distancias_3d(df):
     df['Quadrant_Sin_YZ'] = np.sin(angle_yz)
     df['Quadrant_Cos_YZ'] = np.cos(angle_yz)
 
+    # Outras métricas 3D
     df['Quadrant_Separation_3D'] = (
         0.4 * (60 * dx) + 0.35 * (20 * dy) + 0.25 * (20 * dz)
     )
@@ -725,7 +738,15 @@ def calcular_distancias_3d(df):
     df['Momentum_Diff_MT'] = dz
     df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
 
+    # ✅ DEBUG: Verificar se as trigonométricas foram criadas
+    trig_cols = ['Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Quadrant_Sin_XZ', 
+                 'Quadrant_Cos_XZ', 'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ']
+    created_trig = [col for col in trig_cols if col in df.columns]
+    st.success(f"✅ Features trigonométricas calculadas: {len(created_trig)}/6")
+
     return df
+
+
 
 # Aplicar cálculo 3D
 games_today = calcular_distancias_3d(games_today)
