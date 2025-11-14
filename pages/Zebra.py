@@ -863,87 +863,55 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
 
     return df
 
-# ---------------- EXIBIÇÃO DOS RESULTADOS ----------------
-st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes ML")
+# ---------------- EXIBIÇÃO DOS RESULTADOS (LIMPO) ----------------
+st.markdown("## 🏆 Melhorias e Sinais para Hoje")
 
-if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
-    ranking_3d = adicionar_indicadores_explicativos_3d_16_dual(games_today)
+if not games_today.empty and "Prob_HomeCover" in games_today.columns:
 
-    ranking_3d = ranking_3d.sort_values('Quadrante_ML_Score_Main', ascending=False)
+    df_show = games_today.copy()
 
-    colunas_3d = [
-        'Ranking', 'League', 'Home', 'Away',
-        'Goals_H_Today', 'Goals_A_Today', 'ML_Side',
-        'Expected_Favorite',
-        'Quadrante_Home_Label', 'Quadrante_Away_Label',
-        'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 'Quadrante_ML_Score_Main',
-        'Prob_Zebra', 'Flag_Zebra',
-        'Classificacao_Valor_Home', 'Classificacao_Valor_Away', 'Recomendacao',
-        'M_H', 'M_A', 'Quadrant_Dist_3D', 'Momentum_Diff',
-        'Asian_Line', 'Asian_Line_Decimal'
+    # Ranking baseado em prob. mais forte
+    df_show["Rank"] = df_show[["Prob_HomeCover", "Prob_AwayCover"]].max(axis=1).rank(
+        method="first", ascending=False
+    ).astype(int)
+
+    df_show = df_show.sort_values("Rank")
+
+    cols_final = [
+        "Rank", "League", "Home", "Away",
+        "ML_Side_Final",
+        "Prob_HomeCover", "Prob_AwayCover", "Prob_Zebra",
+        "Expected_Favorite", "Asian_Line", "Asian_Line_Decimal",
+        "Goals_H_Today", "Goals_A_Today"
     ]
 
-    cols_finais_3d = [c for c in colunas_3d if c in ranking_3d.columns]
+    cols_final = [c for c in cols_final if c in df_show.columns]
 
-    def estilo_tabela_3d_quadrantes(df):
-        def cor_classificacao_3d(valor):
-            v = str(valor)
-            if '🦓' in v:
-                return 'background-color: #FFA500; font-weight: bold'
-            if '🏆 ALTO VALOR' in v:
-                return 'background-color: #90EE90; font-weight: bold'
-            elif '🔴 ALTO RISCO' in v:
-                return 'background-color: #FFB6C1; font-weight: bold'
-            elif 'VALUE' in v:
-                return 'background-color: #FFFACD; font-weight: bold'
-            else:
-                return ''
+    # Gradiente apenas para probabilidades
+    def highlight_probs(s):
+        return [
+            "background-color: rgba(0,0,0,0)"  # transparente fora das probabs
+            for _ in s
+        ]
 
-        colunas_para_estilo = []
-        for col in ['Classificacao_Valor_Home', 'Classificacao_Valor_Away', 'Recomendacao', 'Flag_Zebra']:
-            if col in df.columns:
-                colunas_para_estilo.append(col)
-
-        styler = df.style
-        if colunas_para_estilo:
-            styler = styler.applymap(cor_classificacao_3d, subset=colunas_para_estilo)
-
-        grad_cols = []
-        if 'Quadrante_ML_Score_Home' in df.columns:
-            grad_cols.append('Quadrante_ML_Score_Home')
-        if 'Quadrante_ML_Score_Away' in df.columns:
-            grad_cols.append('Quadrante_ML_Score_Away')
-        if 'Quadrante_ML_Score_Main' in df.columns:
-            grad_cols.append('Quadrante_ML_Score_Main')
-        if 'Prob_Zebra' in df.columns:
-            grad_cols.append('Prob_Zebra')
-
-        if grad_cols:
-            styler = styler.background_gradient(subset=grad_cols, cmap='RdYlGn')
-
-        return styler
-
-    st.dataframe(
-        estilo_tabela_3d_quadrantes(ranking_3d[cols_finais_3d])
+    styler = df_show[cols_final].style \
         .format({
-            'Goals_H_Today': '{:.0f}',
-            'Goals_A_Today': '{:.0f}',
-            'Asian_Line_Decimal': '{:.2f}',
-            'Quadrante_ML_Score_Home': '{:.1%}',
-            'Quadrante_ML_Score_Away': '{:.1%}',
-            'Quadrante_ML_Score_Main': '{:.1%}',
-            'Prob_Zebra': '{:.1%}',
-            'M_H': '{:.2f}',
-            'M_A': '{:.2f}',
-            'Quadrant_Dist_3D': '{:.2f}',
-            'Momentum_Diff': '{:.2f}'
-        }, na_rep="-"),
-        use_container_width=True,
-        height=600
-    )
+            "Prob_HomeCover": "{:.1%}",
+            "Prob_AwayCover": "{:.1%}",
+            "Prob_Zebra": "{:.1%}",
+            "Asian_Line_Decimal": "{:.2f}",
+            "Goals_H_Today": "{:.0f}",
+            "Goals_A_Today": "{:.0f}"
+        }, na_rep="-") \
+        .background_gradient(
+            cmap="RdYlGn",
+            subset=["Prob_HomeCover", "Prob_AwayCover", "Prob_Zebra"]
+        )
+
+    st.dataframe(styler, use_container_width=True, height=600)
 
 else:
-    st.info("⚠️ Aguardando dados para gerar ranking 3D")
+    st.info("⚠️ Aguardando previsões para exibir tabela...")
 
 # ---------------- RESUMO EXECUTIVO ----------------
 def resumo_3d_16_quadrantes_hoje(df):
@@ -992,6 +960,32 @@ def resumo_3d_16_quadrantes_hoje(df):
 
 if not games_today.empty:
     resumo_3d_16_quadrantes_hoje(games_today)
+
+
+
+# ---------------- ESTATÍSTICAS ZEBRA ----------------
+st.markdown("## 🦓 Estatísticas de Zebra (mercado errando)")
+
+if not history.empty:
+    st.markdown("### Por Liga")
+
+    zebra_liga = history_clean.groupby("League")["Zebra"].mean().sort_values(ascending=False)
+    st.dataframe(
+        zebra_liga.to_frame("Taxa Zebra").style.format({"Taxa Zebra": "{:.1%}"}),
+        use_container_width=True
+    )
+
+    st.markdown("### Por Linha de Handicap")
+
+    zebra_handicap = history_clean.groupby("Asian_Line_Decimal")["Zebra"].mean().sort_values(ascending=False)
+    st.dataframe(
+        zebra_handicap.to_frame("Taxa Zebra").style.format({"Taxa Zebra": "{:.1%}"}),
+        use_container_width=True
+    )
+else:
+    st.info("Sem histórico para estatísticas Zebra.")
+
+
 
 st.markdown("---")
 st.success("🎯 **Sistema 3D de 16 Quadrantes ML CORRIGIDO + ZEBRA** implementado com sucesso!")
