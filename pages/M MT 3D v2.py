@@ -203,105 +203,30 @@ def calc_handicap_result_corrigido(margin, asian_line_decimal):
 
 
 def testar_conversao_asian_line():
-    """Testa se a conversão está correta com TODOS os casos"""
-    st.markdown("### 🧪 TESTE COMPLETO DE CONVERSÃO ASIAN LINE")
-    
-    test_cases = [
-        # Handicaps simples
-        ("0.5", "Away 0.5 → Home -0.5"),
-        ("-0.5", "Away -0.5 → Home +0.5"),
-        ("1.0", "Away 1.0 → Home -1.0"),
-        ("-1.0", "Away -1.0 → Home +1.0"),
+    st.markdown("### 🧪 TESTE COMPLETO – LINHA & RESULTADO")
+
+    test_margins = [0.0, 0.25, 0.5, 0.75, 1.0, 2.0]
+
+    results = []
+    for line_str, desc in test_cases:
+        decimal = convert_asian_line_to_decimal_corrigido(line_str)
         
-        # ✅ SPLITS CRÍTICOS QUE ESTAVAM FALTANDO
-        ("0/0.5", "Away 0/0.5 → Home -0.25"),
-        ("0/-0.5", "Away 0/-0.5 → Home +0.25"),
-        
-        # Splits comuns
-        ("0.5/1", "Away 0.5/1 → Home -0.75"),
-        ("-0.5/-1", "Away -0.5/-1 → Home +0.75"),
-        ("1/1.5", "Away 1/1.5 → Home -1.25"),
-        ("-1/-1.5", "Away -1/-1.5 → Home +1.25"),
-        ("1.5/2", "Away 1.5/2 → Home -1.75"),
-        ("-1.5/-2", "Away -1.5/-2 → Home +1.75"),
-        
-        # Quarter handicaps
-        ("0.25", "Away 0.25 → Home -0.25"),
-        ("-0.25", "Away -0.25 → Home +0.25"),
-        ("0.75", "Away 0.75 → Home -0.75"),
-        ("-0.75", "Away -0.75 → Home +0.75"),
-        
-        # Caso zero
-        ("0", "Away 0 → Home 0"),
-    ]
-    
-    resultados = []
-    for line, desc in test_cases:
-        convertido = convert_asian_line_to_decimal_corrigido(line)
-        
-        # Testar com diferentes margens para casos complexos
-        if convertido is not None:
-            if "/" in line or line in ["0.25", "0.75", "-0.25", "-0.75"]:
-                # Testar múltiplas margens para splits e quarters
-                test_margins = [0.0, 0.5, 1.0, 1.5]
-                test_results = []
-                for margin in test_margins:
-                    result = calc_handicap_result_corrigido(margin, convertido, is_home_perspective=True)
-                    symbol = "✅" if result == 1.0 else "⚖️" if result == 0.5 else "❌"
-                    test_results.append(f"{margin}g:{symbol}")
-                result_str = " | ".join(test_results)
-            else:
-                # Teste simples para handicaps normais
-                margin_test = 1.0
-                result = calc_handicap_result_corrigido(margin_test, convertido, is_home_perspective=True)
-                result_str = f"Margin 1.0: {'✅' if result == 1.0 else '⚖️' if result == 0.5 else '❌'}"
-        else:
-            result_str = "❌ ERRO"
-            
-        resultados.append({
-            'Asian_Line (Away)': line,
-            'Descrição': desc,
-            'Convertido (Home)': convertido,
-            'Testes': result_str
+        tests = []
+        for m in test_margins:
+            r = calc_handicap_result_corrigido(m, decimal)
+            if r == 1.0: sym = "🟩"  # full win
+            elif r == 0.5: sym = "🟨"  # half win
+            else: sym = "🟥"  # loss
+            tests.append(f"{m}:{sym}")
+
+        results.append({
+            "AsianLine(Away)": line_str,
+            "Convertido(Home)": decimal,
+            "Teste": " | ".join(tests)
         })
-    
-    df_result = pd.DataFrame(resultados)
-    st.dataframe(df_result)
-    
-    # Verificação específica dos casos mais complexos
-    st.markdown("#### 🔍 Verificação Detalhada dos Casos Complexos:")
-    
-    complex_cases = [
-        ("0/0.5", "Home -0.25", [
-            (0.0, "0x0 → ❌❌ DOUBLE LOSS"),
-            (0.25, "0.25x0 → ❌✅ HALF LOSS"), 
-            (0.5, "0.5x0 → ✅✅ DOUBLE WIN")
-        ]),
-        ("0/-0.5", "Home +0.25", [
-            (0.0, "0x0 → ✅✅ DOUBLE WIN"),
-            (-0.25, "-0.25x0 → ✅❌ HALF WIN"),
-            (-0.5, "-0.5x0 → ❌❌ DOUBLE LOSS")
-        ]),
-        ("0.75", "Home -0.75", [
-            (0.5, "0.5x0 → ❌❌ DOUBLE LOSS"),
-            (1.0, "1x0 → ✅✅ DOUBLE WIN"),
-            (0.75, "0.75x0 → ❌✅? (0.5 LOSS + 1.0 WIN = 0.5)")
-        ])
-    ]
-    
-    for line, converted_desc, scenarios in complex_cases:
-        st.write(f"**{line} → {converted_desc}:**")
-        converted = convert_asian_line_to_decimal_corrigido(line)
-        for margin, expected in scenarios:
-            result = calc_handicap_result_corrigido(margin, converted, is_home_perspective=True)
-            result_desc = f"Result: {result} → "
-            if result == 1.0:
-                result_desc += "DOUBLE WIN"
-            elif result == 0.5:
-                result_desc += "HALF WIN/LOSS" 
-            else:
-                result_desc += "DOUBLE LOSS"
-            st.write(f"  Margin {margin}: {expected} | {result_desc}")
+
+    st.dataframe(pd.DataFrame(results))
+    st.success("Conversões e resultados validados!")
 
 # ---------------- CORREÇÕES CRÍTICAS PARA ML ----------------
 def load_and_filter_history(selected_date_str):
