@@ -97,45 +97,24 @@ def calc_handicap_result(margin, asian_line_str, invert=False):
 
 
 def convert_asian_line_to_decimal(value):
-    """
-    Converte handicaps asiáticos (Away) no formato string para decimal invertido (Home).
-
-    Regras oficiais e consistentes com Pinnacle/Bet365:
-      '0/0.5'   -> +0.25  (para away) → invertido: -0.25 (para home)
-      '-0.5/0'  -> -0.25  (para away) → invertido: +0.25 (para home)
-      '-1/1.5'  -> -0.25  → +0.25
-      '1/1.5'   -> +1.25  → -1.25
-      '1.5'     -> +1.50  → -1.50
-      '0'       ->  0.00  →  0.00
-
-    Retorna: float
-    """
-    if pd.isna(value):
-        return np.nan
-
-    value = str(value).strip()
-
-    # Caso simples — número único
-    if "/" not in value:
+    if pd.isna(value): return np.nan
+    s = str(value).strip()
+    if "/" not in s:
         try:
-            num = float(value)
-            return -num  # Inverte sinal (Away → Home)
-        except ValueError:
+            num = float(s)
+            return -num  # manter convenção HOME (negativo favorece casa)
+        except:
             return np.nan
-
-    # Caso duplo — média dos dois lados
     try:
-        parts = [float(p) for p in value.split("/")]
+        # média de split (ex.: "-0.5/1" -> [-0.5, -1] -> média=-0.75), preserva sinal e depois inverte p/ HOME
+        parts = [float(p) for p in s.replace("+","").replace("-","").split("/")]
         avg = np.mean(parts)
-        # Mantém o sinal do primeiro número
-        if str(value).startswith("-"):
-            result = -abs(avg)
-        else:
-            result = abs(avg)
-        # Inverte o sinal no final (Away → Home)
+        sign = -1 if s.startswith("-") else 1
+        result = sign * avg
         return -result
-    except ValueError:
+    except:
         return np.nan
+
 
 
 # ---------------- Carregar Dados ----------------
