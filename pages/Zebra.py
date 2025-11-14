@@ -293,28 +293,34 @@ def create_better_target_corrigido(df):
     """
     Cria targets 100% binários (sem push), com Zebra:
 
-    - Target_AH_Home: 1 se o HOME cobrir o handicap (Margin > Line), 0 caso contrário
-    - Expected_Favorite: HOME se linha < 0, AWAY se linha > 0, NONE se linha == 0
-    - Zebra: 1 se o favorito do mercado falhar em cobrir, 0 caso contrário
-    - PUSH (Margin == Line) é excluído do dataset de treino
+    - Target_AH_Home: 1 se o HOME cobrir o handicap (full win)
+    - Expected_Favorite: HOME se linha < 0, AWAY se linha > 0
+    - Zebra: 1 se o favorito do mercado falhar
+    - Full push e quarter push são EXCLUÍDOS do dataset
     """
     df = df.copy()
 
     # Margem real de gols
     df["Margin"] = df["Goals_H_FT"] - df["Goals_A_FT"]
 
-    # Identificar PUSH
-    df["Push"] = df["Margin"] == df["Asian_Line_Decimal"]
+    # Calcular o resultado asiático completo (0.0, 0.5, 1.0)
+    df["AH_Result"] = df.apply(
+        lambda r: calc_handicap_result_corrigido(
+            r["Margin"], r["Asian_Line_Decimal"]
+        ),
+        axis=1
+    )
 
-    # Excluir PUSH
     total = len(df)
-    df = df[~df["Push"]].copy()
+
+    # EXCLUIR QUALQUER PUSH (0.5)
+    df = df[df["AH_Result"] != 0.5].copy()
     clean = len(df)
 
-    # Target principal (Home cobre = 1)
-    df["Target_AH_Home"] = (df["Margin"] > df["Asian_Line_Decimal"]).astype(int)
+    # Target binário 1.0 → cobre | 0.0 → não cobre
+    df["Target_AH_Home"] = (df["AH_Result"] == 1.0).astype(int)
 
-    # Quem o mercado aponta como favorito (interpretação 1: line < 0 → HOME favorito)
+    # Quem o mercado aponta como favorito
     df["Expected_Favorite"] = np.where(
         df["Asian_Line_Decimal"] < 0,
         "HOME",
@@ -336,7 +342,9 @@ def create_better_target_corrigido(df):
     win_rate = df["Target_AH_Home"].mean() if len(df) > 0 else 0.0
     zebra_rate = df["Zebra"].mean() if len(df) > 0 else 0.0
 
-    st.info(f"🎯 Target binário gerado: {clean}/{total} jogos mantidos ({clean/total:.1%})")
+    st.info(f"🎯 Total analisado: {total} jogos")
+    st.info(f"🗑️ Excluídos por Push: {total-clean} jogos ({(total-clean)/total:.1%})")
+    st.info(f"📊 Treino com: {clean} jogos restantes")
     st.info(f"🏠 Win rate HOME cobrindo: {win_rate:.1%}")
     st.info(f"🦓 Taxa de Zebra (favorito falhou): {zebra_rate:.1%}")
 
@@ -345,14 +353,15 @@ def create_better_target_corrigido(df):
         "Asian_Line", "Asian_Line_Decimal",
         "Goals_H_FT", "Goals_A_FT",
         "Margin", "Expected_Favorite",
-        "Target_AH_Home", "Zebra"
+        "Target_AH_Home", "AH_Result", "Zebra"
     ]
     debug_cols = [c for c in debug_cols if c in df.columns]
 
-    st.write("🔍 Exemplos (Target & Zebra):")
+    st.write("🔍 Exemplos (após correção PUSH):")
     st.dataframe(df.head(6)[debug_cols])
 
     return df
+
 
 def create_robust_features(df):
     """Cria features mais robustas e elimina colinearidade - CORRIGIDO"""
