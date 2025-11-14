@@ -967,23 +967,35 @@ if not games_today.empty:
 st.markdown("## 🦓 Estatísticas de Zebra (mercado errando)")
 
 if not history.empty:
+
+    # Recalcula Zebra no histórico (caso necessário)
+    if 'Zebra' not in history.columns:
+        history_tmp = create_better_target_corrigido(history.copy())
+    else:
+        history_tmp = history.copy()
+
     st.markdown("### Por Liga")
 
-    zebra_liga = history_clean.groupby("League")["Zebra"].mean().sort_values(ascending=False)
-    st.dataframe(
-        zebra_liga.to_frame("Taxa Zebra").style.format({"Taxa Zebra": "{:.1%}"}),
-        use_container_width=True
-    )
+    if "League" in history_tmp.columns:
+        zebra_liga = history_tmp.groupby("League")["Zebra"].mean().sort_values(ascending=False)
+        st.dataframe(
+            zebra_liga.to_frame("Taxa Zebra").style.format({"Taxa Zebra": "{:.1%}"}),
+            use_container_width=True
+        )
+    else:
+        st.info("Liga não disponível no histórico.")
 
     st.markdown("### Por Linha de Handicap")
 
-    zebra_handicap = history_clean.groupby("Asian_Line_Decimal")["Zebra"].mean().sort_values(ascending=False)
+    zebra_handicap = history_tmp.groupby("Asian_Line_Decimal")["Zebra"].mean().sort_values(ascending=False)
     st.dataframe(
         zebra_handicap.to_frame("Taxa Zebra").style.format({"Taxa Zebra": "{:.1%}"}),
         use_container_width=True
     )
+
 else:
     st.info("Sem histórico para estatísticas Zebra.")
+
 
 
 
