@@ -314,7 +314,7 @@ def create_better_target_corrigido(df):
     total = len(df)
 
     # EXCLUIR QUALQUER PUSH (0.5)
-    df = df[df["AH_Result"] != 0.5].copy()
+    df = df[df["AH_Result"].isin([0, 1])].copy()
     clean = len(df)
 
     # Target binário 1.0 → cobre | 0.0 → não cobre
