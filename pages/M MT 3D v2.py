@@ -204,6 +204,34 @@ def calc_handicap_result_corrigido(margin, asian_line_decimal):
 
 def testar_conversao_asian_line():
     st.markdown("### 🧪 TESTE COMPLETO – LINHA & RESULTADO")
+    
+    test_cases = [
+    # Full lines
+    ("0.5", "Away +0.5 → Home -0.5"),
+    ("-0.5", "Away -0.5 → Home +0.5"),
+    ("1.0", "Away +1.0 → Home -1.0"),
+    ("-1.0", "Away -1.0 → Home +1.0"),
+
+    # Splits
+    ("0/0.5", "Away 0/0.5 → Home -0.25"),
+    ("0/-0.5", "Away 0/-0.5 → Home +0.25"),
+    ("0.5/1", "Away 0.5/1 → Home -0.75"),
+    ("-0.5/-1", "Away -0.5/-1 → Home +0.75"),
+    ("1/1.5", "Away 1/1.5 → Home -1.25"),
+    ("-1/-1.5", "Away -1/-1.5 → Home +1.25"),
+    ("1.5/2", "Away 1.5/2 → Home -1.75"),
+    ("-1.5/-2", "Away -1.5/-2 → Home +1.75"),
+
+    # Quarter-lines
+    ("0.25", "Away +0.25 → Home -0.25"),
+    ("-0.25", "Away -0.25 → Home +0.25"),
+    ("0.75", "Away +0.75 → Home -0.75"),
+    ("-0.75", "Away -0.75 → Home +0.75"),
+
+    # Zero line
+    ("0", "Away 0 → Home 0"),
+]
+
 
     test_margins = [0.0, 0.25, 0.5, 0.75, 1.0, 2.0]
 
