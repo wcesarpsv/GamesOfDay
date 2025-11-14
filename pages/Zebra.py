@@ -835,18 +835,18 @@ if 'Asian_Line' in games_today.columns:
 # Aplicar Live Score
 games_today = load_and_merge_livescore(games_today, selected_date_str)
 
-# ---------------- TESTE DE CONVERSÃO ASIAN LINE ----------------
-testar_conversao_asian_line()
+# # ---------------- TESTE DE CONVERSÃO ASIAN LINE ----------------
+# testar_conversao_asian_line()
 
-# ---------------- DIAGNÓSTICO INICIAL ----------------
-st.markdown("## 🔍 DIAGNÓSTICO INICIAL DOS DADOS")
+# # ---------------- DIAGNÓSTICO INICIAL ----------------
+# st.markdown("## 🔍 DIAGNÓSTICO INICIAL DOS DADOS")
 
-if not history.empty:
-    # aqui ainda não temos Target_AH_Home em history cru,
-    # então o relatório vai focar em missing/correlações gerais
-    data_quality_report(history, 'Target_AH_Home')
-else:
-    st.warning("⚠️ Histórico vazio - não é possível executar diagnóstico")
+# if not history.empty:
+#     # aqui ainda não temos Target_AH_Home em history cru,
+#     # então o relatório vai focar em missing/correlações gerais
+#     data_quality_report(history, 'Target_AH_Home')
+# else:
+#     st.warning("⚠️ Histórico vazio - não é possível executar diagnóstico")
 
 # ---------------- SISTEMA 3D DE 16 QUADRANTES ----------------
 st.markdown("## 🎯 Sistema 3D de 16 Quadrantes")
