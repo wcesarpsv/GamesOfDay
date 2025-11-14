@@ -298,10 +298,8 @@ def create_better_target_corrigido(df):
     df["Margin"] = df["Goals_H_FT"] - df["Goals_A_FT"]
     
     # CORREÇÃO: Usar perspectiva do Home (inverter linha)
-    df["AH_Result"] = df.apply(
-        lambda r: calc_handicap_result_corrigido(r["Margin"], r["Asian_Line_Decimal"], is_home_perspective=True), 
-        axis=1
-    )
+    df["AH_Result"] = df.apply(lambda r: calc_handicap_result_corrigido(r["Margin"], r["Asian_Line_Decimal"]), axis=1)
+
     
     # Criar classes mais claras
     conditions = [
