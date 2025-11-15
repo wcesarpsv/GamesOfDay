@@ -1703,11 +1703,24 @@ def resumo_3d_16_quadrantes_hoje(df):
         st.metric("🔥 Conflitos Value", conflitos_value)
         st.metric("📊 Score Confiança Médio", f"{df['score_confianca_composto'].mean():.2f}")
 
+
+    ###############################
     st.markdown("#### 📊 Distribuição de Recomendações 3D Inteligentes")
     if 'Recomendacao' in df.columns:
         dist_recomendacoes = df['Recomendacao'].value_counts()
         st.dataframe(dist_recomendacoes, use_container_width=True)
 
+    return  # <-- FECHAMENTO CORRETO DA FUNÇÃO
 
+
+# ========================= EXECUTAR RESUMO SE DADOS EXISTIREM =========================
 if not games_today.empty and 'Classificacao_Potencial_3D' in games_today.columns:
     resumo_3d_16_quadrantes_hoje(games_today)
+else:
+    st.warning("⚠️ Nenhum dado para resumo 3D disponível.")
+    st.write("📌 Debug:")
+    st.json({
+        "games_today_len": len(games_today),
+        "cols": list(games_today.columns)
+    })
+
