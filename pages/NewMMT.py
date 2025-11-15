@@ -1577,82 +1577,7 @@ def generate_live_summary_3d(df):
     }
 
 
-# ========================= EXECUÇÃO FINAL - EXIBIÇÃO DOS RESULTADOS =========================
-
-st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes (ML Inteligente)")
-
-# 🔍 Validação
-if games_today.empty:
-    st.error("📭 Nenhum jogo disponível hoje. Verifique o CSV da pasta GamesDay.")
-    st.stop()
-
-# 1️⃣ Pipeline final completo no ranking_3d
-ranking_3d = games_today.copy()
-
-ranking_3d = adicionar_indicadores_explicativos_3d_16_dual(ranking_3d)
-ranking_3d = gerar_score_combinado_3d_16(ranking_3d)
-ranking_3d = update_real_time_data_3d(ranking_3d)
-
-# 2️⃣ Ordenar pela força do sinal 3D
-ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
-
-st.success(f"🎯 {len(ranking_3d)} jogos processados pelo Sistema 3D Inteligente")
-
-# 3️⃣ Resumo Executivo Top
-resumo_3d_16_quadrantes_hoje(ranking_3d)
-
-# 4️⃣ Seleção do número de confrontos a exibir
-num_show = st.slider("📌 Quantos jogos exibir na tabela?", 
-                     min_value=5, 
-                     max_value=len(ranking_3d), 
-                     value=min(40, len(ranking_3d)))
-
-df_show = ranking_3d.head(num_show).copy()
-
-# 5️⃣ Tabela final estilizada
-st.markdown("### 📋 Lista de Recomendações - Ordenado por Score 3D")
-st.dataframe(
-    estilo_tabela_3d_quadrantes(df_show)
-    .format({
-        'Goals_H_Today': '{:.0f}',
-        'Goals_A_Today': '{:.0f}',
-        'Asian_Line_Decimal': '{:.2f}',
-        'Home_Red': '{:.0f}',
-        'Away_Red': '{:.0f}',
-        'Profit_Quadrante': '{:.2f}',
-        'Quadrante_ML_Score_Home': '{:.1%}',
-        'Quadrante_ML_Score_Away': '{:.1%}',
-        'Score_Final_3D': '{:.1f}',
-        'M_H': '{:.2f}',
-        'M_A': '{:.2f}',
-        'Quadrant_Dist_3D': '{:.2f}',
-        'Momentum_Diff': '{:.2f}',
-        'Media_Score_Home': '{:.2f}',
-        'Media_Score_Away': '{:.2f}',
-        'Regressao_Force_Home': '{:.2f}',
-        'Regressao_Force_Away': '{:.2f}',
-        'score_confianca_composto': '{:.2f}'
-    }, na_rep="-"),
-    use_container_width=True
-)
-
-# 6️⃣ Informar ao usuário se não houver odds para lucro em tempo real
-if "Profit_Quadrante" in ranking_3d.columns and ranking_3d['Profit_Quadrante'].notna().any():
-    st.success("📈 Monitoramento de lucro operacional ativo!")
-else:
-    st.info("🕗 Aguardando LiveScore ou Odds Asiáticas para monitorar o lucro em tempo real...")
-
-st.markdown("---")
-st.markdown("🏁 Fim da execução — Sistema 3D Inteligente totalmente operacional 🚀")
-
-
-    if games_today.empty:
-        st.warning("📭 games_today está vazio")
-    else:
-        st.info(f"📊 games_today tem {len(games_today)} linhas")
-        st.info(f"🔍 Colunas: {list(games_today.columns)}")
-
-
+# ========================= RESUMO EXECUTIVO 3D =========================
 def resumo_3d_16_quadrantes_hoje(df):
     """Resumo executivo dos 16 quadrantes 3D de hoje"""
     st.markdown("### 📋 Resumo Executivo - Sistema 3D Inteligente Hoje")
@@ -1665,16 +1590,13 @@ def resumo_3d_16_quadrantes_hoje(df):
 
     alto_potencial_3d = len(df[df['Classificacao_Potencial_3D'] == '🌟 ALTO POTENCIAL 3D'])
     valor_solido_3d = len(df[df['Classificacao_Potencial_3D'] == '💼 VALOR SOLIDO 3D'])
-
     alto_valor_home = len(df[df['Classificacao_Valor_Home'] == '🏆 ALTO VALOR'])
     alto_valor_away = len(df[df['Classificacao_Valor_Away'] == '🏆 ALTO VALOR'])
-
     fav_forte_momentum = len(df[df['eh_fav_forte_com_momentum'] == 1])
     forte_melhora = len(df[(df['eh_forte_melhora_home'] == 1) | (df['eh_forte_melhora_away'] == 1)])
     conflitos_value = len(df[(df['conflito_agg_regressao_home'] == 1) | (df['conflito_agg_regressao_away'] == 1)])
 
     col1, col2, col3, col4 = st.columns(4)
-
     with col1:
         st.metric("Total Jogos", total_jogos)
         st.metric("🌟 Alto Potencial 3D", alto_potencial_3d)
@@ -1688,24 +1610,57 @@ def resumo_3d_16_quadrantes_hoje(df):
         st.metric("🔥 Conflitos Value", conflitos_value)
         st.metric("📊 Score Confiança Médio", f"{df['score_confianca_composto'].mean():.2f}")
 
-
-    ###############################
     st.markdown("#### 📊 Distribuição de Recomendações 3D Inteligentes")
     if 'Recomendacao' in df.columns:
         dist_recomendacoes = df['Recomendacao'].value_counts()
         st.dataframe(dist_recomendacoes, use_container_width=True)
 
-    return  # <-- FECHAMENTO CORRETO DA FUNÇÃO
 
+# ========================= EXECUÇÃO FINAL - EXIBIÇÃO DOS RESULTADOS =========================
+st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes (ML Inteligente)")
 
-# ========================= EXECUTAR RESUMO SE DADOS EXISTIREM =========================
-if not games_today.empty and 'Classificacao_Potencial_3D' in games_today.columns:
-    resumo_3d_16_quadrantes_hoje(games_today)
+if games_today.empty:
+    st.error("📭 Nenhum jogo disponível hoje. Verifique a pasta GamesDay.")
+    st.stop()
+
+ranking_3d = games_today.copy()
+ranking_3d = adicionar_indicadores_explicativos_3d_16_dual(ranking_3d)
+ranking_3d = gerar_score_combinado_3d_16(ranking_3d)
+ranking_3d = update_real_time_data_3d(ranking_3d)
+ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
+
+st.success(f"🎯 {len(ranking_3d)} jogos processados pelo Sistema 3D Inteligente")
+
+# 📌 Resumo executivo
+resumo_3d_16_quadrantes_hoje(ranking_3d)
+
+# 📋 Tabela filtrável
+num_show = st.slider(
+    "Quantos jogos exibir na tabela?", 
+    min_value=5,
+    max_value=len(ranking_3d), 
+    value=min(40, len(ranking_3d))
+)
+
+df_show = ranking_3d.head(num_show).copy()
+
+st.markdown("### 📋 Lista de Recomendações - Ordenado por Score 3D")
+st.dataframe(
+    estilo_tabela_3d_quadrantes(df_show)
+    .format({
+        'Quadrante_ML_Score_Home': '{:.1%}',
+        'Quadrante_ML_Score_Away': '{:.1%}',
+        'Score_Final_3D': '{:.1f}',
+        'Profit_Quadrante': '{:.2f}'
+    }, na_rep="-"),
+    use_container_width=True
+)
+
+if "Profit_Quadrante" in ranking_3d.columns and ranking_3d['Profit_Quadrante'].notna().any():
+    st.success("📈 Monitorando lucro em tempo real!")
 else:
-    st.warning("⚠️ Nenhum dado para resumo 3D disponível.")
-    st.write("📌 Debug:")
-    st.json({
-        "games_today_len": len(games_today),
-        "cols": list(games_today.columns)
-    })
+    st.info("🕗 Aguardando gols / odds do LiveScore para lucro em tempo real...")
+
+st.markdown("---")
+st.markdown("🏁 Fim da execução — Sistema 3D Inteligente 🚀")
 
