@@ -5,27 +5,28 @@ import pandas as pd
 import numpy as np
 import os, re, math
 from datetime import datetime
+import joblib
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import OneHotEncoder
-from sklearn.cluster import KMeans
+from sklearn.metrics import roc_auc_score
 
 # ========================= CONFIG STREAMLIT =========================
-st.set_page_config(page_title="Asian Handicap Cover – Dual Model", layout="wide")
-st.title("🎯 Asian Handicap Cover – Dual Model (Home + Away)")
+st.set_page_config(page_title="AsianCoverAI v1 - Probabilidade de Cobrir Handicap", layout="wide")
+st.title("🎯 AsianCoverAI v1 – Probabilidade de Cobrir o Handicap (Home & Away)")
 
-# ========================= CONFIGURAÇÕES GERAIS =========================
+# ========================= CONFIG GERAIS =========================
 PAGE_PREFIX = "AsianCoverAI_v1"
 GAMES_FOLDER = "GamesDay"
 LIVESCORE_FOLDER = "LiveScore"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa", "trophy"]
 
 # ============================================================
-# 🔧 FUNÇÕES AUXILIARES
+# 🔧 FUNÇÕES AUXILIARES BÁSICAS
 # ============================================================
 def setup_livescore_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    for col in ['Goals_H_Today','Goals_A_Today','Home_Red','Away_Red','status']:
+    for col in ['Goals_H_Today', 'Goals_A_Today', 'Home_Red', 'Away_Red', 'status_ls']:
         if col not in df.columns:
             df[col] = np.nan
     return df
@@ -60,219 +61,212 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
 
 def convert_asian_line_to_decimal(value):
     """
-    Converte string de handicap para decimal, sempre na referência HOME.
-    Ex.: '-0.5/1' -> média dos módulos -> -0.75 e depois inverte sinal.
+    Converte Asian Line textual em decimal referência HOME.
+    Mantemos convenção: linha negativa favorece o HOME.
     """
-    if pd.isna(value): 
+    if pd.isna(value):
         return np.nan
     s = str(value).strip()
+    if s == "":
+        return np.nan
+
+    # Ex.: "0", "-0.5", "1.25", "0/0.5", "-0.5/1"
+    # Atenção: sua base pode vir com "H" / "A" etc. Aqui assumimos que
+    # a linha já está em formato numérico ou split tipo "-0.5/1.0".
     if "/" not in s:
         try:
             num = float(s)
-            return -num  # manter convenção: negativo favorece HOME
+            # Convenção: para HOME, negativo favorece casa
+            return -num
         except:
             return np.nan
+
     try:
-        parts = [float(p) for p in s.replace("+","").replace("-","").split("/")]
+        raw = s
+        sign = -1 if raw.strip().startswith("-") else 1
+        clean = raw.replace("+", "").replace("-", "")
+        parts = [float(p) for p in clean.split("/")]
         avg = np.mean(parts)
-        sign = -1 if s.startswith("-") else 1
         result = sign * avg
         return -result
     except:
         return np.nan
 
 # ============================================================
-# 🔢 Z-SCORES M / MT (recalcular a partir do HandScore_Home/Away)
+# ⚙️ Z-SCORES (M / MT) A PARTIR DO HANDSCORE
 # ============================================================
-def calcular_zscores_detalhados(df):
+def calcular_zscores_detalhados(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calcula Z-scores a partir do HandScore:
     - M_H, M_A: Z-score do time em relação à liga (performance relativa)
     - MT_H, MT_A: Z-score do time em relação a si mesmo (consistência)
-    Usa: HandScore_Home / HandScore_Away
     """
     df = df.copy()
-    
-    st.info("📊 Calculando Z-scores a partir do HandScore (Home/Away)...")
-    
-    # 1. Z-SCORE POR LIGA (M_H, M_A)
+
+    # 1) Z-score por liga
     if 'League' in df.columns and 'HandScore_Home' in df.columns and 'HandScore_Away' in df.columns:
         league_stats = df.groupby('League').agg({
             'HandScore_Home': ['mean', 'std'],
             'HandScore_Away': ['mean', 'std']
         }).round(3)
-        
         league_stats.columns = ['HS_H_mean', 'HS_H_std', 'HS_A_mean', 'HS_A_std']
-        
+
         league_stats['HS_H_std'] = league_stats['HS_H_std'].replace(0, 1)
         league_stats['HS_A_std'] = league_stats['HS_A_std'].replace(0, 1)
-        
+
         df = df.merge(league_stats, on='League', how='left')
-        
+
         df['M_H'] = (df['HandScore_Home'] - df['HS_H_mean']) / df['HS_H_std']
         df['M_A'] = (df['HandScore_Away'] - df['HS_A_mean']) / df['HS_A_std']
-        
+
         df['M_H'] = np.clip(df['M_H'], -5, 5)
         df['M_A'] = np.clip(df['M_A'], -5, 5)
-        
-        st.success(f"✅ Z-score por liga calculado para {len(df)} jogos")
     else:
-        st.warning("⚠️ Colunas 'League' ou 'HandScore_Home/HandScore_Away' não encontradas para Z-score por liga")
-        df['M_H'] = 0
-        df['M_A'] = 0
-    
-    # 2. Z-SCORE POR TIME (MT_H, MT_A)
+        df['M_H'] = 0.0
+        df['M_A'] = 0.0
+
+    # 2) Z-score por time
     if 'Home' in df.columns and 'Away' in df.columns:
         home_team_stats = df.groupby('Home').agg({
             'HandScore_Home': ['mean', 'std']
         }).round(3)
         home_team_stats.columns = ['HT_mean', 'HT_std']
-        
+
         away_team_stats = df.groupby('Away').agg({
             'HandScore_Away': ['mean', 'std']
         }).round(3)
         away_team_stats.columns = ['AT_mean', 'AT_std']
-        
+
         home_team_stats['HT_std'] = home_team_stats['HT_std'].replace(0, 1)
         away_team_stats['AT_std'] = away_team_stats['AT_std'].replace(0, 1)
-        
+
         df = df.merge(home_team_stats, left_on='Home', right_index=True, how='left')
         df = df.merge(away_team_stats, left_on='Away', right_index=True, how='left')
-        
+
         df['MT_H'] = (df['HandScore_Home'] - df['HT_mean']) / df['HT_std']
         df['MT_A'] = (df['HandScore_Away'] - df['AT_mean']) / df['AT_std']
-        
+
         df['MT_H'] = np.clip(df['MT_H'], -5, 5)
         df['MT_A'] = np.clip(df['MT_A'], -5, 5)
-        
-        st.success(f"✅ Z-score por time calculado para {len(df)} jogos")
-        
-        df = df.drop(['HS_H_mean', 'HS_H_std', 'HS_A_mean', 'HS_A_std', 
+
+        df = df.drop(['HS_H_mean', 'HS_H_std', 'HS_A_mean', 'HS_A_std',
                       'HT_mean', 'HT_std', 'AT_mean', 'AT_std'], axis=1, errors='ignore')
     else:
-        st.warning("⚠️ Colunas 'Home' ou 'Away' não encontradas para Z-score por time")
-        df['MT_H'] = 0
-        df['MT_A'] = 0
-    
+        df['MT_H'] = 0.0
+        df['MT_A'] = 0.0
+
     return df
 
-def clean_features_for_training(X):
-    """
-    Remove infinitos, NaNs e valores extremos das features.
-    """
+# ============================================================
+# 🧼 LIMPEZA DE FEATURES (SEM PERDER LINHA)
+# ============================================================
+def clean_features_for_training(X: pd.DataFrame) -> pd.DataFrame:
     X_clean = X.copy()
-    
+
     if isinstance(X_clean, np.ndarray):
         X_clean = pd.DataFrame(X_clean, columns=X.columns if hasattr(X, 'columns') else range(X.shape[1]))
-    
+
     X_clean = X_clean.replace([np.inf, -np.inf], np.nan)
-    
-    inf_count = (X_clean == np.inf).sum().sum() + (X_clean == -np.inf).sum().sum()
-    nan_count = X_clean.isna().sum().sum()
-    
-    if inf_count > 0 or nan_count > 0:
-        st.warning(f"⚠️ Encontrados {inf_count} infinitos e {nan_count} NaNs nas features")
-    
+
     for col in X_clean.columns:
         if X_clean[col].isna().any():
             median_val = X_clean[col].median()
             X_clean[col] = X_clean[col].fillna(median_val)
             if X_clean[col].isna().any():
                 X_clean[col] = X_clean[col].fillna(0)
-    
+
     for col in X_clean.columns:
-        if X_clean[col].dtype in [np.float64, np.float32]:
+        if pd.api.types.is_float_dtype(X_clean[col]):
             Q1 = X_clean[col].quantile(0.25)
             Q3 = X_clean[col].quantile(0.75)
             IQR = Q3 - Q1
-            lower_bound = Q1 - 3 * IQR
-            upper_bound = Q3 + 3 * IQR
-            X_clean[col] = np.clip(X_clean[col], lower_bound, upper_bound)
-    
-    final_inf_count = (X_clean == np.inf).sum().sum() + (X_clean == -np.inf).sum().sum()
-    final_nan_count = X_clean.isna().sum().sum()
-    
-    if final_inf_count > 0 or final_nan_count > 0:
-        st.error(f"❌ Ainda existem {final_inf_count} infinitos e {final_nan_count} NaNs — forçando preenchimento 0")
-        X_clean = X_clean.fillna(0)
-        X_clean = X_clean.replace([np.inf, -np.inf], 0)
-    
-    st.success(f"✅ Features limpas: shape={X_clean.shape}")
+            lower = Q1 - 3 * IQR
+            upper = Q3 + 3 * IQR
+            X_clean[col] = np.clip(X_clean[col], lower, upper)
+
+    X_clean = X_clean.replace([np.inf, -np.inf], 0).fillna(0)
     return X_clean
 
-# ============== Espaço 3D (Aggression/Momentum) ==============
+# ============================================================
+# ⚽ WEIGHTED GOALS (WG) – PONDERADOS PELA PROBABILIDADE REAL
+# ============================================================
+def odds_to_probs(odd_h, odd_d, odd_a):
+    try:
+        odd_h = float(odd_h); odd_d = float(odd_d); odd_a = float(odd_a)
+        if odd_h <= 0 or odd_d <= 0 or odd_a <= 0:
+            return 1/3, 1/3, 1/3
+        inv_sum = (1/odd_h) + (1/odd_d) + (1/odd_a)
+        p_h = (1/odd_h) / inv_sum
+        p_d = (1/odd_d) / inv_sum
+        p_a = (1/odd_a) / inv_sum
+        return p_h, p_d, p_a
+    except:
+        return 1/3, 1/3, 1/3
+
+def weighted_goals_home(row):
+    gf = row.get('Goals_H_FT', 0)
+    ga = row.get('Goals_A_FT', 0)
+    p_h, p_d, p_a = odds_to_probs(row.get('Odd_H', 0), row.get('Odd_D', 0), row.get('Odd_A', 0))
+    gf_weighted = gf * (1 - p_h)
+    ga_weighted = ga * p_h
+    return gf_weighted - ga_weighted
+
+def weighted_goals_away(row):
+    gf = row.get('Goals_A_FT', 0)
+    ga = row.get('Goals_H_FT', 0)
+    p_h, p_d, p_a = odds_to_probs(row.get('Odd_H', 0), row.get('Odd_D', 0), row.get('Odd_A', 0))
+    gf_weighted = gf * (1 - p_a)
+    ga_weighted = ga * p_a
+    return gf_weighted - ga_weighted
+
+# ============================================================
+# 🧮 ESPAÇO 3D (AGGRESSION / MOMENTUM)
+# ============================================================
 def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    required = ['Aggression_Home','Aggression_Away','M_H','M_A','MT_H','MT_A']
+    required = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
     missing = [c for c in required if c not in df.columns]
     if missing:
-        st.warning(f"⚠️ Colunas faltando para cálculo 3D: {missing}")
-        for c in ['Quadrant_Dist_3D','Quadrant_Separation_3D','Vector_Sign',
-                  'Magnitude_3D','Momentum_Diff','Momentum_Diff_MT']:
-            df[c] = np.nan
+        for c in ['Quadrant_Dist_3D','Quadrant_Separation_3D','Vector_Sign','Magnitude_3D','Momentum_Diff','Momentum_Diff_MT']:
+            df[c] = 0.0
         return df
+
     dx = (df['Aggression_Home'] - df['Aggression_Away']) / 2
     dy = (df['M_H'] - df['M_A']) / 2
     dz = (df['MT_H'] - df['MT_A']) / 2
     df['Quadrant_Dist_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
     df['Quadrant_Separation_3D'] = (dx + dy + dz) / 3
     df['Vector_Sign'] = np.sign(dx * dy * dz)
-    df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+    df['Magnitude_3D'] = df['Quadrant_Dist_3D']
     df['Momentum_Diff'] = dy
     df['Momentum_Diff_MT'] = dz
     return df
+
+from sklearn.cluster import KMeans
 
 def aplicar_clusterizacao_3d(df: pd.DataFrame, n_clusters=4, random_state=42) -> pd.DataFrame:
     df = df.copy()
     required = ['Aggression_Home','Aggression_Away','M_H','M_A','MT_H','MT_A']
     missing = [c for c in required if c not in df.columns]
     if missing:
-        st.warning(f"⚠️ Colunas ausentes para clusterização 3D: {missing}")
         df['Cluster3D_Label'] = 0
         return df
+
     df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
     df['dy'] = df['M_H'] - df['M_A']
     df['dz'] = df['MT_H'] - df['MT_A']
     X = df[['dx','dy','dz']].fillna(0).to_numpy()
     n_samples = X.shape[0]
     k = max(1, min(n_clusters, n_samples))
-    if n_samples < n_clusters:
-        st.info(f"🔧 Ajustando n_clusters: {n_clusters} → {k} (amostras={n_samples})")
     try:
         km = KMeans(n_clusters=k, random_state=random_state, init='k-means++', n_init=10)
         df['Cluster3D_Label'] = km.fit_predict(X)
-    except Exception as e:
-        st.error(f"❌ Erro no clustering: {e}")
+    except Exception:
         df['Cluster3D_Label'] = 0
     return df
 
 # ============================================================
-# 🎯 TARGETS: COVER_HOME / COVER_AWAY
-# ============================================================
-def criar_targets_cobertura(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Cria dois targets binários:
-    - Cover_Home: 1 se o time da casa cobriu o handicap (referência HOME)
-    - Cover_Away: 1 se o visitante cobriu o handicap (linha invertida)
-    
-    margin = Goals_H_FT - Goals_A_FT
-    adj = margin + Asian_Line_Decimal
-    
-    adj > 0 → HOME cobre
-    adj < 0 → AWAY cobre
-    adj == 0 → PUSH (0 para ambos)
-    """
-    hist = df.dropna(subset=['Goals_H_FT','Goals_A_FT','Asian_Line_Decimal']).copy()
-    if hist.empty:
-        return hist
-    margin = hist['Goals_H_FT'] - hist['Goals_A_FT']
-    adj = margin + hist['Asian_Line_Decimal']
-    hist['Cover_Home'] = (adj > 0).astype(int)
-    hist['Cover_Away'] = (adj < 0).astype(int)
-    return hist
-
-# ============================================================
-# ⚖️ UTILS: Liquidação AH + Thresholds Dinâmicos
+# ⚖️ LIQUIDAÇÃO DE HANDICAP (Para targets Cover)
 # ============================================================
 def _split_quarter(line):
     # ex: -0.75 -> [-0.5, -1.0]; +0.25 -> [0.0, +0.5]
@@ -298,346 +292,87 @@ def settle_ah_bet(margin, line, side):
     scores = []
     for p in parts:
         adj = margin + p
-        if adj > 0: scores.append(1.0)
-        elif adj == 0: scores.append(0.0)
-        else: scores.append(-1.0)
+        if adj > 0:
+            scores.append(1.0)
+        elif adj == 0:
+            scores.append(0.0)
+        else:
+            scores.append(-1.0)
     return sum(scores)/len(scores)
 
-def bucket_line(asian_line_decimal: float) -> str:
-    if asian_line_decimal <= -1.0: return "HOME_heavy"
-    if -1.0 < asian_line_decimal <= -0.25: return "HOME_light"
-    if -0.25 < asian_line_decimal < 0.25: return "EVEN"
-    if 0.25 <= asian_line_decimal < 1.0: return "AWAY_light"
-    return "AWAY_heavy"
+def criar_targets_cover(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df['Cover_Home'] = np.nan
+    df['Cover_Away'] = np.nan
 
-def adjust_threshold_by_line(thr_base: float, asian_line_decimal: float) -> float:
-    bl = bucket_line(asian_line_decimal)
-    if bl == "EVEN":
-        return max(0.05, round(thr_base - 0.05, 2))
-    if bl in ("HOME_heavy","AWAY_heavy"):
-        return round(thr_base + 0.05, 2)
-    return round(thr_base, 2)
+    mask = df['Goals_H_FT'].notna() & df['Goals_A_FT'].notna() & df['Asian_Line_Decimal'].notna()
+    sub = df.loc[mask].copy()
+    if sub.empty:
+        return df
 
-def _evaluate_threshold_side(df, side, thr):
-    vg_col = 'VG_HOME' if side == 'HOME' else 'VG_AWAY'
-    pick = df[df[vg_col].abs() >= thr].copy()
-    if pick.empty: 
-        return 0.0, 0, 0.0
-    margin = pick['Goals_H_FT'] - pick['Goals_A_FT']
-    res = [settle_ah_bet(m, l, side) for m,l in zip(margin, pick['Asian_Line_Decimal'])]
-    pick['unit'] = res
-    n = len(pick)
-    win = (pick['unit'] > 0).mean() if n else 0.0
-    roi = pick['unit'].mean() if n else 0.0
-    return roi, n, win
+    margin = sub['Goals_H_FT'] - sub['Goals_A_FT']
+    line = sub['Asian_Line_Decimal']
 
-def find_league_thresholds(history: pd.DataFrame, min_bets=60):
-    """
-    history deve conter: League, VG_HOME, VG_AWAY, Goals_H_FT, Goals_A_FT, Asian_Line_Decimal
-    VG_* = P(Cover) - 0.5
-    """
-    thr_norm_grid = np.arange(0.10, 0.55, 0.05)
-    thr_strong_grid = np.arange(0.25, 0.90, 0.05)
+    cover_home = []
+    cover_away = []
 
-    leagues = sorted(history['League'].dropna().unique().tolist())
+    for m, l in zip(margin, line):
+        u_home = settle_ah_bet(m, l, 'HOME')
+        u_away = settle_ah_bet(m, l, 'AWAY')
+        cover_home.append(1 if u_home > 0 else 0)
+        cover_away.append(1 if u_away > 0 else 0)
 
-    def _best_global(df, grid):
-        best_thr, best_roi, best_n = None, -1, 0
-        for t in grid:
-            roi_h, n_h, _ = _evaluate_threshold_side(df,'HOME',t)
-            roi_a, n_a, _ = _evaluate_threshold_side(df,'AWAY',t)
-            roi = np.nanmean([roi_h, roi_a])
-            if (n_h+n_a) >= min_bets and roi > best_roi:
-                best_thr, best_roi, best_n = t, roi, (n_h+n_a)
-        return best_thr if best_thr is not None else 0.15
-
-    best_global = {
-        'HOME': _best_global(history, thr_norm_grid),
-        'AWAY': _best_global(history, thr_norm_grid),
-        'HOME_STRONG': _best_global(history, thr_strong_grid),
-        'AWAY_STRONG': _best_global(history, thr_strong_grid)
-    }
-
-    out = {}
-    for lg in leagues:
-        df_lg = history[history['League']==lg].copy()
-        def _pick(grid, global_thr):
-            cands = []
-            for t in grid:
-                roi_h, n_h, _ = _evaluate_threshold_side(df_lg,'HOME',t)
-                roi_a, n_a, _ = _evaluate_threshold_side(df_lg,'AWAY',t)
-                roi, n = np.nanmean([roi_h,roi_a]), (n_h+n_a)
-                cands.append((t, roi, n))
-            if not cands: return global_thr
-            score = [(t, roi*np.log1p(max(n,1))) for (t,roi,n) in cands]
-            t_local = max(score, key=lambda x:x[1])[0]
-            n_tot = max([n for _,_,n in cands])
-            alpha = min(1.0, n_tot / max(min_bets,1))
-            return round(alpha*t_local + (1-alpha)*global_thr, 2)
-
-        out[lg] = {
-            'HOME': _pick(thr_norm_grid, best_global['HOME']),
-            'AWAY': _pick(thr_norm_grid, best_global['AWAY']),
-            'HOME_STRONG': _pick(thr_strong_grid, best_global['HOME_STRONG']),
-            'AWAY_STRONG': _pick(thr_strong_grid, best_global['AWAY_STRONG']),
-            'N': len(df_lg)
-        }
-    out['_GLOBAL'] = best_global | {'N': len(history)}
-    return out
+    df.loc[mask, 'Cover_Home'] = cover_home
+    df.loc[mask, 'Cover_Away'] = cover_away
+    return df
 
 # ============================================================
 # 📡 LIVE SCORE INTEGRATION (apenas FT, inteiros)
 # ============================================================
 def load_and_merge_livescore(games_today, selected_date_str):
-
     livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
     games_today = setup_livescore_columns(games_today)
 
     if not os.path.exists(livescore_file):
-        st.warning(f"⚠️ No LiveScore file found for: {selected_date_str}")
         return games_today
 
     results_df = pd.read_csv(livescore_file)
-
-    results_df['status'] = (
-        results_df['status']
-        .astype(str)
-        .str.upper()
-        .str.strip()
-    )
-
+    results_df['status'] = results_df['status'].astype(str).str.upper().str.strip()
     df_ft = results_df[results_df['status'] == 'FT'].copy()
 
     for c in ['home_goal','away_goal','home_red','away_red']:
         df_ft[c] = pd.to_numeric(df_ft[c], errors='coerce').fillna(0).astype(int)
 
-    games_today = games_today.merge(
-        df_ft[['Id','status','home_goal','away_goal','home_red','away_red']],
-        on='Id',
-        how='left',
-        suffixes=('', '_ls')
-    )
+    if 'Id' in games_today.columns and 'Id' in df_ft.columns:
+        games_today = games_today.merge(
+            df_ft[['Id','status','home_goal','away_goal','home_red','away_red']],
+            on='Id',
+            how='left',
+            suffixes=('', '_ls')
+        )
 
-    mask_ft = games_today['status_ls'] == 'FT'
-
-    games_today.loc[mask_ft, 'Goals_H_Today'] = games_today.loc[mask_ft, 'home_goal']
-    games_today.loc[mask_ft, 'Goals_A_Today'] = games_today.loc[mask_ft, 'away_goal']
-    games_today.loc[mask_ft, 'Home_Red']      = games_today.loc[mask_ft, 'home_red']
-    games_today.loc[mask_ft, 'Away_Red']      = games_today.loc[mask_ft, 'away_red']
+        mask_ft = games_today['status_ls'] == 'FT'
+        games_today.loc[mask_ft, 'Goals_H_Today'] = games_today.loc[mask_ft, 'home_goal']
+        games_today.loc[mask_ft, 'Goals_A_Today'] = games_today.loc[mask_ft, 'away_goal']
+        games_today.loc[mask_ft, 'Home_Red']      = games_today.loc[mask_ft, 'home_red']
+        games_today.loc[mask_ft, 'Away_Red']      = games_today.loc[mask_ft, 'away_red']
 
     return games_today
 
 # ============================================================
-# 🧠 MODELOS: P_Home_Cover e P_Away_Cover
+# 🚀 EXECUÇÃO PRINCIPAL
 # ============================================================
-def treinar_modelo_cover_home(history, games_today, features_3d_common):
-    st.markdown("### 🏠 Modelo HOME - Probabilidade de Cobrir Handicap")
+def main():
+    st.info("📂 Carregando dados para AsianCoverAI...")
 
-    hist = criar_targets_cobertura(history)
-    if hist.empty or hist['Cover_Home'].nunique() < 2:
-        st.error("❌ Target Cover_Home sem variação suficiente para treinar.")
-        return None, games_today
-
-    X = hist[features_3d_common].copy()
-    X = clean_features_for_training(X)
-    y = hist['Cover_Home']
-
-    modelo_home = RandomForestClassifier(
-        n_estimators=300,
-        max_depth=6,
-        min_samples_leaf=20,
-        class_weight='balanced',
-        random_state=42
-    )
-    modelo_home.fit(X, y)
-
-    acc = (modelo_home.predict(X) == y).mean()
-    st.success(f"✅ HOME Cover - Accuracy (treino): {acc:.3f}")
-
-    X_today = games_today[features_3d_common].copy()
-    X_today = clean_features_for_training(X_today)
-    proba_home = modelo_home.predict_proba(X_today)[:, 1]
-
-    games_today['P_Home_Cover'] = proba_home
-    games_today['Value_Gap_HOME'] = games_today['P_Home_Cover'] - 0.5
-
-    return modelo_home, games_today
-
-def treinar_modelo_cover_away(history, games_today, features_3d_common):
-    st.markdown("### ✈️ Modelo AWAY - Probabilidade de Cobrir Handicap")
-
-    hist = criar_targets_cobertura(history)
-    if hist.empty or hist['Cover_Away'].nunique() < 2:
-        st.error("❌ Target Cover_Away sem variação suficiente para treinar.")
-        return None, games_today
-
-    X = hist[features_3d_common].copy()
-    X = clean_features_for_training(X)
-    y = hist['Cover_Away']
-
-    modelo_away = RandomForestClassifier(
-        n_estimators=300,
-        max_depth=6,
-        min_samples_leaf=20,
-        class_weight='balanced',
-        random_state=42
-    )
-    modelo_away.fit(X, y)
-
-    acc = (modelo_away.predict(X) == y).mean()
-    st.success(f"✅ AWAY Cover - Accuracy (treino): {acc:.3f}")
-
-    X_today = games_today[features_3d_common].copy()
-    X_today = clean_features_for_training(X_today)
-    proba_away = modelo_away.predict_proba(X_today)[:, 1]
-
-    games_today['P_Away_Cover'] = proba_away
-    games_today['Value_Gap_AWAY'] = games_today['P_Away_Cover'] - 0.5
-
-    return modelo_away, games_today
-
-# ============================================================
-# 💎 ANÁLISE DUAL - HOME + AWAY (com thresholds híbridos)
-# ============================================================
-def analisar_value_bets_dual_modelos(games_today: pd.DataFrame, league_thresholds: dict):
-    st.markdown("## 💎 Análise DUAL - Home & Away Models (Cover Probabilities)")
-    results = []
-
-    for _, row in games_today.iterrows():
-        asian_line = float(row.get('Asian_Line_Decimal', 0) or 0.0)
-
-        p_home = float(row.get('P_Home_Cover', 0) or 0.0)
-        p_away = float(row.get('P_Away_Cover', 0) or 0.0)
-
-        value_gap_home = p_home - 0.5
-        value_gap_away = p_away - 0.5
-
-        league = row.get('League')
-        thr_pack = league_thresholds.get(league, league_thresholds.get('_GLOBAL', {}))
-        thr_home = adjust_threshold_by_line(float(thr_pack.get('HOME', 0.15)), asian_line)
-        thr_home_str = adjust_threshold_by_line(float(thr_pack.get('HOME_STRONG', 0.30)), asian_line)
-        thr_away = adjust_threshold_by_line(float(thr_pack.get('AWAY', 0.15)), asian_line)
-        thr_away_str = adjust_threshold_by_line(float(thr_pack.get('AWAY_STRONG', 0.30)), asian_line)
-
-        forca_relativa = p_home - p_away  # diferença de prob de cobrir
-        equilibrio = abs(forca_relativa) < 0.05
-
-        recomendacao_final, confidence = "NO CLEAR EDGE", "LOW"
-
-        # CENÁRIO 1: Equilíbrio + mercado puxando forte para um lado
-        if equilibrio and abs(asian_line) > 0.25:
-            if asian_line < -0.25:  # mercado puxa casa → valor AWAY
-                if value_gap_away >= thr_away_str:
-                    recomendacao_final, confidence = "STRONG BET AWAY", "HIGH"
-                elif value_gap_away >= thr_away:
-                    recomendacao_final, confidence = "BET AWAY", "MEDIUM"
-            elif asian_line > 0.25:  # mercado puxa away → valor HOME
-                if value_gap_home >= thr_home_str:
-                    recomendacao_final, confidence = "STRONG BET HOME", "HIGH"
-                elif value_gap_home >= thr_home:
-                    recomendacao_final, confidence = "BET HOME", "MEDIUM"
-
-        # CENÁRIO 2: Um lado bem mais provável de cobrir + linha até razoável
-        elif not equilibrio and abs(asian_line) < 0.75:
-            if forca_relativa > 0.10 and asian_line <= 0:
-                if value_gap_home >= thr_home_str:
-                    recomendacao_final, confidence = "STRONG BET HOME", "HIGH"
-                elif value_gap_home >= thr_home:
-                    recomendacao_final, confidence = "BET HOME", "MEDIUM"
-            elif forca_relativa < -0.10 and asian_line >= 0:
-                if value_gap_away >= thr_away_str:
-                    recomendacao_final, confidence = "STRONG BET AWAY", "HIGH"
-                elif value_gap_away >= thr_away:
-                    recomendacao_final, confidence = "BET AWAY", "MEDIUM"
-
-        # CENÁRIO 3: Linhas extremas → exigir edge bem alto
-        elif abs(asian_line) >= 1.0:
-            if forca_relativa > 0.15 and asian_line < -1.0 and value_gap_home >= thr_home_str:
-                recomendacao_final, confidence = "STRONG BET HOME", "HIGH"
-            elif forca_relativa < -0.15 and asian_line > 1.0 and value_gap_away >= thr_away_str:
-                recomendacao_final, confidence = "STRONG BET AWAY", "HIGH"
-
-        # Live score
-        g_h = row.get('Goals_H_Today'); g_a = row.get('Goals_A_Today')
-        h_r = row.get('Home_Red'); a_r = row.get('Away_Red')
-        live_score_info = ""
-        if pd.notna(g_h) and pd.notna(g_a):
-            live_score_info = f"⚽ {int(g_h)}-{int(g_a)}"
-            if pd.notna(h_r) and int(h_r) > 0: live_score_info += f" 🟥H{int(h_r)}"
-            if pd.notna(a_r) and int(a_r) > 0: live_score_info += f" 🟥A{int(a_r)}"
-
-        results.append({
-            'League': league,
-            'Home': row.get('Home'),
-            'Away': row.get('Away'),
-            'Asian_Line': row.get('Asian_Line'),
-            'Asian_Line_Decimal': asian_line,
-
-            'P_Home_Cover': round(p_home, 3),
-            'Value_Gap_HOME': round(value_gap_home, 3),
-
-            'P_Away_Cover': round(p_away, 3),
-            'Value_Gap_AWAY': round(value_gap_away, 3),
-
-            'Recomendacao': recomendacao_final,
-            'Confidence': confidence,
-            'Edge_Difference': round(abs(value_gap_home - value_gap_away), 3),
-            'Live_Score': live_score_info
-        })
-
-    df_results = pd.DataFrame(results)
-    bets_validos = df_results[df_results['Recomendacao'] != 'NO CLEAR EDGE']
-    return df_results, bets_validos
-
-# ============================================================
-# 📈 VISUALIZAÇÕES
-# ============================================================
-def plot_analise_dual_modelos(games_today: pd.DataFrame):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-
-    value_gaps_home, value_gaps_away = [], []
-    for _, row in games_today.iterrows():
-        value_gaps_home.append(float(row.get('Value_Gap_HOME', 0) or 0.0))
-        value_gaps_away.append(float(row.get('Value_Gap_AWAY', 0) or 0.0))
-
-    x_pos = list(range(len(value_gaps_home)))
-    ax1.bar([x - 0.2 for x in x_pos], value_gaps_home, 0.4, label='HOME Value Gap', alpha=0.7)
-    ax1.bar([x + 0.2 for x in x_pos], value_gaps_away, 0.4, label='AWAY Value Gap', alpha=0.7)
-    ax1.axhline(y=0, linestyle='-', alpha=0.5)
-    ax1.axhline(y=0.15, linestyle='--', alpha=0.5, label='Threshold ~ médio')
-    ax1.axhline(y=-0.15, linestyle='--', alpha=0.5)
-    ax1.set_xlabel('Jogos'); ax1.set_ylabel('Value Gap (P - 0.5)')
-    ax1.set_title('Value Gaps: HOME vs AWAY')
-    ax1.legend(); ax1.grid(True, alpha=0.3)
-
-    asian_lines, p_home_list, p_away_list = [], [], []
-    for _, row in games_today.iterrows():
-        asian_lines.append(float(row.get('Asian_Line_Decimal', 0) or 0.0))
-        p_home_list.append(float(row.get('P_Home_Cover', 0) or 0.0))
-        p_away_list.append(float(row.get('P_Away_Cover', 0) or 0.0))
-
-    ax2.scatter(asian_lines, p_home_list, alpha=0.7, s=60, label='P(Home Cover)')
-    ax2.scatter(asian_lines, p_away_list, alpha=0.7, s=60, label='P(Away Cover)')
-    ax2.set_xlabel('Asian Line (Mercado - HOME ref)')
-    ax2.set_ylabel('Probabilidade de Cobrir')
-    ax2.set_title('P(Cover) vs Asian Line')
-    ax2.legend(); ax2.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    return fig
-
-# ============================================================
-# 🚀 EXECUÇÃO PRINCIPAL - DUAL MODEL
-# ============================================================
-def main_calibrado():
-    st.info("📂 Carregando dados para Análise DUAL MODEL...")
-
+    # Seleção do arquivo do dia
     files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]) if os.path.exists(GAMES_FOLDER) else []
     if not files:
-        st.warning("No CSV files found in GamesDay folder.")
+        st.warning("Nenhum CSV encontrado na pasta GamesDay.")
         return
+
     options = files[-7:] if len(files) >= 7 else files
-    selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
+    selected_file = st.selectbox("Selecione o arquivo do dia:", options, index=len(options)-1)
 
     date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
     selected_date_str = date_match.group(0) if date_match else datetime.now().strftime("%Y-%m-%d")
@@ -647,36 +382,38 @@ def main_calibrado():
         games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
         history = load_all_games(GAMES_FOLDER)
 
+        # Fillna geral para NÃO perder linha
+        games_today = games_today.fillna(0)
+        history = history.fillna(0)
+
+        # excluir copas
         history = filter_leagues(history)
         games_today = filter_leagues(games_today)
 
+        # classificar tier
         def classificar_league_tier(league_name: str) -> int:
-            if pd.isna(league_name): return 3
-            name = league_name.lower()
-            if any(x in name for x in ['premier','la liga','serie a','bundesliga','ligue 1','eredivisie',
-                                       'primeira liga','brasileirão','super league','mls','championship',
-                                       'liga pro','a-league']):
+            if pd.isna(league_name):
+                return 3
+            name = str(league_name).lower()
+            if any(x in name for x in ['premier','la liga','serie a','bundesliga','ligue 1','eredivisie','primeira liga','brasileirão','super league','mls','championship','liga pro','a-league']):
                 return 1
-            if any(x in name for x in ['serie b','segunda','league 1','liga ii','liga 2','division 2',
-                                       'bundesliga 2','ligue 2','j-league','k-league','superettan',
-                                       '1st division','national league','liga nacional']):
+            if any(x in name for x in ['serie b','segunda','league 1','liga ii','liga 2','division 2','bundesliga 2','ligue 2','j-league','k-league','superettan','1st division','national league','liga nacional']):
                 return 2
             return 3
 
         def aplicar_filtro_tier(df: pd.DataFrame, max_tier=3) -> pd.DataFrame:
             if 'League' not in df.columns:
-                st.warning("⚠️ Coluna 'League' ausente — filtro de tier não aplicado.")
                 df['League_Tier'] = 3
                 return df
             df = df.copy()
             df['League_Tier'] = df['League'].apply(classificar_league_tier)
             filtrado = df[df['League_Tier'] <= max_tier].copy()
-            st.info(f"🎯 Ligas filtradas (Tier ≤ {max_tier}): {len(filtrado)}/{len(df)} jogos mantidos")
             return filtrado
 
         history = aplicar_filtro_tier(history, max_tier=3)
         games_today = aplicar_filtro_tier(games_today, max_tier=3)
 
+        # OneHot de 10 ligas mais comuns
         top_ligas = history['League'].value_counts().head(10).index
         history['League_Clean'] = history['League'].where(history['League'].isin(top_ligas), 'Other')
         games_today['League_Clean'] = games_today['League'].where(games_today['League'].isin(top_ligas), 'Other')
@@ -693,150 +430,251 @@ def main_calibrado():
         return games_today, history
 
     games_today, history = load_cached_data(selected_file)
+
     if games_today.empty:
-        st.warning("⚠️ Nenhum jogo encontrado após filtro de ligas.")
+        st.warning("Nenhum jogo encontrado após filtro.")
         return
     if history.empty:
-        st.warning("⚠️ Histórico vazio após filtro de ligas.")
+        st.warning("Histórico vazio após filtro.")
         return
 
     # Converter Asian Line
-    history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
-    games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
-    history = history.dropna(subset=['Asian_Line_Decimal'])
-    games_today = games_today.dropna(subset=['Asian_Line_Decimal'])
+    history['Asian_Line_Decimal'] = history.get('Asian_Line', np.nan).apply(convert_asian_line_to_decimal)
+    games_today['Asian_Line_Decimal'] = games_today.get('Asian_Line', np.nan).apply(convert_asian_line_to_decimal)
 
-    # ================= TIME-SAFE: Z-SCORE E SPLIT POR DATA =================
+    # Filtro temporal: histórico < selected_date
     if "Date" in history.columns:
         try:
             selected_date = pd.to_datetime(selected_date_str)
             history["Date"] = pd.to_datetime(history["Date"], errors="coerce")
+            history = history[history["Date"] < selected_date].copy()
+            games_today["Date"] = pd.to_datetime(games_today.get("Date", selected_date_str), errors="coerce")
+        except Exception:
+            pass
 
-            if "Date" in games_today.columns:
-                games_today["Date"] = pd.to_datetime(games_today["Date"], errors="coerce").fillna(selected_date)
-            else:
-                games_today["Date"] = selected_date
-
-            history_past = history[history["Date"] < selected_date].copy()
-            if history_past.empty:
-                st.error("❌ Nenhum jogo passado encontrado para treinar antes da data selecionada.")
-                return
-
-            full_df = pd.concat([history_past, games_today], ignore_index=True)
-            full_df = calcular_zscores_detalhados(full_df)
-
-            history = full_df[full_df["Date"] < selected_date].copy()
-            games_today = full_df[full_df["Date"] >= selected_date].copy()
-
-            st.info(f"📊 Treinando com {len(history)} jogos anteriores a {selected_date_str} (M/MT atualizados)")
-        except Exception as e:
-            st.warning(f"⚠️ Erro no filtro temporal/Z-score: {e}")
-            history = calcular_zscores_detalhados(history)
-            games_today = calcular_zscores_detalhados(games_today)
-    else:
-        st.warning("⚠️ Coluna 'Date' ausente — Z-score calculado sem controle temporal.")
-        history = calcular_zscores_detalhados(history)
-        games_today = calcular_zscores_detalhados(games_today)
-
-    if history.empty:
-        st.error("❌ Histórico ficou vazio após aplicação de M/MT e filtro temporal.")
-        return
-
-    # LiveScore (apenas FT)
+    # LiveScore (opcional, apenas para mostrar FT se existir)
     games_today = load_and_merge_livescore(games_today, selected_date_str)
 
-    # Espaço 3D + clusters
-    required_cols = ['Aggression_Home','Aggression_Away','M_H','M_A','MT_H','MT_A']
-    missing_history = [c for c in required_cols if c not in history.columns]
-    missing_today = [c for c in required_cols if c not in games_today.columns]
-    if missing_history or missing_today:
-        st.error(f"❌ Colunas necessárias faltando: History={missing_history}, Today={missing_today}")
-        return
+    # Garantir colunas de gols FT no histórico
+    if 'Goals_H_FT' not in history.columns:
+        history['Goals_H_FT'] = 0
+    if 'Goals_A_FT' not in history.columns:
+        history['Goals_A_FT'] = 0
 
+    # Weighted Goals no histórico
+    if all(c in history.columns for c in ['Odd_H','Odd_D','Odd_A']):
+        history = history.copy()
+        history['WG_Home'] = history.apply(weighted_goals_home, axis=1)
+        history['WG_Away'] = history.apply(weighted_goals_away, axis=1)
+    else:
+        history['WG_Home'] = 0.0
+        history['WG_Away'] = 0.0
+
+    # Rolling WG por time (5 jogos), time-safe (shift(1))
+    if "Date" in history.columns:
+        history = history.sort_values("Date")
+    else:
+        history = history.reset_index(drop=True)
+
+    group_home = history.groupby('Home', group_keys=False)
+    history['WG_Home_Team'] = group_home['WG_Home'].apply(
+        lambda s: s.rolling(5, min_periods=1).mean().shift(1)
+    )
+
+    group_away = history.groupby('Away', group_keys=False)
+    history['WG_Away_Team'] = group_away['WG_Away'].apply(
+        lambda s: s.rolling(5, min_periods=1).mean().shift(1)
+    )
+
+    history[['WG_Home_Team','WG_Away_Team']] = history[['WG_Home_Team','WG_Away_Team']].fillna(0)
+    history['WG_Diff'] = history['WG_Home_Team'] - history['WG_Away_Team']
+
+    # Mapear WG para os jogos do dia usando último valor conhecido de cada time
+    map_wg_home = history.groupby('Home')['WG_Home_Team'].last()
+    map_wg_away = history.groupby('Away')['WG_Away_Team'].last()
+
+    games_today['WG_Home_Team'] = games_today['Home'].map(map_wg_home).fillna(0)
+    games_today['WG_Away_Team'] = games_today['Away'].map(map_wg_away).fillna(0)
+    games_today['WG_Diff'] = games_today['WG_Home_Team'] - games_today['WG_Away_Team']
+
+    # Recalcular Z-scores M / MT para history e today
+    history = calcular_zscores_detalhados(history)
+    games_today = calcular_zscores_detalhados(games_today)
+
+    # Espaço 3D + cluster
     history = aplicar_clusterizacao_3d(calcular_distancias_3d(history))
     games_today = aplicar_clusterizacao_3d(calcular_distancias_3d(games_today))
 
-    features_3d_common = [
-        'Quadrant_Dist_3D','Quadrant_Separation_3D','Vector_Sign',
-        'Magnitude_3D','Momentum_Diff','Momentum_Diff_MT','Cluster3D_Label'
+    # Criar targets (apenas NO HISTÓRICO com FT)
+    history = criar_targets_cover(history)
+
+    # Exportar base final de treino para debug
+    export_cols = [
+        'League','Date','Home','Away',
+        'Goals_H_FT','Goals_A_FT',
+        'Asian_Line','Asian_Line_Decimal',
+        'Odd_H','Odd_D','Odd_A',
+        'Aggression_Home','Aggression_Away',
+        'HandScore_Home','HandScore_Away',
+        'M_H','M_A','MT_H','MT_A',
+        'Quadrant_Dist_3D','Quadrant_Separation_3D',
+        'Vector_Sign','Magnitude_3D',
+        'Momentum_Diff','Momentum_Diff_MT',
+        'WG_Home','WG_Away','WG_Home_Team','WG_Away_Team','WG_Diff',
+        'Cover_Home','Cover_Away'
     ]
+    for c in export_cols:
+        if c not in history.columns:
+            history[c] = np.nan
 
-    st.markdown("## 🧠 Treinando Modelos DUAL (HOME + AWAY Cover)")
-    if st.button("🚀 Executar Análise DUAL", type="primary"):
+    df_export = history[export_cols].copy()
+    file_name = f"TrainingBase_Final_{selected_date_str}.csv"
+    df_export_csv = df_export.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Download da Base Final de Treino (CSV)",
+        data=df_export_csv,
+        file_name=file_name,
+        mime="text/csv"
+    )
+
+    st.markdown("## 🧠 Treinando modelos de Cobertura de Handicap")
+    if st.button("🚀 Treinar & Gerar Probabilidades", type="primary"):
         with st.spinner("Treinando modelos..."):
-            hist_for_train = history.dropna(subset=['Goals_H_FT','Goals_A_FT','Asian_Line_Decimal']).copy()
-            if hist_for_train.empty:
-                st.error("❌ Histórico sem FT/Asian_Line_Decimal suficiente para treinar.")
-                return
 
-            modelo_home, games_today = treinar_modelo_cover_home(hist_for_train, games_today, features_3d_common)
-            modelo_away, games_today = treinar_modelo_cover_away(hist_for_train, games_today, features_3d_common)
-            if modelo_home is None or modelo_away is None:
-                st.error("❌ Falha ao treinar um dos modelos (HOME/AWAY).")
-                return
-
-            hist_for_pred = criar_targets_cobertura(hist_for_train)
-            if hist_for_pred.empty:
-                st.error("❌ Histórico sem targets de cobertura válidos.")
-                return
-
-            X_hist = clean_features_for_training(hist_for_pred[features_3d_common].copy())
-            hist_for_pred['P_Home_Cover'] = modelo_home.predict_proba(X_hist)[:, 1]
-            hist_for_pred['P_Away_Cover'] = modelo_away.predict_proba(X_hist)[:, 1]
-            hist_for_pred['VG_HOME'] = hist_for_pred['P_Home_Cover'] - 0.5
-            hist_for_pred['VG_AWAY'] = hist_for_pred['P_Away_Cover'] - 0.5
-
-            league_thresholds = find_league_thresholds(hist_for_pred, min_bets=60)
-            # ====================================================
-            # 📥 DOWNLOAD DA BASE FINAL DE TREINO
-            # ====================================================
-            export_cols = [
-                'League','Date','Home','Away',
-                'Goals_H_FT','Goals_A_FT',
-                'Asian_Line','Asian_Line_Decimal',
-                'Aggression_Home','Aggression_Away',
-                'HandScore_Home','HandScore_Away',
+            # FEATURES
+            feature_cols = [
+                'Quadrant_Dist_3D','Quadrant_Separation_3D','Vector_Sign','Magnitude_3D',
+                'Momentum_Diff','Momentum_Diff_MT','Cluster3D_Label',
                 'M_H','M_A','MT_H','MT_A',
-                'Quadrant_Dist_3D','Quadrant_Separation_3D',
-                'Vector_Sign','Magnitude_3D',
-                'Momentum_Diff','Momentum_Diff_MT',
-                'Cluster3D_Label',
-                'Cover_Home','Cover_Away'
+                'WG_Home_Team','WG_Away_Team','WG_Diff'
             ]
-            
-            df_export = hist_for_pred[export_cols].copy()
-            
-            file_name = f"TrainingBase_Final_{selected_date_str}.csv"
-            df_export_csv = df_export.to_csv(index=False).encode('utf-8')
-            
+            feature_cols = [f for f in feature_cols if f in history.columns]
+
+            train_mask = history['Cover_Home'].notna() & history['Cover_Away'].notna()
+            hist_train = history[train_mask].copy()
+            if hist_train.empty:
+                st.error("❌ Histórico sem targets válidos de cobertura. Verifique se Goals_FT e Asian_Line estão corretos.")
+                return
+
+            X = hist_train[feature_cols].astype(float)
+            X = clean_features_for_training(X)
+
+            y_home = hist_train['Cover_Home'].astype(int)
+            y_away = hist_train['Cover_Away'].astype(int)
+
+            model_home = RandomForestClassifier(
+                n_estimators=200,
+                max_depth=8,
+                random_state=42,
+                class_weight='balanced',
+                min_samples_leaf=20
+            )
+            model_away = RandomForestClassifier(
+                n_estimators=200,
+                max_depth=8,
+                random_state=42,
+                class_weight='balanced',
+                min_samples_leaf=20
+            )
+
+            model_home.fit(X, y_home)
+            model_away.fit(X, y_away)
+
+            # Métricas simples (AUC)
+            try:
+                ph = model_home.predict_proba(X)[:,1]
+                pa = model_away.predict_proba(X)[:,1]
+                auc_h = roc_auc_score(y_home, ph)
+                auc_a = roc_auc_score(y_away, pa)
+                st.success(f"✅ AUC HOME_COVER: {auc_h:.3f} | AUC AWAY_COVER: {auc_a:.3f}")
+            except Exception:
+                pass
+
+            # Predições nos jogos do dia
+            X_today = games_today[feature_cols].astype(float)
+            X_today = clean_features_for_training(X_today)
+
+            probs_home = model_home.predict_proba(X_today)[:,1]
+            probs_away = model_away.predict_proba(X_today)[:,1]
+
+            games_today['P_Home_Cover'] = probs_home
+            games_today['P_Away_Cover'] = probs_away
+
+            # Regras de recomendação simples
+            recs = []
+            confs = []
+            for phc, pac in zip(probs_home, probs_away):
+                best_side = None
+                best_prob = 0.0
+                if phc > pac and phc >= 0.55:
+                    best_side = 'BET HOME'
+                    best_prob = phc
+                elif pac > phc and pac >= 0.55:
+                    best_side = 'BET AWAY'
+                    best_prob = pac
+                else:
+                    best_side = 'NO CLEAR EDGE'
+                    best_prob = max(phc, pac)
+
+                if best_side == 'NO CLEAR EDGE':
+                    conf = 'LOW'
+                elif best_prob >= 0.65:
+                    conf = 'HIGH'
+                else:
+                    conf = 'MEDIUM'
+
+                recs.append(best_side)
+                confs.append(conf)
+
+            games_today['Recomendacao'] = recs
+            games_today['Confidence'] = confs
+
+            # Live score string
+            live_info = []
+            for _, r in games_today.iterrows():
+                g_h = r.get('Goals_H_Today', np.nan)
+                g_a = r.get('Goals_A_Today', np.nan)
+                h_r = r.get('Home_Red', 0)
+                a_r = r.get('Away_Red', 0)
+                info = ""
+                if pd.notna(g_h) and pd.notna(g_a):
+                    info = f"⚽ {int(g_h)}-{int(g_a)}"
+                    if h_r and h_r > 0:
+                        info += f" 🟥H{int(h_r)}"
+                    if a_r and a_r > 0:
+                        info += f" 🟥A{int(a_r)}"
+                live_info.append(info)
+
+            games_today['Live_Score'] = live_info
+
+            # Mostrar apenas colunas relevantes
+            cols_show = [
+                'League','Home','Away',
+                'Asian_Line','Asian_Line_Decimal',
+                'P_Home_Cover','P_Away_Cover',
+                'Recomendacao','Confidence',
+                'Live_Score'
+            ]
+            for c in cols_show:
+                if c not in games_today.columns:
+                    games_today[c] = np.nan
+
+            df_show = games_today[cols_show].copy()
+            st.markdown("## 📊 Recomendações de Aposta (Cobertura do Handicap)")
+            st.dataframe(df_show, use_container_width=True)
+
+            # Export CSV com resultados de hoje
+            out_name = f"AsianCoverAI_Results_{selected_date_str}.csv"
+            csv_today = df_show.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📥 Download da Base Final para Debug (CSV)",
-                data=df_export_csv,
-                file_name=file_name,
+                label="📥 Download dos Resultados de Hoje (CSV)",
+                data=csv_today,
+                file_name=out_name,
                 mime="text/csv"
             )
 
-
-            df_value_bets_dual, bets_validos_dual = analisar_value_bets_dual_modelos(games_today, league_thresholds)
-
-            st.markdown("## 📊 Resultados - Análise DUAL")
-            if bets_validos_dual.empty:
-                st.warning("⚠️ Nenhuma recomendação de value bet encontrada")
-            else:
-                st.dataframe(bets_validos_dual, use_container_width=True)
-                c1,c2,c3,c4 = st.columns(4)
-                with c1:
-                    st.metric("🏠 HOME Bets", int((bets_validos_dual['Recomendacao'].str.contains('HOME')).sum()))
-                with c2:
-                    st.metric("✈️ AWAY Bets", int((bets_validos_dual['Recomendacao'].str.contains('AWAY')).sum()))
-                with c3:
-                    st.metric("🎯 Strong Bets", int((bets_validos_dual['Confidence'].eq('HIGH')).sum()))
-                with c4:
-                    st.metric("📊 Total Recomendações", int(len(bets_validos_dual)))
-
-            st.pyplot(plot_analise_dual_modelos(games_today))
-            st.success("✅ Análise DUAL concluída com sucesso!")
+            st.success("✅ Análise concluída!")
             st.balloons()
 
 if __name__ == "__main__":
-    main_calibrado()
+    main()
