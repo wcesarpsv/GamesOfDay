@@ -919,7 +919,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         history['Diff_Odd_D'] = history['Odd_D_OP'] - history['Odd_D']
         history['Diff_Odd_A'] = history['Odd_A_OP'] - history['Odd_A']
 
-        odds_features = history[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm''Diff_Odd_H','Diff_Odd_D','Diff_Odd_A']].fillna(0)
+        odds_features = history[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm','Diff_Odd_H','Diff_Odd_D','Diff_Odd_A']].fillna(0)
 
     # ----------------------------
     # 🧩 Montagem final do dataset
