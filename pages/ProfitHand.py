@@ -1385,5 +1385,55 @@ if "Profit_Quadrante" in ranking_3d.columns and ranking_3d['Profit_Quadrante'].n
 else:
     st.info("🕗 Aguardando LiveScore ou Odds Asiáticas para monitorar o lucro em tempo real...")
 
+
+
+
+
+# ========================= 📊 TABELA EXTRA – PICK QUALITY TABLE =========================
+
+st.markdown("### 📝 Tabela Especial — Resultados e EV das Oportunidades")
+
+colunas_extra = [
+    'Date', 'Time', 'League', 'Home', 'Away',
+    'Asian_Line_Decimal',
+    'Goals_H_Today', 'Goals_A_Today',
+    'Best_Side', 'EV_Home', 'EV_Away',
+    'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away',
+    'ML_Confidence', 'Recomendacao_EV',
+    'Handicap_Result', 'Profit_Quadrante', 'Bet_Result_Label'
+]
+
+df_final_extra = ranking_3d.copy()
+
+# garantir compatibilidade: se não tiver alguma, preenche
+for c in colunas_extra:
+    if c not in df_final_extra.columns:
+        df_final_extra[c] = "-"
+
+df_final_extra = df_final_extra[colunas_extra]
+
+# Ordenação por Score Final 3D (mantendo coerência com recomendação)
+if 'Score_Final_3D' in ranking_3d.columns:
+    df_final_extra = df_final_extra.loc[ranking_3d.sort_values('Score_Final_3D', ascending=False).index]
+
+st.dataframe(
+    df_final_extra.head(num_show).style.format({
+        'Asian_Line_Decimal': '{:.2f}',
+        'Goals_H_Today': '{:.0f}',
+        'Goals_A_Today': '{:.0f}',
+        'EV_Home': '{:.2f}',
+        'EV_Away': '{:.2f}',
+        'Quadrante_ML_Score_Home': '{:.2f}',
+        'Quadrante_ML_Score_Away': '{:.2f}',
+        'ML_Confidence': '{:.2f}',
+        'Profit_Quadrante': '{:.2f}'
+    }, na_rep="-"),
+    use_container_width=True
+)
+
+st.info("📌 Esta tabela mostra EV + Resultados e deixa claro onde buscamos valor real!")
+
+
+
 st.markdown("---")
 st.markdown("🏁 Fim da execução — Sistema 3D Inteligente totalmente operacional 🚀")
