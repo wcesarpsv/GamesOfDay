@@ -915,9 +915,9 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         history['Imp_H_OP_Norm'] = history['Imp_H_OP'] / sum_probs
         history['Imp_D_OP_Norm'] = history['Imp_D_OP'] / sum_probs
         history['Imp_A_OP_Norm'] = history['Imp_A_OP'] / sum_probs
-        histor['Diff_Odd_H'] = history['Odd_H_OP'] - history['Odd_H']
-        histor['Diff_Odd_D'] = history['Odd_D_OP'] - history['Odd_D']
-        histor['Diff_Odd_A'] = history['Odd_A_OP'] - history['Odd_A']
+        history['Diff_Odd_H'] = history['Odd_H_OP'] - history['Odd_H']
+        history['Diff_Odd_D'] = history['Odd_D_OP'] - history['Odd_D']
+        history['Diff_Odd_A'] = history['Odd_A_OP'] - history['Odd_A']
 
         odds_features = history[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm''Diff_Odd_H','Diff_Odd_D','Diff_Odd_A']].fillna(0)
 
