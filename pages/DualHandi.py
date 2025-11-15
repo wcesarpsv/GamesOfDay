@@ -514,8 +514,8 @@ def main_handicap_v1_dual():
                 
                 if len(df_filtrado) > 0:
                     def color_recomendacao_filtrada(val):
-                        if 'BET HOME' in str(val): return 'background-color: #e6f3ff'
-                        if 'BET AWAY' in str(val): return 'background-color: #fff0e6'
+                        if 'BET HOME' in str(val): return 'font-weight: bold'
+                        if 'BET AWAY' in str(val): return 'font-weight: bold'
                         return ''
                     
                     styled_filtrado = df_filtrado.style.applymap(color_recomendacao_filtrada, subset=['Recomendacao'])
