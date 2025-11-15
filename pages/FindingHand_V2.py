@@ -565,7 +565,7 @@ def main_handicap_v1():
             # ✅ ADDED: Estilo para destacar jogos com resultados
             def color_live_score(val):
                 if '⚽' in str(val):
-                    return 'background-color: #e6ffe6'  # Verde claro para jogos com resultado
+                    return ''  # Verde claro para jogos com resultado
                 return ''
             
             styled_df = df_resultados.style.applymap(color_live_score, subset=['Live_Score'])
