@@ -341,14 +341,14 @@ def main_handicap_v1_dual():
                 value_gap_away = probas_away[idx] - 0.5
                 
                 # 🎯 DECISÃO BASEADA NO MAIOR VALUE GAP
-                if value_gap_home > value_gap_away and value_gap_home > 0.1:
+                if value_gap_home > value_gap_away and value_gap_home > 0.2:
                     recomendacao = "BET HOME"
                     value_gap_utilizado = value_gap_home
-                    confidence = 'ALTA' if value_gap_home > 0.15 else 'MEDIA'
-                elif value_gap_away > value_gap_home and value_gap_away > 0.1:
+                    confidence = 'ALTA' if value_gap_home > 0.3 else 'MEDIA'
+                elif value_gap_away > value_gap_home and value_gap_away > 0.2:
                     recomendacao = "BET AWAY" 
                     value_gap_utilizado = value_gap_away
-                    confidence = 'ALTA' if value_gap_away > 0.15 else 'MEDIA'
+                    confidence = 'ALTA' if value_gap_away > 0.3 else 'MEDIA'
                 else:
                     recomendacao = "NO BET"
                     value_gap_utilizado = max(value_gap_home, value_gap_away)
