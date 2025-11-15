@@ -312,89 +312,65 @@ def main_handicap_v1_dual():
 
     def aplicar_modelos_dual_handicap(games_today: pd.DataFrame, modelos_dual_handicap: dict):
         """
-        🆕 VERSÃO NORMALIZADA - Garante P_Home + P_Away ≈ 1
+        🎯 Previsão DUAL com Expected Value (EV)
+        Regras:
+        - Probabilidades normalizadas para soma = 1
+        - EV define se existe aposta → EV > 0
         """
-        st.markdown("### 🎯 Previsões DUAL NORMALIZADAS - HOME & AWAY")
-        
+        st.markdown("### 🎯 Previsões DUAL com Expected Value")
+    
         resultados = []
-        
+    
         for handicap, (modelo_home, modelo_away, features) in modelos_dual_handicap.items():
             if modelo_home is None or modelo_away is None:
                 continue
-                    
-            # Filtrar jogos com handicap próximo
+    
             jogos_alvo = segmentar_por_handicap(games_today, handicap, 0.25)
-            
-            if len(jogos_alvo) == 0:
+            if jogos_alvo.empty:
                 continue
-            
-            # Fazer previsões DUAL
+    
             X_today = jogos_alvo[features].copy()
             X_today = clean_features_for_training(X_today)
-            
-            # Probabilidades brutas de ambos os modelos
-            probas_home_bruto = modelo_home.predict_proba(X_today)[:, 1]  # P(Cover_Home) bruto
-            probas_away_bruto = modelo_away.predict_proba(X_today)[:, 1]  # P(Cover_Away) bruto
-            
-            for idx, (_, jogo) in enumerate(jogos_alvo.iterrows()):
-                # 🆕 NORMALIZAÇÃO CRÍTICA: garantir soma ≈ 1
-                proba_home_bruto = probas_home_bruto[idx]
-                proba_away_bruto = probas_away_bruto[idx]
-                
-                soma = proba_home_bruto + proba_away_bruto
-                
-                # Se soma for muito diferente de 1, normalizar
-                if abs(soma - 1.0) > 0.05:  # Se diferença > 5%
-                    proba_home = proba_home_bruto / soma
-                    proba_away = proba_away_bruto / soma
-                    normalized = True
-                else:
-                    proba_home = proba_home_bruto
-                    proba_away = proba_away_bruto  
-                    normalized = False
-                
-                # 🆕 DEBUG: Mostrar quando normalizou
-                if normalized and (idx == 0 or abs(soma - 1.0) > 0.2):
-                    st.info(f"🔧 Normalizado: {proba_home_bruto:.3f} + {proba_away_bruto:.3f} = {soma:.3f} → {proba_home:.3f} + {proba_away:.3f}")
-                
-                # Value Gaps com probabilidades normalizadas
-                value_gap_home = proba_home - 0.5
-                value_gap_away = proba_away - 0.5
-                
-                # 🎯 DECISÃO DINÂMICA BASEADA NO HANDICAP
-                def get_dynamic_threshold(asian_line_decimal: float) -> tuple:
-                    abs_line = abs(asian_line_decimal)
-                    if abs_line <= 0.25:  # Jogos equilibrados
-                        return 0.15, 0.25
-                    elif abs_line <= 0.75:  # Handicaps médios
-                        return 0.20, 0.30
-                    else:  # Handicaps pesados
-                        return 0.25, 0.35
     
-                threshold_bet, threshold_high = get_dynamic_threshold(jogo.get('Asian_Line_Decimal', 0))
-                
-                if value_gap_home > value_gap_away and value_gap_home > threshold_bet:
+            probas_home_bruto = modelo_home.predict_proba(X_today)[:, 1]
+            probas_away_bruto = modelo_away.predict_proba(X_today)[:, 1]
+    
+            for idx, (_, jogo) in enumerate(jogos_alvo.iterrows()):
+                ph = probas_home_bruto[idx]
+                pa = probas_away_bruto[idx]
+                soma = ph + pa
+    
+                # Normalização
+                if soma != 0:
+                    ph_norm = ph / soma
+                    pa_norm = pa / soma
+                else:
+                    ph_norm, pa_norm = 0.5, 0.5
+    
+                odd_home = float(jogo.get('Odd_H', 0))
+                odd_away = float(jogo.get('Odd_A', 0))
+    
+                # Expected Value (EV)
+                EV_home = ph_norm * (odd_home - 1) - (1 - ph_norm)
+                EV_away = pa_norm * (odd_away - 1) - (1 - pa_norm)
+    
+                # Decisão
+                if EV_home > 0 and EV_home > EV_away:
                     recomendacao = "BET HOME"
-                    value_gap_utilizado = value_gap_home
-                    confidence = 'ALTA' if value_gap_home > threshold_high else 'MEDIA'
-                elif value_gap_away > value_gap_home and value_gap_away > threshold_bet:
-                    recomendacao = "BET AWAY" 
-                    value_gap_utilizado = value_gap_away
-                    confidence = 'ALTA' if value_gap_away > threshold_high else 'MEDIA'
+                    EV_use = EV_home
+                elif EV_away > 0 and EV_away > EV_home:
+                    recomendacao = "BET AWAY"
+                    EV_use = EV_away
                 else:
                     recomendacao = "NO BET"
-                    value_gap_utilizado = max(value_gap_home, value_gap_away)
-                    confidence = 'BAIXA'
-                
-                # Live Score
+                    EV_use = max(EV_home, EV_away)
+    
                 g_h = jogo.get('Goals_H_Today'); g_a = jogo.get('Goals_A_Today')
-                h_r = jogo.get('Home_Red'); a_r = jogo.get('Away_Red')
-                live_score_info = ""
                 if pd.notna(g_h) and pd.notna(g_a):
                     live_score_info = f"⚽ {int(g_h)}-{int(g_a)}"
-                    if pd.notna(h_r) and int(h_r) > 0: live_score_info += f" 🟥H{int(h_r)}"
-                    if pd.notna(a_r) and int(a_r) > 0: live_score_info += f" 🟥A{int(a_r)}"
-                
+                else:
+                    live_score_info = ""
+    
                 resultados.append({
                     'League': jogo.get('League', ''),
                     'Home': jogo.get('Home', ''),
@@ -402,65 +378,43 @@ def main_handicap_v1_dual():
                     'Asian_Line': jogo.get('Asian_Line', ''),
                     'Asian_Line_Decimal': jogo.get('Asian_Line_Decimal', 0),
                     'Handicap_Modelo': handicap,
-                    
-                    # 🆕 PROBABILIDADES NORMALIZADAS
-                    'P_Home_Cover': proba_home,
-                    'P_Away_Cover': proba_away,
-                    'Value_Gap_HOME': value_gap_home,
-                    'Value_Gap_AWAY': value_gap_away,
-                    'Soma_Probabilidades': proba_home + proba_away,  # 🆕 DEBUG
-                    'Normalizado': normalized,  # 🆕 DEBUG
-                    
+    
+                    'P_Home_Cover': ph_norm,
+                    'P_Away_Cover': pa_norm,
+    
+                    'EV_Home': EV_home,
+                    'EV_Away': EV_away,
+                    'EV_Utilizado': EV_use,
+    
                     'Recomendacao': recomendacao,
-                    'Value_Gap_Utilizado': value_gap_utilizado,
-                    'Confianca': confidence,
                     'Live_Score': live_score_info
                 })
-        
-        if resultados:
-            df_resultados = pd.DataFrame(resultados)
-            
-            # 🆕 ESTATÍSTICAS DE NORMALIZAÇÃO
-            total_jogos = len(df_resultados)
-            normalizados = df_resultados['Normalizado'].sum()
-            st.info(f"🔧 Normalização: {normalizados}/{total_jogos} jogos ajustados")
-            
-            # Mostrar soma média das probabilidades
-            soma_media = df_resultados['Soma_Probabilidades'].mean()
-            st.info(f"📊 Soma média P_Home + P_Away: {soma_media:.3f}")
-            
-            # Ordenar por Value Gap utilizado
-            df_resultados = df_resultados.sort_values('Value_Gap_Utilizado', ascending=False)
-            
-            # Estilo para destacar recomendações
-            def color_recomendacao(val):
-                if 'BET HOME' in str(val): return 'font-weight: bold'
-                if 'BET AWAY' in str(val): return 'font-weight: bold'
-                return ''
-            
-            # Mostrar apenas colunas principais (ocultar debug)
-            cols_principais = ['League', 'Home', 'Away', 'Asian_Line', 'P_Home_Cover', 'P_Away_Cover', 
-                              'Value_Gap_HOME', 'Value_Gap_AWAY', 'Recomendacao', 'Confianca', 'Live_Score']
-            df_display = df_resultados[cols_principais]
-            
-            styled_df = df_display.style.applymap(color_recomendacao, subset=['Recomendacao'])
-            st.dataframe(styled_df, use_container_width=True)
-            
-            # Estatísticas DUAL
-            bets_home = df_resultados[df_resultados['Recomendacao'] == 'BET HOME']
-            bets_away = df_resultados[df_resultados['Recomendacao'] == 'BET AWAY']
-            no_bets = df_resultados[df_resultados['Recomendacao'] == 'NO BET']
-            
-            col1, col2, col3, col4 = st.columns(4)
-            with col1: st.metric("🎯 Total Previsões", len(df_resultados))
-            with col2: st.metric("🏠 BET HOME", len(bets_home))
-            with col3: st.metric("✈️ BET AWAY", len(bets_away))  
-            with col4: st.metric("📊 NO BET", len(no_bets))
-            
-            return df_resultados
-        else:
-            st.warning("⚠️ Nenhuma previsão DUAL gerada")
+    
+        if not resultados:
+            st.warning("⚠️ Nenhuma previsão encontrada")
             return pd.DataFrame()
+    
+        df_resultados = pd.DataFrame(resultados)
+    
+        # Apenas EV relevante (apostas com valor)
+        st.info(f"🎯 Total Jogos Analisados: {len(df_resultados)}")
+    
+        def style_ev(val):
+            if val > 0:
+                return 'background-color: #D7FFD7; font-weight: bold;'
+            return ''
+    
+        df_display = df_resultados.sort_values('EV_Utilizado', ascending=False)
+        df_styled = df_display.style.applymap(style_ev, subset=['EV_Utilizado'])
+    
+        st.dataframe(df_styled, use_container_width=True)
+    
+        # KPIs de análise
+        df_bet = df_resultados[df_resultados['Recomendacao'] != 'NO BET']
+        st.metric("💰 Total de Bets com EV Positivo", len(df_bet))
+    
+        return df_resultados
+
 
     # ============================================================
     # 🚀 EXECUÇÃO PRINCIPAL
