@@ -1655,11 +1655,22 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             "Sistema 1x2": [x12["Bets"], x12["Hit%"], x12["Profit"], x12["ROI"]]
         })
         st.markdown("### ⚖️ Comparativo de Performance – AH vs 1x2")
-        st.dataframe(
-            resumo.style.highlight_max(axis=1, color='lightgreen')
-                          .highlight_min(axis=1, color='#ffb3b3'),
-            use_container_width=True
+        # Estilo apenas em colunas numéricas
+        resumo_styled = resumo.copy()
+        numeric_cols = resumo.select_dtypes(include=['float64', 'int64']).columns
+        
+        resumo_styled = resumo.style.apply(
+            lambda row: [
+                'background-color: lightgreen' if col in numeric_cols and val == row[numeric_cols].max()
+                else 'background-color: #ffb3b3' if col in numeric_cols and val == row[numeric_cols].min()
+                else ''
+                for col, val in row.iteritems()
+            ],
+            axis=1
         )
+        
+        st.dataframe(resumo_styled, use_container_width=True)
+
 
     compare_systems_summary(ranking_3d)
 
