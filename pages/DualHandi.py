@@ -434,8 +434,8 @@ def main_handicap_v1_dual():
             
             # Estilo para destacar recomendações
             def color_recomendacao(val):
-                if 'BET HOME' in str(val): return 'background-color: #e6f3ff'
-                if 'BET AWAY' in str(val): return 'background-color: #fff0e6'
+                if 'BET HOME' in str(val): return 'font-weight: bold'
+                if 'BET AWAY' in str(val): return 'font-weight: bold'
                 return ''
             
             # Mostrar apenas colunas principais (ocultar debug)
