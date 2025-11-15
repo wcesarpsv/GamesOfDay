@@ -1672,7 +1672,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         st.dataframe(resumo_styled, use_container_width=True)
 
 
-    compare_systems_summary(ranking_3d)
+    # compare_systems_summary(ranking_3d)
 
     ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
 
