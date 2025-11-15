@@ -1,0 +1,747 @@
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+import streamlit as st
+import pandas as pd
+import numpy as np
+import os, re, math
+from datetime import datetime
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.cluster import KMeans
+
+# ========================= GET HANDICAP V1 =========================
+def main_handicap_v1():
+    st.set_page_config(page_title="GetHandicap V1 - Handicap-Specific Analysis", layout="wide")
+    st.title("🎯 GetHandicap V1 - Análise por Handicap Específico")
+    
+    # Configurações
+    GAMES_FOLDER = "GamesDay"
+    LIVESCORE_FOLDER = "LiveScore"  # ✅ ADDED
+    EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa", "trophy"]
+    
+    # ============================================================
+    # 🔧 FUNÇÕES AUXILIARES (do código original)
+    # ============================================================
+    
+    def setup_livescore_columns(df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        for col in ['Goals_H_Today','Goals_A_Today','Home_Red','Away_Red','status']:
+            if col not in df.columns:
+                df[col] = np.nan
+        return df
+
+    def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        if "Goals_H_FT_x" in df.columns:
+            df = df.rename(columns={"Goals_H_FT_x": "Goals_H_FT", "Goals_A_FT_x": "Goals_A_FT"})
+        elif "Goals_H_FT_y" in df.columns:
+            df = df.rename(columns={"Goals_H_FT_y": "Goals_H_FT", "Goals_A_FT_y": "Goals_A_FT"})
+        return df
+
+    def load_all_games(folder: str) -> pd.DataFrame:
+        if not os.path.exists(folder):
+            return pd.DataFrame()
+        files = [f for f in os.listdir(folder) if f.endswith(".csv")]
+        if not files:
+            return pd.DataFrame()
+        dfs = []
+        for f in files:
+            try:
+                dfs.append(preprocess_df(pd.read_csv(os.path.join(folder, f))))
+            except Exception:
+                pass
+        return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+
+    def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty or "League" not in df.columns:
+            return df
+        pattern = "|".join(EXCLUDED_LEAGUE_KEYWORDS)
+        return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
+
+    def convert_asian_line_to_decimal(value):
+        if pd.isna(value): 
+            return np.nan
+        s = str(value).strip()
+        if "/" not in s:
+            try:
+                num = float(s)
+                return -num
+            except:
+                return np.nan
+        try:
+            parts = [float(p) for p in s.replace("+","").replace("-","").split("/")]
+            avg = np.mean(parts)
+            sign = -1 if s.startswith("-") else 1
+            result = sign * avg
+            return -result
+        except:
+            return np.nan
+
+    # ✅ ADDED: FUNÇÃO LIVE SCORE INTEGRATION
+    def load_and_merge_livescore(games_today, selected_date_str):
+        """
+        Integração com LiveScore - mostra gols e cartões vermelhos em tempo real
+        """
+        livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
+        games_today = setup_livescore_columns(games_today)
+
+        if not os.path.exists(livescore_file):
+            st.warning(f"⚠️ No LiveScore file found for: {selected_date_str}")
+            return games_today
+
+        results_df = pd.read_csv(livescore_file)
+
+        results_df['status'] = (
+            results_df['status']
+            .astype(str)
+            .str.upper()
+            .str.strip()
+        )
+
+        df_ft = results_df[results_df['status'] == 'FT'].copy()
+
+        for c in ['home_goal','away_goal','home_red','away_red']:
+            df_ft[c] = pd.to_numeric(df_ft[c], errors='coerce').fillna(0).astype(int)
+
+        games_today = games_today.merge(
+            df_ft[['Id','status','home_goal','away_goal','home_red','away_red']],
+            on='Id',
+            how='left',
+            suffixes=('', '_ls')
+        )
+
+        mask_ft = games_today['status_ls'] == 'FT'
+
+        games_today.loc[mask_ft, 'Goals_H_Today'] = games_today.loc[mask_ft, 'home_goal']
+        games_today.loc[mask_ft, 'Goals_A_Today'] = games_today.loc[mask_ft, 'away_goal']
+        games_today.loc[mask_ft, 'Home_Red']      = games_today.loc[mask_ft, 'home_red']
+        games_today.loc[mask_ft, 'Away_Red']      = games_today.loc[mask_ft, 'away_red']
+
+        st.success(f"✅ LiveScore integrado: {mask_ft.sum()} jogos com resultado final")
+        return games_today
+
+    def calcular_zscores_detalhados(df):
+        df = df.copy()
+        st.info("📊 Calculando Z-scores a partir do HandScore (Home/Away)...")
+
+        if 'League' in df.columns and 'HandScore_Home' in df.columns and 'HandScore_Away' in df.columns:
+            league_stats = df.groupby('League').agg({
+                'HandScore_Home': ['mean', 'std'],
+                'HandScore_Away': ['mean', 'std']
+            }).round(3)
+
+            league_stats.columns = ['HS_H_mean', 'HS_H_std', 'HS_A_mean', 'HS_A_std']
+
+            league_stats['HS_H_std'] = league_stats['HS_H_std'].replace(0, 1)
+            league_stats['HS_A_std'] = league_stats['HS_A_std'].replace(0, 1)
+
+            df = df.merge(league_stats, on='League', how='left')
+
+            df['M_H'] = (df['HandScore_Home'] - df['HS_H_mean']) / df['HS_H_std']
+            df['M_A'] = (df['HandScore_Away'] - df['HS_A_mean']) / df['HS_A_std']
+
+            df['M_H'] = np.clip(df['M_H'], -5, 5)
+            df['M_A'] = np.clip(df['M_A'], -5, 5)
+
+            st.success(f"✅ Z-score por liga calculado para {len(df)} jogos")
+        else:
+            st.warning("⚠️ Colunas 'League' ou 'HandScore_Home/HandScore_Away' não encontradas para Z-score por liga")
+            df['M_H'] = 0
+            df['M_A'] = 0
+
+        if 'Home' in df.columns and 'Away' in df.columns:
+            home_team_stats = df.groupby('Home').agg({
+                'HandScore_Home': ['mean', 'std']
+            }).round(3)
+            home_team_stats.columns = ['HT_mean', 'HT_std']
+
+            away_team_stats = df.groupby('Away').agg({
+                'HandScore_Away': ['mean', 'std']
+            }).round(3)
+            away_team_stats.columns = ['AT_mean', 'AT_std']
+
+            home_team_stats['HT_std'] = home_team_stats['HT_std'].replace(0, 1)
+            away_team_stats['AT_std'] = away_team_stats['AT_std'].replace(0, 1)
+
+            df = df.merge(home_team_stats, left_on='Home', right_index=True, how='left')
+            df = df.merge(away_team_stats, left_on='Away', right_index=True, how='left')
+
+            df['MT_H'] = (df['HandScore_Home'] - df['HT_mean']) / df['HT_std']
+            df['MT_A'] = (df['HandScore_Away'] - df['AT_mean']) / df['AT_std']
+
+            df['MT_H'] = np.clip(df['MT_H'], -5, 5)
+            df['MT_A'] = np.clip(df['MT_A'], -5, 5)
+
+            st.success(f"✅ Z-score por time calculado para {len(df)} jogos")
+
+            df = df.drop(['HS_H_mean', 'HS_H_std', 'HS_A_mean', 'HS_A_std', 
+                          'HT_mean', 'HT_std', 'AT_mean', 'AT_std'], axis=1, errors='ignore')
+        else:
+            st.warning("⚠️ Colunas 'Home' ou 'Away' não encontradas para Z-score por time")
+            df['MT_H'] = 0
+            df['MT_A'] = 0
+
+        return df
+
+    def clean_features_for_training(X):
+        X_clean = X.copy()
+
+        if isinstance(X_clean, np.ndarray):
+            X_clean = pd.DataFrame(X_clean, columns=X.columns if hasattr(X, 'columns') else range(X.shape[1]))
+
+        X_clean = X_clean.replace([np.inf, -np.inf], np.nan)
+
+        inf_count = (X_clean == np.inf).sum().sum() + (X_clean == -np.inf).sum().sum()
+        nan_count = X_clean.isna().sum().sum()
+
+        if inf_count > 0 or nan_count > 0:
+            st.warning(f"⚠️ Encontrados {inf_count} infinitos e {nan_count} NaNs nas features")
+
+        for col in X_clean.columns:
+            if X_clean[col].isna().any():
+                median_val = X_clean[col].median()
+                X_clean[col] = X_clean[col].fillna(median_val)
+                if X_clean[col].isna().any():
+                    X_clean[col] = X_clean[col].fillna(0)
+
+        for col in X_clean.columns:
+            if X_clean[col].dtype in [np.float64, np.float32]:
+                Q1 = X_clean[col].quantile(0.25)
+                Q3 = X_clean[col].quantile(0.75)
+                IQR = Q3 - Q1
+                lower_bound = Q1 - 3 * IQR
+                upper_bound = Q3 + 3 * IQR
+                X_clean[col] = np.clip(X_clean[col], lower_bound, upper_bound)
+
+        final_inf_count = (X_clean == np.inf).sum().sum() + (X_clean == -np.inf).sum().sum()
+        final_nan_count = X_clean.isna().sum().sum()
+
+        if final_inf_count > 0 or final_nan_count > 0:
+            st.error(f"❌ Ainda existem {final_inf_count} infinitos e {final_nan_count} NaNs — forçando preenchimento 0")
+            X_clean = X_clean.fillna(0)
+            X_clean = X_clean.replace([np.inf, -np.inf], 0)
+
+        st.success(f"✅ Features limpas: shape={X_clean.shape}")
+        return X_clean
+
+    def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        required = ['Aggression_Home','Aggression_Away','M_H','M_A','MT_H','MT_A']
+        missing = [c for c in required if c not in df.columns]
+        if missing:
+            st.warning(f"⚠️ Colunas faltando para cálculo 3D: {missing}")
+            for c in ['Quadrant_Dist_3D','Quadrant_Separation_3D','Vector_Sign',
+                      'Magnitude_3D','Momentum_Diff','Momentum_Diff_MT']:
+                df[c] = np.nan
+            return df
+        dx = (df['Aggression_Home'] - df['Aggression_Away']) / 2
+        dy = (df['M_H'] - df['M_A']) / 2
+        dz = (df['MT_H'] - df['MT_A']) / 2
+        df['Quadrant_Dist_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+        df['Quadrant_Separation_3D'] = (dx + dy + dz) / 3
+        df['Vector_Sign'] = np.sign(dx * dy * dz)
+        df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+        df['Momentum_Diff'] = dy
+        df['Momentum_Diff_MT'] = dz
+        return df
+
+    def aplicar_clusterizacao_3d(df: pd.DataFrame, n_clusters=4, random_state=42) -> pd.DataFrame:
+        df = df.copy()
+        required = ['Aggression_Home','Aggression_Away','M_H','M_A','MT_H','MT_A']
+        missing = [c for c in required if c not in df.columns]
+        if missing:
+            st.warning(f"⚠️ Colunas ausentes para clusterização 3D: {missing}")
+            df['Cluster3D_Label'] = 0
+            return df
+        df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
+        df['dy'] = df['M_H'] - df['M_A']
+        df['dz'] = df['MT_H'] - df['MT_A']
+        X = df[['dx','dy','dz']].fillna(0).to_numpy()
+        n_samples = X.shape[0]
+        k = max(1, min(n_clusters, n_samples))
+        if n_samples < n_clusters:
+            st.info(f"🔧 Ajustando n_clusters: {n_clusters} → {k} (amostras={n_samples})")
+        try:
+            km = KMeans(n_clusters=k, random_state=random_state, init='k-means++', n_init=10)
+            df['Cluster3D_Label'] = km.fit_predict(X)
+        except Exception as e:
+            st.error(f"❌ Erro no clustering: {e}")
+            df['Cluster3D_Label'] = 0
+        return df
+
+    def odds_to_probs(odd_h, odd_d, odd_a):
+        try:
+            odd_h = float(odd_h)
+            odd_d = float(odd_d)
+            odd_a = float(odd_a)
+            if odd_h <= 0 or odd_d <= 0 or odd_a <= 0:
+                return 0.33, 0.33, 0.33
+            inv_sum = (1/odd_h) + (1/odd_d) + (1/odd_a)
+            return (1/odd_h)/inv_sum, (1/odd_d)/inv_sum, (1/odd_a)/inv_sum
+        except:
+            return 0.33, 0.33, 0.33
+
+    def wg_home(row):
+        gf = row.get('Goals_H_FT', 0)
+        ga = row.get('Goals_A_FT', 0)
+        p_h, p_d, p_a = odds_to_probs(row.get('Odd_H', 2.5), row.get('Odd_D', 3.0), row.get('Odd_A', 2.5))
+        return (gf * (1 - p_h)) - (ga * p_h)
+
+    def wg_away(row):
+        gf = row.get('Goals_A_FT', 0)
+        ga = row.get('Goals_H_FT', 0)
+        p_h, p_d, p_a = odds_to_probs(row.get('Odd_H', 2.5), row.get('Odd_D', 3.0), row.get('Odd_A', 2.5))
+        return (gf * (1 - p_a)) - (ga * p_a)
+
+    def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        required_cols = ['Home','Away','Date','Goals_H_FT','Goals_A_FT','Odd_H','Odd_D','Odd_A']
+        missing = [c for c in required_cols if c not in df.columns]
+        if missing:
+            st.warning(f"⚠️ Colunas ausentes para WG (usar 0): {missing}")
+            df['WG_Home'] = 0.0
+            df['WG_Away'] = 0.0
+            df['WG_Home_Team'] = 0.0
+            df['WG_Away_Team'] = 0.0
+            df['WG_Diff'] = 0.0
+            return df
+
+        df['WG_Home'] = df.apply(wg_home, axis=1)
+        df['WG_Away'] = df.apply(wg_away, axis=1)
+
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+        df = df.sort_values('Date')
+
+        df['WG_Home_Team'] = df.groupby('Home')['WG_Home'].transform(lambda x: x.rolling(5, min_periods=1).mean())
+        df['WG_Away_Team'] = df.groupby('Away')['WG_Away'].transform(lambda x: x.rolling(5, min_periods=1).mean())
+
+        df['WG_Diff'] = df['WG_Home_Team'] - df['WG_Away_Team']
+
+        st.success("🔥 Weighted Goals (WG_Home_Team / WG_Away_Team / WG_Diff) calculados!")
+        return df
+
+    def criar_targets_cobertura(df: pd.DataFrame) -> pd.DataFrame:
+        hist = df.dropna(subset=['Goals_H_FT','Goals_A_FT','Asian_Line_Decimal']).copy()
+        if hist.empty:
+            return hist
+        margin = hist['Goals_H_FT'] - hist['Goals_A_FT']
+        adj = margin + hist['Asian_Line_Decimal']
+        hist['Cover_Home'] = (adj > 0).astype(int)
+        hist['Cover_Away'] = (adj < 0).astype(int)
+        return hist
+
+    # ============================================================
+    # 🆕 FUNÇÕES ESPECÍFICAS GET HANDICAP V1
+    # ============================================================
+    
+    def segmentar_por_handicap(df: pd.DataFrame, handicap_alvo: float, tolerancia: float = 0.25) -> pd.DataFrame:
+        """
+        Filtra jogos com handicap próximo ao alvo
+        Ex: handicap_alvo = -0.5, tolerancia=0.25 → pega -0.75, -0.5, -0.25
+        """
+        if df.empty or 'Asian_Line_Decimal' not in df.columns:
+            return pd.DataFrame()
+        
+        mask = abs(df['Asian_Line_Decimal'] - handicap_alvo) <= tolerancia
+        df_segmento = df[mask].copy()
+        
+        st.info(f"🎯 Handicap {handicap_alvo}: {len(df_segmento)} jogos (tolerância: ±{tolerancia})")
+        return df_segmento
+    
+    def analisar_patterns_handicap(df_segmento: pd.DataFrame, handicap_nome: str, min_amostras: int = 30):
+        """
+        Analisa quais features correlacionam com sucesso para um handicap específico
+        """
+        if len(df_segmento) < min_amostras:
+            st.warning(f"⚠️ Amostras insuficientes para {handicap_nome}: {len(df_segmento)} < {min_amostras}")
+            return None, None
+        
+        st.markdown(f"### 📊 Padrões - {handicap_nome}")
+        
+        # Features para análise
+        features_analise = [
+            'WG_Home_Team', 'WG_Away_Team', 'WG_Diff',
+            'M_H', 'M_A', 'MT_H', 'MT_A',
+            'Aggression_Home', 'Aggression_Away',
+            'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
+            'Vector_Sign', 'Magnitude_3D', 'Momentum_Diff', 'Momentum_Diff_MT',
+            'Cluster3D_Label'
+        ]
+        
+        # Garantir que as features existem
+        features_disponiveis = [f for f in features_analise if f in df_segmento.columns]
+        
+        if 'Cover_Home' not in df_segmento.columns:
+            st.error("❌ Target Cover_Home não encontrado no segmento")
+            return None, None
+        
+        # Calcular correlações
+        correlations_home = {}
+        correlations_away = {}
+        
+        for feature in features_disponiveis:
+            corr_home = df_segmento[feature].corr(df_segmento['Cover_Home'])
+            corr_away = df_segmento[feature].corr(df_segmento['Cover_Away'])
+            correlations_home[feature] = corr_home
+            correlations_away[feature] = corr_away
+        
+        # Ordenar por correlação absoluta
+        home_sorted = sorted(correlations_home.items(), key=lambda x: abs(x[1]), reverse=True)
+        away_sorted = sorted(correlations_away.items(), key=lambda x: abs(x[1]), reverse=True)
+        
+        # Top 5 features para cada lado
+        top_home = home_sorted[:5]
+        top_away = away_sorted[:5]
+        
+        # Display results
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader(f"🏠 HOME Cover Patterns")
+            for feature, corr in top_home:
+                corr_color = "🟢" if corr > 0.1 else "🟡" if corr > 0.05 else "🔴"
+                st.write(f"{corr_color} **{feature}**: {corr:.3f}")
+                
+        with col2:
+            st.subheader(f"✈️ AWAY Cover Patterns")
+            for feature, corr in top_away:
+                corr_color = "🟢" if corr > 0.1 else "🟡" if corr > 0.05 else "🔴"
+                st.write(f"{corr_color} **{feature}**: {corr:.3f}")
+        
+        return top_home, top_away
+    
+    def criar_heatmap_handicap_features(history: pd.DataFrame):
+        """
+        Cria heatmap: Handicap vs Features vs Performance
+        """
+        st.markdown("### 🔥 Heatmap - Correlações por Handicap")
+        
+        handicaps = [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0]
+        features_analise = [
+            'WG_Home_Team', 'WG_Away_Team', 'M_H', 'M_A',
+            'Aggression_Home', 'Aggression_Away', 'Cluster3D_Label'
+        ]
+        
+        # Filtrar features disponíveis
+        features_disponiveis = [f for f in features_analise if f in history.columns]
+        
+        results = []
+        
+        for handicap in handicaps:
+            df_seg = segmentar_por_handicap(history, handicap, 0.15)
+            if len(df_seg) > 20:  # mínimo de amostras
+                for feature in features_disponiveis:
+                    if feature in df_seg.columns and 'Cover_Home' in df_seg.columns:
+                        corr = df_seg[feature].corr(df_seg['Cover_Home'])
+                        results.append({
+                            'Handicap': handicap,
+                            'Feature': feature,
+                            'Correlacao': corr,
+                            'Amostras': len(df_seg)
+                        })
+        
+        if not results:
+            st.warning("❌ Dados insuficientes para heatmap")
+            return None
+        
+        df_heatmap = pd.DataFrame(results)
+        
+        # Pivot para heatmap
+        heatmap_data = df_heatmap.pivot_table(
+            index='Feature', 
+            columns='Handicap', 
+            values='Correlacao',
+            aggfunc='mean'
+        ).fillna(0)
+        
+        # Plot heatmap
+        fig, ax = plt.subplots(figsize=(12, 8))
+        sns.heatmap(
+            heatmap_data, 
+            annot=True, 
+            cmap='RdBu_r', 
+            center=0,
+            fmt='.3f',
+            ax=ax
+        )
+        ax.set_title('Correlação: Features vs Cover_Home por Handicap\n(Valores Positivos = Favorecem HOME)')
+        plt.tight_layout()
+        
+        st.pyplot(fig)
+        return df_heatmap
+    
+    def treinar_modelo_handicap_especifico(history: pd.DataFrame, handicap_alvo: float, features: list):
+        """
+        Treina modelo RandomForest específico para um handicap
+        """
+        df_segmento = segmentar_por_handicap(history, handicap_alvo, 0.25)
+        
+        if len(df_segmento) < 50:
+            st.warning(f"⚠️ Amostras insuficientes para modelo {handicap_alvo}: {len(df_segmento)}")
+            return None, None
+        
+        # Garantir targets
+        if 'Cover_Home' not in df_segmento.columns:
+            df_segmento = criar_targets_cobertura(df_segmento)
+        
+        # Features disponíveis
+        features_disponiveis = [f for f in features if f in df_segmento.columns]
+        
+        X = df_segmento[features_disponiveis].copy()
+        X = clean_features_for_training(X)
+        y = df_segmento['Cover_Home']
+        
+        # Treinar modelo
+        modelo = RandomForestClassifier(
+            n_estimators=100,
+            max_depth=6,
+            min_samples_leaf=10,
+            class_weight='balanced',
+            random_state=42
+        )
+        modelo.fit(X, y)
+        
+        # Accuracy
+        acc = (modelo.predict(X) == y).mean()
+        st.success(f"✅ Modelo Handicap {handicap_alvo} - Accuracy: {acc:.3f} (n={len(df_segmento)})")
+        
+        return modelo, features_disponiveis
+    
+    def aplicar_modelos_handicap(games_today: pd.DataFrame, modelos_handicap: dict):
+        """
+        Aplica todos os modelos de handicap específico nos jogos de hoje
+        """
+        st.markdown("### 🎯 Previsões por Handicap Específico")
+        
+        resultados = []
+        
+        for handicap, (modelo, features) in modelos_handicap.items():
+            if modelo is None:
+                continue
+                
+            # Filtrar jogos com handicap próximo
+            jogos_alvo = segmentar_por_handicap(games_today, handicap, 0.25)
+            
+            if len(jogos_alvo) == 0:
+                continue
+            
+            # Fazer previsões
+            X_today = jogos_alvo[features].copy()
+            X_today = clean_features_for_training(X_today)
+            
+            probas = modelo.predict_proba(X_today)[:, 1]  # P(Cover_Home)
+            
+            for idx, (_, jogo) in enumerate(jogos_alvo.iterrows()):
+                # ✅ ADDED: Live Score Information
+                g_h = jogo.get('Goals_H_Today'); g_a = jogo.get('Goals_A_Today')
+                h_r = jogo.get('Home_Red'); a_r = jogo.get('Away_Red')
+                live_score_info = ""
+                if pd.notna(g_h) and pd.notna(g_a):
+                    live_score_info = f"⚽ {int(g_h)}-{int(g_a)}"
+                    if pd.notna(h_r) and int(h_r) > 0: live_score_info += f" 🟥H{int(h_r)}"
+                    if pd.notna(a_r) and int(a_r) > 0: live_score_info += f" 🟥A{int(a_r)}"
+                
+                resultados.append({
+                    'League': jogo.get('League', ''),
+                    'Home': jogo.get('Home', ''),
+                    'Away': jogo.get('Away', ''),
+                    'Asian_Line': jogo.get('Asian_Line', ''),
+                    'Asian_Line_Decimal': jogo.get('Asian_Line_Decimal', 0),
+                    'Handicap_Modelo': handicap,
+                    'P_Cover_Home_Especifico': probas[idx],
+                    'Value_Gap_Especifico': probas[idx] - 0.5,
+                    'Modelo_Confianca': 'ALTA' if abs(probas[idx] - 0.5) > 0.15 else 'MEDIA',
+                    'Live_Score': live_score_info  # ✅ ADDED
+                })
+        
+        if resultados:
+            df_resultados = pd.DataFrame(resultados)
+            
+            # Ordenar por Value Gap
+            df_resultados = df_resultados.sort_values('Value_Gap_Especifico', key=abs, ascending=False)
+            
+            # ✅ ADDED: Estilo para destacar jogos com resultados
+            def color_live_score(val):
+                if '⚽' in str(val):
+                    return 'background-color: #e6ffe6'  # Verde claro para jogos com resultado
+                return ''
+            
+            styled_df = df_resultados.style.applymap(color_live_score, subset=['Live_Score'])
+            st.dataframe(styled_df, use_container_width=True)
+            
+            # Estatísticas
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("🎯 Total de Previsões", len(df_resultados))
+            with col2:
+                st.metric("🏠 Melhor Value Gap", f"{df_resultados['Value_Gap_Especifico'].max():.3f}")
+            with col3:
+                st.metric("📈 Confiança ALTA", f"{(df_resultados['Modelo_Confianca'] == 'ALTA').sum()}")
+            
+            # ✅ ADDED: Estatísticas Live Score
+            jogos_com_resultado = df_resultados[df_resultados['Live_Score'].str.contains('⚽', na=False)]
+            if len(jogos_com_resultado) > 0:
+                st.info(f"📊 {len(jogos_com_resultado)} jogos já têm resultado final disponível")
+            
+            return df_resultados
+        else:
+            st.warning("⚠️ Nenhuma previsão específica gerada")
+            return pd.DataFrame()
+
+    # ============================================================
+    # 🚀 EXECUÇÃO PRINCIPAL GET HANDICAP V1
+    # ============================================================
+    
+    st.info("📂 Carregando dados para Análise GetHandicap V1...")
+    
+    # Carregar dados
+    files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")]) if os.path.exists(GAMES_FOLDER) else []
+    if not files:
+        st.warning("No CSV files found in GamesDay folder.")
+        return
+    
+    options = files[-7:] if len(files) >= 7 else files
+    selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
+    
+    # ✅ ADDED: Extrair data do arquivo selecionado para LiveScore
+    date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
+    selected_date_str = date_match.group(0) if date_match else datetime.now().strftime("%Y-%m-%d")
+    
+    @st.cache_data(ttl=3600)
+    def load_cached_data(selected_file, selected_date_str):  # ✅ ADDED selected_date_str
+        games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
+        history = load_all_games(GAMES_FOLDER)
+        
+        # Aplicar filtros e pré-processamento
+        history = filter_leagues(history)
+        games_today = filter_leagues(games_today)
+        
+        # Converter Asian Line
+        history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
+        games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
+        
+        # ✅ ADDED: Integrar LiveScore ANTES de calcular features
+        games_today = load_and_merge_livescore(games_today, selected_date_str)
+        
+        # Calcular features (Z-scores, WG, 3D, etc.)
+        history = calcular_zscores_detalhados(history)
+        history = adicionar_weighted_goals(history)
+        history = aplicar_clusterizacao_3d(calcular_distancias_3d(history))
+        
+        games_today = calcular_zscores_detalhados(games_today)
+        games_today = adicionar_weighted_goals(games_today)
+        games_today = aplicar_clusterizacao_3d(calcular_distancias_3d(games_today))
+        
+        # Criar targets
+        history = criar_targets_cobertura(history)
+        
+        return games_today, history
+    
+    games_today, history = load_cached_data(selected_file, selected_date_str)  # ✅ ADDED selected_date_str
+    
+    if history.empty or games_today.empty:
+        st.error("❌ Dados insuficientes para análise")
+        return
+    
+    # ============================================================
+    # 🎯 INTERFACE GET HANDICAP V1
+    # ============================================================
+    
+    st.sidebar.markdown("## 🎯 GetHandicap V1 - Configurações")
+    
+    # ✅ ADDED: Status Live Score na sidebar
+    jogos_com_resultado = games_today[pd.notna(games_today['Goals_H_Today']) & pd.notna(games_today['Goals_A_Today'])]
+    st.sidebar.info(f"📊 Live Score: {len(jogos_com_resultado)}/{len(games_today)} jogos com resultado")
+    
+    analise_modo = st.sidebar.selectbox(
+        "Modo de Análise:",
+        ["📊 Análise Exploratória", "🤖 Modelos Específicos", "🎯 Previsões Hoje"]
+    )
+    
+    if analise_modo == "📊 Análise Exploratória":
+        st.header("📊 Análise Exploratória por Handicap")
+        
+        handicap_selecionado = st.selectbox(
+            "Selecione o Handicap para Análise:",
+            [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0],
+            index=2  # Default -0.5
+        )
+        
+        if st.button("🔍 Analisar Patterns", type="primary"):
+            df_segmento = segmentar_por_handicap(history, handicap_selecionado, 0.25)
+            top_home, top_away = analisar_patterns_handicap(df_segmento, f"Handicap {handicap_selecionado}")
+        
+        # Heatmap geral
+        st.markdown("---")
+        criar_heatmap_handicap_features(history)
+    
+    elif analise_modo == "🤖 Modelos Específicos":
+        st.header("🤖 Treinar Modelos por Handicap")
+        
+        handicaps_treinar = st.multiselect(
+            "Handicaps para Treinar Modelos:",
+            [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0],
+            default=[-0.5, 0.0, 0.5]
+        )
+        
+        features_base = [
+            'WG_Home_Team', 'WG_Away_Team', 'WG_Diff',
+            'M_H', 'M_A', 'MT_H', 'MT_A',
+            'Aggression_Home', 'Aggression_Away',
+            'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
+            'Vector_Sign', 'Magnitude_3D', 'Momentum_Diff', 'Momentum_Diff_MT',
+            'Cluster3D_Label'
+        ]
+        
+        modelos_treinados = {}
+        
+        if st.button("🚀 Treinar Modelos Específicos", type="primary"):
+            for handicap in handicaps_treinar:
+                with st.spinner(f"Treinando modelo para handicap {handicap}..."):
+                    modelo, features = treinar_modelo_handicap_especifico(history, handicap, features_base)
+                    modelos_treinados[handicap] = (modelo, features)
+            
+            st.session_state['modelos_handicap'] = modelos_treinados
+            st.success("✅ Todos os modelos específicos treinados!")
+    
+    elif analise_modo == "🎯 Previsões Hoje":
+        st.header("🎯 Previsões para Jogos de Hoje")
+        
+        # ✅ ADDED: Status Live Score no header
+        jogos_com_resultado = games_today[pd.notna(games_today['Goals_H_Today']) & pd.notna(games_today['Goals_A_Today'])]
+        st.info(f"📊 {len(jogos_com_resultado)}/{len(games_today)} jogos com resultado final disponível")
+        
+        if 'modelos_handicap' not in st.session_state:
+            st.warning("⚠️ Treine os modelos específicos primeiro na aba 'Modelos Específicos'")
+        else:
+            df_previsoes = aplicar_modelos_handicap(games_today, st.session_state['modelos_handicap'])
+            
+            if not df_previsoes.empty:
+                # Filtros interativos
+                st.sidebar.markdown("## 🔍 Filtros Previsões")
+                min_value_gap = st.sidebar.slider("Value Gap Mínimo:", 0.0, 0.3, 0.1, 0.05)
+                confianca_filtro = st.sidebar.multiselect("Confiança:", ['ALTA', 'MEDIA'], default=['ALTA', 'MEDIA'])
+                
+                df_filtrado = df_previsoes[
+                    (df_previsoes['Value_Gap_Especifico'].abs() >= min_value_gap) &
+                    (df_previsoes['Modelo_Confianca'].isin(confianca_filtro))
+                ]
+                
+                st.metric("🎯 Apostas Filtradas", len(df_filtrado))
+                
+                # ✅ ADDED: Estilo para tabela filtrada também
+                def color_live_score_filtered(val):
+                    if '⚽' in str(val):
+                        return 'background-color: #e6ffe6'
+                    return ''
+                
+                styled_filtrado = df_filtrado.style.applymap(color_live_score_filtered, subset=['Live_Score'])
+                st.dataframe(styled_filtrado, use_container_width=True)
+
+# ============================================================
+# 🚀 EXECUTAR
+# ============================================================
+if __name__ == "__main__":
+    main_handicap_v1()
