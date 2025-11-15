@@ -1577,89 +1577,74 @@ def generate_live_summary_3d(df):
     }
 
 
-# ========================= EXECUÇÃO PRINCIPAL =========================
+# ========================= EXECUÇÃO FINAL - EXIBIÇÃO DOS RESULTADOS =========================
 
-if not history.empty:
-    modelo_home, games_today = treinar_modelo_inteligente(history, games_today)
-    st.success("✅ Modelo 3D Inteligente treinado com sucesso!")
+st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes (ML Inteligente)")
+
+# 🔍 Validação
+if games_today.empty:
+    st.error("📭 Nenhum jogo disponível hoje. Verifique o CSV da pasta GamesDay.")
+    st.stop()
+
+# 1️⃣ Pipeline final completo no ranking_3d
+ranking_3d = games_today.copy()
+
+ranking_3d = adicionar_indicadores_explicativos_3d_16_dual(ranking_3d)
+ranking_3d = gerar_score_combinado_3d_16(ranking_3d)
+ranking_3d = update_real_time_data_3d(ranking_3d)
+
+# 2️⃣ Ordenar pela força do sinal 3D
+ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
+
+st.success(f"🎯 {len(ranking_3d)} jogos processados pelo Sistema 3D Inteligente")
+
+# 3️⃣ Resumo Executivo Top
+resumo_3d_16_quadrantes_hoje(ranking_3d)
+
+# 4️⃣ Seleção do número de confrontos a exibir
+num_show = st.slider("📌 Quantos jogos exibir na tabela?", 
+                     min_value=5, 
+                     max_value=len(ranking_3d), 
+                     value=min(40, len(ranking_3d)))
+
+df_show = ranking_3d.head(num_show).copy()
+
+# 5️⃣ Tabela final estilizada
+st.markdown("### 📋 Lista de Recomendações - Ordenado por Score 3D")
+st.dataframe(
+    estilo_tabela_3d_quadrantes(df_show)
+    .format({
+        'Goals_H_Today': '{:.0f}',
+        'Goals_A_Today': '{:.0f}',
+        'Asian_Line_Decimal': '{:.2f}',
+        'Home_Red': '{:.0f}',
+        'Away_Red': '{:.0f}',
+        'Profit_Quadrante': '{:.2f}',
+        'Quadrante_ML_Score_Home': '{:.1%}',
+        'Quadrante_ML_Score_Away': '{:.1%}',
+        'Score_Final_3D': '{:.1f}',
+        'M_H': '{:.2f}',
+        'M_A': '{:.2f}',
+        'Quadrant_Dist_3D': '{:.2f}',
+        'Momentum_Diff': '{:.2f}',
+        'Media_Score_Home': '{:.2f}',
+        'Media_Score_Away': '{:.2f}',
+        'Regressao_Force_Home': '{:.2f}',
+        'Regressao_Force_Away': '{:.2f}',
+        'score_confianca_composto': '{:.2f}'
+    }, na_rep="-"),
+    use_container_width=True
+)
+
+# 6️⃣ Informar ao usuário se não houver odds para lucro em tempo real
+if "Profit_Quadrante" in ranking_3d.columns and ranking_3d['Profit_Quadrante'].notna().any():
+    st.success("📈 Monitoramento de lucro operacional ativo!")
 else:
-    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D")
+    st.info("🕗 Aguardando LiveScore ou Odds Asiáticas para monitorar o lucro em tempo real...")
 
-st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes ML Inteligente")
+st.markdown("---")
+st.markdown("🏁 Fim da execução — Sistema 3D Inteligente totalmente operacional 🚀")
 
-if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
-    ranking_3d = games_today.copy()
-
-    ranking_3d = adicionar_indicadores_explicativos_3d_16_dual(ranking_3d)
-    ranking_3d = gerar_score_combinado_3d_16(ranking_3d)
-    ranking_3d = update_real_time_data_3d(ranking_3d)
-
-    st.markdown("## 📡 Live Score Monitor - Sistema 3D Inteligente")
-    live_summary_3d = generate_live_summary_3d(ranking_3d)
-    st.json(live_summary_3d)
-
-    ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
-
-    colunas_3d = [
-        'League', 'Time',
-        'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Recomendacao', 'ML_Side', 'Cluster3D_Desc',
-        'Quadrante_Home_Label', 'Quadrante_Away_Label',
-        'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away',
-        'Score_Final_3D', 'Classificacao_Potencial_3D',
-        'Classificacao_Valor_Home', 'Classificacao_Valor_Away',
-        'M_H', 'M_A', 'Quadrant_Dist_3D', 'Momentum_Diff',
-        'Media_Score_Home', 'Media_Score_Away',
-        'Regressao_Force_Home', 'Regressao_Force_Away',
-        'eh_fav_forte_com_momentum', 'eh_under_forte_sem_momentum',
-        'eh_forte_melhora_home', 'eh_forte_melhora_away',
-        'score_confianca_composto',
-        'Asian_Line_Decimal', 'Handicap_Result',
-        'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
-    ]
-
-    cols_finais_3d = [c for c in colunas_3d if c in ranking_3d.columns]
-
-    st.write(f"🎯 Exibindo {len(ranking_3d)} jogos ordenados por Score 3D Inteligente")
-
-    st.dataframe(
-        estilo_tabela_3d_quadrantes(ranking_3d[cols_finais_3d])
-        .format({
-            'Goals_H_Today': '{:.0f}',
-            'Goals_A_Today': '{:.0f}',
-            'Asian_Line_Decimal': '{:.2f}',
-            'Home_Red': '{:.0f}',
-            'Away_Red': '{:.0f}',
-            'Profit_Quadrante': '{:.2f}',
-            'Quadrante_ML_Score_Home': '{:.1%}',
-            'Quadrante_ML_Score_Away': '{:.1%}',
-            'Score_Final_3D': '{:.1f}',
-            'M_H': '{:.2f}',
-            'M_A': '{:.2f}',
-            'Quadrant_Dist_3D': '{:.2f}',
-            'Momentum_Diff': '{:.2f}',
-            'Media_Score_Home': '{:.2f}',
-            'Media_Score_Away': '{:.2f}',
-            'Regressao_Force_Home': '{:.2f}',
-            'Regressao_Force_Away': '{:.2f}',
-            'score_confianca_composto': '{:.2f}'
-        }, na_rep="-"),
-        use_container_width=True
-    )
-
-else:
-    st.error("""
-    ❌ **Não foi possível gerar a tabela de confrontos 3D**
-    
-    **Possíveis causas:**
-    - Dados de hoje vazios
-    - Colunas do modelo ML não foram criadas
-    - Erro no processamento dos dados
-    
-    **Verifique:**
-    1. Se o arquivo CSV tem dados válidos
-    2. Se as colunas necessárias existem no histórico
-    3. Se o modelo foi treinado corretamente
-    """)
 
     if games_today.empty:
         st.warning("📭 games_today está vazio")
