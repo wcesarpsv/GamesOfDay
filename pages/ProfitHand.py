@@ -1007,6 +1007,29 @@ def create_fixed_3d_plot(df_plot, n_to_show, selected_league):
 fig_3d_fixed = create_fixed_3d_plot(df_filtered, n_to_show, selected_league)
 st.plotly_chart(fig_3d_fixed, use_container_width=True)
 
+
+# ========================= DICIONÁRIO DOS QUADRANTES 3D =========================
+QUADRANTES_3D_LABELS = {
+    1: "Fav Forte",
+    2: "Fav Moderado",
+    3: "Neutro",
+    4: "Under Moderado",
+    5: "Under Forte",
+    6: "Underdog Forte",
+    7: "Underdog Moderado",
+    8: "Zona Desvio",
+    9: "Clutch Attack",
+    10: "Clutch Defense",
+    11: "Stress Alto Home",
+    12: "Stress Alto Away",
+    13: "Regressão Forte Home",
+    14: "Regressão Forte Away",
+    15: "Alerta Home",
+    16: "Alerta Away"
+}
+
+
+
 # =====================================================
 # Recomendação / Score 3D / Live
 # =====================================================
