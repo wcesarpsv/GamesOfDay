@@ -1161,45 +1161,7 @@ def treinar_modelo_ev_3d(history, games_today):
 
 
 
-# ============================================================
-# 🧩 PREPARAR TARGETS EV (HOME & AWAY)
-# ============================================================
 
-def preparar_targets_ev(history):
-    """
-    Cria:
-      - Profit_Home_EV, Profit_Away_EV
-      - Target_EV_Home, Target_EV_Away (1 se profit > 0, senão 0)
-    """
-    history = history.copy()
-
-    # Garantir colunas básicas
-    required_cols = ["Goals_H_FT", "Goals_A_FT", "Asian_Line_Decimal", "Odd_H_Asi", "Odd_A_Asi"]
-    missing = [c for c in required_cols if c not in history.columns]
-    if missing:
-        st.warning(f"⚠️ Colunas ausentes para EV: {missing}")
-        # Se faltar coisa crítica, devolve sem mexer
-        return history
-
-    # Profit histórico se SEMPRE apostasse Home / Away
-    history["Profit_Home_EV"] = history.apply(
-        lambda r: calculate_handicap_profit_history(r, side="HOME"), axis=1
-    )
-    history["Profit_Away_EV"] = history.apply(
-        lambda r: calculate_handicap_profit_history(r, side="AWAY"), axis=1
-    )
-
-    # Targets binários: 1 se aposta teria sido lucrativa, 0 caso contrário
-    history["Target_EV_Home"] = (history["Profit_Home_EV"] > 0).astype(int)
-    history["Target_EV_Away"] = (history["Profit_Away_EV"] > 0).astype(int)
-
-    st.info(f"🎯 Targets EV criados: {history['Target_EV_Home'].sum()} jogos lucrativos Home, "
-            f"{history['Target_EV_Away'].sum()} jogos lucrativos Away.")
-
-    return history
-
-
-    
 
 
     # ----------------------------
@@ -1999,6 +1961,51 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             return 0
         else:
             return -1
+
+
+
+
+    # ============================================================
+# 🧩 PREPARAR TARGETS EV (HOME & AWAY)
+# ============================================================
+
+def preparar_targets_ev(history):
+    """
+    Cria:
+      - Profit_Home_EV, Profit_Away_EV
+      - Target_EV_Home, Target_EV_Away (1 se profit > 0, senão 0)
+    """
+    history = history.copy()
+
+    # Garantir colunas básicas
+    required_cols = ["Goals_H_FT", "Goals_A_FT", "Asian_Line_Decimal", "Odd_H_Asi", "Odd_A_Asi"]
+    missing = [c for c in required_cols if c not in history.columns]
+    if missing:
+        st.warning(f"⚠️ Colunas ausentes para EV: {missing}")
+        # Se faltar coisa crítica, devolve sem mexer
+        return history
+
+    # Profit histórico se SEMPRE apostasse Home / Away
+    history["Profit_Home_EV"] = history.apply(
+        lambda r: calculate_handicap_profit_history(r, side="HOME"), axis=1
+    )
+    history["Profit_Away_EV"] = history.apply(
+        lambda r: calculate_handicap_profit_history(r, side="AWAY"), axis=1
+    )
+
+    # Targets binários: 1 se aposta teria sido lucrativa, 0 caso contrário
+    history["Target_EV_Home"] = (history["Profit_Home_EV"] > 0).astype(int)
+    history["Target_EV_Away"] = (history["Profit_Away_EV"] > 0).astype(int)
+
+    st.info(f"🎯 Targets EV criados: {history['Target_EV_Home'].sum()} jogos lucrativos Home, "
+            f"{history['Target_EV_Away'].sum()} jogos lucrativos Away.")
+
+    return history
+
+
+
+
+    
     
     
     # ============================================================
