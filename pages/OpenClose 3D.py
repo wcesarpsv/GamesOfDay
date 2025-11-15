@@ -952,7 +952,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     extras_today = games_today[features_3d].fillna(0)
 
     if use_opening_odds:
-        for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP']:
+        for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP','Odd_H','Odd_D','Odd_A']:
             if col not in games_today.columns:
                 games_today[col] = np.nan
 
@@ -965,8 +965,11 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         games_today['Imp_H_OP_Norm'] = games_today['Imp_H_OP'] / sum_today
         games_today['Imp_D_OP_Norm'] = games_today['Imp_D_OP'] / sum_today
         games_today['Imp_A_OP_Norm'] = games_today['Imp_A_OP'] / sum_today
+        games_today['Diff_Odd_H'] = games_today['Odd_H_OP'] - games_today['Odd_H']
+        games_today['Diff_Odd_D'] = games_today['Odd_D_OP'] - games_today['Odd_D']
+        games_today['Diff_Odd_A'] = games_today['Odd_A_OP'] - games_today['Odd_A']
 
-        odds_today = games_today[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm']].fillna(0)
+        odds_today = games_today[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm','Diff_Odd_H','Diff_Odd_D','Diff_Odd_A']].fillna(0)
         X_today = pd.concat([ligas_today, clusters_today, extras_today, odds_today], axis=1)
     else:
         X_today = pd.concat([ligas_today, clusters_today, extras_today], axis=1)
