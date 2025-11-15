@@ -867,7 +867,7 @@ def main_calibrado():
             ####################################
             st.markdown("## 📊 Resultados - Análise DUAL")
             
-            mostrar_todos = st.checkbox("👀 Mostrar todos os jogos (incluindo NO CLEAR EDGE)?", value=False)
+            mostrar_todos = st.checkbox("👀 Mostrar todos os jogos (incluindo NO CLEAR EDGE)?", value=True)
             
             if mostrar_todos:
                 st.dataframe(df_value_bets_dual, use_container_width=True)
