@@ -864,21 +864,30 @@ def main_calibrado():
             league_thresholds = find_league_thresholds(hist_for_pred, min_bets=60)
 
             df_value_bets_dual, bets_validos_dual = analisar_value_bets_dual_modelos(games_today, league_thresholds)
-
+            ####################################
             st.markdown("## 📊 Resultados - Análise DUAL")
-            if bets_validos_dual.empty:
-                st.warning("⚠️ Nenhuma recomendação de value bet encontrada")
+            
+            mostrar_todos = st.checkbox("👀 Mostrar todos os jogos (incluindo NO CLEAR EDGE)?", value=False)
+            
+            if mostrar_todos:
+                st.dataframe(df_value_bets_dual, use_container_width=True)
             else:
-                st.dataframe(bets_validos_dual, use_container_width=True)
-                c1,c2,c3,c4 = st.columns(4)
-                with c1:
-                    st.metric("🏠 HOME Bets", int((bets_validos_dual['Recomendacao'].str.contains('HOME')).sum()))
-                with c2:
-                    st.metric("✈️ AWAY Bets", int((bets_validos_dual['Recomendacao'].str.contains('AWAY')).sum()))
-                with c3:
-                    st.metric("🎯 Strong Bets", int((bets_validos_dual['Confidence'].eq('HIGH')).sum()))
-                with c4:
-                    st.metric("📊 Total Recomendações", int(len(bets_validos_dual)))
+                if bets_validos_dual.empty:
+                    st.warning("⚠️ Nenhuma recomendação de value bet encontrada")
+                else:
+                    st.dataframe(bets_validos_dual, use_container_width=True)
+            
+            # Métricas só para apostas válidas
+            c1,c2,c3,c4 = st.columns(4)
+            valid_df = bets_validos_dual if not mostrar_todos else df_value_bets_dual
+            with c1:
+                st.metric("🏠 HOME Bets", int((valid_df['Recomendacao'].str.contains('HOME')).sum()))
+            with c2:
+                st.metric("✈️ AWAY Bets", int((valid_df['Recomendacao'].str.contains('AWAY')).sum()))
+            with c3:
+                st.metric("🎯 Strong Bets", int((valid_df['Confidence'].eq('HIGH')).sum()))
+            with c4:
+                st.metric("📊 Total Indicadas", int(len(valid_df)))
 
             st.pyplot(plot_analise_dual_modelos(games_today))
             st.success("✅ Análise DUAL concluída com sucesso!")
