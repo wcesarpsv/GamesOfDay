@@ -296,7 +296,6 @@ history["Target_AH_Home"] = history.apply(
     lambda r: 1 if r["Margin"] > r["Asian_Line_Decimal"] else 0, axis=1
 )
 
-history = preparar_targets_ev(history)
 
 
 # ---------------- SISTEMA 3D DE 16 QUADRANTES ----------------
@@ -2005,6 +2004,7 @@ def preparar_targets_ev(history):
 
 
 
+history = preparar_targets_ev(history)
     
     
     
