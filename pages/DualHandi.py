@@ -507,11 +507,14 @@ def main_handicap_v1_dual():
                 min_value_gap = st.sidebar.slider("Value Gap Mínimo:", 0.0, 0.3, 0.1, 0.05)
                 confianca_filtro = st.sidebar.multiselect("Confiança:", ['ALTA', 'MEDIA', 'BAIXA'], default=['ALTA', 'MEDIA'])
                 
+                st.sidebar.markdown("## 🔍 Filtros DUAL (Base EV)")
+                min_ev = st.sidebar.slider("EV Mínimo (Value Expected):", -0.50, 0.50, 0.00, 0.05)
+                
                 df_filtrado = df_previsoes_dual[
-                    (df_previsoes_dual['Value_Gap_Utilizado'] >= min_value_gap) &
-                    (df_previsoes_dual['Confianca'].isin(confianca_filtro)) &
+                    (df_previsoes_dual['EV_Utilizado'] >= min_ev) &
                     (df_previsoes_dual['Recomendacao'] != 'NO BET')
                 ]
+
                 
                 st.metric("🎯 Apostas DUAL Filtradas", len(df_filtrado))
                 
