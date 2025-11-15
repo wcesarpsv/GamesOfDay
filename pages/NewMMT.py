@@ -1624,9 +1624,18 @@ if games_today.empty:
     st.stop()
 
 ranking_3d = games_today.copy()
+# 1️⃣ Primeiro aplica ML e gera score base
+ranking_3d = inferir_probabilidades_ml_dual(ranking_3d)  # << NOVO passo necessário
+
+# 2️⃣ Agora adiciona indicadores explicativos
 ranking_3d = adicionar_indicadores_explicativos_3d_16_dual(ranking_3d)
+
+# 3️⃣ Só então cria Score 3D final
 ranking_3d = gerar_score_combinado_3d_16(ranking_3d)
+
+# 4️⃣ Cálculo de lucros e labeling em tempo real
 ranking_3d = update_real_time_data_3d(ranking_3d)
+
 ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
 
 st.success(f"🎯 {len(ranking_3d)} jogos processados pelo Sistema 3D Inteligente")
