@@ -1483,9 +1483,10 @@ def analise_estrategica_sem_ev(row):
 ranking_3d['Analysis_Text_Pure'] = ranking_3d.apply(analise_estrategica_sem_ev, axis=1)
 
 colunas_analise_pura = [
-    'League', 'Home', 'Away',
+    'League', 'Home', 'Away','Goals_H_Today','Goals_A_Today',
     'Asian_Line_Decimal',
-    'M_H', 'M_A',
+    'M_H', 'M_A','Extremidade_Home','Extremidade_Away,
+    'Prob_Regressao_Home','Prob_Regressao_Away',
     'Tendencia_Home', 'Tendencia_Away',
     'Cluster3D_Label', 'Cluster3D_Desc',
     'Analysis_Text_Pure'
@@ -1498,6 +1499,12 @@ df_ana_pura = ranking_3d[colunas_analise_pura].copy()
 
 st.dataframe(
     df_ana_pura.head(num_show).style.format({
+        'Goals_H_Today': '{:.0f}',
+        'Goals_A_Today': '{:.0f}',
+        'Extremidade_Home': '{:.2f}',
+        'Extremidade_Away': '{:.2f}',
+        'Prob_Regressao_Home': '{:.2f}',
+        'Prob_Regressao_Away': '{:.2f}',
         'M_H': '{:.2f}',
         'M_A': '{:.2f}',
         'Asian_Line_Decimal': '{:.2f}',
