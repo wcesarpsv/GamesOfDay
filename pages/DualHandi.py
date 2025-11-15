@@ -340,19 +340,19 @@ def main_handicap_v1_dual():
                 value_gap_home = probas_home[idx] - 0.5
                 value_gap_away = probas_away[idx] - 0.5
                 
-                # 🎯 DECISÃO BASEADA NO MAIOR VALUE GAP
-                if value_gap_home > value_gap_away and value_gap_home > 0.2:
+
+                # 🎯 DECISÃO BASEADA NO MAIOR VALUE GAP - VERSÃO SUPER CONSERVADORA
+                if value_gap_home > value_gap_away and value_gap_home > 0.25:  # ↑ 0.25
                     recomendacao = "BET HOME"
                     value_gap_utilizado = value_gap_home
-                    confidence = 'ALTA' if value_gap_home > 0.3 else 'MEDIA'
-                elif value_gap_away > value_gap_home and value_gap_away > 0.2:
+                    confidence = 'ALTA' if value_gap_home > 0.35 else 'MEDIA'  # ↑ 0.35
+                elif value_gap_away > value_gap_home and value_gap_away > 0.25:  # ↑ 0.25  
                     recomendacao = "BET AWAY" 
                     value_gap_utilizado = value_gap_away
-                    confidence = 'ALTA' if value_gap_away > 0.3 else 'MEDIA'
+                    confidence = 'ALTA' if value_gap_away > 0.35 else 'MEDIA'  # ↑ 0.35
                 else:
                     recomendacao = "NO BET"
                     value_gap_utilizado = max(value_gap_home, value_gap_away)
-                    confidence = 'BAIXA'
                 
                 # Live Score
                 g_h = jogo.get('Goals_H_Today'); g_a = jogo.get('Goals_A_Today')
