@@ -1491,8 +1491,10 @@ colunas_analise_pura = [
     'Analysis_Text_Pure'
 ]
 
+# Ordena antes para manter Score_Final_3D válido
+ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
+
 df_ana_pura = ranking_3d[colunas_analise_pura].copy()
-df_ana_pura = df_ana_pura.sort_values('Score_Final_3D', ascending=False)
 
 st.dataframe(
     df_ana_pura.head(num_show).style.format({
