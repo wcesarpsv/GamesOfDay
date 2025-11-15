@@ -1485,7 +1485,7 @@ ranking_3d['Analysis_Text_Pure'] = ranking_3d.apply(analise_estrategica_sem_ev, 
 colunas_analise_pura = [
     'League', 'Home', 'Away','Goals_H_Today','Goals_A_Today',
     'Asian_Line_Decimal',
-    'M_H', 'M_A','Extremidade_Home','Extremidade_Away,
+    'M_H', 'M_A','Extremidade_Home','Extremidade_Away',
     'Prob_Regressao_Home','Prob_Regressao_Away',
     'Tendencia_Home', 'Tendencia_Away',
     'Cluster3D_Label', 'Cluster3D_Desc',
