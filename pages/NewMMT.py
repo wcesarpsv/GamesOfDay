@@ -1112,20 +1112,31 @@ def resumo_3d_16_quadrantes_hoje(df):
     if df.empty:
         st.info("Nenhum dado disponível para resumo 3D")
         return
+
     total_jogos = len(df)
+    
     alto_potencial_3d = (df['Classificacao_Potencial_3D'] == '🌟 ALTO POTENCIAL 3D').sum()
     valor_solido_3d = (df['Classificacao_Potencial_3D'] == '💼 VALOR SOLIDO 3D').sum()
-    alto_valor_home = (df['Classificacao_Valor_Home'] == '🏆 ALTO VALOR').sum()
-    alto_valor_away = (df['Classificacao_Valor_Away'] == '🏆 ALTO VALOR').sum()
-    fav_forte_momentum = (df.get('eh_fav_forte_com_momentum', 0) == 1).sum()
-    forte_melhora = (
-        (df.get('eh_forte_melhora_home', 0) == 1) |
-        (df.get('eh_forte_melhora_away', 0) == 1)
-    ).sum()
-    conflitos_value = (
-        (df.get('conflito_agg_regressao_home', 0) == 1) |
-        (df.get('conflito_agg_regressao_away', 0) == 1)
-    ).sum()
+
+    col_hv = df['Classificacao_Valor_Home'] if 'Classificacao_Valor_Home' in df.columns else pd.Series(['']*len(df))
+    col_av = df['Classificacao_Valor_Away'] if 'Classificacao_Valor_Away' in df.columns else pd.Series(['']*len(df))
+
+    alto_valor_home = (col_hv == '🏆 ALTO VALOR').sum()
+    alto_valor_away = (col_av == '🏆 ALTO VALOR').sum()
+
+    col_fav = df['eh_fav_forte_com_momentum'] if 'eh_fav_forte_com_momentum' in df.columns else pd.Series([0]*len(df))
+    fav_forte_momentum = (col_fav == 1).sum()
+
+    col_m_h = df['eh_forte_melhora_home'] if 'eh_forte_melhora_home' in df.columns else pd.Series([0]*len(df))
+    col_m_a = df['eh_forte_melhora_away'] if 'eh_forte_melhora_away' in df.columns else pd.Series([0]*len(df))
+    forte_melhora = ((col_m_h == 1) | (col_m_a == 1)).sum()
+
+    col_conf_h = df['conflito_agg_regressao_home'] if 'conflito_agg_regressao_home' in df.columns else pd.Series([0]*len(df))
+    col_conf_a = df['conflito_agg_regressao_away'] if 'conflito_agg_regressao_away' in df.columns else pd.Series([0]*len(df))
+    conflitos_value = ((col_conf_h == 1) | (col_conf_a == 1)).sum()
+
+    col_score = df['score_confianca_composto'] if 'score_confianca_composto' in df.columns else pd.Series([0]*len(df))
+    score_conf_medio = col_score.mean()
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -1139,12 +1150,12 @@ def resumo_3d_16_quadrantes_hoje(df):
         st.metric("🎯 Alto Valor", alto_valor_home + alto_valor_away)
     with col4:
         st.metric("🔥 Conflitos Value", conflitos_value)
-        st.metric("📊 Score Confiança Médio", f"{df.get('score_confianca_composto', pd.Series([0]*len(df))).mean():.2f}")
+        st.metric("📊 Score Confiança Médio", f"{score_conf_medio:.2f}")
 
-    st.markdown("#### 📊 Distribuição de Recomendações 3D Inteligentes")
     if 'Recomendacao' in df.columns:
-        dist_recomendacoes = df['Recomendacao'].value_counts()
-        st.dataframe(dist_recomendacoes, use_container_width=True)
+        st.markdown("#### 📊 Distribuição de Recomendações 3D Inteligentes")
+        st.dataframe(df['Recomendacao'].value_counts(), use_container_width=True)
+
 
 # ========================= EXECUÇÃO FINAL (COM BOTÃO B) =========================
 st.markdown("## 🧠 Modelo 3D Inteligente - Treino & Recomendações")
