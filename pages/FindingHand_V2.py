@@ -734,7 +734,7 @@ def main_handicap_v1():
                 # ✅ ADDED: Estilo para tabela filtrada também
                 def color_live_score_filtered(val):
                     if '⚽' in str(val):
-                        return 'background-color: #e6ffe6'
+                        return ''
                     return ''
                 
                 styled_filtrado = df_filtrado.style.applymap(color_live_score_filtered, subset=['Live_Score'])
