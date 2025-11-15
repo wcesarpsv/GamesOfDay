@@ -1435,5 +1435,78 @@ st.info("📌 Esta tabela mostra EV + Resultados e deixa claro onde buscamos val
 
 
 
+
+
+# ========================= 🧠 ANALISE ESTRATÉGICA PURA (SEM EV) =========================
+
+st.markdown("### 🧠 Análise Estratégica Baseada em Momentum + Regressão (Sem EV)")
+
+def analise_estrategica_sem_ev(row):
+    mh = row.get('M_H', 0)
+    ma = row.get('M_A', 0)
+    tend_h = row.get('Tendencia_Home', '⚖️')
+    tend_a = row.get('Tendencia_Away', '⚖️')
+    cluster_h = row.get('Cluster3D_Desc', '')
+    cluster_a = row.get('Cluster3D_Desc', '')
+
+    texto = []
+
+    # Tendências e Momentum
+    if mh > 1.0:
+        texto.append("🔥 Home em forte evolução")
+    elif mh < -1.0:
+        texto.append("📉 Home em forte queda")
+
+    if ma > 1.0:
+        texto.append("🚀 Away em forte evolução")
+    elif ma < -1.0:
+        texto.append("📉 Away em forte queda")
+
+    # Clusters mostrando vantagem tática
+    if "Under" in cluster_a or "Underdog" in cluster_a:
+        texto.append("📊 Away com perfil de Underdog Forte")
+    if "Fav Forte" in cluster_h:
+        texto.append("💪 Perfil de Favorito Forte em casa")
+
+    # Conflito entre expectativas e tendência
+    if "FORTE QUEDA" in tend_h and mh < 0:
+        texto.append("⚠ Favorito da casa inflado → cuidado")
+    if "FORTE MELHORA" in tend_a and ma > 0:
+        texto.append("💡 Underdog em ascensão → pode ter valor")
+
+    # Conclusão simples caso nenhum insight forte
+    if not texto:
+        texto.append("↔ Equilíbrio — jogo difícil de ler")
+
+    return " | ".join(texto)
+
+ranking_3d['Analysis_Text_Pure'] = ranking_3d.apply(analise_estrategica_sem_ev, axis=1)
+
+colunas_analise_pura = [
+    'League', 'Home', 'Away',
+    'Asian_Line_Decimal',
+    'M_H', 'M_A',
+    'Tendencia_Home', 'Tendencia_Away',
+    'Cluster3D_Label', 'Cluster3D_Desc',
+    'Analysis_Text_Pure'
+]
+
+df_ana_pura = ranking_3d[colunas_analise_pura].copy()
+df_ana_pura = df_ana_pura.sort_values('Score_Final_3D', ascending=False)
+
+st.dataframe(
+    df_ana_pura.head(num_show).style.format({
+        'M_H': '{:.2f}',
+        'M_A': '{:.2f}',
+        'Asian_Line_Decimal': '{:.2f}',
+    }, na_rep="-"),
+    use_container_width=True
+)
+
+st.markdown("✔ Esta análise é independente do EV e mostra os sinais reais do comportamento dos times.")
+
+
+
+
 st.markdown("---")
 st.markdown("🏁 Fim da execução — Sistema 3D Inteligente totalmente operacional 🚀")
