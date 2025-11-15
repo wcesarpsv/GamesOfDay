@@ -12,11 +12,10 @@ import math
 from sklearn.cluster import KMeans
 import plotly.graph_objects as go
 
-# ========================= CONFIG STREAMLIT =========================
 st.set_page_config(page_title="Análise de Quadrantes 3D - Bet Indicator", layout="wide")
 st.title("🎯 Análise 3D de 16 Quadrantes - ML Avançado (Home & Away)")
 
-# ========================= CONFIGURAÇÕES GERAIS =========================
+# ---------------- Configurações ----------------
 PAGE_PREFIX = "QuadrantesML_3D"
 GAMES_FOLDER = "GamesDay"
 LIVESCORE_FOLDER = "LiveScore"
@@ -26,12 +25,12 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
 os.makedirs(MODELS_FOLDER, exist_ok=True)
 
-# ============================================================
-# 🔧 LIVE SCORE – COLUNAS BÁSICAS
-# ============================================================
-def setup_livescore_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Garante que as colunas do Live Score existam no DataFrame."""
-    df = df.copy()
+# ---------------- CONFIGURAÇÕES LIVE SCORE ----------------
+LIVESCORE_FOLDER = "LiveScore"
+
+
+def setup_livescore_columns(df):
+    """Garante que as colunas do Live Score existam no DataFrame"""
     if 'Goals_H_Today' not in df.columns:
         df['Goals_H_Today'] = np.nan
     if 'Goals_A_Today' not in df.columns:
@@ -42,9 +41,8 @@ def setup_livescore_columns(df: pd.DataFrame) -> pd.DataFrame:
         df['Away_Red'] = np.nan
     return df
 
-# ============================================================
-# 🔧 HELPERS BÁSICOS – LOAD / PREPROCESS
-# ============================================================
+
+# ---------------- Helpers Básicos ----------------
 def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     if "Goals_H_FT_x" in df.columns:
@@ -53,14 +51,14 @@ def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
         df = df.rename(columns={"Goals_H_FT_y": "Goals_H_FT", "Goals_A_FT_y": "Goals_A_FT"})
     return df
 
+
 def load_all_games(folder: str) -> pd.DataFrame:
-    if not os.path.exists(folder):
-        return pd.DataFrame()
     files = [f for f in os.listdir(folder) if f.endswith(".csv")]
     if not files:
         return pd.DataFrame()
     dfs = [preprocess_df(pd.read_csv(os.path.join(folder, f))) for f in files]
     return pd.concat(dfs, ignore_index=True)
+
 
 def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "League" not in df.columns:
@@ -68,20 +66,18 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
     pattern = "|".join(EXCLUDED_LEAGUE_KEYWORDS)
     return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
 
-# ============================================================
-# 🔧 ASIAN HANDICAP – CONVERSÃO E TARGET BÁSICO
-# ============================================================
+
 def convert_asian_line_to_decimal(value):
     """
     Converte handicaps asiáticos (Away) no formato string para decimal invertido (Home).
-    Ex.: '0/0.5' (away +0.25) -> home -0.25
+    Retorna: float
     """
     if pd.isna(value):
         return np.nan
 
     value = str(value).strip()
 
-    # Caso simples – número único
+    # Caso simples — número único
     if "/" not in value:
         try:
             num = float(value)
@@ -89,35 +85,212 @@ def convert_asian_line_to_decimal(value):
         except ValueError:
             return np.nan
 
-    # Caso duplo – média dos dois lados, mantendo sinal de origem
+    # Caso duplo — média dos dois lados
     try:
         parts = [float(p) for p in value.split("/")]
         avg = np.mean(parts)
+        # Mantém o sinal do primeiro número
         if str(value).startswith("-"):
             result = -abs(avg)
         else:
             result = abs(avg)
-        # Inverter sinal no final (Away → Home)
+        # Inverte o sinal no final (Away → Home)
         return -result
     except ValueError:
         return np.nan
 
+
 def calculate_ah_home_target(margin, asian_line_str):
-    """Calcula target AH Home diretamente da string original."""
+    """Calcula target AH Home diretamente da string original"""
     line_home = convert_asian_line_to_decimal(asian_line_str)
     if pd.isna(line_home) or pd.isna(margin):
         return np.nan
     return 1 if margin > line_home else 0
 
+
+# ==============================================================  
+# 🧩 BLOCO – CLUSTERIZAÇÃO 3D (KMEANS)
+# ==============================================================
+
+def aplicar_clusterizacao_3d(df, n_clusters=2, random_state=42):
+    """
+    Cria clusters espaciais com base em Aggression, Momentum Liga e Momentum Time.
+    Retorna o DataFrame com a nova coluna 'Cluster3D_Label'.
+    """
+
+    df = df.copy()
+
+    # Garante as colunas necessárias
+    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        st.warning(f"⚠️ Colunas ausentes para clusterização 3D: {missing}")
+        df['Cluster3D_Label'] = -1
+        return df
+
+    # Diferenças espaciais (vetor 3D)
+    df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
+    df['dy'] = df['M_H'] - df['M_A']
+    df['dz'] = df['MT_H'] - df['MT_A']
+
+    X_cluster = df[['dx', 'dy', 'dz']].fillna(0).to_numpy()
+
+    # KMeans 3D
+    kmeans = KMeans(
+        n_clusters=n_clusters,
+        random_state=random_state,
+        init='k-means++',
+        n_init=10
+    )
+    df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
+
+    # 🧠 Calcular centroide de cada cluster para diagnóstico
+    centroids = pd.DataFrame(kmeans.cluster_centers_, columns=['dx', 'dy', 'dz'])
+    centroids['Cluster'] = range(n_clusters)
+
+    st.markdown("### 🧭 Clusters 3D Criados (KMeans)")
+    st.dataframe(centroids.style.format({'dx': '{:.2f}', 'dy': '{:.2f}', 'dz': '{:.2f}'}))
+
+    # Adicionar também uma descrição textual leve (para visualização)
+    df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
+        0: '⚡ Agressivos + Momentum Positivo',
+        1: '💤 Reativos + Momentum Negativo',
+        2: '⚖️ Equilibrados',
+        3: '🔥 Alta Variância',
+        4: '🌪️ Caóticos / Transição'
+    }).fillna('🌀 Outro')
+
+    return df
+
+
+# ---------------- Carregar Dados ----------------
+st.info("📂 Carregando dados para análise 3D de 16 quadrantes...")
+
+files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
+if not files:
+    st.warning("No CSV files found in GamesDay folder.")
+    st.stop()
+
+options = files[-7:] if len(files) >= 7 else files
+selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
+
+date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
+selected_date_str = date_match.group(0) if date_match else datetime.now().strftime("%Y-%m-%d")
+
+# Jogos do dia (sem cache inicial – será via função)
+games_today_raw = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
+games_today_raw = filter_leagues(games_today_raw)
+
+
+# ---------------- CACHE INTELIGENTE ----------------
+@st.cache_data(ttl=3600)
+def load_cached_data(selected_file):
+    """Cache apenas dos dados pesados"""
+    games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
+    games_today = filter_leagues(games_today)
+
+    history = filter_leagues(load_all_games(GAMES_FOLDER))
+    history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line"]).copy()
+
+    return games_today, history
+
+
+games_today, history = load_cached_data(selected_file)
+
+
+# ---------------- LIVE SCORE INTEGRATION ----------------
+def load_and_merge_livescore(games_today, selected_date_str):
+    """Carrega e faz merge dos dados do Live Score"""
+
+    livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
+
+    # Setup das colunas
+    games_today = setup_livescore_columns(games_today)
+
+    if os.path.exists(livescore_file):
+        st.info(f"📡 LiveScore file found: {livescore_file}")
+        results_df = pd.read_csv(livescore_file)
+
+        # Filtrar jogos cancelados/adiados
+        results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
+
+        required_cols = [
+            'Id', 'status', 'home_goal', 'away_goal',
+            'home_ht_goal', 'away_ht_goal',
+            'home_corners', 'away_corners',
+            'home_yellow', 'away_yellow',
+            'home_red', 'away_red'
+        ]
+
+        missing_cols = [col for col in required_cols if col not in results_df.columns]
+
+        if missing_cols:
+            st.error(f"❌ LiveScore file missing columns: {missing_cols}")
+            return games_today
+        else:
+            games_today = games_today.merge(
+                results_df,
+                left_on='Id',
+                right_on='Id',
+                how='left',
+                suffixes=('', '_RAW')
+            )
+
+            # Atualizar gols apenas para jogos finalizados
+            games_today['Goals_H_Today'] = games_today['home_goal']
+            games_today['Goals_A_Today'] = games_today['away_goal']
+            games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
+
+            # Atualizar cartões vermelhos
+            games_today['Home_Red'] = games_today['home_red']
+            games_today['Away_Red'] = games_today['away_red']
+
+            st.success(f"✅ LiveScore merged: {len(results_df)} games loaded")
+            return games_today
+    else:
+        st.warning(f"⚠️ No LiveScore file found for: {selected_date_str}")
+        return games_today
+
+
+# Aplicar Live Score
+games_today = load_and_merge_livescore(games_today, selected_date_str)
+
+# Histórico consolidado (reaproveitando o cache, mas reforçando consistência)
+history = filter_leagues(load_all_games(GAMES_FOLDER))
+history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line"]).copy()
+
+# ---------------- CONVERSÃO ASIAN LINE ----------------
+history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
+games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
+
+history = history.dropna(subset=['Asian_Line_Decimal'])
+st.info(f"📊 Histórico com Asian Line válida: {len(history)} jogos")
+
+# Filtro anti-leakage temporal
+if "Date" in history.columns:
+    try:
+        selected_date = pd.to_datetime(selected_date_str)
+        history["Date"] = pd.to_datetime(history["Date"], errors="coerce")
+        history = history[history["Date"] < selected_date].copy()
+        st.info(f"📊 Treinando com {len(history)} jogos anteriores a {selected_date_str}")
+    except Exception as e:
+        st.error(f"Erro ao aplicar filtro temporal: {e}")
+
+# Targets AH históricos
+history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
+history["Target_AH_Home"] = history.apply(
+    lambda r: 1 if r["Margin"] > r["Asian_Line_Decimal"] else 0, axis=1
+)
+
+
+# ============================================================  
+# 🧮 RESULTADO & PROFIT HISTÓRICO PARA EV (AH)
 # ============================================================
-# 🧮 RESULTADO & PROFIT HISTÓRICO PARA EV (AH) – HISTORY
-# ============================================================
+
 def determine_handicap_result_history(row, side="HOME"):
     """
     Determina o resultado do handicap asiático no HISTÓRICO,
     usando Goals_H_FT / Goals_A_FT e Asian_Line_Decimal.
-    Retorna:
-      - 'HOME_COVERED', 'AWAY_COVERED', 'HALF_WIN', 'HALF_LOSS', 'PUSH'
     """
     try:
         gh = float(row['Goals_H_FT'])
@@ -137,10 +310,11 @@ def determine_handicap_result_history(row, side="HOME"):
             adjusted = (gh + line) - ga
         else:
             adjusted = (ga - line) - gh
+
         if adjusted > 0:
             return 1.0
         elif adjusted == 0:
-            return 0.5
+            return 0.5  # push
         else:
             return 0.0
 
@@ -180,16 +354,11 @@ def determine_handicap_result_history(row, side="HOME"):
     else:
         return "PUSH"
 
+
 def calculate_handicap_profit_history(row, side="HOME"):
     """
     Calcula o profit líquido histórico para uma aposta fixa em HOME ou AWAY
     usando Asian_Line_Decimal e odds líquidas Odd_H_Asi / Odd_A_Asi.
-    Regras (push = 0):
-      - WIN       → +odd
-      - HALF_WIN  → +odd/2
-      - PUSH      → 0
-      - HALF_LOSS → -0.5
-      - LOSS      → -1
     """
     result = determine_handicap_result_history(row, side=side)
     if result is None:
@@ -215,16 +384,19 @@ def calculate_handicap_profit_history(row, side="HOME"):
     else:
         return -1.0
 
-# ============================================================
+
+# ============================================================  
 # 🧩 PREPARAR TARGETS EV (HOME & AWAY)
 # ============================================================
-def preparar_targets_ev(history: pd.DataFrame) -> pd.DataFrame:
+
+def preparar_targets_ev(history):
     """
     Cria:
       - Profit_Home_EV, Profit_Away_EV
       - Target_EV_Home, Target_EV_Away (1 se profit > 0, senão 0)
     """
     history = history.copy()
+
     required_cols = ["Goals_H_FT", "Goals_A_FT", "Asian_Line_Decimal", "Odd_H_Asi", "Odd_A_Asi"]
     missing = [c for c in required_cols if c not in history.columns]
     if missing:
@@ -241,23 +413,85 @@ def preparar_targets_ev(history: pd.DataFrame) -> pd.DataFrame:
     history["Target_EV_Home"] = (history["Profit_Home_EV"] > 0).astype(int)
     history["Target_EV_Away"] = (history["Profit_Away_EV"] > 0).astype(int)
 
-    st.info(
-        f"🎯 Targets EV criados: {history['Target_EV_Home'].sum()} jogos lucrativos Home, "
-        f"{history['Target_EV_Away'].sum()} jogos lucrativos Away."
-    )
+    st.info(f"🎯 Targets EV criados: {history['Target_EV_Home'].sum()} jogos lucrativos Home, "
+            f"{history['Target_EV_Away'].sum()} jogos lucrativos Away.")
+
     return history
 
-# ============================================================
-# 🧮 3D – DISTÂNCIAS / ÂNGULOS / FEATURES
-# ============================================================
-def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
+
+# Criar targets EV após já ter Margin / Target_AH_Home / Asian_Line_Decimal
+history = preparar_targets_ev(history)
+
+
+# ---------------- SISTEMA 3D DE 16 QUADRANTES ----------------
+st.markdown("## 🎯 Sistema 3D de 16 Quadrantes")
+
+QUADRANTES_16 = {
+    # 🔵 QUADRANTE 1-4: FORTE FAVORITO (+0.75 a +1.0)
+    1: {"nome": "Fav Forte Muito Forte", "agg_min": 0.75, "agg_max": 1.0, "hs_min": 45, "hs_max": 60},
+    2: {"nome": "Fav Forte Forte",       "agg_min": 0.75, "agg_max": 1.0, "hs_min": 30, "hs_max": 45},
+    3: {"nome": "Fav Forte Moderado",    "agg_min": 0.75, "agg_max": 1.0, "hs_min": 15, "hs_max": 30},
+    4: {"nome": "Fav Forte Neutro",      "agg_min": 0.75, "agg_max": 1.0, "hs_min": -15, "hs_max": 15},
+
+    # 🟢 QUADRANTE 5-8: FAVORITO MODERADO (+0.25 a +0.75)
+    5: {"nome": "Fav Moderado Muito Forte", "agg_min": 0.25, "agg_max": 0.75, "hs_min": 45, "hs_max": 60},
+    6: {"nome": "Fav Moderado Forte",       "agg_min": 0.25, "agg_max": 0.75, "hs_min": 30, "hs_max": 45},
+    7: {"nome": "Fav Moderado Moderado",    "agg_min": 0.25, "agg_max": 0.75, "hs_min": 15, "hs_max": 30},
+    8: {"nome": "Fav Moderado Neutro",      "agg_min": 0.25, "agg_max": 0.75, "hs_min": -15, "hs_max": 15},
+
+    # 🟡 QUADRANTE 9-12: UNDERDOG MODERADO (-0.75 a -0.25)
+    9: {"nome": "Under Moderado Neutro",    "agg_min": -0.75, "agg_max": -0.25, "hs_min": -15, "hs_max": 15},
+    10: {"nome": "Under Moderado Moderado", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -30, "hs_max": -15},
+    11: {"nome": "Under Moderado Forte",    "agg_min": -0.75, "agg_max": -0.25, "hs_min": -45, "hs_max": -30},
+    12: {"nome": "Under Moderado Muito Forte", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -60, "hs_max": -45},
+
+    # 🔴 QUADRANTE 13-16: FORTE UNDERDOG (-1.0 a -0.75)
+    13: {"nome": "Under Forte Neutro",    "agg_min": -1.0, "agg_max": -0.75, "hs_min": -15, "hs_max": 15},
+    14: {"nome": "Under Forte Moderado",  "agg_min": -1.0, "agg_max": -0.75, "hs_min": -30, "hs_max": -15},
+    15: {"nome": "Under Forte Forte",     "agg_min": -1.0, "agg_max": -0.75, "hs_min": -45, "hs_max": -30},
+    16: {"nome": "Under Forte Muito Forte", "agg_min": -1.0, "agg_max": -0.75, "hs_min": -60, "hs_max": -45}
+}
+
+
+def classificar_quadrante_16(agg, hs):
+    """Classifica Aggression e HandScore em um dos 16 quadrantes"""
+    if pd.isna(agg) or pd.isna(hs):
+        return 0
+
+    for quadrante_id, config in QUADRANTES_16.items():
+        agg_ok = (config['agg_min'] <= agg <= config['agg_max'])
+        hs_ok = (config['hs_min'] <= hs <= config['hs_max'])
+
+        if agg_ok and hs_ok:
+            return quadrante_id
+
+    return 0
+
+
+games_today['Quadrante_Home'] = games_today.apply(
+    lambda x: classificar_quadrante_16(x.get('Aggression_Home'), x.get('HandScore_Home')), axis=1
+)
+games_today['Quadrante_Away'] = games_today.apply(
+    lambda x: classificar_quadrante_16(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
+)
+
+history['Quadrante_Home'] = history.apply(
+    lambda x: classificar_quadrante_16(x.get('Aggression_Home'), x.get('HandScore_Home')), axis=1
+)
+history['Quadrante_Away'] = history.apply(
+    lambda x: classificar_quadrante_16(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
+)
+
+
+# ---------------- CÁLCULO DE DISTÂNCIAS 3D (Aggression × M × MT) ----------------
+def calcular_distancias_3d(df):
     """
     Calcula distância 3D e ângulos usando Aggression, Momentum (liga) e Momentum (time)
-    Versão neutra + features compostas (sin/cos combinados e sinal vetorial).
     """
     df = df.copy()
+
     required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
-    missing_cols = [c for c in required_cols if c not in df.columns]
+    missing_cols = [col for col in required_cols if col not in df.columns]
 
     if missing_cols:
         st.warning(f"⚠️ Colunas faltando para cálculo 3D: {missing_cols}")
@@ -299,220 +533,24 @@ def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
 
     df['Vector_Sign'] = np.sign(dx * dy * dz)
     df['Quadrant_Separation_3D'] = (dx + dy + dz) / 3
+
     df['Momentum_Diff'] = dy
     df['Momentum_Diff_MT'] = dz
+
     df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
 
     return df
 
-# ============================================================
-# 🧩 CLUSTERIZAÇÃO 3D – GLOBAL E POR LIGA
-# ============================================================
-def aplicar_clusterizacao_3d(df, n_clusters=2, random_state=42):
-    """
-    Cria clusters espaciais com base em Aggression, Momentum Liga e Momentum Time.
-    Retorna o DataFrame com a nova coluna 'Cluster3D_Label'.
-    """
-    df = df.copy()
-    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        st.warning(f"⚠️ Colunas ausentes para clusterização 3D: {missing}")
-        df['Cluster3D_Label'] = -1
-        return df
 
-    df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
-    df['dy'] = df['M_H'] - df['M_A']
-    df['dz'] = df['MT_H'] - df['MT_A']
+# Aplicar cálculo 3D ao games_today
+games_today = calcular_distancias_3d(games_today)
 
-    X_cluster = df[['dx', 'dy', 'dz']].fillna(0).to_numpy()
 
-    kmeans = KMeans(
-        n_clusters=n_clusters,
-        random_state=random_state,
-        init='k-means++',
-        n_init=10
-    )
-    df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
-
-    centroids = pd.DataFrame(kmeans.cluster_centers_, columns=['dx', 'dy', 'dz'])
-    centroids['Cluster'] = range(n_clusters)
-
-    st.markdown("### 🧭 Clusters 3D Criados (KMeans)")
-    st.dataframe(centroids.style.format({'dx': '{:.2f}', 'dy': '{:.2f}', 'dz': '{:.2f}'}))
-
-    df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
-        0: '⚡ Agressivos + Momentum Positivo',
-        1: '💤 Reativos + Momentum Negativo',
-        2: '⚖️ Equilibrados',
-        3: '🔥 Alta Variância',
-        4: '🌪️ Caóticos / Transição'
-    }).fillna('🌀 Outro')
-
-    return df
-
-def aplicar_clusterizacao_3d_por_liga(df, n_clusters=4, random_state=42):
-    df = df.copy()
-    required_cols = ["Aggression_Home", "Aggression_Away", "M_H", "M_A", "MT_H", "MT_A", "League"]
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        st.warning(f"⚠️ Colunas ausentes para clusterização por liga: {missing}")
-        df["Cluster3D_Label"] = 0
-        df["Cluster3D_Desc"] = "⚪ Equilibrado / Neutro"
-        df["C3D_ZScore"] = 0
-        df["C3D_Sin"] = 0
-        df["C3D_Cos"] = 1
-        return df
-
-    df["dx"] = df["Aggression_Home"] - df["Aggression_Away"]
-    df["dy"] = df["M_H"] - df["M_A"]
-    df["dz"] = df["MT_H"] - df["MT_A"]
-
-    df["Cluster3D_Label"] = np.nan
-    ligas_processadas = 0
-
-    for league, subdf in df.groupby("League"):
-        subdf = subdf.dropna(subset=["dx", "dy", "dz"]).copy()
-        if len(subdf) < n_clusters * 2:
-            df.loc[subdf.index, "Cluster3D_Label"] = 0
-            continue
-
-        try:
-            kmeans = KMeans(n_clusters=n_clusters, random_state=random_state)
-            subdf["Cluster3D_Label"] = kmeans.fit_predict(subdf[["dx", "dy", "dz"]])
-            df.loc[subdf.index, "Cluster3D_Label"] = subdf["Cluster3D_Label"]
-            ligas_processadas += 1
-        except Exception as e:
-            st.warning(f"⚠️ Falha ao clusterizar {league}: {e}")
-            df.loc[subdf.index, "Cluster3D_Label"] = 0
-
-    df["Cluster3D_Label"] = df["Cluster3D_Label"].fillna(0).astype(int)
-
-    mean_c = df["Cluster3D_Label"].mean()
-    std_c = df["Cluster3D_Label"].std(ddof=0) or 1
-    df["C3D_ZScore"] = (df["Cluster3D_Label"] - mean_c) / std_c
-    df["C3D_Sin"] = np.sin(df["Cluster3D_Label"])
-    df["C3D_Cos"] = np.cos(df["Cluster3D_Label"])
-
-    desc_map = {
-        0: "⚪ Equilibrado / Neutro",
-        1: "🟢 Fav Leve / Momentum Positivo",
-        2: "🔵 Agressivo / Dominante",
-        3: "🔴 Underdog / Momentum Negativo"
-    }
-    df["Cluster3D_Desc"] = df["Cluster3D_Label"].map(desc_map).fillna("🌀 Outro")
-
-    st.info(f"✅ Clusterização 3D por liga concluída ({ligas_processadas} ligas processadas).")
-    return df
-
-# ============================================================
-# 🔁 CARREGAMENTO COM CACHE
-# ============================================================
-@st.cache_data(ttl=3600)
-def load_cached_data(selected_file: str):
-    games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
-    games_today = filter_leagues(games_today)
-
-    history = filter_leagues(load_all_games(GAMES_FOLDER))
-    if not history.empty:
-        history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line"]).copy()
-
-    return games_today, history
-
-# ============================================================
-# 🔁 LIVE SCORE – MERGE
-# ============================================================
-def load_and_merge_livescore(games_today: pd.DataFrame, selected_date_str: str) -> pd.DataFrame:
-    """Carrega e faz merge dos dados do Live Score."""
-    games_today = setup_livescore_columns(games_today)
-    livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
-
-    if not os.path.exists(livescore_file):
-        st.warning(f"⚠️ No LiveScore file found for: {selected_date_str}")
-        return games_today
-
-    st.info(f"📡 LiveScore file found: {livescore_file}")
-    results_df = pd.read_csv(livescore_file)
-
-    if 'status' in results_df.columns:
-        results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
-
-    required_cols = [
-        'Id', 'status', 'home_goal', 'away_goal',
-        'home_ht_goal', 'away_ht_goal',
-        'home_corners', 'away_corners',
-        'home_yellow', 'away_yellow',
-        'home_red', 'away_red'
-    ]
-    missing_cols = [col for col in required_cols if col not in results_df.columns]
-
-    if missing_cols:
-        st.error(f"❌ LiveScore file missing columns: {missing_cols}")
-        return games_today
-
-    games_today = games_today.merge(
-        results_df,
-        left_on='Id',
-        right_on='Id',
-        how='left',
-        suffixes=('', '_RAW')
-    )
-
-    games_today['Goals_H_Today'] = games_today['home_goal']
-    games_today['Goals_A_Today'] = games_today['away_goal']
-    games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
-
-    games_today['Home_Red'] = games_today['home_red']
-    games_today['Away_Red'] = games_today['away_red']
-
-    st.success(f"✅ LiveScore merged: {len(results_df)} games loaded")
-    return games_today
-
-# ============================================================
-# 🎯 DEFINIÇÃO DOS 16 QUADRANTES (AGGRESSION x HANDSCORE)
-# ============================================================
-QUADRANTES_16 = {
-    # 🔵 QUADRANTE 1-4: FORTE FAVORITO (+0.75 a +1.0)
-    1: {"nome": "Fav Forte Muito Forte", "agg_min": 0.75, "agg_max": 1.0, "hs_min": 45, "hs_max": 60},
-    2: {"nome": "Fav Forte Forte",       "agg_min": 0.75, "agg_max": 1.0, "hs_min": 30, "hs_max": 45},
-    3: {"nome": "Fav Forte Moderado",    "agg_min": 0.75, "agg_max": 1.0, "hs_min": 15, "hs_max": 30},
-    4: {"nome": "Fav Forte Neutro",      "agg_min": 0.75, "agg_max": 1.0, "hs_min": -15, "hs_max": 15},
-
-    # 🟢 QUADRANTE 5-8: FAVORITO MODERADO (+0.25 a +0.75)
-    5: {"nome": "Fav Moderado Muito Forte", "agg_min": 0.25, "agg_max": 0.75, "hs_min": 45, "hs_max": 60},
-    6: {"nome": "Fav Moderado Forte",       "agg_min": 0.25, "agg_max": 0.75, "hs_min": 30, "hs_max": 45},
-    7: {"nome": "Fav Moderado Moderado",    "agg_min": 0.25, "agg_max": 0.75, "hs_min": 15, "hs_max": 30},
-    8: {"nome": "Fav Moderado Neutro",      "agg_min": 0.25, "agg_max": 0.75, "hs_min": -15, "hs_max": 15},
-
-    # 🟡 QUADRANTE 9-12: UNDERDOG MODERADO (-0.75 a -0.25)
-    9:  {"nome": "Under Moderado Neutro",        "agg_min": -0.75, "agg_max": -0.25, "hs_min": -15, "hs_max": 15},
-    10: {"nome": "Under Moderado Moderado",      "agg_min": -0.75, "agg_max": -0.25, "hs_min": -30, "hs_max": -15},
-    11: {"nome": "Under Moderado Forte",         "agg_min": -0.75, "agg_max": -0.25, "hs_min": -45, "hs_max": -30},
-    12: {"nome": "Under Moderado Muito Forte",   "agg_min": -0.75, "agg_max": -0.25, "hs_min": -60, "hs_max": -45},
-
-    # 🔴 QUADRANTE 13-16: FORTE UNDERDOG (-1.0 a -0.75)
-    13: {"nome": "Under Forte Neutro",      "agg_min": -1.0, "agg_max": -0.75, "hs_min": -15, "hs_max": 15},
-    14: {"nome": "Under Forte Moderado",    "agg_min": -1.0, "agg_max": -0.75, "hs_min": -30, "hs_max": -15},
-    15: {"nome": "Under Forte Forte",       "agg_min": -1.0, "agg_max": -0.75, "hs_min": -45, "hs_max": -30},
-    16: {"nome": "Under Forte Muito Forte", "agg_min": -1.0, "agg_max": -0.75, "hs_min": -60, "hs_max": -45}
-}
-
-def classificar_quadrante_16(agg, hs):
-    """Classifica Aggression e HandScore em um dos 16 quadrantes."""
-    if pd.isna(agg) or pd.isna(hs):
-        return 0
-    for quadrante_id, config in QUADRANTES_16.items():
-        agg_ok = (config['agg_min'] <= agg <= config['agg_max'])
-        hs_ok = (config['hs_min'] <= hs <= config['hs_max'])
-        if agg_ok and hs_ok:
-            return quadrante_id
-    return 0
-
-# ============================================================
-# 📈 PLOT 2D DOS 16 QUADRANTES
-# ============================================================
+# ---------------- VISUALIZAÇÃO DOS 16 QUADRANTES (2D) ----------------
 def plot_quadrantes_16(df, side="Home"):
+    """Plot dos 16 quadrantes com cores e anotações"""
     fig, ax = plt.subplots(figsize=(14, 10))
+
     cores_categorias = {
         'Fav Forte': 'lightcoral',
         'Fav Moderado': 'lightpink',
@@ -523,14 +561,13 @@ def plot_quadrantes_16(df, side="Home"):
     for quadrante_id in range(1, 17):
         mask = df[f'Quadrante_{side}'] == quadrante_id
         if mask.any():
-            nome = QUADRANTES_16[quadrante_id]['nome']
-            categoria = " ".join(nome.split()[:2])
+            categoria = QUADRANTES_16[quadrante_id]['nome'].split()[0] + ' ' + QUADRANTES_16[quadrante_id]['nome'].split()[1]
             cor = cores_categorias.get(categoria, 'gray')
 
             x = df.loc[mask, f'Aggression_{side}']
             y = df.loc[mask, f'HandScore_{side}']
             ax.scatter(x, y, c=cor,
-                       label=nome,
+                       label=QUADRANTES_16[quadrante_id]['nome'],
                        alpha=0.7, s=50)
 
     for x in [-0.75, -0.25, 0.25, 0.75]:
@@ -560,13 +597,128 @@ def plot_quadrantes_16(df, side="Home"):
     ax.set_title(f'16 Quadrantes - {side} (Visão 2D)')
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
     ax.grid(True, alpha=0.3)
+
     plt.tight_layout()
     return fig
 
-# ============================================================
-# 📊 VISUALIZAÇÃO 3D – TAMANHO FIXO
-# ============================================================
+
+st.markdown("### 📈 Visualização dos 16 Quadrantes (2D)")
+col1, col2 = st.columns(2)
+with col1:
+    st.pyplot(plot_quadrantes_16(games_today, "Home"))
+with col2:
+    st.pyplot(plot_quadrantes_16(games_today, "Away"))
+
+
+# ---------------- VISUALIZAÇÃO INTERATIVA 3D COM TAMANHO FIXO ----------------
+st.markdown("## 🎯 Visualização Interativa 3D – Tamanho Fixo")
+
+if "League" in games_today.columns and not games_today["League"].isna().all():
+    leagues = sorted(games_today["League"].dropna().unique())
+    selected_league = st.selectbox(
+        "Selecione a liga para análise:",
+        options=["⚽ Todas as ligas"] + list(leagues),
+        index=0
+    )
+
+    if selected_league != "⚽ Todas as ligas":
+        df_filtered = games_today[games_today["League"] == selected_league].copy()
+    else:
+        df_filtered = games_today.copy()
+else:
+    st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
+    df_filtered = games_today.copy()
+
+max_n = len(df_filtered)
+n_to_show = st.slider("Quantos confrontos exibir (Top por distância 3D):", 10, min(max_n, 200), 40, step=5)
+
+
+# ---------------- FILTRO ANGULAR 3D ----------------
+st.markdown("### 🎯 Filtro Angular 3D")
+
+col_ang1, col_ang2, col_ang3 = st.columns(3)
+
+with col_ang1:
+    angulo_xy_range = st.slider(
+        "Ângulo XY - Aggression × Momentum Liga:",
+        -180, 180, (-45, 45),
+        step=5,
+        help="Filtra jogos por inclinação entre Aggression (X) e Momentum Liga (Y)"
+    )
+
+with col_ang2:
+    angulo_xz_range = st.slider(
+        "Ângulo XZ - Aggression × Momentum Time:",
+        -180, 180, (-45, 45),
+        step=5,
+        help="Filtra jogos por inclinação entre Aggression (X) e Momentum Time (Z)"
+    )
+
+with col_ang3:
+    magnitude_min = st.slider(
+        "Magnitude Mínima 3D:",
+        0.0, 5.0, 0.5, 0.1,
+        help="Filtra por distância mínima da origem (intensidade do sinal 3D)"
+    )
+
+aplicar_filtro = st.button("🎯 Aplicar Filtros Angulares", type="primary")
+
+
+def filtrar_por_angulo(df, angulo_xy_range, angulo_xz_range, magnitude_min):
+    """Filtra jogos por ângulos e magnitude no espaço 3D"""
+    df_filtrado = df.copy()
+
+    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+    missing_cols = [col for col in required_cols if col not in df_filtrado.columns]
+
+    if missing_cols:
+        st.warning(f"⚠️ Colunas ausentes para filtro angular: {missing_cols}")
+        return df_filtrado
+
+    dx = df_filtrado['Aggression_Home'] - df_filtrado['Aggression_Away']
+    dy = df_filtrado['M_H'] - df_filtrado['M_A']
+    dz = df_filtrado['MT_H'] - df_filtrado['MT_A']
+
+    angulo_xy = np.degrees(np.arctan2(dy, dx))
+    angulo_xz = np.degrees(np.arctan2(dz, dx))
+    magnitude = np.sqrt(dx**2 + dy**2 + dz**2)
+
+    mask_xy = (angulo_xy >= angulo_xy_range[0]) & (angulo_xy <= angulo_xy_range[1])
+    mask_xz = (angulo_xz >= angulo_xz_range[0]) & (angulo_xz <= angulo_xz_range[1])
+    mask_mag = magnitude >= magnitude_min
+
+    mask = mask_xy & mask_xz & mask_mag
+
+    df_filtrado = df_filtrado[mask].copy()
+    df_filtrado['Angulo_XY'] = angulo_xy[mask]
+    df_filtrado['Angulo_XZ'] = angulo_xz[mask]
+    df_filtrado['Magnitude_3D_Filtro'] = magnitude[mask]
+
+    return df_filtrado
+
+
+# PREPARAR DADOS PARA VISUALIZAÇÃO 3D
+df_plot = df_filtered.copy()
+
+if aplicar_filtro:
+    df_plot = filtrar_por_angulo(df_plot, angulo_xy_range, angulo_xz_range, magnitude_min)
+    st.success(f"✅ Filtro aplicado! {len(df_plot)} jogos encontrados com os critérios angulares.")
+
+    if not df_plot.empty:
+        col1_m, col2_m, col3_m = st.columns(3)
+        with col1_m:
+            st.metric("Ângulo XY Médio", f"{df_plot['Angulo_XY'].mean():.1f}°")
+        with col2_m:
+            st.metric("Ângulo XZ Médio", f"{df_plot['Angulo_XZ'].mean():.1f}°")
+        with col3_m:
+            st.metric("Magnitude Média", f"{df_plot['Magnitude_3D_Filtro'].mean():.2f}")
+else:
+    df_plot = df_plot.nlargest(n_to_show, "Quadrant_Dist_3D")
+
+
 def create_fixed_3d_plot(df_plot, n_to_show, selected_league):
+    """Cria gráfico 3D com tamanho fixo para referência espacial consistente"""
+
     fig_3d = go.Figure()
 
     X_RANGE = [-1.2, 1.2]
@@ -677,7 +829,7 @@ def create_fixed_3d_plot(df_plot, n_to_show, selected_league):
         showlegend=False
     ))
 
-    titulo_3d = f"Top {n_to_show} Distâncias 3D – Tamanho Fixo"
+    titulo_3d = f"Top {min(n_to_show, len(df_plot))} Distâncias 3D – Tamanho Fixo"
     if selected_league != "⚽ Todas as ligas":
         titulo_3d += f" | {selected_league}"
 
@@ -737,13 +889,88 @@ def create_fixed_3d_plot(df_plot, n_to_show, selected_league):
 
     return fig_3d
 
-# ============================================================
-# 🧠 MODELO 3D – CLUSTERS + RF (HOME COVER)
-# ============================================================
-def treinar_modelo_3d_clusters_single(history: pd.DataFrame, games_today: pd.DataFrame):
+
+fig_3d_fixed = create_fixed_3d_plot(df_plot, n_to_show, selected_league)
+st.plotly_chart(fig_3d_fixed, use_container_width=True)
+
+st.markdown("""
+### 🎯 Legenda do Espaço 3D Fixo
+
+**Eixos com Ranges Fixos:**
+- **X (Vermelho)**: Aggression → `-1.2` (Zebra Extrema) ↔ `+1.2` (Favorito Extremo)
+- **Y (Verde)**: Momentum Liga → `-4.0` (Muito Negativo) ↔ `+4.0` (Muito Positivo)
+- **Z (Azul)**: Momentum Time → `-4.0` (Muito Negativo) ↔ `+4.0` (Muito Positivo)
+
+**Referências Visuais:**
+- 📍 **Plano Cinza**: Ponto neutro (Z=0) - momentum time equilibrado
+- 🔵 **Bolas Azuis**: Times da Casa (Home)
+- 🔴 **Losangos Vermelhos**: Visitantes (Away)
+- ⚫ **Linhas Cinzas**: Conexões entre confrontos
+""")
+
+
+# ---------------- CLUSTERIZAÇÃO 3D POR LIGA ----------------
+def aplicar_clusterizacao_3d_por_liga(df, n_clusters=4, random_state=42):
+    df = df.copy()
+
+    required_cols = ["Aggression_Home", "Aggression_Away", "M_H", "M_A", "MT_H", "MT_A", "League"]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        st.warning(f"⚠️ Colunas ausentes para clusterização por liga: {missing}")
+        return df
+
+    df["dx"] = df["Aggression_Home"] - df["Aggression_Away"]
+    df["dy"] = df["M_H"] - df["M_A"]
+    df["dz"] = df["MT_H"] - df["MT_A"]
+
+    df["Cluster3D_Label"] = np.nan
+    ligas_processadas = 0
+
+    for league, subdf in df.groupby("League"):
+        subdf = subdf.dropna(subset=["dx", "dy", "dz"]).copy()
+
+        if len(subdf) < n_clusters * 2:
+            df.loc[subdf.index, "Cluster3D_Label"] = 0
+            continue
+
+        try:
+            kmeans = KMeans(n_clusters=n_clusters, random_state=random_state)
+            subdf["Cluster3D_Label"] = kmeans.fit_predict(subdf[["dx", "dy", "dz"]])
+            df.loc[subdf.index, "Cluster3D_Label"] = subdf["Cluster3D_Label"]
+            ligas_processadas += 1
+        except Exception as e:
+            st.warning(f"⚠️ Falha ao clusterizar {league}: {e}")
+            df.loc[subdf.index, "Cluster3D_Label"] = 0
+
+    df["Cluster3D_Label"] = df["Cluster3D_Label"].fillna(0).astype(int)
+
+    mean_c = df["Cluster3D_Label"].mean()
+    std_c = df["Cluster3D_Label"].std(ddof=0) or 1
+    df["C3D_ZScore"] = (df["Cluster3D_Label"] - mean_c) / std_c
+    df["C3D_Sin"] = np.sin(df["Cluster3D_Label"])
+    df["C3D_Cos"] = np.cos(df["Cluster3D_Label"])
+
+    desc_map = {
+        0: "⚪ Equilibrado / Neutro",
+        1: "🟢 Fav Leve / Momentum Positivo",
+        2: "🔵 Agressivo / Dominante",
+        3: "🔴 Underdog / Momentum Negativo"
+    }
+    df["Cluster3D_Desc"] = df["Cluster3D_Label"].map(desc_map).fillna("🌀 Outro")
+
+    st.info(f"✅ Clusterização 3D por liga concluída ({ligas_processadas} ligas processadas).")
+    return df
+
+
+# ------------------------------------------------------------
+# 🧠 MODELO 3D PRINCIPAL (Target_AH_Home)
+# ------------------------------------------------------------
+def treinar_modelo_3d_clusters_single(history, games_today):
     """
-    Modelo principal de probabilidade de HOME cobrir o handicap,
-    usando features 3D + clusters.
+    Treina o modelo 3D principal (Target_AH_Home):
+      - Usa distâncias 3D, ângulos, magnitude
+      - Usa clusters 3D por liga
+      - Gera Prob_Home, Prob_Away, ML_Side, Quadrante_ML_Score_*
     """
     history = history.copy()
     games_today = games_today.copy()
@@ -759,7 +986,6 @@ def treinar_modelo_3d_clusters_single(history: pd.DataFrame, games_today: pd.Dat
         history = aplicar_clusterizacao_3d(history, n_clusters=4)
         games_today = aplicar_clusterizacao_3d(games_today, n_clusters=4)
 
-    # Feature eng de clusters
     history['Cluster3D_Label'] = history['Cluster3D_Label'].astype(float)
     games_today['Cluster3D_Label'] = games_today['Cluster3D_Label'].astype(float)
 
@@ -786,6 +1012,11 @@ def treinar_modelo_3d_clusters_single(history: pd.DataFrame, games_today: pd.Dat
     features_cluster = ['Cluster3D_Label', 'C3D_ZScore', 'C3D_Sin', 'C3D_Cos']
 
     X = pd.concat([ligas_dummies, history[features_3d + features_cluster]], axis=1).fillna(0)
+
+    if 'Target_AH_Home' not in history.columns:
+        st.error("❌ 'Target_AH_Home' não encontrado no histórico.")
+        return None, games_today
+
     y_home = history['Target_AH_Home'].astype(int)
 
     model_home = RandomForestClassifier(
@@ -799,7 +1030,8 @@ def treinar_modelo_3d_clusters_single(history: pd.DataFrame, games_today: pd.Dat
     model_home.fit(X, y_home)
 
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(
-        columns=ligas_dummies.columns, fill_value=0
+        columns=ligas_dummies.columns,
+        fill_value=0
     )
     X_today = pd.concat([ligas_today, games_today[features_3d + features_cluster]], axis=1).fillna(0)
 
@@ -844,19 +1076,15 @@ def treinar_modelo_3d_clusters_single(history: pd.DataFrame, games_today: pd.Dat
     st.success("✅ Modelo 3D treinado e clusters analisados com sucesso!")
     return model_home, games_today
 
-# ============================================================
+
+# ============================================================  
 # 🧠 MODELO EV 3D – APRENDER ONDE HÁ VALOR (HOME & AWAY)
 # ============================================================
-def treinar_modelo_ev_3d(history: pd.DataFrame, games_today: pd.DataFrame):
+def treinar_modelo_ev_3d(history, games_today):
     """
     Treina dois modelos:
       - EV_Home: probabilidade de apostar Home ser EV+
       - EV_Away: probabilidade de apostar Away ser EV+
-    Usa:
-      - Features 3D (distâncias, ângulos, magnitude)
-      - Clusters 3D
-      - Asian_Line_Decimal
-      - Odds líquidas Odd_H_Asi / Odd_A_Asi
     """
     history = history.copy()
     games_today = games_today.copy()
@@ -887,6 +1115,7 @@ def treinar_modelo_ev_3d(history: pd.DataFrame, games_today: pd.DataFrame):
     all_features = features_3d + features_cluster + features_market
 
     X_ev = pd.concat([ligas_dummies, history[all_features]], axis=1).fillna(0)
+
     y_ev_home = history["Target_EV_Home"].astype(int)
     y_ev_away = history["Target_EV_Away"].astype(int)
 
@@ -909,6 +1138,7 @@ def treinar_modelo_ev_3d(history: pd.DataFrame, games_today: pd.DataFrame):
         columns=ligas_dummies.columns,
         fill_value=0
     )
+
     X_today_ev = pd.concat([ligas_today, games_today[all_features]], axis=1).fillna(0)
 
     prob_value_home = model_ev_home.predict_proba(X_today_ev)[:, 1]
@@ -932,11 +1162,12 @@ def treinar_modelo_ev_3d(history: pd.DataFrame, games_today: pd.DataFrame):
     st.success("✅ Modelo EV 3D treinado com sucesso (Home & Away).")
     return model_ev_home, model_ev_away, games_today
 
-# ============================================================
-# 🔥 FUNÇÕES DE RECOMENDAÇÃO / SCORING / LIVE (3D + AH + 1X2)
-# ============================================================
-def adicionar_indicadores_explicativos_3d_16_dual(df: pd.DataFrame) -> pd.DataFrame:
+
+# ---------------- SISTEMA DE INDICAÇÕES 3D PARA 16 QUADRANTES ----------------
+def adicionar_indicadores_explicativos_3d_16_dual(df):
+    """Adiciona classificações e recomendações explícitas para sistema 3D"""
     df = df.copy()
+
     df['Quadrante_Home_Label'] = df['Quadrante_Home'].map(lambda x: QUADRANTES_16.get(x, {}).get('nome', 'Neutro'))
     df['Quadrante_Away_Label'] = df['Quadrante_Away'].map(lambda x: QUADRANTES_16.get(x, {}).get('nome', 'Neutro'))
 
@@ -997,6 +1228,8 @@ def adicionar_indicadores_explicativos_3d_16_dual(df: pd.DataFrame) -> pd.DataFr
 
     return df
 
+
+# ---------------- SISTEMA DE SCORING 3D PARA 16 QUADRANTES ----------------
 def calcular_pontuacao_3d_quadrante_16(quadrante_id, momentum=0):
     scores_base = {
         1: 85, 2: 80, 3: 75, 4: 70,
@@ -1004,13 +1237,16 @@ def calcular_pontuacao_3d_quadrante_16(quadrante_id, momentum=0):
         9: 50, 10: 45, 11: 40, 12: 35,
         13: 35, 14: 30, 15: 25, 16: 20
     }
+
     base_score = scores_base.get(quadrante_id, 50)
     momentum_boost = momentum * 10
     adjusted_score = base_score + momentum_boost
     return max(0, min(100, adjusted_score))
 
-def gerar_score_combinado_3D_16(df: pd.DataFrame) -> pd.DataFrame:
+
+def gerar_score_combinado_3d_16(df):
     df = df.copy()
+
     df['Score_Base_Home'] = df.apply(
         lambda x: calcular_pontuacao_3d_quadrante_16(x['Quadrante_Home'], x.get('M_H', 0)), axis=1
     )
@@ -1032,320 +1268,791 @@ def gerar_score_combinado_3D_16(df: pd.DataFrame) -> pd.DataFrame:
     ]
     choices = ['🌟 ALTO POTENCIAL 3D', '💼 VALOR SOLIDO 3D', '⚖️ NEUTRO 3D', '🔴 BAIXO POTENCIAL 3D']
     df['Classificacao_Potencial_3D'] = np.select(conditions, choices, default='⚖️ NEUTRO 3D')
+
     return df
 
-# ---------- Live 1x2 ----------
-def determine_match_result_1x2(row):
-    try:
-        gh = float(row['Goals_H_Today'])
-        ga = float(row['Goals_A_Today'])
-    except (ValueError, TypeError):
-        return None
-    if pd.isna(gh) or pd.isna(ga):
-        return None
-    if gh > ga:
-        return "HOME_WIN"
-    elif gh < ga:
-        return "AWAY_WIN"
-    else:
-        return "DRAW"
 
-def check_recommendation_correct_1x2(recomendacao, match_result):
-    if pd.isna(recomendacao) or match_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
-        return None
-    recomendacao_str = str(recomendacao).upper()
-    is_home_bet = any(k in recomendacao_str for k in [
-        'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
-        'MODELO CONFIA HOME', 'H:', 'HOME)'
-    ])
-    is_away_bet = any(k in recomendacao_str for k in [
-        'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
-        'MODELO CONFIA AWAY', 'A:', 'AWAY)'
-    ])
-    if is_home_bet and match_result == "HOME_WIN":
-        return True
-    elif is_away_bet and match_result == "AWAY_WIN":
-        return True
-    else:
-        return False
-
-def calculate_profit_1x2(recomendacao, match_result, odds_row):
-    if pd.isna(recomendacao) or match_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
-        return 0
-    recomendacao_str = str(recomendacao).upper()
-    is_home_bet = any(k in recomendacao_str for k in [
-        'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
-        'MODELO CONFIA HOME', 'H:', 'HOME)'
-    ])
-    is_away_bet = any(k in recomendacao_str for k in [
-        'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
-        'MODELO CONFIA AWAY', 'A:', 'AWAY)'
-    ])
-    if is_home_bet:
-        odd = odds_row.get('Odd_H', np.nan)
-        won = match_result == "HOME_WIN"
-    elif is_away_bet:
-        odd = odds_row.get('Odd_A', np.nan)
-        won = match_result == "AWAY_WIN"
-    else:
-        return 0
-    if pd.isna(odd):
-        return 0
-    return (odd - 1) if won else -1
-
-def update_real_time_data_1x2(df: pd.DataFrame) -> pd.DataFrame:
+# ============================================================  
+# 🧭 CONFIABILIDADE DAS LIGAS (Baseada em estabilidade 3D)
+# ============================================================
+def calcular_confiabilidade_ligas(df):
     df = df.copy()
-    df['Result_1x2'] = df.apply(determine_match_result_1x2, axis=1)
-    df['Quadrante_Correct_1x2'] = df.apply(
-        lambda r: check_recommendation_correct_1x2(
-            r['Recomendacao'], r['Result_1x2']
-        ), axis=1
-    )
-    df['Profit_1x2'] = df.apply(
-        lambda r: calculate_profit_1x2(
-            r['Recomendacao'], r['Result_1x2'], r
-        ), axis=1
-    )
-    return df
-
-# ---------- Live Handicap 3D ----------
-def determine_handicap_result_3d(row):
-    """
-    Determina o resultado do handicap asiático com base no lado recomendado.
-    Suporta half-win / half-loss.
-    """
-    try:
-        gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
-        ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
-        asian_line = float(row['Asian_Line_Decimal'])
-        recomendacao = str(row.get('Recomendacao', '')).upper()
-    except (ValueError, TypeError):
-        return None
-
-    if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line):
-        return None
-
-    recomendacao_str = recomendacao
-    is_home_bet = any(k in recomendacao_str for k in [
-        'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
-        'MODELO CONFIA HOME', 'H:', 'HOME)'
-    ])
-    is_away_bet = any(k in recomendacao_str for k in [
-        'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
-        'MODELO CONFIA AWAY', 'A:', 'AWAY)'
-    ])
-
-    if not is_home_bet and not is_away_bet:
-        return None
-
-    side = "HOME" if is_home_bet else "AWAY"
-
-    frac = abs(asian_line % 1)
-    is_quarter = frac in [0.25, 0.75]
-
-    def single_result(gh, ga, line, side):
-        if side == "HOME":
-            adjusted = (gh + line) - ga
-        else:
-            adjusted = (ga - line) - gh
-        if adjusted > 0:
-            return 1.0
-        elif adjusted == 0:
-            return 0.5
-        else:
-            return 0.0
-
-    if is_quarter:
-        if asian_line > 0:
-            line1 = math.floor(asian_line * 2) / 2
-            line2 = line1 + 0.5
-        else:
-            line1 = math.ceil(asian_line * 2) / 2
-            line2 = line1 - 0.5
-
-        r1 = single_result(gh, ga, line1, side)
-        r2 = single_result(gh, ga, line2, side)
-        avg = (r1 + r2) / 2
-
-        if avg == 1:
-            return f"{side}_COVERED"
-        elif avg == 0.75:
-            return "HALF_WIN"
-        elif avg == 0.5:
-            return "PUSH"
-        elif avg == 0.25:
-            return "HALF_LOSS"
-        else:
-            return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
-
-    if side == "HOME":
-        adjusted = (gh + asian_line) - ga
-    else:
-        adjusted = (ga - asian_line) - gh
-
-    if adjusted > 0:
-        return f"{side}_COVERED"
-    elif adjusted < 0:
-        return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
-    else:
-        return "PUSH"
-
-def check_handicap_recommendation_correct_3d(recomendacao, handicap_result):
-    if pd.isna(recomendacao) or handicap_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
-        return None
-    recomendacao_str = str(recomendacao).upper()
-    is_home_bet = any(k in recomendacao_str for k in [
-        'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
-        'MODELO CONFIA HOME', 'H:', 'HOME)'
-    ])
-    is_away_bet = any(k in recomendacao_str for k in [
-        'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
-        'MODELO CONFIA AWAY', 'A:', 'AWAY)'
-    ])
-
-    if is_home_bet and handicap_result in ["HOME_COVERED", "HALF_WIN"]:
-        return True
-    elif is_away_bet and handicap_result in ["AWAY_COVERED", "HALF_WIN"]:
-        return True
-    elif handicap_result == "PUSH":
-        return None
-    else:
-        return False
-
-def calculate_handicap_profit_3d(recomendacao, handicap_result, odds_row):
-    if pd.isna(recomendacao) or handicap_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
-        return 0
-    recomendacao_str = str(recomendacao).upper()
-    is_home_bet = any(k in recomendacao_str for k in [
-        'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
-        'MODELO CONFIA HOME', 'H:', 'HOME)'
-    ])
-    is_away_bet = any(k in recomendacao_str for k in [
-        'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
-        'MODELO CONFIA AWAY', 'A:', 'AWAY)'
-    ])
-
-    if is_home_bet:
-        odd = odds_row.get('Odd_H_Asi', np.nan)
-    elif is_away_bet:
-        odd = odds_row.get('Odd_A_Asi', np.nan)
-    else:
-        return 0
-
-    if pd.isna(odd):
-        return 0
-
-    if (is_home_bet and handicap_result == "HOME_COVERED") or \
-       (is_away_bet and handicap_result == "AWAY_COVERED"):
-        return odd
-    elif handicap_result == "HALF_WIN":
-        return odd / 2
-    elif handicap_result == "HALF_LOSS":
-        return -0.5
-    elif handicap_result == "PUSH":
-        return 0
-    else:
-        return -1
-
-def update_real_time_data_3d(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df['Handicap_Result'] = df.apply(determine_handicap_result_3d, axis=1)
-    df['Quadrante_Correct'] = df.apply(
-        lambda r: check_handicap_recommendation_correct_3d(
-            r['Recomendacao'], r['Handicap_Result']
-        ), axis=1
-    )
-    df['Profit_Quadrante'] = df.apply(
-        lambda r: calculate_handicap_profit_3d(
-            r['Recomendacao'], r['Handicap_Result'], r
-        ), axis=1
-    )
-    return df
-
-def generate_live_summary_3d(df: pd.DataFrame):
-    finished_games = df[df['Handicap_Result'].notna()]
-    if finished_games.empty:
-        return {
-            "Total Jogos": len(df),
-            "Jogos Finalizados": 0,
-            "Apostas Quadrante 3D": 0,
-            "Acertos Quadrante 3D": 0,
-            "Winrate Quadrante 3D": "0%",
-            "Profit Quadrante 3D": "0.00u",
-            "ROI Quadrante 3D": "0%"
-        }
-
-    quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
-    total_bets = len(quadrante_bets)
-    correct_bets = quadrante_bets['Quadrante_Correct'].sum()
-    winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
-    total_profit = quadrante_bets['Profit_Quadrante'].sum()
-    roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
-
-    return {
-        "Total Jogos": len(df),
-        "Jogos Finalizados": len(finished_games),
-        "Apostas Quadrante 3D": total_bets,
-        "Acertos Quadrante 3D": int(correct_bets),
-        "Winrate Quadrante 3D": f"{winrate:.1f}%",
-        "Profit Quadrante 3D": f"{total_profit:.2f}u",
-        "ROI Quadrante 3D": f"{roi:.1f}%"
-    }
-
-def calcular_confiabilidade_por_liga_cluster(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    possible_league_cols = ["League", "Leagues", "Liga", "League_Name"]
-    league_col = next((c for c in possible_league_cols if c in df.columns), None)
-    if league_col is None:
-        st.error("❌ Nenhuma coluna de liga encontrada no DataFrame.")
-        return pd.DataFrame(columns=["League", "Liga_Cluster_Dom", "Liga_Cluster_WinRate", "Liga_Confiabilidade_Label"])
-    df.rename(columns={league_col: "League"}, inplace=True)
-
-    if "Cluster3D_Label" not in df.columns:
-        st.warning("⚠️ Coluna 'Cluster3D_Label' não encontrada — atribuindo cluster neutro (0).")
-        df["Cluster3D_Label"] = 0
 
     if "Target_AH_Home" not in df.columns:
         st.warning("⚠️ Coluna 'Target_AH_Home' não encontrada — criando temporariamente com zeros.")
         df["Target_AH_Home"] = 0
 
-    liga_cluster_stats = (
-        df.groupby(["League", "Cluster3D_Label"], dropna=False)
+    if "Quadrant_Dist_3D" not in df.columns:
+        st.warning("⚠️ Coluna 'Quadrant_Dist_3D' não encontrada — criando temporariamente com NaN.")
+        df["Quadrant_Dist_3D"] = np.nan
+
+    liga_stats = (
+        df.groupby("League", dropna=False)
           .agg(
               Jogos=("Target_AH_Home", "count"),
-              WinRate=("Target_AH_Home", "mean")
+              WinRate=("Target_AH_Home", "mean"),
+              Desvio_WinRate=("Target_AH_Home", "std"),
+              Média_Dist3D=("Quadrant_Dist_3D", "mean"),
+              Var_Dist3D=("Quadrant_Dist_3D", "std")
           )
           .reset_index()
     )
 
-    if liga_cluster_stats.empty:
-        st.warning("⚠️ Nenhum dado suficiente para calcular confiabilidade por liga.")
-        return pd.DataFrame(columns=["League", "Liga_Cluster_Dom", "Liga_Cluster_WinRate", "Liga_Confiabilidade_Label"])
+    liga_stats["Liga_Confiabilidade_Score"] = (
+        (liga_stats["WinRate"].fillna(0) * 100)
+        - (liga_stats["Desvio_WinRate"].fillna(0) * 100)
+        - (liga_stats["Var_Dist3D"].fillna(0))
+    )
 
-    liga_dominante = liga_cluster_stats.loc[
-        liga_cluster_stats.groupby("League")["WinRate"].idxmax()
-    ].reset_index(drop=True)
-
-    def rotular_confiabilidade(wr):
-        if wr >= 0.63:
+    def rotular_confiabilidade(score):
+        if score >= 55:
             return "🟢 Confiável"
-        elif wr >= 0.56:
+        elif score >= 45:
             return "🟡 Moderada"
         else:
             return "🔴 Instável"
 
-    liga_dominante["Liga_Confiabilidade_Label"] = liga_dominante["WinRate"].apply(rotular_confiabilidade)
-    liga_dominante.rename(columns={
-        "Cluster3D_Label": "Liga_Cluster_Dom",
-        "WinRate": "Liga_Cluster_WinRate"
-    }, inplace=True)
+    liga_stats["Liga_Confiabilidade_Label"] = liga_stats["Liga_Confiabilidade_Score"].apply(rotular_confiabilidade)
 
-    liga_dominante["Liga_Cluster_WinRate"] = liga_dominante["Liga_Cluster_WinRate"].fillna(0.58)
-    liga_dominante["Liga_Confiabilidade_Label"] = liga_dominante["Liga_Confiabilidade_Label"].fillna("🔴 Liga Nova")
+    return liga_stats[["League", "Liga_Confiabilidade_Score", "Liga_Confiabilidade_Label"]]
 
-    return liga_dominante[["League", "Liga_Cluster_Dom", "Liga_Cluster_WinRate", "Liga_Confiabilidade_Label"]]
 
-def analisar_performance_por_tipo_recomendacao(df: pd.DataFrame):
+# ---------------- EXECUÇÃO PRINCIPAL 3D / EV ----------------
+st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes ML")
+
+if not history.empty:
+    modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today)
+    model_ev_home, model_ev_away, games_today = treinar_modelo_ev_3d(history, games_today)
+    st.success("✅ Modelo 3D dual com 16 quadrantes + EV treinado com sucesso!")
+else:
+    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D/EV")
+
+if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
+    ranking_3d = games_today.copy()
+
+    ranking_3d = adicionar_indicadores_explicativos_3d_16_dual(ranking_3d)
+    ranking_3d = gerar_score_combinado_3d_16(ranking_3d)
+
+
+    # ---------------- FUNÇÕES 1X2 (LIVE) ----------------
+    def determine_match_result_1x2(row):
+        try:
+            gh = float(row['Goals_H_Today'])
+            ga = float(row['Goals_A_Today'])
+        except (ValueError, TypeError):
+            return None
+
+        if pd.isna(gh) or pd.isna(ga):
+            return None
+
+        if gh > ga:
+            return "HOME_WIN"
+        elif gh < ga:
+            return "AWAY_WIN"
+        else:
+            return "DRAW"
+
+
+    def check_recommendation_correct_1x2(recomendacao, match_result):
+        if pd.isna(recomendacao) or match_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
+            return None
+
+        recomendacao_str = str(recomendacao).upper()
+
+        is_home_bet = any(k in recomendacao_str for k in [
+            'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+            'MODELO CONFIA HOME', 'H:', 'HOME)'
+        ])
+        is_away_bet = any(k in recomendacao_str for k in [
+            'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+            'MODELO CONFIA AWAY', 'A:', 'AWAY)'
+        ])
+
+        if is_home_bet and match_result == "HOME_WIN":
+            return True
+        elif is_away_bet and match_result == "AWAY_WIN":
+            return True
+        else:
+            return False
+
+
+    def calculate_profit_1x2(recomendacao, match_result, odds_row):
+        if pd.isna(recomendacao) or match_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
+            return 0
+
+        recomendacao_str = str(recomendacao).upper()
+
+        is_home_bet = any(k in recomendacao_str for k in [
+            'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+            'MODELO CONFIA HOME', 'H:', 'HOME)'
+        ])
+        is_away_bet = any(k in recomendacao_str for k in [
+            'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+            'MODELO CONFIA AWAY', 'A:', 'AWAY)'
+        ])
+
+        if is_home_bet:
+            odd = odds_row.get('Odd_H', np.nan)
+            won = match_result == "HOME_WIN"
+        elif is_away_bet:
+            odd = odds_row.get('Odd_A', np.nan)
+            won = match_result == "AWAY_WIN"
+        else:
+            return 0
+
+        if pd.isna(odd):
+            return 0
+
+        return (odd - 1) if won else -1
+
+
+    def update_real_time_data_1x2(df):
+        df = df.copy()
+
+        df['Result_1x2'] = df.apply(determine_match_result_1x2, axis=1)
+        df['Quadrante_Correct_1x2'] = df.apply(
+            lambda r: check_recommendation_correct_1x2(
+                r['Recomendacao'], r['Result_1x2']
+            ), axis=1
+        )
+        df['Profit_1x2'] = df.apply(
+            lambda r: calculate_profit_1x2(
+                r['Recomendacao'], r['Result_1x2'], r
+            ), axis=1
+        )
+
+        return df
+
+
+    # ============================================================  
+    # 🧮 Função principal – Determina resultado do handicap (Live)
+    # ============================================================
+    def determine_handicap_result_3d(row):
+        try:
+            gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
+            ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
+            asian_line = float(row['Asian_Line_Decimal'])
+            recomendacao = str(row.get('Recomendacao', '')).upper()
+        except (ValueError, TypeError):
+            return None
+
+        if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line):
+            return None
+
+        is_home_bet = any(k in recomendacao for k in [
+            'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+            'MODELO CONFIA HOME', 'H:', 'HOME)'
+        ])
+        is_away_bet = any(k in recomendacao for k in [
+            'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+            'MODELO CONFIA AWAY', 'A:', 'AWAY)'
+        ])
+
+        if not is_home_bet and not is_away_bet:
+            return None
+
+        side = "HOME" if is_home_bet else "AWAY"
+
+        frac = abs(asian_line % 1)
+        is_quarter = frac in [0.25, 0.75]
+
+        def single_result(gh, ga, line, side):
+            if side == "HOME":
+                adjusted = (gh + line) - ga
+            else:
+                adjusted = (ga - line) - gh
+
+            if adjusted > 0:
+                return 1.0
+            elif adjusted == 0:
+                return 0.5
+            else:
+                return 0.0
+
+        if is_quarter:
+            if asian_line > 0:
+                line1 = math.floor(asian_line * 2) / 2
+                line2 = line1 + 0.5
+            else:
+                line1 = math.ceil(asian_line * 2) / 2
+                line2 = line1 - 0.5
+
+            r1 = single_result(gh, ga, line1, side)
+            r2 = single_result(gh, ga, line2, side)
+            avg = (r1 + r2) / 2
+
+            if avg == 1:
+                return f"{side}_COVERED"
+            elif avg == 0.75:
+                return "HALF_WIN"
+            elif avg == 0.5:
+                return "PUSH"
+            elif avg == 0.25:
+                return "HALF_LOSS"
+            else:
+                return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
+
+        if side == "HOME":
+            adjusted = (gh + asian_line) - ga
+        else:
+            adjusted = (ga - asian_line) - gh
+
+        if adjusted > 0:
+            return f"{side}_COVERED"
+        elif adjusted < 0:
+            return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
+        else:
+            return "PUSH"
+
+
+    def check_handicap_recommendation_correct_3d(recomendacao, handicap_result):
+        if pd.isna(recomendacao) or handicap_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
+            return None
+
+        recomendacao_str = str(recomendacao).upper()
+
+        is_home_bet = any(k in recomendacao_str for k in [
+            'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+            'MODELO CONFIA HOME', 'H:', 'HOME)'
+        ])
+        is_away_bet = any(k in recomendacao_str for k in [
+            'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+            'MODELO CONFIA AWAY', 'A:', 'AWAY)'
+        ])
+
+        if is_home_bet and handicap_result in ["HOME_COVERED", "HALF_WIN"]:
+            return True
+        elif is_away_bet and handicap_result in ["AWAY_COVERED", "HALF_WIN"]:
+            return True
+        elif handicap_result == "PUSH":
+            return None
+        else:
+            return False
+
+
+    def calculate_handicap_profit_3d(recomendacao, handicap_result, odds_row):
+        if pd.isna(recomendacao) or handicap_result is None or '⚖️ ANALISAR' in str(recomendacao).upper():
+            return 0
+
+        recomendacao_str = str(recomendacao).upper()
+
+        is_home_bet = any(k in recomendacao_str for k in [
+            'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+            'MODELO CONFIA HOME', 'H:', 'HOME)'
+        ])
+        is_away_bet = any(k in recomendacao_str for k in [
+            'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+            'MODELO CONFIA AWAY', 'A:', 'AWAY)'
+        ])
+
+        if is_home_bet:
+            odd = odds_row.get('Odd_H_Asi', np.nan)
+        elif is_away_bet:
+            odd = odds_row.get('Odd_A_Asi', np.nan)
+        else:
+            return 0
+
+        if pd.isna(odd):
+            return 0
+
+        if (is_home_bet and handicap_result == "HOME_COVERED") or \
+           (is_away_bet and handicap_result == "AWAY_COVERED"):
+            return odd
+        elif handicap_result == "HALF_WIN":
+            return odd / 2
+        elif handicap_result == "HALF_LOSS":
+            return -0.5
+        elif handicap_result == "PUSH":
+            return 0
+        else:
+            return -1
+
+
+    def update_real_time_data_3d(df):
+        df = df.copy()
+
+        df['Handicap_Result'] = df.apply(determine_handicap_result_3d, axis=1)
+        df['Quadrante_Correct'] = df.apply(
+            lambda r: check_handicap_recommendation_correct_3d(
+                r['Recomendacao'], r['Handicap_Result']
+            ), axis=1
+        )
+        df['Profit_Quadrante'] = df.apply(
+            lambda r: calculate_handicap_profit_3d(
+                r['Recomendacao'], r['Handicap_Result'], r
+            ), axis=1
+        )
+
+        return df
+
+
+    ranking_3d = update_real_time_data_3d(ranking_3d)
+
+    def calcular_confiabilidade_por_liga_cluster(df):
+        df = df.copy()
+
+        possible_league_cols = ["League", "Leagues", "Liga", "League_Name"]
+        league_col = next((c for c in possible_league_cols if c in df.columns), None)
+        if league_col is None:
+            st.error("❌ Nenhuma coluna de liga encontrada no DataFrame.")
+            return pd.DataFrame(columns=["League", "Liga_Cluster_Dom", "Liga_Cluster_WinRate", "Liga_Confiabilidade_Label"])
+        df.rename(columns={league_col: "League"}, inplace=True)
+
+        if "Cluster3D_Label" not in df.columns:
+            st.warning("⚠️ Coluna 'Cluster3D_Label' não encontrada — atribuindo cluster neutro (0).")
+            df["Cluster3D_Label"] = 0
+
+        if "Target_AH_Home" not in df.columns:
+            st.warning("⚠️ Coluna 'Target_AH_Home' não encontrada — criando temporariamente com zeros.")
+            df["Target_AH_Home"] = 0
+
+        liga_cluster_stats = (
+            df.groupby(["League", "Cluster3D_Label"], dropna=False)
+              .agg(
+                  Jogos=("Target_AH_Home", "count"),
+                  WinRate=("Target_AH_Home", "mean")
+              )
+              .reset_index()
+        )
+
+        if liga_cluster_stats.empty:
+            st.warning("⚠️ Nenhum dado suficiente para calcular confiabilidade por liga.")
+            return pd.DataFrame(columns=["League", "Liga_Cluster_Dom", "Liga_Cluster_WinRate", "Liga_Confiabilidade_Label"])
+
+        liga_dominante = liga_cluster_stats.loc[
+            liga_cluster_stats.groupby("League")["WinRate"].idxmax()
+        ].reset_index(drop=True)
+
+        def rotular_confiabilidade(wr):
+            if wr >= 0.63:
+                return "🟢 Confiável"
+            elif wr >= 0.56:
+                return "🟡 Moderada"
+            else:
+                return "🔴 Instável"
+
+        liga_dominante["Liga_Confiabilidade_Label"] = liga_dominante["WinRate"].apply(rotular_confiabilidade)
+        liga_dominante.rename(columns={
+            "Cluster3D_Label": "Liga_Cluster_Dom",
+            "WinRate": "Liga_Cluster_WinRate"
+        }, inplace=True)
+
+        liga_dominante["Liga_Cluster_WinRate"] = liga_dominante["Liga_Cluster_WinRate"].fillna(0.58)
+        liga_dominante["Liga_Confiabilidade_Label"] = liga_dominante["Liga_Confiabilidade_Label"].fillna("🔴 Liga Nova")
+
+        return liga_dominante[["League", "Liga_Cluster_Dom", "Liga_Cluster_WinRate", "Liga_Confiabilidade_Label"]]
+
+
+    try:
+        liga_conf_cluster = calcular_confiabilidade_por_liga_cluster(history)
+
+        if "League" in ranking_3d.columns:
+            ranking_3d = ranking_3d.merge(liga_conf_cluster, on="League", how="left")
+            st.success("✅ Colunas de confiabilidade 3D por liga adicionadas à tabela principal.")
+        else:
+            st.warning("⚠️ Coluna 'League' não encontrada em ranking_3d.")
+    except Exception as e:
+        st.error(f"Erro ao calcular confiabilidade 3D por liga: {e}")
+
+
+    def generate_live_summary_3d(df):
+        finished_games = df[df['Handicap_Result'].notna()]
+
+        if finished_games.empty:
+            return {
+                "Total Jogos": len(df),
+                "Jogos Finalizados": 0,
+                "Apostas Quadrante 3D": 0,
+                "Acertos Quadrante 3D": 0,
+                "Winrate Quadrante 3D": "0%",
+                "Profit Quadrante 3D": "0.00u",
+                "ROI Quadrante 3D": "0%"
+            }
+
+        quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
+        total_bets = len(quadrante_bets)
+        correct_bets = quadrante_bets['Quadrante_Correct'].sum()
+        winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
+        total_profit = quadrante_bets['Profit_Quadrante'].sum()
+        roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
+
+        return {
+            "Total Jogos": len(df),
+            "Jogos Finalizados": len(finished_games),
+            "Apostas Quadrante 3D": total_bets,
+            "Acertos Quadrante 3D": int(correct_bets),
+            "Winrate Quadrante 3D": f"{winrate:.1f}%",
+            "Profit Quadrante 3D": f"{total_profit:.2f}u",
+            "ROI Quadrante 3D": f"{roi:.1f}%"
+        }
+
+
+    st.markdown("## 📡 Live Score Monitor - Sistema 3D")
+    live_summary_3d = generate_live_summary_3d(ranking_3d)
+    st.json(live_summary_3d)
+
+    st.markdown("## 📡 Live Score Monitor - Sistema 3D (1x2)")
+    ranking_3d = update_real_time_data_1x2(ranking_3d)
+
+    finished_1x2 = ranking_3d[ranking_3d['Result_1x2'].notna()]
+    if not finished_1x2.empty:
+        total_bets = finished_1x2['Quadrante_Correct_1x2'].notna().sum()
+        correct_bets = finished_1x2['Quadrante_Correct_1x2'].sum()
+        total_profit = finished_1x2['Profit_1x2'].sum()
+        winrate = correct_bets / total_bets if total_bets > 0 else 0
+        roi = total_profit / total_bets if total_bets > 0 else 0
+
+        st.metric("Apostas (1x2)", total_bets)
+        st.metric("Winrate (1x2)", f"{winrate:.1%}")
+        st.metric("Lucro Total (1x2)", f"{total_profit:.2f}u")
+        st.metric("ROI (1x2)", f"{roi:.1%}")
+    else:
+        st.info("⚠️ Nenhum jogo finalizado ainda para o sistema 1x2.")
+
+
+    def compare_systems_summary(df):
+        def calc(prefix):
+            if prefix == "Quadrante":
+                correct_col = "Quadrante_Correct"
+                profit_col = "Profit_Quadrante"
+            else:
+                correct_col = f"Quadrante_Correct_{prefix}"
+                profit_col = f"Profit_{prefix}"
+
+            valid = df[correct_col].notna().sum()
+            total_profit = df[profit_col].sum()
+            roi = total_profit / valid if valid > 0 else 0
+            acc = df[correct_col].mean(skipna=True)
+            return {"Bets": valid, "Hit%": f"{acc:.1%}", "Profit": f"{total_profit:.2f}", "ROI": f"{roi:.1%}"}
+
+        ah = calc("Quadrante")
+        x12 = calc("1x2")
+
+        resumo = pd.DataFrame({
+            "Métrica": ["Apostas", "Taxa de Acerto", "Lucro Total", "ROI Médio"],
+            "Sistema Asiático (AH)": [ah["Bets"], ah["Hit%"], ah["Profit"], ah["ROI"]],
+            "Sistema 1x2": [x12["Bets"], x12["Hit%"], x12["Profit"], x12["ROI"]]
+        })
+
+        st.markdown("### ⚖️ Comparativo de Performance – AH vs 1x2")
+        st.dataframe(
+            resumo.style.highlight_max(axis=1, color='lightgreen')
+                          .highlight_min(axis=1, color='#ffb3b3'),
+            use_container_width=True
+        )
+
+    # Você pode chamar compare_systems_summary(ranking_3d) se quiser mostrar o comparativo:
+    # compare_systems_summary(ranking_3d)
+
+    ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
+
+    colunas_3d = [
+        'League', "Liga_Confiabilidade_Label", 'Time',
+        'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Recomendacao', 'ML_Side',
+        'Quadrante_Home_Label', 'Quadrante_Away_Label',
+        'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away',
+        'Score_Final_3D', 'Classificacao_Potencial_3D',
+        'Classificacao_Valor_Home', 'Classificacao_Valor_Away',
+        'Quadrant_Dist_3D', 'Momentum_Diff',
+        'Asian_Line_Decimal', 'Handicap_Result',
+        'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
+    ]
+
+    cols_finais_3d = [c for c in colunas_3d if c in ranking_3d.columns]
+
+    def estilo_tabela_3d_quadrantes(df):
+        def cor_classificacao_3d(valor):
+            v = str(valor)
+            if '🌟 ALTO POTENCIAL 3D' in v: return 'font-weight: bold'
+            elif '💼 VALOR SOLIDO 3D' in v: return 'font-weight: bold'
+            elif '🔴 BAIXO POTENCIAL 3D' in v: return 'font-weight: bold'
+            elif '🏆 ALTO VALOR' in v: return 'font-weight: bold'
+            elif '🔴 ALTO RISCO' in v: return 'font-weight: bold'
+            elif 'VALUE' in v: return 'font-weight: bold'
+            elif 'EVITAR' in v: return 'font-weight: bold'
+            else: return ''
+
+        colunas_para_estilo = [c for c in ['Classificacao_Potencial_3D', 'Classificacao_Valor_Home',
+                                           'Classificacao_Valor_Away', 'Recomendacao'] if c in df.columns]
+
+        styler = df.style
+        if colunas_para_estilo:
+            styler = styler.applymap(cor_classificacao_3d, subset=colunas_para_estilo)
+
+        if 'Quadrante_ML_Score_Home' in df.columns:
+            styler = styler.background_gradient(subset=['Quadrante_ML_Score_Home'], cmap='RdYlGn')
+        if 'Quadrante_ML_Score_Away' in df.columns:
+            styler = styler.background_gradient(subset=['Quadrante_ML_Score_Away'], cmap='RdYlGn')
+        if 'Score_Final_3D' in df.columns:
+            styler = styler.background_gradient(subset=['Score_Final_3D'], cmap='RdYlGn')
+        if 'M_H' in df.columns and 'M_A' in df.columns:
+            styler = styler.background_gradient(subset=['M_H', 'M_A'], cmap='coolwarm')
+
+        return styler
+
+    st.dataframe(
+        estilo_tabela_3d_quadrantes(ranking_3d[cols_finais_3d])
+        .format({
+            'Goals_H_Today': '{:.0f}',
+            'Goals_A_Today': '{:.0f}',
+            'Asian_Line_Decimal': '{:.2f}',
+            'Home_Red': '{:.0f}',
+            'Away_Red': '{:.0f}',
+            'Profit_Quadrante': '{:.2f}',
+            'Quadrante_ML_Score_Home': '{:.1%}',
+            'Quadrante_ML_Score_Away': '{:.1%}',
+            'Score_Final_3D': '{:.1f}',
+            'Quadrant_Dist_3D': '{:.2f}',
+            'Momentum_Diff': '{:.2f}'
+        }, na_rep="-"),
+        use_container_width=True
+    )
+
+    # ---------------- ANÁLISE DE PADRÕES 3D ----------------
+    def analisar_padroes_3d_quadrantes_16_dual(df):
+        st.markdown("### 🔍 Análise de Padrões 3D por Combinação")
+
+        padroes_3d = {
+            'Fav Forte Forte (+Momentum) vs Under Forte Muito Forte (-Momentum)': {
+                'descricao': '🎯 **MELHOR PADRÃO 3D HOME** - Favorito forte com momentum vs underdog muito fraco sem momentum',
+                'lado_recomendado': 'HOME',
+                'prioridade': 1,
+                'score_min': 0.65,
+                'momentum_min_home': 0.5,
+                'momentum_max_away': -0.5
+            },
+            'Under Forte Muito Forte (-Momentum) vs Fav Forte Forte (+Momentum)': {
+                'descricao': '🎯 **MELHOR PADRÃO 3D AWAY** - Underdog muito fraco sem momentum vs favorito forte com momentum',
+                'lado_recomendado': 'AWAY',
+                'prioridade': 1,
+                'score_min': 0.65,
+                'momentum_max_home': -0.5,
+                'momentum_min_away': 0.5
+            },
+            'Fav Moderado Forte (+Momentum) vs Under Moderado Forte (-Momentum)': {
+                'descricao': '💪 **PADRÃO 3D VALUE HOME** - Favorito moderado com momentum vs underdog moderado fraco sem momentum',
+                'lado_recomendado': 'HOME',
+                'prioridade': 2,
+                'score_min': 0.58,
+                'momentum_min_home': 0.3,
+                'momentum_max_away': -0.3
+            }
+        }
+
+        padroes_ordenados = sorted(padroes_3d.items(), key=lambda x: x[1]['prioridade'])
+
+        for padrao, info in padroes_ordenados:
+            home_q, away_q = padrao.split(' vs ')[0], padrao.split(' vs ')[1]
+
+            home_q_base = home_q.split(' (')[0] if ' (' in home_q else home_q
+            away_q_base = away_q.split(' (')[0] if ' (' in away_q else away_q
+
+            jogos = df[
+                (df['Quadrante_Home_Label'] == home_q_base) &
+                (df['Quadrante_Away_Label'] == away_q_base)
+            ]
+
+            if 'momentum_min_home' in info:
+                jogos = jogos[jogos['M_H'] >= info['momentum_min_home']]
+            if 'momentum_max_home' in info:
+                jogos = jogos[jogos['M_H'] <= info['momentum_max_home']]
+            if 'momentum_min_away' in info:
+                jogos = jogos[jogos['M_A'] >= info['momentum_min_away']]
+            if 'momentum_max_away' in info:
+                jogos = jogos[jogos['M_A'] <= info['momentum_max_away']]
+
+            if info['lado_recomendado'] == 'HOME':
+                score_col = 'Quadrante_ML_Score_Home'
+            else:
+                score_col = 'Quadrante_ML_Score_Away'
+
+            if 'score_min' in info:
+                jogos = jogos[jogos[score_col] >= info['score_min']]
+
+            if not jogos.empty:
+                st.write(f"**{padrao}**")
+                st.write(f"{info['descricao']}")
+                st.write(f"📈 **Score mínimo**: {info.get('score_min', 0.50):.1%}")
+                st.write(f"🎯 **Jogos encontrados**: {len(jogos)}")
+
+                cols_padrao = ['Ranking', 'Home', 'Away', 'League', score_col, 'M_H', 'M_A', 'Recomendacao', 'Quadrant_Dist_3D']
+                cols_padrao = [c for c in cols_padrao if c in jogos.columns]
+
+                jogos_ordenados = jogos.sort_values(score_col, ascending=False)
+
+                st.dataframe(
+                    jogos_ordenados[cols_padrao]
+                    .head(10)
+                    .style.format({
+                        score_col: '{:.1%}',
+                        'M_H': '{:.2f}',
+                        'M_A': '{:.2f}',
+                        'Quadrant_Dist_3D': '{:.2f}'
+                    })
+                    .background_gradient(subset=[score_col], cmap='RdYlGn')
+                    .background_gradient(subset=['M_H', 'M_A'], cmap='coolwarm'),
+                    use_container_width=True
+                )
+                st.write("---")
+
+    def gerar_estrategias_3d_16_quadrantes(df):
+        st.markdown("## 🎯 Estratégias 3D por Categoria (com Jogos)")
+
+        estrategias_3d = {
+            'Fav Forte + Momentum': {
+                'descricao': '**Favoritos Fortes com Momentum Positivo** - Alta aggression + handscore + momentum',
+                'quadrantes': [1, 2, 3, 4],
+                'momentum_min': 0.5,
+                'estrategia': 'Apostar fortemente, especialmente contra underdogs com momentum negativo',
+                'confianca': 'Muito Alta'
+            },
+            'Fav Moderado + Momentum': {
+                'descricao': '**Favoritos Moderados em Ascensão** - Aggression positiva + momentum positivo',
+                'quadrantes': [5, 6, 7, 8],
+                'momentum_min': 0.3,
+                'estrategia': 'Buscar value, ótimos quando momentum confirma a tendência',
+                'confianca': 'Alta'
+            },
+            'Under Moderado - Momentum': {
+                'descricao': '**Underdogs Moderados em Decadência** - Aggression negativa + momentum negativo',
+                'quadrantes': [9, 10, 11, 12],
+                'momentum_max': -0.3,
+                'estrategia': 'Apostar contra, risco elevado de não cobrir handicap',
+                'confianca': 'Média-Alta'
+            },
+            'Under Forte - Momentum': {
+                'descricao': '**Underdogs Fortes em Crise** - Aggression muito negativa + momentum negativo',
+                'quadrantes': [13, 14, 15, 16],
+                'momentum_max': -0.5,
+                'estrategia': 'Evitar completamente ou apostar contra em situações específicas',
+                'confianca': 'Média'
+            }
+        }
+
+        for categoria, info in estrategias_3d.items():
+            st.subheader(f"🎯 {categoria}")
+            st.markdown(f"📋 {info['descricao']}")
+            st.markdown(f"💡 Estratégia: {info['estrategia']}")
+            st.markdown(f"📊 Confiança: **{info['confianca']}**")
+
+            if 'momentum_min' in info:
+                jogos_categoria = df[
+                    (df['Quadrante_Home'].isin(info['quadrantes']) |
+                     df['Quadrante_Away'].isin(info['quadrantes'])) &
+                    ((df['M_H'] >= info['momentum_min']) |
+                     (df['M_A'] >= info['momentum_min']))
+                ]
+            elif 'momentum_max' in info:
+                jogos_categoria = df[
+                    (df['Quadrante_Home'].isin(info['quadrantes']) |
+                     df['Quadrante_Away'].isin(info['quadrantes'])) &
+                    ((df['M_H'] <= info['momentum_max']) |
+                     (df['M_A'] <= info['momentum_max']))
+                ]
+            else:
+                jogos_categoria = df[
+                    df['Quadrante_Home'].isin(info['quadrantes']) |
+                    df['Quadrante_Away'].isin(info['quadrantes'])
+                ]
+
+            col1_e, col2_e, col3_e = st.columns(3)
+            with col1_e:
+                st.metric("🎯 Jogos Encontrados", len(jogos_categoria))
+            with col2_e:
+                st.metric("📈 Score Médio", f"{jogos_categoria['Quadrante_ML_Score_Main'].mean():.1%}")
+            with col3_e:
+                st.metric("💰 ROI Médio (simulado)", f"{jogos_categoria.get('Profit_Quadrante', pd.Series(dtype=float)).mean():.2f}")
+
+            if not jogos_categoria.empty:
+                with st.expander("📋 Ver jogos desta categoria", expanded=False):
+                    cols_exibir = [
+                        'League', 'Time', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Recomendacao',
+                        'Quadrante_Home_Label', 'Quadrante_Away_Label',
+                        'Quadrante_ML_Score_Main', 'Score_Final_3D',
+                        'M_H', 'M_A', 'Asian_Line_Decimal',
+                        'Profit_Quadrante', 'Handicap_Result'
+                    ]
+                    cols_exibir = [c for c in cols_exibir if c in jogos_categoria.columns]
+
+                    st.dataframe(
+                        jogos_categoria[cols_exibir]
+                        .sort_values('Quadrante_ML_Score_Main', ascending=False)
+                        .style.format({
+                            'Goals_H_Today': '{:.0f}',
+                            'Goals_A_Today': '{:.0f}',
+                            'Quadrante_ML_Score_Main': '{:.1%}',
+                            'Score_Final_3D': '{:.1f}',
+                            'M_H': '{:.2f}',
+                            'M_A': '{:.2f}',
+                            'Asian_Line_Decimal': '{:.2f}',
+                            'Profit_Quadrante': '{:.2f}'
+                        })
+                        .background_gradient(subset=['Quadrante_ML_Score_Main', 'Score_Final_3D'], cmap='RdYlGn')
+                        .background_gradient(subset=['M_H', 'M_A'], cmap='coolwarm'),
+                        use_container_width=True
+                    )
+            else:
+                st.info("⚠️ Nenhum jogo nesta categoria no momento.")
+
+            st.divider()
+
+
+    analisar_padroes_3d_quadrantes_16_dual(ranking_3d)
+    gerar_estrategias_3d_16_quadrantes(ranking_3d)
+
+else:
+    st.info("⚠️ Aguardando dados para gerar ranking 3D de 16 quadrantes")
+
+
+def resumo_3d_16_quadrantes_hoje(df):
+    st.markdown("### 📋 Resumo Executivo - Sistema 3D Hoje")
+
+    if df.empty:
+        st.info("Nenhum dado disponível para resumo 3D")
+        return
+
+    total_jogos = len(df)
+
+    alto_potencial_3d = len(df[df['Classificacao_Potencial_3D'] == '🌟 ALTO POTENCIAL 3D'])
+    valor_solido_3d = len(df[df['Classificacao_Potencial_3D'] == '💼 VALOR SOLIDO 3D'])
+
+    alto_valor_home = len(df[df['Classificacao_Valor_Home'] == '🏆 ALTO VALOR'])
+    alto_valor_away = len(df[df['Classificacao_Valor_Away'] == '🏆 ALTO VALOR'])
+
+    momentum_positivo_home = len(df[df['M_H'] > 0.5])
+    momentum_negativo_home = len(df[df['M_H'] < -0.5])
+    momentum_positivo_away = len(df[df['M_A'] > 0.5])
+    momentum_negativo_away = len(df[df['M_A'] < -0.5])
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("Total Jogos", total_jogos)
+        st.metric("🌟 Alto Potencial 3D", alto_potencial_3d)
+    with col2:
+        st.metric("📈 Momentum + Home", momentum_positivo_home)
+        st.metric("📉 Momentum - Home", momentum_negativo_home)
+    with col3:
+        st.metric("📈 Momentum + Away", momentum_positivo_away)
+        st.metric("📉 Momentum - Away", momentum_negativo_away)
+    with col4:
+        st.metric("💼 Valor Sólido 3D", valor_solido_3d)
+        st.metric("🎯 Alto Valor", alto_valor_home + alto_valor_away)
+
+    st.markdown("#### 📊 Distribuição de Recomendações 3D")
+    if 'Recomendacao' in df.columns:
+        dist_recomendacoes = df['Recomendacao'].value_counts()
+        st.dataframe(dist_recomendacoes, use_container_width=True)
+
+
+if not games_today.empty and 'Classificacao_Potencial_3D' in games_today.columns:
+    resumo_3d_16_quadrantes_hoje(games_today)
+
+
+st.markdown("## 📊 Performance por Tipo de Recomendação (3D – Agrupada)")
+
+
+def analisar_performance_por_tipo_recomendacao(df):
     if df.empty or 'Recomendacao' not in df.columns:
         st.info("⚠️ Nenhuma recomendação disponível para análise.")
         return pd.DataFrame()
@@ -1388,385 +2095,24 @@ def analisar_performance_por_tipo_recomendacao(df: pd.DataFrame):
 
     return resumo
 
-# ============================================================
-# ======================  MAIN FLOW  =========================
-# ============================================================
-st.info("📂 Carregando dados para análise 3D de 16 quadrantes...")
 
-if not os.path.exists(GAMES_FOLDER):
-    st.error(f"Pasta '{GAMES_FOLDER}' não encontrada.")
-    st.stop()
-
-files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
-if not files:
-    st.warning("No CSV files found in GamesDay folder.")
-    st.stop()
-
-options = files[-7:] if len(files) >= 7 else files
-selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
-
-date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
-selected_date_str = date_match.group(0) if date_match else datetime.now().strftime("%Y-%m-%d")
-
-games_today, history = load_cached_data(selected_file)
-games_today = load_and_merge_livescore(games_today, selected_date_str)
-
-# CONVERSÃO ASIAN LINE
-if not history.empty:
-    history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
-    history = history.dropna(subset=['Asian_Line_Decimal'])
-    st.info(f"📊 Histórico com Asian Line válida: {len(history)} jogos")
-
-    if "Date" in history.columns:
-        try:
-            selected_date = pd.to_datetime(selected_date_str)
-            history["Date"] = pd.to_datetime(history["Date"], errors="coerce")
-            history = history[history["Date"] < selected_date].copy()
-            st.info(f"📊 Treinando com {len(history)} jogos anteriores a {selected_date_str}")
-        except Exception as e:
-            st.error(f"Erro ao aplicar filtro temporal: {e}")
-
-    history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
-    history["Target_AH_Home"] = history.apply(
-        lambda r: 1 if r["Margin"] > r["Asian_Line_Decimal"] else 0, axis=1
-    )
-    history = preparar_targets_ev(history)
-
-# Asian line nos jogos de hoje
-if 'Asian_Line' in games_today.columns:
-    games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
-else:
-    games_today['Asian_Line_Decimal'] = np.nan
-
-# CLASSIFICAÇÃO DOS QUADRANTES
-games_today['Quadrante_Home'] = games_today.apply(
-    lambda x: classificar_quadrante_16(x.get('Aggression_Home'), x.get('HandScore_Home')), axis=1
-)
-games_today['Quadrante_Away'] = games_today.apply(
-    lambda x: classificar_quadrante_16(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
-)
-if not history.empty:
-    history['Quadrante_Home'] = history.apply(
-        lambda x: classificar_quadrante_16(x.get('Aggression_Home'), x.get('HandScore_Home')), axis=1
-    )
-    history['Quadrante_Away'] = history.apply(
-        lambda x: classificar_quadrante_16(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
-    )
-
-# 3D FEATURES NOS JOGOS DO DIA
-games_today = calcular_distancias_3d(games_today)
-
-# VISUALIZAÇÃO 2D
-st.markdown("### 📈 Visualização dos 16 Quadrantes (2D)")
-col1, col2 = st.columns(2)
-with col1:
-    st.pyplot(plot_quadrantes_16(games_today, "Home"))
-with col2:
-    st.pyplot(plot_quadrantes_16(games_today, "Away"))
-
-# FILTROS PARA 3D
-st.markdown("## 🎯 Visualização Interativa 3D – Tamanho Fixo")
-if "League" in games_today.columns and not games_today["League"].isna().all():
-    leagues = sorted(games_today["League"].dropna().unique())
-    selected_league = st.selectbox(
-        "Selecione a liga para análise:",
-        options=["⚽ Todas as ligas"] + leagues,
-        index=0
-    )
-    if selected_league != "⚽ Todas as ligas":
-        df_filtered = games_today[games_today["League"] == selected_league].copy()
-    else:
-        df_filtered = games_today.copy()
-else:
-    st.warning("⚠️ Nenhuma coluna de 'League' encontrada — exibindo todos os jogos.")
-    df_filtered = games_today.copy()
-
-max_n = len(df_filtered)
-n_to_show = st.slider("Quantos confrontos exibir (Top por distância 3D):", 10, min(max_n, 200), 40, step=5)
-
-st.markdown("### 🎯 Filtro Angular 3D")
-col_ang1, col_ang2, col_ang3 = st.columns(3)
-with col_ang1:
-    angulo_xy_range = st.slider(
-        "Ângulo XY - Aggression × Momentum Liga:",
-        -180, 180, (-45, 45),
-        step=5,
-        help="Filtra jogos por inclinação entre Aggression (X) e Momentum Liga (Y)"
-    )
-with col_ang2:
-    angulo_xz_range = st.slider(
-        "Ângulo XZ - Aggression × Momentum Time:",
-        -180, 180, (-45, 45),
-        step=5,
-        help="Filtra jogos por inclinação entre Aggression (X) e Momentum Time (Z)"
-    )
-with col_ang3:
-    magnitude_min = st.slider(
-        "Magnitude Mínima 3D:",
-        0.0, 5.0, 0.5, 0.1,
-        help="Filtra por distância mínima da origem (intensidade do sinal 3D)"
-    )
-
-aplicar_filtro = st.button("🎯 Aplicar Filtros Angulares", type="primary")
-
-def filtrar_por_angulo(df, angulo_xy_range, angulo_xz_range, magnitude_min):
-    df_filtrado = df.copy()
-    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
-    missing_cols = [c for c in required_cols if c not in df_filtrado.columns]
-    if missing_cols:
-        st.warning(f"⚠️ Colunas ausentes para filtro angular: {missing_cols}")
-        return df_filtrado
-
-    dx = df_filtrado['Aggression_Home'] - df_filtrado['Aggression_Away']
-    dy = df_filtrado['M_H'] - df_filtrado['M_A']
-    dz = df_filtrado['MT_H'] - df_filtrado['MT_A']
-
-    angulo_xy = np.degrees(np.arctan2(dy, dx))
-    angulo_xz = np.degrees(np.arctan2(dz, dx))
-    magnitude = np.sqrt(dx**2 + dy**2 + dz**2)
-
-    mask_xy = (angulo_xy >= angulo_xy_range[0]) & (angulo_xy <= angulo_xy_range[1])
-    mask_xz = (angulo_xz >= angulo_xz_range[0]) & (angulo_xz <= angulo_xz_range[1])
-    mask_mag = magnitude >= magnitude_min
-
-    mask_total = mask_xy & mask_xz & mask_mag
-    df_filtrado = df_filtrado[mask_total].copy()
-    df_filtrado['Angulo_XY'] = angulo_xy[mask_total]
-    df_filtrado['Angulo_XZ'] = angulo_xz[mask_total]
-    df_filtrado['Magnitude_3D_Filtro'] = magnitude[mask_total]
-    return df_filtrado
-
-df_plot = df_filtered.copy()
-if aplicar_filtro:
-    df_plot = filtrar_por_angulo(df_plot, angulo_xy_range, angulo_xz_range, magnitude_min)
-    st.success(f"✅ Filtro aplicado! {len(df_plot)} jogos encontrados com os critérios angulares.")
-    if not df_plot.empty:
-        colf1, colf2, colf3 = st.columns(3)
-        with colf1:
-            st.metric("Ângulo XY Médio", f"{df_plot['Angulo_XY'].mean():.1f}°")
-        with colf2:
-            st.metric("Ângulo XZ Médio", f"{df_plot['Angulo_XZ'].mean():.1f}°")
-        with colf3:
-            st.metric("Magnitude Média", f"{df_plot['Magnitude_3D_Filtro'].mean():.2f}")
-else:
-    df_plot = df_plot.nlargest(n_to_show, "Quadrant_Dist_3D")
-
-df_plot = df_plot.reset_index(drop=True)
-fig_3d_fixed = create_fixed_3d_plot(df_plot, n_to_show, selected_league if 'selected_league' in locals() else "⚽ Todas as ligas")
-st.plotly_chart(fig_3d_fixed, use_container_width=True)
-
-st.markdown("""
-### 🎯 Legenda do Espaço 3D Fixo
-
-**Eixos com Ranges Fixos:**
-- **X (Vermelho)**: Aggression → `-1.2` (Zebra Extrema) ↔ `+1.2` (Favorito Extremo)
-- **Y (Verde)**: Momentum Liga → `-4.0` (Muito Negativo) ↔ `+4.0` (Muito Positivo)
-- **Z (Azul)**: Momentum Time → `-4.0` (Muito Negativo) ↔ `+4.0` (Muito Positivo)
-
-**Referências Visuais:**
-- 📍 **Plano Cinza**: Ponto neutro (Z=0) - momentum time equilibrado
-- 🔵 **Bolas Azuis**: Times da Casa (Home)
-- 🔴 **Losangos Vermelhos**: Visitantes (Away)
-- ⚫ **Linhas Cinzas**: Conexões entre confrontos
-""")
-
-# ============================================================
-# 🔥 TREINO DOS MODELOS (3D + EV)
-# ============================================================
-if not history.empty:
-    modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today)
-    model_ev_home, model_ev_away, games_today = treinar_modelo_ev_3d(history, games_today)
-    st.success("✅ Modelo 3D dual com 16 quadrantes + EV treinado com sucesso!")
-else:
-    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D/EV")
-
-# ============================================================
-# 🏆 RANKING 3D / LIVE / ESTRATÉGIAS
-# ============================================================
-st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes ML")
-
-if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
-    ranking_3d = games_today.copy()
-    ranking_3d = adicionar_indicadores_explicativos_3d_16_dual(ranking_3d)
-    ranking_3d = gerar_score_combinado_3D_16(ranking_3d)
-
-    # Live Handicap
-    ranking_3d = update_real_time_data_3d(ranking_3d)
-
-    # Confiabilidade por liga (cluster)
-    try:
-        liga_conf_cluster = calcular_confiabilidade_por_liga_cluster(history)
-        if "League" in ranking_3d.columns:
-            ranking_3d = ranking_3d.merge(liga_conf_cluster, on="League", how="left")
-            st.success("✅ Colunas de confiabilidade 3D por liga adicionadas à tabela principal.")
-        else:
-            st.warning("⚠️ Coluna 'League' não encontrada em ranking_3d.")
-    except Exception as e:
-        st.error(f"Erro ao calcular confiabilidade 3D por liga: {e}")
-
-    # Live summary 3D
-    st.markdown("## 📡 Live Score Monitor - Sistema 3D")
-    live_summary_3d = generate_live_summary_3d(ranking_3d)
-    st.json(live_summary_3d)
-
-    # Live 1x2
-    st.markdown("## 📡 Live Score Monitor - Sistema 3D (1x2)")
-    ranking_3d = update_real_time_data_1x2(ranking_3d)
-    finished_1x2 = ranking_3d[ranking_3d['Result_1x2'].notna()]
-    if not finished_1x2.empty:
-        total_bets = finished_1x2['Quadrante_Correct_1x2'].notna().sum()
-        correct_bets = finished_1x2['Quadrante_Correct_1x2'].sum()
-        total_profit = finished_1x2['Profit_1x2'].sum()
-        winrate = correct_bets / total_bets if total_bets > 0 else 0
-        roi = total_profit / total_bets if total_bets > 0 else 0
-
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.metric("Apostas (1x2)", total_bets)
-        with c2:
-            st.metric("Winrate (1x2)", f"{winrate:.1%}")
-        with c3:
-            st.metric("Lucro Total (1x2)", f"{total_profit:.2f}u")
-        with c4:
-            st.metric("ROI (1x2)", f"{roi:.1%}")
-    else:
-        st.info("⚠️ Nenhum jogo finalizado ainda para o sistema 1x2.")
-
-    # Comparativo AH vs 1x2 (texto/tabela simplificada)
-    def compare_systems_summary(df):
-        def calc(prefix):
-            if prefix == "Quadrante":
-                correct_col = "Quadrante_Correct"
-                profit_col = "Profit_Quadrante"
-            else:
-                correct_col = f"Quadrante_Correct_{prefix}"
-                profit_col = f"Profit_{prefix}"
-            valid = df[correct_col].notna().sum()
-            total_profit = df[profit_col].sum()
-            roi = total_profit / valid if valid > 0 else 0
-            acc = df[correct_col].mean(skipna=True)
-            return {"Bets": valid, "Hit%": f"{acc:.1%}", "Profit": f"{total_profit:.2f}", "ROI": f"{roi:.1%}"}
-
-        ah = calc("Quadrante")
-        x12 = calc("1x2")
-        resumo = pd.DataFrame({
-            "Métrica": ["Apostas", "Taxa de Acerto", "Lucro Total", "ROI Médio"],
-            "Sistema Asiático (AH)": [ah["Bets"], ah["Hit%"], ah["Profit"], ah["ROI"]],
-            "Sistema 1x2": [x12["Bets"], x12["Hit%"], x12["Profit"], x12["ROI"]]
-        })
-        st.markdown("### ⚖️ Comparativo de Performance – AH vs 1x2")
-        # Estilo apenas em colunas numéricas
-        resumo_styled = resumo.copy()
-        numeric_cols = resumo.select_dtypes(include=['float64', 'int64']).columns
-        
-        resumo_styled = resumo.style.apply(
-            lambda row: [
-                'background-color: lightgreen' if col in numeric_cols and val == row[numeric_cols].max()
-                else 'background-color: #ffb3b3' if col in numeric_cols and val == row[numeric_cols].min()
-                else ''
-                for col, val in row.iteritems()
-            ],
-            axis=1
-        )
-        
-        st.dataframe(resumo_styled, use_container_width=True)
-
-
-    # compare_systems_summary(ranking_3d)
-
-    ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
-
-    colunas_3d = [
-        'League', "Liga_Confiabilidade_Label", 'Time',
-        'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Recomendacao', 'ML_Side',
-        'Quadrante_Home_Label', 'Quadrante_Away_Label',
-        'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away',
-        'Score_Final_3D', 'Classificacao_Potencial_3D',
-        'Classificacao_Valor_Home', 'Classificacao_Valor_Away',
-        'Quadrant_Dist_3D', 'Momentum_Diff',
-        'Asian_Line_Decimal', 'Handicap_Result',
-        'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante',
-        'EV_Side', 'EV_Edge_Home', 'EV_Edge_Away', 'EV_Edge_Main',
-        'EV_Prob_Home', 'EV_Prob_Away'
-    ]
-    cols_finais_3d = [c for c in colunas_3d if c in ranking_3d.columns]
-
-    def estilo_tabela_3d_quadrantes(df):
-        def cor_classificacao_3d(valor):
-            s = str(valor)
-            if '🌟 ALTO POTENCIAL 3D' in s: return 'font-weight: bold'
-            if '💼 VALOR SOLIDO 3D' in s: return 'font-weight: bold'
-            if '🔴 BAIXO POTENCIAL 3D' in s: return 'font-weight: bold'
-            if '🏆 ALTO VALOR' in s: return 'font-weight: bold'
-            if '🔴 ALTO RISCO' in s: return 'font-weight: bold'
-            if 'VALUE' in s: return 'font-weight: bold'
-            if 'EVITAR' in s: return 'font-weight: bold'
-            return ''
-
-        colunas_para_estilo = [c for c in [
-            'Classificacao_Potencial_3D', 'Classificacao_Valor_Home',
-            'Classificacao_Valor_Away', 'Recomendacao'
-        ] if c in df.columns]
-
-        styler = df.style
-        if colunas_para_estilo:
-            styler = styler.applymap(cor_classificacao_3d, subset=colunas_para_estilo)
-
-        if 'Quadrante_ML_Score_Home' in df.columns:
-            styler = styler.background_gradient(subset=['Quadrante_ML_Score_Home'], cmap='RdYlGn')
-        if 'Quadrante_ML_Score_Away' in df.columns:
-            styler = styler.background_gradient(subset=['Quadrante_ML_Score_Away'], cmap='RdYlGn')
-        if 'Score_Final_3D' in df.columns:
-            styler = styler.background_gradient(subset=['Score_Final_3D'], cmap='RdYlGn')
-        if 'M_H' in df.columns and 'M_A' in df.columns:
-            styler = styler.background_gradient(subset=['M_H', 'M_A'], cmap='coolwarm')
-        if 'EV_Edge_Main' in df.columns:
-            styler = styler.background_gradient(subset=['EV_Edge_Main'], cmap='RdYlGn')
-
-        return styler
-
-    st.dataframe(
-        estilo_tabela_3d_quadrantes(ranking_3d[cols_finais_3d])
-        .format({
-            'Goals_H_Today': '{:.0f}',
-            'Goals_A_Today': '{:.0f}',
-            'Asian_Line_Decimal': '{:.2f}',
-            'Home_Red': '{:.0f}',
-            'Away_Red': '{:.0f}',
-            'Profit_Quadrante': '{:.2f}',
-            'Quadrante_ML_Score_Home': '{:.1%}',
-            'Quadrante_ML_Score_Away': '{:.1%}',
-            'Score_Final_3D': '{:.1f}',
-            'Quadrant_Dist_3D': '{:.2f}',
-            'Momentum_Diff': '{:.2f}',
-            'EV_Edge_Home': '{:.2f}',
-            'EV_Edge_Away': '{:.2f}',
-            'EV_Edge_Main': '{:.2f}',
-            'EV_Prob_Home': '{:.1%}',
-            'EV_Prob_Away': '{:.1%}'
-        }, na_rep="-"),
-        use_container_width=True
-    )
-
-    st.markdown("## 📊 Performance por Tipo de Recomendação (3D – Agrupada)")
+if 'ranking_3d' in locals() and not ranking_3d.empty:
     try:
         perf_recomendacoes_agrupadas = analisar_performance_por_tipo_recomendacao(ranking_3d)
     except Exception as e:
         st.error(f"Erro ao calcular performance agrupada: {e}")
-
 else:
-    st.info("⚠️ Aguardando dados para gerar ranking 3D de 16 quadrantes")
+    st.info("⚠️ Dados do ranking 3D ainda não disponíveis para análise.")
+
 
 st.markdown("---")
-st.success("🎯 **Sistema 3D de 16 Quadrantes ML + EV** carregado e pronto para uso.")
+st.success("🎯 **Sistema 3D de 16 Quadrantes ML** implementado com sucesso!")
 st.info("""
-**Resumo das funcionalidades:**
-- 🔢 16 quadrantes com análise 3D completa (Aggression x HandScore x Momentum)
+**Resumo das melhorias 3D:**
+- 🔢 16 quadrantes com análise 3D completa
 - 📊 Momentum integrado como terceira dimensão
 - 🎯 Distâncias e ângulos 3D calculados
-- 📈 Visualizações 2D e 3D interativas
-- 🧠 Modelo 3D (Home Cover) com clusters por liga
-- 💰 Modelo EV 3D (Home & Away) usando odds asiáticas líquidas
-- 📡 Monitor Live para Handicap Asiático e 1x2
-- ⚖️ Comparativo AH x 1x2 e análise por tipo de recomendação
+- 📈 Visualizações 3D interativas
+- 🔍 Padrões específicos incorporando momentum
+- 💡 Estratégias adaptadas para análise multidimensional
 """)
