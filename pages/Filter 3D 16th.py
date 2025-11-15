@@ -293,7 +293,7 @@ if "Date" in history.columns:
 # Targets AH históricos
 history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
 history["Target_AH_Home"] = history.apply(
-    lambda r: calculate_ah_home_target(r["Margin"], r["Asian_Line"]), axis=1
+    lambda r: 1 if r["Margin"] > r["Asian_Line_Decimal"] else 0, axis=1
 )
 
 # ---------------- SISTEMA 3D DE 16 QUADRANTES ----------------
