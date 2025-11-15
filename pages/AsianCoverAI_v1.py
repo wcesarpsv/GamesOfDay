@@ -15,7 +15,7 @@ st.set_page_config(page_title="Asian Handicap Cover – Dual Model", layout="wid
 st.title("🎯 Asian Handicap Cover – Dual Model (Home + Away)")
 
 # ========================= CONFIGURAÇÕES GERAIS =========================
-PAGE_PREFIX = "AsianCoverAI_v1"
+PAGE_PREFIX = "AsianCoverAI_v2"
 GAMES_FOLDER = "GamesDay"
 LIVESCORE_FOLDER = "LiveScore"
 EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa", "trophy"]
@@ -244,6 +244,66 @@ def aplicar_clusterizacao_3d(df: pd.DataFrame, n_clusters=4, random_state=42) ->
     except Exception as e:
         st.error(f"❌ Erro no clustering: {e}")
         df['Cluster3D_Label'] = 0
+    return df
+
+# ============================================================
+# 🆕 WEIGHTED GOALS (WG) BASEADO EM GOLS E ODDS
+# ============================================================
+def odds_to_probs(odd_h, odd_d, odd_a):
+    try:
+        odd_h = float(odd_h)
+        odd_d = float(odd_d)
+        odd_a = float(odd_a)
+        if odd_h <= 0 or odd_d <= 0 or odd_a <= 0:
+            return 0.33, 0.33, 0.33
+        inv_sum = (1/odd_h) + (1/odd_d) + (1/odd_a)
+        return (1/odd_h)/inv_sum, (1/odd_d)/inv_sum, (1/odd_a)/inv_sum
+    except:
+        return 0.33, 0.33, 0.33
+
+def wg_home(row):
+    gf = row.get('Goals_H_FT', 0)
+    ga = row.get('Goals_A_FT', 0)
+    p_h, p_d, p_a = odds_to_probs(row.get('Odd_H', 2.5), row.get('Odd_D', 3.0), row.get('Odd_A', 2.5))
+    # gols feitos valem mais quando o mercado não esperava tanto (1 - p_h)
+    # gols sofridos doem mais quando time era favorito (p_h)
+    return (gf * (1 - p_h)) - (ga * p_h)
+
+def wg_away(row):
+    gf = row.get('Goals_A_FT', 0)
+    ga = row.get('Goals_H_FT', 0)
+    p_h, p_d, p_a = odds_to_probs(row.get('Odd_H', 2.5), row.get('Odd_D', 3.0), row.get('Odd_A', 2.5))
+    # similar, mas na ótica do away
+    return (gf * (1 - p_a)) - (ga * p_a)
+
+def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    required_cols = ['Home','Away','Date','Goals_H_FT','Goals_A_FT','Odd_H','Odd_D','Odd_A']
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        st.warning(f"⚠️ Colunas ausentes para WG (usar 0): {missing}")
+        df['WG_Home'] = 0.0
+        df['WG_Away'] = 0.0
+        df['WG_Home_Team'] = 0.0
+        df['WG_Away_Team'] = 0.0
+        df['WG_Diff'] = 0.0
+        return df
+
+    # linha a linha
+    df['WG_Home'] = df.apply(wg_home, axis=1)
+    df['WG_Away'] = df.apply(wg_away, axis=1)
+
+    # garantir tipo datetime para ordem temporal
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    df = df.sort_values('Date')
+
+    # rolling 5 jogos por time
+    df['WG_Home_Team'] = df.groupby('Home')['WG_Home'].transform(lambda x: x.rolling(5, min_periods=1).mean())
+    df['WG_Away_Team'] = df.groupby('Away')['WG_Away'].transform(lambda x: x.rolling(5, min_periods=1).mean())
+
+    df['WG_Diff'] = df['WG_Home_Team'] - df['WG_Away_Team']
+
+    st.success("🔥 Weighted Goals (WG_Home_Team / WG_Away_Team / WG_Diff) calculados!")
     return df
 
 # ============================================================
@@ -700,13 +760,17 @@ def main_calibrado():
         st.warning("⚠️ Histórico vazio após filtro de ligas.")
         return
 
+    # 🔒 garantir que não perdemos linhas por NaN
+    for df in (history, games_today):
+        df.fillna(0, inplace=True)
+
     # Converter Asian Line
     history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
     games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
     history = history.dropna(subset=['Asian_Line_Decimal'])
     games_today = games_today.dropna(subset=['Asian_Line_Decimal'])
 
-    # ================= TIME-SAFE: Z-SCORE E SPLIT POR DATA =================
+    # ================= TIME-SAFE: Z-SCORE + WG E SPLIT POR DATA =================
     if "Date" in history.columns:
         try:
             selected_date = pd.to_datetime(selected_date_str)
@@ -723,23 +787,32 @@ def main_calibrado():
                 return
 
             full_df = pd.concat([history_past, games_today], ignore_index=True)
-            full_df = calcular_zscores_detalhados(full_df)
 
+            # M/MT primeiro
+            full_df = calcular_zscores_detalhados(full_df)
+            # WG em cima de full_df (time-safe, usando Date)
+            full_df = adicionar_weighted_goals(full_df)
+
+            # split de volta
             history = full_df[full_df["Date"] < selected_date].copy()
             games_today = full_df[full_df["Date"] >= selected_date].copy()
 
-            st.info(f"📊 Treinando com {len(history)} jogos anteriores a {selected_date_str} (M/MT atualizados)")
+            st.info(f"📊 Treinando com {len(history)} jogos anteriores a {selected_date_str} (M/MT + WG atualizados)")
         except Exception as e:
-            st.warning(f"⚠️ Erro no filtro temporal/Z-score: {e}")
+            st.warning(f"⚠️ Erro no filtro temporal/Z-score/WG: {e}")
             history = calcular_zscores_detalhados(history)
+            history = adicionar_weighted_goals(history)
             games_today = calcular_zscores_detalhados(games_today)
+            games_today = adicionar_weighted_goals(games_today)
     else:
-        st.warning("⚠️ Coluna 'Date' ausente — Z-score calculado sem controle temporal.")
+        st.warning("⚠️ Coluna 'Date' ausente — Z-score/WG calculados sem controle temporal.")
         history = calcular_zscores_detalhados(history)
+        history = adicionar_weighted_goals(history)
         games_today = calcular_zscores_detalhados(games_today)
+        games_today = adicionar_weighted_goals(games_today)
 
     if history.empty:
-        st.error("❌ Histórico ficou vazio após aplicação de M/MT e filtro temporal.")
+        st.error("❌ Histórico ficou vazio após aplicação de M/MT + WG e filtro temporal.")
         return
 
     # LiveScore (apenas FT)
@@ -756,9 +829,11 @@ def main_calibrado():
     history = aplicar_clusterizacao_3d(calcular_distancias_3d(history))
     games_today = aplicar_clusterizacao_3d(calcular_distancias_3d(games_today))
 
+    # Features 3D + WG
     features_3d_common = [
         'Quadrant_Dist_3D','Quadrant_Separation_3D','Vector_Sign',
-        'Magnitude_3D','Momentum_Diff','Momentum_Diff_MT','Cluster3D_Label'
+        'Magnitude_3D','Momentum_Diff','Momentum_Diff_MT','Cluster3D_Label',
+        'WG_Home_Team','WG_Away_Team','WG_Diff'
     ]
 
     st.markdown("## 🧠 Treinando Modelos DUAL (HOME + AWAY Cover)")
