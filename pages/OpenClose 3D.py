@@ -902,7 +902,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     # ----------------------------
     odds_features = pd.DataFrame()
     if use_opening_odds:
-        for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP']:
+        for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP','Odd_H','Odd_D','Odd_A']:
             if col not in history.columns:
                 history[col] = np.nan
 
@@ -915,8 +915,11 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         history['Imp_H_OP_Norm'] = history['Imp_H_OP'] / sum_probs
         history['Imp_D_OP_Norm'] = history['Imp_D_OP'] / sum_probs
         history['Imp_A_OP_Norm'] = history['Imp_A_OP'] / sum_probs
+        histor['Diff_Odd_H'] = history['Odd_H_OP'] - history['Odd_H']
+        histor['Diff_Odd_D'] = history['Odd_D_OP'] - history['Odd_D']
+        histor['Diff_Odd_A'] = history['Odd_A_OP'] - history['Odd_A']
 
-        odds_features = history[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm']].fillna(0)
+        odds_features = history[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm''Diff_Odd_H','Diff_Odd_D','Diff_Odd_A']].fillna(0)
 
     # ----------------------------
     # 🧩 Montagem final do dataset
