@@ -1615,6 +1615,60 @@ def resumo_3d_16_quadrantes_hoje(df):
         dist_recomendacoes = df['Recomendacao'].value_counts()
         st.dataframe(dist_recomendacoes, use_container_width=True)
 
+def inferir_probabilidades_ml_dual(df):
+    """Aplica modelo ML para gerar scores Home/Away e a recomendação final"""
+    df = df.copy()
+
+    modelo_home_path = os.path.join(MODELS_FOLDER, "model_home.pkl")
+    modelo_away_path = os.path.join(MODELS_FOLDER, "model_away.pkl")
+
+    if not os.path.exists(modelo_home_path) or not os.path.exists(modelo_away_path):
+        st.error("❌ Modelos ML Home/Away não encontrados na pasta Models/")
+        df['Quadrante_ML_Score_Home'] = 0.5
+        df['Quadrante_ML_Score_Away'] = 0.5
+        df['Recomendacao'] = "HOME"  # neutro
+        return df
+
+    modelo_home = joblib.load(modelo_home_path)
+    modelo_away = joblib.load(modelo_away_path)
+
+    features = [
+        col for col in df.columns
+        if col not in ['Home', 'Away', 'League', 'Date',
+                       'Recomendacao', 'Quadrante_ML_Score_Home',
+                       'Quadrante_ML_Score_Away', 'Score_Final_3D']
+    ]
+
+    X = df[features].copy()
+    X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
+
+    # Previsões ML
+    if hasattr(modelo_home, "predict_proba"):
+        df['Quadrante_ML_Score_Home'] = modelo_home.predict_proba(X)[:, 1]
+    else:
+        df['Quadrante_ML_Score_Home'] = modelo_home.predict(X)
+
+    if hasattr(modelo_away, "predict_proba"):
+        df['Quadrante_ML_Score_Away'] = modelo_away.predict_proba(X)[:, 1]
+    else:
+        df['Quadrante_ML_Score_Away'] = modelo_away.predict(X)
+
+    # Normalizar probabilidades
+    soma_prob = df['Quadrante_ML_Score_Home'] + df['Quadrante_ML_Score_Away']
+    df['Quadrante_ML_Score_Home'] = df['Quadrante_ML_Score_Home'] / soma_prob
+    df['Quadrante_ML_Score_Away'] = df['Quadrante_ML_Score_Away'] / soma_prob
+
+    # Indicador final de recomendação
+    df['Recomendacao'] = np.where(
+        df['Quadrante_ML_Score_Home'] >= df['Quadrante_ML_Score_Away'],
+        'HOME',
+        'AWAY'
+    )
+
+    return df
+
+
+
 
 # ========================= EXECUÇÃO FINAL - EXIBIÇÃO DOS RESULTADOS =========================
 st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes (ML Inteligente)")
@@ -1624,19 +1678,13 @@ if games_today.empty:
     st.stop()
 
 ranking_3d = games_today.copy()
-# 1️⃣ Primeiro aplica ML e gera score base
-ranking_3d = inferir_probabilidades_ml_dual(ranking_3d)  # << NOVO passo necessário
 
-# 2️⃣ Agora adiciona indicadores explicativos
+ranking_3d = inferir_probabilidades_ml_dual(ranking_3d)
 ranking_3d = adicionar_indicadores_explicativos_3d_16_dual(ranking_3d)
-
-# 3️⃣ Só então cria Score 3D final
 ranking_3d = gerar_score_combinado_3d_16(ranking_3d)
-
-# 4️⃣ Cálculo de lucros e labeling em tempo real
 ranking_3d = update_real_time_data_3d(ranking_3d)
-
 ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
+
 
 st.success(f"🎯 {len(ranking_3d)} jogos processados pelo Sistema 3D Inteligente")
 
