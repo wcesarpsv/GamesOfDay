@@ -259,32 +259,62 @@ def main_handicap_v1():
         return (gf * (1 - p_a)) - (ga * p_a)
 
     def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
-        df = df.copy()
-        required_cols = ['Home', 'Away', 'Date', 'Goals_H_FT', 'Goals_A_FT', 'Odd_H', 'Odd_D', 'Odd_A']
-        missing = [c for c in required_cols if c not in df.columns]
-        if missing:
-            st.warning(f"⚠️ Colunas ausentes para WG (usar 0): {missing}")
-            df['WG_Home'] = 0.0
-            df['WG_Away'] = 0.0
-            df['WG_Home_Team'] = 0.0
-            df['WG_Away_Team'] = 0.0
-            df['WG_Diff'] = 0.0
-            return df
+    df = df.copy()
 
-        df['WG_Home'] = df.apply(wg_home, axis=1)
-        df['WG_Away'] = df.apply(wg_away, axis=1)
-
-        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-        df = df.sort_values('Date')
-
-        # Rolling de 5 jogos, exigindo mínimo 5 para reduzir ruído
-        df['WG_Home_Team'] = df.groupby('Home')['WG_Home'].transform(lambda x: x.rolling(5, min_periods=5).mean())
-        df['WG_Away_Team'] = df.groupby('Away')['WG_Away'].transform(lambda x: x.rolling(5, min_periods=5).mean())
-
-        df['WG_Diff'] = df['WG_Home_Team'] - df['WG_Away_Team']
-
-        st.success("🔥 Weighted Goals (WG_Home_Team / WG_Away_Team / WG_Diff) calculados (janela 5 jogos)!")
+    required_cols = ['Home','Away','Date','Goals_H_FT','Goals_A_FT','Odd_H','Odd_D','Odd_A']
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        st.warning(f"⚠️ Colunas ausentes para WG (usar 0): {missing}")
+        df['WG_Home'] = 0.0
+        df['WG_Away'] = 0.0
+        df['WG_Home_Team'] = 0.0
+        df['WG_Away_Team'] = 0.0
+        df['WG_Diff'] = 0.0
+        df['WG_Confidence'] = 0
         return df
+
+    # Probabilidades do mercado (ignorando empate — push/half-push)
+    def odds_to_market_probs(row):
+        try:
+            odd_h = float(row['Odd_H'])
+            odd_a = float(row['Odd_A'])
+            if odd_h <= 0 or odd_a <= 0:
+                return 0.50, 0.50
+            inv_h = 1 / odd_h
+            inv_a = 1 / odd_a
+            total = inv_h + inv_a
+            return inv_h / total, inv_a / total
+        except:
+            return 0.50, 0.50
+
+    # Weighted Goals — impactos ofensivos ponderados pela expectativa do mercado
+    def wg_home(row):
+        p_h, p_a = odds_to_market_probs(row)
+        return (row['Goals_H_FT'] * (1 - p_h)) - (row['Goals_A_FT'] * p_h)
+
+    def wg_away(row):
+        p_h, p_a = odds_to_market_probs(row)
+        return (row['Goals_A_FT'] * (1 - p_a)) - (row['Goals_H_FT'] * p_a)
+
+    df['WG_Home'] = df.apply(wg_home, axis=1)
+    df['WG_Away'] = df.apply(wg_away, axis=1)
+
+    # ➜ Agora garantimos que a data exista para rolar o histórico corretamente
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    df = df.sort_values('Date')
+
+    # 🧠 Rolling com min_periods=1 (não perde jogos)
+    df['WG_Home_Team'] = df.groupby('Home')['WG_Home'].transform(lambda x: x.rolling(5, min_periods=1).mean())
+    df['WG_Away_Team'] = df.groupby('Away')['WG_Away'].transform(lambda x: x.rolling(5, min_periods=1).mean())
+
+    # Diferença do estado ofensivo ajustado pelo mercado
+    df['WG_Diff'] = df['WG_Home_Team'] - df['WG_Away_Team']
+
+    # 🔍 Confiança — nº de jogos que compõem o WG
+    df['WG_Confidence'] = df.groupby('Home')['WG_Home'].transform(lambda x: x.rolling(5, min_periods=1).count())
+
+    st.success("🔥 Weighted Goals agora está funcionando com histórico completo!")
+    return df
 
     def criar_targets_cobertura(df: pd.DataFrame) -> pd.DataFrame:
         hist = df.dropna(subset=['Goals_H_FT', 'Goals_A_FT', 'Asian_Line_Decimal']).copy()
