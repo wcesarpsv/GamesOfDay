@@ -506,91 +506,98 @@ def main_handicap_v1():
     # ===================== LÓGICA HÍBRIDA AIL (ML + WG) =====================
 
     def gerar_ail_value_score_hibrido(df: pd.DataFrame, profile: str = "moderado") -> pd.DataFrame:
-        """
-        Gera:
-          - AIL_Value_Score (score contínuo)
-          - AIL_Pick (texto)
-          - AIL_Confidence (ALTA/MEDIA/BAIXA/PASS)
-          - AIL_Pick_Side (HOME/AWAY)
-          - AIL_Handicap_Display (string bonita do HC para o lado da pick)
-        """
-        df = df.copy()
+    df = df.copy()
 
-        # thresholds para perfil moderado
-        thr_signal = 0.15
-        thr_conf_alta = 0.30
-        thr_conf_media = 0.15
+    # thresholds para perfil moderado
+    thr_signal = 0.15
+    thr_conf_alta = 0.30
+    thr_conf_media = 0.15
 
-        ml_component = (df.get('P_Cover_Home_Especifico', 0) - 0.5) * 2
-        ml_component = ml_component.fillna(0)
+    # componente principal: prob do modelo
+    ml_component = (df.get('P_Cover_Home_Especifico', 0) - 0.5) * 2
+    ml_component = ml_component.fillna(0)
 
-        wg_component = df.get('WG_Diff', 0).fillna(0)
-        mom_component = df.get('Momentum_Diff', 0).fillna(0)
+    wg_component = df.get('WG_Diff', 0).fillna(0)
+    mom_component = df.get('Momentum_Diff', 0).fillna(0)
 
-        df['AIL_Value_Score'] = (
-            0.6 * ml_component +
-            0.3 * wg_component +
-            0.1 * mom_component
-        )
+    # Score contínuo (só força da aposta)
+    df['AIL_Value_Score'] = (
+        0.6 * ml_component +
+        0.3 * wg_component +
+        0.1 * mom_component
+    )
 
-        picks = []
-        confs = []
-        sides = []
-        hc_display_list = []
+    picks = []
+    confs = []
+    sides = []
+    hc_display_list = []
 
-        for _, row in df.iterrows():
-            score = row['AIL_Value_Score']
-            hc_home = row.get('Asian_Line_Decimal', np.nan)
+    for _, row in df.iterrows():
+        score = row['AIL_Value_Score']
+        hc_home = row.get('Asian_Line_Decimal', np.nan)
+        p_home = row.get('P_Cover_Home_Especifico', np.nan)
 
-            if pd.isna(hc_home) or abs(hc_home) < 0.25:
-                picks.append("⚪ PASS")
-                confs.append("PASS")
-                sides.append("")
-                hc_display_list.append("")
-                continue
+        # Sem linha ou sem probabilidade → PASS
+        if pd.isna(hc_home) or pd.isna(p_home):
+            picks.append("⚪ PASS")
+            confs.append("PASS")
+            sides.append("")
+            hc_display_list.append("")
+            continue
 
-            mag = abs(score)
+        # Handicap muito perto de 0 → opcionalmente ignorar
+        if abs(hc_home) < 0.25:
+            picks.append("⚪ PASS")
+            confs.append("PASS")
+            sides.append("")
+            hc_display_list.append("")
+            continue
 
-            if mag < thr_signal:
-                picks.append("⚪ PASS")
-                confs.append("PASS")
-                sides.append("")
-                hc_display_list.append("")
-                continue
+        # Se o score for fraco → PASS (mesma lógica de antes)
+        if abs(score) < thr_signal:
+            picks.append("⚪ PASS")
+            confs.append("PASS")
+            sides.append("")
+            hc_display_list.append("")
+            continue
 
-            if score > 0:
-                side = "HOME"
-                hc_side = hc_home
-            else:
-                side = "AWAY"
-                hc_side = -hc_home
+        # 🔵 NOVA LÓGICA: lado SEMPRE baseado em P_Cover_Home_Especifico
+        if p_home > 0.5:
+            side = "HOME"
+            hc_side = hc_home
+        else:
+            side = "AWAY"
+            hc_side = -hc_home
 
-            if mag >= thr_conf_alta:
-                conf = "ALTA"
-            elif mag >= thr_conf_media:
-                conf = "MEDIA"
-            else:
-                conf = "BAIXA"
+        # Confiança continua baseada na magnitude do score
+        mag = abs(score)
+        if mag >= thr_conf_alta:
+            conf = "ALTA"
+        elif mag >= thr_conf_media:
+            conf = "MEDIA"
+            conf = "MEDIA"
+        else:
+            conf = "BAIXA"
 
-            if pd.isna(hc_side):
-                hc_str = ""
-            else:
-                hc_str = f"{hc_side:+.2f}".rstrip("0").rstrip(".")
+        if pd.isna(hc_side):
+            hc_str = ""
+        else:
+            hc_str = f"{hc_side:+.2f}".rstrip("0").rstrip(".")
 
-            label = "🏠 HOME" if side == "HOME" else "✈️ AWAY"
-            pick_text = f"{label} {hc_str}"
+        label = "🏠 HOME" if side == "HOME" else "✈️ AWAY"
+        pick_text = f"{label} {hc_str}"
 
-            picks.append(pick_text)
-            confs.append(conf)
-            sides.append(side)
-            hc_display_list.append(hc_str)
+        picks.append(pick_text)
+        confs.append(conf)
+        sides.append(side)
+        hc_display_list.append(hc_str)
 
-        df['AIL_Pick'] = picks
-        df['AIL_Confidence'] = confs
-        df['AIL_Pick_Side'] = sides
-        df['AIL_Handicap_Display'] = hc_display_list
+    df['AIL_Pick'] = picks
+    df['AIL_Confidence'] = confs
+    df['AIL_Pick_Side'] = sides
+    df['AIL_Handicap_Display'] = hc_display_list
 
-        return df
+    return df
 
     # ===================== MERCADO vs MODELO (EDGE) =====================
 
