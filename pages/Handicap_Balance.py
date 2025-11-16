@@ -14,7 +14,7 @@ from sklearn.cluster import KMeans
 # ========================= GET HANDICAP V1 =========================
 def main_handicap_v1():
     st.set_page_config(page_title="GetHandicap V1 - Handicap-Specific Analysis", layout="wide")
-    st.title("🎯 GetHandicap V1 - Análise por Handicap Específico")
+    st.title("🎯 GetHandicap V1 - Análise por Handicap Específico (Modo Híbrido AIL)")
 
     # Configurações
     GAMES_FOLDER = "GamesDay"
@@ -60,7 +60,11 @@ def main_handicap_v1():
         return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
 
     def convert_asian_line_to_decimal(value):
-        if pd.isna(value): 
+        """
+        Converte a linha original para a perspectiva do HOME.
+        Ex: '+0.5' (Away) -> -0.5 (Home)
+        """
+        if pd.isna(value):
             return np.nan
         s = str(value).strip()
         if "/" not in s:
@@ -70,7 +74,7 @@ def main_handicap_v1():
             except:
                 return np.nan
         try:
-            parts = [float(p) for p in s.replace("+","").replace("-","").split("/")]
+            parts = [float(p) for p in s.replace("+", "").replace("-", "").split("/")]
             avg = np.mean(parts)
             sign = -1 if s.startswith("-") else 1
             result = sign * avg
@@ -134,7 +138,7 @@ def main_handicap_v1():
 
             st.success(f"✅ Z-score por time calculado para {len(df)} jogos")
 
-            df = df.drop(['HS_H_mean', 'HS_H_std', 'HS_A_mean', 'HS_A_std', 
+            df = df.drop(['HS_H_mean', 'HS_H_std', 'HS_A_mean', 'HS_A_std',
                           'HT_mean', 'HT_std', 'AT_mean', 'AT_std'], axis=1, errors='ignore')
         else:
             st.warning("⚠️ Colunas 'Home' ou 'Away' não encontradas para Z-score por time")
@@ -186,28 +190,28 @@ def main_handicap_v1():
 
     def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
-        required = ['Aggression_Home','Aggression_Away','M_H','M_A','MT_H','MT_A']
+        required = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
         missing = [c for c in required if c not in df.columns]
         if missing:
             st.warning(f"⚠️ Colunas faltando para cálculo 3D: {missing}")
-            for c in ['Quadrant_Dist_3D','Quadrant_Separation_3D','Vector_Sign',
-                      'Magnitude_3D','Momentum_Diff','Momentum_Diff_MT']:
+            for c in ['Quadrant_Dist_3D', 'Quadrant_Separation_3D', 'Vector_Sign',
+                      'Magnitude_3D', 'Momentum_Diff', 'Momentum_Diff_MT']:
                 df[c] = np.nan
             return df
         dx = (df['Aggression_Home'] - df['Aggression_Away']) / 2
         dy = (df['M_H'] - df['M_A']) / 2
         dz = (df['MT_H'] - df['MT_A']) / 2
-        df['Quadrant_Dist_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+        df['Quadrant_Dist_3D'] = np.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
         df['Quadrant_Separation_3D'] = (dx + dy + dz) / 3
         df['Vector_Sign'] = np.sign(dx * dy * dz)
-        df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+        df['Magnitude_3D'] = np.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
         df['Momentum_Diff'] = dy
         df['Momentum_Diff_MT'] = dz
         return df
 
     def aplicar_clusterizacao_3d(df: pd.DataFrame, n_clusters=4, random_state=42) -> pd.DataFrame:
         df = df.copy()
-        required = ['Aggression_Home','Aggression_Away','M_H','M_A','MT_H','MT_A']
+        required = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
         missing = [c for c in required if c not in df.columns]
         if missing:
             st.warning(f"⚠️ Colunas ausentes para clusterização 3D: {missing}")
@@ -216,7 +220,7 @@ def main_handicap_v1():
         df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
         df['dy'] = df['M_H'] - df['M_A']
         df['dz'] = df['MT_H'] - df['MT_A']
-        X = df[['dx','dy','dz']].fillna(0).to_numpy()
+        X = df[['dx', 'dy', 'dz']].fillna(0).to_numpy()
         n_samples = X.shape[0]
         k = max(1, min(n_clusters, n_samples))
         if n_samples < n_clusters:
@@ -236,8 +240,8 @@ def main_handicap_v1():
             odd_a = float(odd_a)
             if odd_h <= 0 or odd_d <= 0 or odd_a <= 0:
                 return 0.33, 0.33, 0.33
-            inv_sum = (1/odd_h) + (1/odd_d) + (1/odd_a)
-            return (1/odd_h)/inv_sum, (1/odd_d)/inv_sum, (1/odd_a)/inv_sum
+            inv_sum = (1 / odd_h) + (1 / odd_d) + (1 / odd_a)
+            return (1 / odd_h) / inv_sum, (1 / odd_d) / inv_sum, (1 / odd_a) / inv_sum
         except:
             return 0.33, 0.33, 0.33
 
@@ -255,7 +259,7 @@ def main_handicap_v1():
 
     def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
-        required_cols = ['Home','Away','Date','Goals_H_FT','Goals_A_FT','Odd_H','Odd_D','Odd_A']
+        required_cols = ['Home', 'Away', 'Date', 'Goals_H_FT', 'Goals_A_FT', 'Odd_H', 'Odd_D', 'Odd_A']
         missing = [c for c in required_cols if c not in df.columns]
         if missing:
             st.warning(f"⚠️ Colunas ausentes para WG (usar 0): {missing}")
@@ -281,7 +285,7 @@ def main_handicap_v1():
         return df
 
     def criar_targets_cobertura(df: pd.DataFrame) -> pd.DataFrame:
-        hist = df.dropna(subset=['Goals_H_FT','Goals_A_FT','Asian_Line_Decimal']).copy()
+        hist = df.dropna(subset=['Goals_H_FT', 'Goals_A_FT', 'Asian_Line_Decimal']).copy()
         if hist.empty:
             return hist
         margin = hist['Goals_H_FT'] - hist['Goals_A_FT']
@@ -296,13 +300,13 @@ def main_handicap_v1():
 
     def segmentar_por_handicap(df: pd.DataFrame, handicap_alvo: float, tolerancia: float = 0.25) -> pd.DataFrame:
         """
-        Filtra jogos com handicap próximo ao alvo
+        Filtra jogos com handicap (Home) próximo ao alvo
         Ex: handicap_alvo = -0.5, tolerancia=0.25 → pega -0.75, -0.5, -0.25
         """
         if df.empty or 'Asian_Line_Decimal' not in df.columns:
             return pd.DataFrame()
 
-        mask = abs(df['Asian_Line_Decimal'] - handicap_alvo) <= tolerancia
+        mask = df['Asian_Line_Decimal'].sub(handicap_alvo).abs() <= tolerancia
         df_segmento = df[mask].copy()
 
         st.info(f"🎯 Handicap {handicap_alvo}: {len(df_segmento)} jogos (tolerância: ±{tolerancia})")
@@ -408,8 +412,8 @@ def main_handicap_v1():
 
         # Pivot para heatmap
         heatmap_data = df_heatmap.pivot_table(
-            index='Feature', 
-            columns='Handicap', 
+            index='Feature',
+            columns='Handicap',
             values='Correlacao',
             aggfunc='mean'
         ).fillna(0)
@@ -417,9 +421,9 @@ def main_handicap_v1():
         # Plot heatmap
         fig, ax = plt.subplots(figsize=(12, 8))
         sns.heatmap(
-            heatmap_data, 
-            annot=True, 
-            cmap='RdBu_r', 
+            heatmap_data,
+            annot=True,
+            cmap='RdBu_r',
             center=0,
             fmt='.3f',
             ax=ax
@@ -430,7 +434,7 @@ def main_handicap_v1():
         st.pyplot(fig)
         return df_heatmap
 
-    # ===================== NOVO: SPLIT TEMPORAL =====================
+    # ===================== SPLIT TEMPORAL =====================
     def split_temporal(df: pd.DataFrame, test_size: float = 0.2):
         """
         Faz split temporal (train = jogos antigos, val = jogos recentes)
@@ -440,7 +444,7 @@ def main_handicap_v1():
         if 'Date' not in df.columns:
             st.warning("⚠️ Coluna 'Date' não encontrada para split temporal. Usando tudo como treino.")
             df['__split'] = 'train'
-            return df, df[df['__split'] == 'train'], df[df['__split'] == 'train']
+            return df, df, df
 
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         df = df.dropna(subset=['Date']).sort_values('Date')
@@ -525,64 +529,151 @@ def main_handicap_v1():
 
         return modelo, features_disponiveis
 
-    def aplicar_modelos_handicap(games_today: pd.DataFrame, modelos_handicap: dict):
-        """
-        Aplica todos os modelos de handicap específico nos jogos de hoje
-        """
-        st.markdown("### 🎯 Previsões por Handicap Específico")
+    # ===================== LÓGICA HÍBRIDA AIL (ML + WG) =====================
 
-        resultados = []
+    def gerar_ail_value_score_hibrido(df: pd.DataFrame, profile: str = "moderado") -> pd.DataFrame:
+        """
+        Gera:
+          - AIL_Value_Score (score contínuo)
+          - AIL_Pick (texto)
+          - AIL_Confidence (ALTA/MEDIA/BAIXA/PASS)
 
-        for handicap, (modelo, features) in modelos_handicap.items():
+        Modo 'moderado':
+          - thresholds ajustados para equilíbrio risco/retorno
+        """
+        df = df.copy()
+
+        # Thresholds para perfil moderado
+        thr_signal = 0.15     # mínimo para virar pick
+        thr_conf_alta = 0.30  # score forte
+        thr_conf_media = 0.15
+
+        # Componentes
+        ml_component = (df['P_Cover_Home_Especifico'] - 0.5) * 2
+        ml_component = ml_component.fillna(0)  # onde não há modelo
+
+        wg_component = df.get('WG_Diff', 0).fillna(0)
+        mom_component = df.get('Momentum_Diff', 0).fillna(0)
+        quad_component = df.get('Quadrant_Dist_3D', 0).fillna(0)
+
+        # Combinação híbrida (moderado)
+        df['AIL_Value_Score'] = (
+            0.6 * ml_component +
+            0.3 * wg_component +
+            0.1 * mom_component
+        )
+
+        # Geração de picks
+        picks = []
+        confs = []
+        sides = []
+        hc_display_list = []
+
+        for _, row in df.iterrows():
+            score = row['AIL_Value_Score']
+            hc_home = row.get('Asian_Line_Decimal', 0.0)
+            asian_raw = row.get('Asian_Line', "")
+
+            # Sem handicap útil
+            if pd.isna(hc_home) or abs(hc_home) < 0.25:
+                picks.append("⚪ PASS")
+                confs.append("PASS")
+                sides.append("")
+                hc_display_list.append("")
+                continue
+
+            mag = abs(score)
+
+            if mag < thr_signal:
+                picks.append("⚪ PASS")
+                confs.append("PASS")
+                sides.append("")
+                hc_display_list.append("")
+                continue
+
+            # Direção: score > 0 favorece HOME cobrir
+            if score > 0:
+                side = "HOME"
+                hc_side = hc_home  # handicap do mandante
+            else:
+                side = "AWAY"
+                hc_side = -hc_home  # handicap do visitante
+
+            # Confiança
+            if mag >= thr_conf_alta:
+                conf = "ALTA"
+            elif mag >= thr_conf_media:
+                conf = "MEDIA"
+            else:
+                conf = "BAIXA"
+
+            # Display do handicap (formato +0.5 / -0.75)
+            if pd.isna(hc_side):
+                hc_str = ""
+            else:
+                hc_str = f"{hc_side:+.2f}".rstrip("0").rstrip(".")
+
+            label = "🏠 HOME" if side == "HOME" else "✈️ AWAY"
+            pick_text = f"{label} {hc_str}"
+
+            picks.append(pick_text)
+            confs.append(conf)
+            sides.append(side)
+            hc_display_list.append(hc_str)
+
+        df['AIL_Pick'] = picks
+        df['AIL_Confidence'] = confs
+        df['AIL_Pick_Side'] = sides
+        df['AIL_Handicap_Display'] = hc_display_list
+
+        return df
+
+    # ===================== APLICAR MODELOS NOS JOGOS DE HOJE =====================
+
+    def aplicar_modelos_handicap(games_today: pd.DataFrame, modelos_handicap: dict) -> pd.DataFrame:
+        """
+        Aplica todos os modelos de handicap específico nos jogos de hoje.
+        Retorna um DF com TODOS os jogos_today + colunas de ML onde existirem modelos.
+        """
+        st.markdown("### 🎯 Previsões por Handicap Específico (ML + AIL)")
+
+        df_all = games_today.copy()
+
+        # Inicializar colunas de modelo
+        df_all['P_Cover_Home_Especifico'] = np.nan
+        df_all['Value_Gap_Especifico'] = np.nan
+        df_all['Handicap_Modelo'] = np.nan
+        df_all['Modelo_Confianca'] = ""
+
+        for handicap, model_pack in modelos_handicap.items():
+            modelo, features = model_pack
             if modelo is None:
                 continue
 
-            # Filtrar jogos com handicap próximo
-            jogos_alvo = segmentar_por_handicap(games_today, handicap, 0.25)
-
+            jogos_alvo = segmentar_por_handicap(df_all, handicap, 0.25)
             if len(jogos_alvo) == 0:
                 continue
 
-            # Fazer previsões
-            X_today = jogos_alvo[features].copy()
+            # Features podem não existir em todos os jogos (segurança)
+            features_validas = [f for f in features if f in df_all.columns]
+            if not features_validas:
+                st.warning(f"⚠️ Nenhuma feature válida encontrada nos jogos de hoje para handicap {handicap}")
+                continue
+
+            X_today = jogos_alvo[features_validas].copy()
             X_today = clean_features_for_training(X_today)
 
             probas = modelo.predict_proba(X_today)[:, 1]  # P(Cover_Home)
 
-            for idx, (_, jogo) in enumerate(jogos_alvo.iterrows()):
-                resultados.append({
-                    'League': jogo.get('League', ''),
-                    'Home': jogo.get('Home', ''),
-                    'Away': jogo.get('Away', ''),
-                    'Asian_Line': jogo.get('Asian_Line', ''),
-                    'Asian_Line_Decimal': jogo.get('Asian_Line_Decimal', 0),
-                    'Handicap_Modelo': handicap,
-                    'P_Cover_Home_Especifico': probas[idx],
-                    'Value_Gap_Especifico': probas[idx] - 0.5,
-                    'Modelo_Confianca': 'ALTA' if abs(probas[idx] - 0.5) > 0.15 else 'MEDIA'
-                })
+            value_gap = probas - 0.5
+            conf = np.where(np.abs(value_gap) > 0.15, "ALTA", "MEDIA")
 
-        if resultados:
-            df_resultados = pd.DataFrame(resultados)
+            df_all.loc[jogos_alvo.index, 'P_Cover_Home_Especifico'] = probas
+            df_all.loc[jogos_alvo.index, 'Value_Gap_Especifico'] = value_gap
+            df_all.loc[jogos_alvo.index, 'Handicap_Modelo'] = handicap
+            df_all.loc[jogos_alvo.index, 'Modelo_Confianca'] = conf
 
-            # Ordenar por Value Gap
-            df_resultados = df_resultados.sort_values('Value_Gap_Especifico', key=abs, ascending=False)
-
-            st.dataframe(df_resultados, use_container_width=True)
-
-            # Estatísticas
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("🎯 Total de Previsões", len(df_resultados))
-            with col2:
-                st.metric("🏠 Melhor Value Gap", f"{df_resultados['Value_Gap_Especifico'].max():.3f}")
-            with col3:
-                st.metric("📈 Confiança ALTA", f"{(df_resultados['Modelo_Confianca'] == 'ALTA').sum()}")
-
-            return df_resultados
-        else:
-            st.warning("⚠️ Nenhuma previsão específica gerada")
-            return pd.DataFrame()
+        return df_all
 
     # ============================================================
     # 🚀 EXECUÇÃO PRINCIPAL GET HANDICAP V1
@@ -597,7 +688,7 @@ def main_handicap_v1():
         return
 
     options = files[-7:] if len(files) >= 7 else files
-    selected_file = st.selectbox("Select Matchday File:", options, index=len(options)-1)
+    selected_file = st.selectbox("Select Matchday File:", options, index=len(options) - 1)
 
     @st.cache_data(ttl=3600)
     def load_cached_data(selected_file):
@@ -608,7 +699,7 @@ def main_handicap_v1():
         history = filter_leagues(history)
         games_today = filter_leagues(games_today)
 
-        # Converter Asian Line
+        # Converter Asian Line para decimal (perspectiva HOME)
         history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
         games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
 
@@ -647,7 +738,7 @@ def main_handicap_v1():
         st.header("📊 Análise Exploratória por Handicap")
 
         handicap_selecionado = st.selectbox(
-            "Selecione o Handicap para Análise:",
+            "Selecione o Handicap para Análise (Home):",
             [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0],
             index=2  # Default -0.5
         )
@@ -661,10 +752,10 @@ def main_handicap_v1():
         criar_heatmap_handicap_features(history)
 
     elif analise_modo == "🤖 Modelos Específicos":
-        st.header("🤖 Treinar Modelos por Handicap")
+        st.header("🤖 Treinar Modelos por Handicap (Time-Safe)")
 
         handicaps_treinar = st.multiselect(
-            "Handicaps para Treinar Modelos:",
+            "Handicaps para Treinar Modelos (Home):",
             [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0],
             default=[-0.5, 0.0, 0.5]
         )
@@ -690,26 +781,52 @@ def main_handicap_v1():
             st.success("✅ Todos os modelos específicos treinados (com validação temporal)!")
 
     elif analise_modo == "🎯 Previsões Hoje":
-        st.header("🎯 Previsões para Jogos de Hoje")
+        st.header("🎯 Previsões para Jogos de Hoje (Modo Híbrido AIL)")
 
         if 'modelos_handicap' not in st.session_state:
             st.warning("⚠️ Treine os modelos específicos primeiro na aba 'Modelos Específicos'")
         else:
-            df_previsoes = aplicar_modelos_handicap(games_today, st.session_state['modelos_handicap'])
+            df_all = aplicar_modelos_handicap(games_today, st.session_state['modelos_handicap'])
 
-            if not df_previsoes.empty:
-                # Filtros interativos
-                st.sidebar.markdown("## 🔍 Filtros Previsões")
-                min_value_gap = st.sidebar.slider("Value Gap Mínimo:", 0.0, 0.3, 0.1, 0.05)
-                confianca_filtro = st.sidebar.multiselect("Confiança:", ['ALTA', 'MEDIA'], default=['ALTA', 'MEDIA'])
+            # Gerar AIL híbrido (ML + WG)
+            df_all = gerar_ail_value_score_hibrido(df_all, profile="moderado")
 
-                df_filtrado = df_previsoes[
-                    (df_previsoes['Value_Gap_Especifico'].abs() >= min_value_gap) &
-                    (df_previsoes['Modelo_Confianca'].isin(confianca_filtro))
-                ]
+            # Somente picks (tirar PASS)
+            df_picks = df_all[df_all['AIL_Pick'] != "⚪ PASS"].copy()
 
-                st.metric("🎯 Apostas Filtradas", len(df_filtrado))
-                st.dataframe(df_filtrado, use_container_width=True)
+            if df_picks.empty:
+                st.warning("⚠️ Nenhuma pick gerada com os thresholds atuais.")
+                return
+
+            # Filtros interativos
+            st.sidebar.markdown("## 🔍 Filtros Previsões")
+
+            min_score = st.sidebar.slider("Score mínimo (AIL_Value_Score):", 0.0, 0.6, 0.15, 0.05)
+            conf_sel = st.sidebar.multiselect(
+                "Confiança AIL:",
+                ['ALTA', 'MEDIA', 'BAIXA'],
+                default=['ALTA', 'MEDIA']
+            )
+
+            df_filtrado = df_picks[
+                (df_picks['AIL_Value_Score'].abs() >= min_score) &
+                (df_picks['AIL_Confidence'].isin(conf_sel))
+            ].copy()
+
+            # Ordenar por valor absoluto do score
+            df_filtrado = df_filtrado.sort_values('AIL_Value_Score', key=lambda s: s.abs(), ascending=False)
+
+            st.metric("🎯 Apostas Sugeridas", len(df_filtrado))
+            st.dataframe(
+                df_filtrado[[
+                    'League', 'Home', 'Away',
+                    'Asian_Line', 'Asian_Line_Decimal',
+                    'AIL_Pick', 'AIL_Confidence', 'AIL_Value_Score',
+                    'P_Cover_Home_Especifico', 'Value_Gap_Especifico',
+                    'WG_Home_Team', 'WG_Away_Team', 'WG_Diff'
+                ]],
+                use_container_width=True
+            )
 
 # ============================================================
 # 🚀 EXECUTAR
