@@ -89,41 +89,29 @@ def convert_asian_line_to_decimal(value):
     """
     if pd.isna(value):
         return np.nan
-    
     value = str(value).strip()
     
-    # Caso 1: Linha cheia (sem fração)
     if "/" not in value:
         try:
             num = float(value)
-            # Inverter o sinal: perspectiva AWAY -> perspectiva HOME
             return -num
         except ValueError:
             return np.nan
     
-    # Caso 2: Linha fracionada
     try:
-        # Remover sinais e separar as partes
         parts_str = value.replace("+", "").split("/")
         parts = [float(p) for p in parts_str]
-        
-        # Calcular a média das partes
         avg = np.mean(parts)
         
-        # Determinar o sinal baseado no valor original
-        # Se a linha começa com "-", é vantagem para HOME
         if value.startswith("-"):
-            return abs(avg)  # Vantagem HOME (positivo)
+            return abs(avg)
         elif value.startswith("+"):
-            return -abs(avg)  # Desvantagem HOME (negativo)
+            return -abs(avg)
         else:
-            # Se não tem sinal explícito, verifica os valores
-            # Se algum valor é negativo, considera vantagem HOME
             if any(p < 0 for p in parts):
-                return abs(avg)  # Vantagem HOME
+                return abs(avg)
             else:
-                return -abs(avg)  # Desvantagem HOME
-                
+                return -abs(avg)
     except (ValueError, IndexError):
         return np.nan
 
