@@ -130,44 +130,19 @@ def aplicar_clusterizacao_3d(df: pd.DataFrame, n_clusters=4, random_state=42) ->
 
 # ============== Handicap ótimo (HOME/AWAY) ===================
 def calcular_handicap_otimo_calibrado_v2(row):
-    """VERSÃO CORRIGIDA - Sentido invertido"""
+    """Versão simplificada - handicap ótimo é a diferença entre resultado e linha"""
     gh, ga = row.get('Goals_H_FT', 0), row.get('Goals_A_FT', 0)
     asian_line = row.get('Asian_Line_Decimal', 0)
     
     margin = gh - ga
-    difference = margin - asian_line
+    handicap_otimo = margin - asian_line
     
-    # 🔄 CORREÇÃO: Se difference > 0, significa que a casa foi MELHOR que o esperado
-    # Logo, o handicap ótimo deveria ser MAIS NEGATIVO (favorecendo mais a casa)
+    # Arredondar para o handicap mais próximo da lista
+    handicaps = [-1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0, +0.25, +0.5, +0.75, +1.0, +1.25, +1.5]
+    closest_handicap = min(handicaps, key=lambda x: abs(x - handicap_otimo))
     
-    if difference > 2.0:
-        optimal = -1.5  # Casa muito melhor → handicap mais negativo
-    elif difference > 1.5:
-        optimal = -1.25
-    elif difference > 1.0:
-        optimal = -1.0
-    elif difference > 0.75:
-        optimal = -0.75
-    elif difference > 0.5:
-        optimal = -0.5
-    elif difference > 0.25:
-        optimal = -0.25
-    elif difference > -0.25:
-        optimal = 0.0
-    elif difference > -0.5:
-        optimal = 0.25  # Casa pior → handicap positivo (favorece away)
-    elif difference > -0.75:
-        optimal = 0.5
-    elif difference > -1.0:
-        optimal = 0.75
-    elif difference > -1.5:
-        optimal = 1.0
-    elif difference > -2.0:
-        optimal = 1.25
-    else:
-        optimal = 1.5
-    
-    return optimal
+    return closest_handicap
+
 
 def criar_target_handicap_discreto_calibrado_v2(row):
     h = calcular_handicap_otimo_calibrado_v2(row)
@@ -178,42 +153,17 @@ def criar_target_handicap_discreto_calibrado_v2(row):
     else: return 'MODERATE_AWAY'
 
 def calcular_handicap_otimo_away(row):
-    """VERSÃO CORRIGIDA para AWAY - Sentido invertido"""
+    """Versão simplificada para AWAY"""
     gh, ga = row.get('Goals_H_FT', 0), row.get('Goals_A_FT', 0)
     asian_line = row.get('Asian_Line_Decimal', 0)
     
-    margin = ga - gh  # Invertido para AWAY
-    difference = margin - (-asian_line)  # Para AWAY, a expectativa é -asian_line
+    margin = ga - gh
+    handicap_otimo = margin - (-asian_line)  # Linha de referência para AWAY é -asian_line
     
-    # 🔄 CORREÇÃO: Lógica similar mas para o lado AWAY
-    if difference > 2.0:
-        optimal = -1.5  # Away muito melhor → handicap mais negativo PARA AWAY
-    elif difference > 1.5:
-        optimal = -1.25
-    elif difference > 1.0:
-        optimal = -1.0
-    elif difference > 0.75:
-        optimal = -0.75
-    elif difference > 0.5:
-        optimal = -0.5
-    elif difference > 0.25:
-        optimal = -0.25
-    elif difference > -0.25:
-        optimal = 0.0
-    elif difference > -0.5:
-        optimal = 0.25  # Away pior → handicap positivo (favorece home)
-    elif difference > -0.75:
-        optimal = 0.5
-    elif difference > -1.0:
-        optimal = 0.75
-    elif difference > -1.5:
-        optimal = 1.0
-    elif difference > -2.0:
-        optimal = 1.25
-    else:
-        optimal = 1.5
+    handicaps = [-1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0, +0.25, +0.5, +0.75, +1.0, +1.25, +1.5]
+    closest_handicap = min(handicaps, key=lambda x: abs(x - handicap_otimo))
     
-    return optimal
+    return closest_handicap
 
 def criar_target_handicap_away_discreto_calibrado(row):
     h = calcular_handicap_otimo_away(row)
