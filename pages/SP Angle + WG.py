@@ -71,22 +71,6 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
     return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
 
 def convert_asian_line_to_decimal(value):
-    """
-    Converte Asian_Line (referência AWAY) para decimal na perspectiva HOME.
-    
-    Lógica CORRIGIDA:
-    - Asian Line é sempre da perspectiva do AWAY
-    - "+" significa vantagem para AWAY = desvantagem para HOME
-    - "-" significa desvantagem para AWAY = vantagem para HOME
-    
-    Exemplos CORRETOS:
-        "0"       -> 0.0      (neutro)
-        "-0.5"    -> +0.5     (Home recebe +0.5 de vantagem)
-        "0/-0.5"  -> +0.25    (Home recebe +0.25 de vantagem)
-        "-0.5/1"  -> +0.75    (Home recebe +0.75 de vantagem)
-        "+0.5"    -> -0.5     (Home tem -0.5 de desvantagem)
-        "0/+0.5"  -> -0.25    (Home tem -0.25 de desvantagem)
-    """
     if pd.isna(value):
         return np.nan
     value = str(value).strip()
