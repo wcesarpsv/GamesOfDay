@@ -947,9 +947,6 @@ def main():
 
     st.info(f"📊 Carregados: {len(games_today)} jogos de hoje | {len(history)} jogos históricos válidos")
 
-    # NOVO: Verificação das features WG
-    with st.expander("🔍 Verificar Features WG"):
-        verificar_features_wg(history, games_today)
 
     st.markdown("""
     ## 🎯 Sistema Espacial Inteligente V2
