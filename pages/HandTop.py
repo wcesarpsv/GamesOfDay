@@ -205,37 +205,37 @@ def main_handicap_v1():
 
 
 
-    def aplicar_weighted_goals_today(history: pd.DataFrame, games_today: pd.DataFrame) -> pd.DataFrame:
-    df = games_today.copy()
-
-    # Histórico ordenado no tempo
-    history = history.sort_values('Date')
-
-    # Inicializa colunas para evitar erros
-    df['WG_Home_Team'] = np.nan
-    df['WG_Away_Team'] = np.nan
-    df['WG_Diff'] = np.nan
-    df['WG_Confidence'] = np.nan
-
-    for idx, row in df.iterrows():
-        home_team = row['Home']
-        away_team = row['Away']
-
-        # Pega os últimos 5 jogos do HISTÓRICO, sem incluir o jogo de hoje
-        last_home_games = history[history['Home'] == home_team].tail(5)
-        last_away_games = history[history['Away'] == away_team].tail(5)
-
-        # Média segura
-        df.at[idx, 'WG_Home_Team'] = last_home_games['WG_Home'].mean() if not last_home_games.empty else 0
-        df.at[idx, 'WG_Away_Team'] = last_away_games['WG_Away'].mean() if not last_away_games.empty else 0
-
-        # Diferença
-        df.at[idx, 'WG_Diff'] = df.at[idx, 'WG_Home_Team'] - df.at[idx, 'WG_Away_Team']
-
-        # Confiança = nº de jogos usados
-        df.at[idx, 'WG_Confidence'] = len(last_home_games) + len(last_away_games)
-
-    return df
+    def aplicar_weighted_goals_today(history: pd.DataFrame, games_today: pd.DataFrame) -> pd.DataFrame:           
+        df = games_today.copy()
+        
+        # Histórico ordenado no tempo
+        history = history.sort_values('Date')
+    
+        # Inicializa colunas para evitar erros
+        df['WG_Home_Team'] = np.nan
+        df['WG_Away_Team'] = np.nan
+        df['WG_Diff'] = np.nan
+        df['WG_Confidence'] = np.nan
+    
+        for idx, row in df.iterrows():
+            home_team = row['Home']
+            away_team = row['Away']
+    
+            # Pega os últimos 5 jogos do HISTÓRICO, sem incluir o jogo de hoje
+            last_home_games = history[history['Home'] == home_team].tail(5)
+            last_away_games = history[history['Away'] == away_team].tail(5)
+    
+            # Média segura
+            df.at[idx, 'WG_Home_Team'] = last_home_games['WG_Home'].mean() if not last_home_games.empty else 0
+            df.at[idx, 'WG_Away_Team'] = last_away_games['WG_Away'].mean() if not last_away_games.empty else 0
+    
+            # Diferença
+            df.at[idx, 'WG_Diff'] = df.at[idx, 'WG_Home_Team'] - df.at[idx, 'WG_Away_Team']
+    
+            # Confiança = nº de jogos usados
+            df.at[idx, 'WG_Confidence'] = len(last_home_games) + len(last_away_games)
+    
+        return df
 
 
     # ============================================================
