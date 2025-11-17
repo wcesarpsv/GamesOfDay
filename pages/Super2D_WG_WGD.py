@@ -1070,7 +1070,7 @@ def treinar_modelo_quadrantes_dual_completo(history, games_today):
         games_today['ML_Side'] = 'HOME'
         return None, None, games_today
 
-    # Preparar features
+    # Preparar features - CORREÇÃO: garantir colunas únicas
     quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
     quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
@@ -1082,7 +1082,11 @@ def treinar_modelo_quadrantes_dual_completo(history, games_today):
         'WG_Diff', 'WG_AH_Diff', 'WG_Def_Diff', 'WG_Balance_Diff', 'WG_Net_Diff', 'WG_Confidence'
     ]].fillna(0)
 
+    # Concatenar todas as features
     X = pd.concat([ligas_dummies, extras, wg_features, quadrantes_home, quadrantes_away], axis=1)
+    
+    # CORREÇÃO CRÍTICA: Remover colunas duplicadas
+    X = X.loc[:, ~X.columns.duplicated()]
 
     y_home = history['Target_AH_Home']
     y_away = 1 - y_home
@@ -1099,7 +1103,7 @@ def treinar_modelo_quadrantes_dual_completo(history, games_today):
     # Treinar modelos
     try:
         model_home = RandomForestClassifier(
-            n_estimators=min(100, len(history)),  # Ajustar número de árvores baseado no tamanho dos dados
+            n_estimators=min(100, len(history)),
             max_depth=8, 
             random_state=42, 
             class_weight='balanced_subsample', 
@@ -1116,30 +1120,38 @@ def treinar_modelo_quadrantes_dual_completo(history, games_today):
         model_home.fit(X, y_home)
         model_away.fit(X, y_away)
 
-        # Preparar games_today - garantir que todas as colunas existam
-        qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH')
-        qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA')
-        ligas_today = pd.get_dummies(games_today['League'], prefix='League')
+        # Preparar games_today - CORREÇÃO: abordagem mais segura
+        # Criar DataFrame vazio com as mesmas colunas de X
+        X_today = pd.DataFrame(0, index=games_today.index, columns=X.columns)
         
-        # Garantir que as colunas correspondam ao treinamento
-        for df in [qh_today, qa_today, ligas_today]:
-            missing_cols = set(X.columns) - set(df.columns)
-            for col in missing_cols:
-                if col.startswith(('QH_', 'QA_', 'League_')):
-                    df[col] = 0
-        
-        # Reindexar para garantir a mesma ordem
-        qh_today = qh_today.reindex(columns=X.columns, fill_value=0)
-        qa_today = qa_today.reindex(columns=X.columns, fill_value=0)
-        ligas_today = ligas_today.reindex(columns=X.columns, fill_value=0)
-        
-        extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized']].fillna(0)
-        wg_today = games_today[[
-            'WG_Diff', 'WG_AH_Diff', 'WG_Def_Diff', 'WG_Balance_Diff', 'WG_Net_Diff', 'WG_Confidence'
-        ]].fillna(0)
+        # Preencher as colunas que existem em games_today
+        for col in X.columns:
+            if col in games_today.columns:
+                X_today[col] = games_today[col].fillna(0)
+            elif col.startswith('QH_'):
+                # Preencher quadrantes home
+                quadrante_num = int(col.split('_')[1])
+                X_today[col] = (games_today['Quadrante_Home'] == quadrante_num).astype(int)
+            elif col.startswith('QA_'):
+                # Preencher quadrantes away
+                quadrante_num = int(col.split('_')[1])
+                X_today[col] = (games_today['Quadrante_Away'] == quadrante_num).astype(int)
+            elif col.startswith('League_'):
+                # Preencher ligas
+                league_name = col[7:]  # Remove 'League_' prefix
+                X_today[col] = (games_today['League'] == league_name).astype(int)
 
-        X_today = pd.concat([ligas_today, extras_today, wg_today, qh_today, qa_today], axis=1)
-        X_today = X_today.reindex(columns=X.columns, fill_value=0)
+        # Garantir que as colunas WG estejam preenchidas
+        wg_cols = ['WG_Diff', 'WG_AH_Diff', 'WG_Def_Diff', 'WG_Balance_Diff', 'WG_Net_Diff', 'WG_Confidence']
+        for col in wg_cols:
+            if col in games_today.columns and col in X_today.columns:
+                X_today[col] = games_today[col].fillna(0)
+
+        # Garantir que as colunas de distância estejam preenchidas
+        dist_cols = ['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized']
+        for col in dist_cols:
+            if col in games_today.columns and col in X_today.columns:
+                X_today[col] = games_today[col].fillna(0)
 
         # Previsões
         probas_home = model_home.predict_proba(X_today)[:, 1]
@@ -1262,9 +1274,19 @@ def estilo_tabela_quadrantes_dual(df):
 # ---------------- EXECUÇÃO PRINCIPAL ----------------
 if not history.empty:
     modelo_home, modelo_away, games_today = treinar_modelo_quadrantes_dual_completo(history, games_today)
-    st.success("✅ Modelo dual completo (Home/Away) treinado com sucesso!")
+    
+    # Verificar se o modelo foi realmente treinado (não é None)
+    if modelo_home is not None and modelo_away is not None:
+        st.success("✅ Modelo dual completo (Home/Away) treinado com sucesso!")
+    else:
+        st.warning("⚠️ Modelo não foi treinado - usando valores padrão")
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
+    # Garantir que as colunas existam mesmo sem treinamento
+    games_today['Quadrante_ML_Score_Home'] = 0.5
+    games_today['Quadrante_ML_Score_Away'] = 0.5
+    games_today['Quadrante_ML_Score_Main'] = 0.5
+    games_today['ML_Side'] = 'HOME'
 
 # ---------------- EXIBIÇÃO DOS RESULTADOS DUAL ----------------
 st.markdown("## 🏆 Melhores Confrontos por Quadrantes ML (Home & Away)")
