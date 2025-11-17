@@ -71,31 +71,37 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
     return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
 
 def convert_asian_line_to_decimal(value):
+    """
+    Converte Asian_Line para perspectiva HOME - VERSÃO SIMPLIFICADA
+    """
     if pd.isna(value):
         return np.nan
+    
     value = str(value).strip()
     
+    # Linha cheia
     if "/" not in value:
         try:
-            num = float(value)
-            return -num
+            return -float(value)
         except ValueError:
             return np.nan
     
+    # Linha fracionada - ABORDAGEM DIRETA
     try:
-        parts_str = value.replace("+", "").split("/")
-        parts = [float(p) for p in parts_str]
-        avg = np.mean(parts)
+        parts = value.split("/")
         
-        if value.startswith("-"):
-            return abs(avg)
-        elif value.startswith("+"):
-            return -abs(avg)
+        # DETECTAR SINAL: presença de '-' em QUALQUER parte = vantagem HOME
+        if any('-' in part for part in parts):
+            # VANTAGEM HOME: calcular média e retornar positivo
+            parts_clean = [p.replace('-', '').replace('+', '') for p in parts]
+            avg = np.mean([float(p) for p in parts_clean])
+            return avg
         else:
-            if any(p < 0 for p in parts):
-                return abs(avg)
-            else:
-                return -abs(avg)
+            # DESVANTAGEM HOME: calcular média e retornar negativo  
+            parts_clean = [p.replace('+', '') for p in parts]
+            avg = np.mean([float(p) for p in parts_clean])
+            return -avg
+            
     except (ValueError, IndexError):
         return np.nan
 
