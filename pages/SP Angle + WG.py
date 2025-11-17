@@ -109,6 +109,63 @@ def convert_asian_line_to_decimal(value):
 
 
 
+def calcular_wg_para_jogos_do_dia(history: pd.DataFrame, games_today: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula features WG para jogos do dia usando médias históricas dos times
+    """
+    if games_today.empty:
+        return games_today
+    
+    games_today_wg = games_today.copy()
+    
+    # Para cada time nos jogos de hoje, buscar sua média WG histórica
+    all_teams_today = set(games_today_wg['Home'].tolist() + games_today_wg['Away'].tolist())
+    
+    # Calcular as últimas médias WG para cada time do histórico
+    wg_home_means = {}
+    wg_away_means = {}
+    wg_ah_home_means = {}
+    wg_ah_away_means = {}
+    
+    for team in all_teams_today:
+        # Últimos 5 jogos como mandante
+        home_games = history[history['Home'] == team].tail(5)
+        if not home_games.empty:
+            wg_home_means[team] = home_games['WG_Home'].mean()
+            wg_ah_home_means[team] = home_games['WG_AH_Home'].mean()
+        else:
+            wg_home_means[team] = 0.0
+            wg_ah_home_means[team] = 0.0
+            
+        # Últimos 5 jogos como visitante
+        away_games = history[history['Away'] == team].tail(5)
+        if not away_games.empty:
+            wg_away_means[team] = away_games['WG_Away'].mean()
+            wg_ah_away_means[team] = away_games['WG_AH_Away'].mean()
+        else:
+            wg_away_means[team] = 0.0
+            wg_ah_away_means[team] = 0.0
+    
+    # Aplicar aos jogos de hoje
+    games_today_wg['WG_Home_Team'] = games_today_wg['Home'].map(wg_home_means).fillna(0.0)
+    games_today_wg['WG_Away_Team'] = games_today_wg['Away'].map(wg_away_means).fillna(0.0)
+    games_today_wg['WG_AH_Home_Team'] = games_today_wg['Home'].map(wg_ah_home_means).fillna(0.0)
+    games_today_wg['WG_AH_Away_Team'] = games_today_wg['Away'].map(wg_ah_away_means).fillna(0.0)
+    
+    # Calcular diferenças
+    games_today_wg['WG_Diff'] = games_today_wg['WG_Home_Team'] - games_today_wg['WG_Away_Team']
+    games_today_wg['WG_AH_Diff'] = games_today_wg['WG_AH_Home_Team'] - games_today_wg['WG_AH_Away_Team']
+    
+    # Confiança baseada em quantos dados históricos temos
+    games_today_wg['WG_Confidence'] = (
+        games_today_wg['WG_Home_Team'].notna().astype(int) + 
+        games_today_wg['WG_Away_Team'].notna().astype(int)
+    )
+    
+    return games_today_wg
+
+
+
 # ========================= WEIGHTED GOALS SYSTEM =========================
 def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -837,19 +894,18 @@ def main():
         history = history.dropna(subset=["Target_AH_Home"]).copy()
         history["Target_AH_Home"] = history["Target_AH_Home"].astype(int)
     
-        # ============ NOVO: SISTEMA WEIGHTED GOALS ============
+        # ============ SISTEMA WEIGHTED GOALS ============
         st.info("📊 Calculando Weighted Goals...")
         
-        # Aplicar WG no histórico
+        # Aplicar WG no histórico (com resultados conhecidos)
         history = adicionar_weighted_goals(history)
         history = adicionar_weighted_goals_ah(history)
         history = calcular_rolling_wg(history)
         
-        # Aplicar WG nos jogos de hoje (sem target)
-        games_today = adicionar_weighted_goals(games_today)
-        games_today = adicionar_weighted_goals_ah(games_today)
-        games_today = calcular_rolling_wg(games_today)
-        # ============ FIM SISTEMA WG ============
+        # ============ MERGE PARA JOGOS DO DIA ============
+        st.info("🔄 Aplicando WG nos jogos de hoje...")
+        games_today = calcular_wg_para_jogos_do_dia(history, games_today)
+        # ============ FIM MERGE WG ============
     
         # Momentum (se tiver HandScore)
         history_mt = calcular_momentum_time(history)
@@ -891,13 +947,18 @@ def main():
 
     st.info(f"📊 Carregados: {len(games_today)} jogos de hoje | {len(history)} jogos históricos válidos")
 
+    # NOVO: Verificação das features WG
+    with st.expander("🔍 Verificar Features WG"):
+        verificar_features_wg(history, games_today)
+
     st.markdown("""
     ## 🎯 Sistema Espacial Inteligente V2
     - 🧠 Otimização automática do ângulo espacial (baseado no histórico real AH)
     - 📐 Métricas 3D normalizadas por liga (Aggression, M, MT)
     - 📦 Clusterização 3D dinâmica (K otimizado por Silhouette)
     - 🎯 Target Espacial derivado de **score contínuo geométrico**
-    - 📊 **NOVO: Sistema Weighted Goals (WG)** - performance vs expectativa de mercado
+    - 📊 **Sistema Weighted Goals (WG)** - performance vs expectativa de mercado
+    - 🔄 **WG em Tempo Real** - médias históricas aplicadas aos jogos do dia
     - ⚖️ Balanceamento automático de dados
     """)
 
