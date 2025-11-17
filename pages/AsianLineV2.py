@@ -130,28 +130,34 @@ def aplicar_clusterizacao_3d(df: pd.DataFrame, n_clusters=4, random_state=42) ->
 
 # ============== Handicap ótimo (HOME/AWAY) ===================
 def calcular_handicap_otimo_calibrado_v2(row):
+    """VERSÃO CORRIGIDA - Baseada na Asian_Line_Decimal"""
     gh, ga = row.get('Goals_H_FT', 0), row.get('Goals_A_FT', 0)
+    asian_line = row.get('Asian_Line_Decimal', 0)
+    
     margin = gh - ga
-    handicaps = [-1.5,-1.25,-1.0,-0.75,-0.5,-0.25,0,+0.25,+0.5,+0.75,+1.0,+1.25,+1.5]
+    actual_vs_expected = margin - asian_line  # Diferença entre resultado real e linha do mercado
+    
+    # Agora calculamos qual handicap teria sido ideal dado o resultado
+    # Se actual_vs_expected > 0: linha deveria ser mais favorável à casa
+    # Se actual_vs_expected < 0: linha deveria ser mais favorável ao visitante
+    
+    handicaps = [-1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0, +0.25, +0.5, +0.75, +1.0, +1.25, +1.5]
     best_h, best_score = 0, -10
+    
     for h in handicaps:
-        adj = margin + h
-        if adj > 0:
-            base = 1.5
-            if abs(h) > 1.0: base -= 0.8
-            elif abs(h) > 0.75: base -= 0.4
-            elif abs(h) > 0.5: base -= 0.2
-            score = base - abs(h)*0.1
-        elif adj == 0:
-            score = 0.3
-        else:
-            score = -0.5 - abs(h)*0.15
+        # Quão bem este handicap teria se ajustado ao resultado
+        performance = abs(actual_vs_expected - h)
+        score = -performance  # Quanto menor a diferença, melhor o score
+        
         if score > best_score:
             best_score, best_h = score, h
+    
+    # Suavizar handicaps extremos
     if abs(best_h) > 1.0:
-        best_h *= 0.6
+        best_h *= 0.7
     elif abs(best_h) > 0.75:
-        best_h *= 0.8
+        best_h *= 0.85
+        
     return best_h
 
 def criar_target_handicap_discreto_calibrado_v2(row):
@@ -163,28 +169,29 @@ def criar_target_handicap_discreto_calibrado_v2(row):
     else: return 'MODERATE_AWAY'
 
 def calcular_handicap_otimo_away(row):
+    """VERSÃO CORRIGIDA - Baseada na Asian_Line_Decimal"""
     gh, ga = row.get('Goals_H_FT', 0), row.get('Goals_A_FT', 0)
-    margin = ga - gh  # invertido p/ AWAY
-    handicaps = [-1.5,-1.25,-1.0,-0.75,-0.5,-0.25,0,+0.25,+0.5,+0.75,+1.0,+1.25,+1.5]
+    asian_line = row.get('Asian_Line_Decimal', 0)
+    
+    margin = ga - gh  # Invertido para AWAY
+    actual_vs_expected = margin - (-asian_line)  # Para AWAY, a linha de referência é -asian_line
+    
+    handicaps = [-1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0, +0.25, +0.5, +0.75, +1.0, +1.25, +1.5]
     best_h, best_score = 0, -10
+    
     for h in handicaps:
-        adj = margin + h
-        if adj > 0:
-            base = 1.5
-            if abs(h) > 1.0: base -= 0.8
-            elif abs(h) > 0.75: base -= 0.4
-            elif abs(h) > 0.5: base -= 0.2
-            score = base - abs(h)*0.1
-        elif adj == 0:
-            score = 0.3
-        else:
-            score = -0.5 - abs(h)*0.15
+        performance = abs(actual_vs_expected - h)
+        score = -performance
+        
         if score > best_score:
             best_score, best_h = score, h
+    
+    # Suavizar handicaps extremos
     if abs(best_h) > 1.0:
-        best_h *= 0.6
+        best_h *= 0.7
     elif abs(best_h) > 0.75:
-        best_h *= 0.8
+        best_h *= 0.85
+        
     return best_h
 
 def criar_target_handicap_away_discreto_calibrado(row):
