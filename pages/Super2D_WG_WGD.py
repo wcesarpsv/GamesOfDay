@@ -634,55 +634,83 @@ if not games_today.empty and 'WG_Diff' in games_today.columns:
     with col4:
         st.metric("Confiança Média WG", f"{games_today['WG_Confidence'].mean():.1f}")
 
-    # Scatter plot com novas features
+    # Scatter plot com novas features - CORREÇÃO DO ERRO
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
     
-    # WG Ofensivo vs Defensivo
-    scatter1 = ax1.scatter(games_today['WG_Diff'], games_today['WG_Def_Diff'], 
-                          c=games_today.get('Quadrante_ML_Score_Main', 0.5),
-                          cmap='RdYlGn', alpha=0.7, s=50)
-    ax1.axhline(y=0, color='black', linestyle='-', alpha=0.3)
-    ax1.axvline(x=0, color='black', linestyle='-', alpha=0.3)
-    ax1.set_xlabel('WG_Diff (Ataque Home - Away)')
-    ax1.set_ylabel('WG_Def_Diff (Defesa Home - Away)')
-    ax1.set_title('Ataque vs Defesa')
-    plt.colorbar(scatter1, ax=ax1, label='Score ML')
+    # Verificar se temos dados suficientes para plotar
+    valid_data = games_today.dropna(subset=['WG_Diff', 'WG_Def_Diff'])
     
-    # Balance vs Net
-    scatter2 = ax2.scatter(games_today['WG_Balance_Diff'], games_today['WG_Net_Diff'],
-                          c=games_today.get('Quadrante_ML_Score_Main', 0.5),
-                          cmap='RdYlGn', alpha=0.7, s=50)
-    ax2.axhline(y=0, color='black', linestyle='-', alpha=0.3)
-    ax2.axvline(x=0, color='black', linestyle='-', alpha=0.3)
-    ax2.set_xlabel('WG_Balance_Diff')
-    ax2.set_ylabel('WG_Net_Diff')
-    ax2.set_title('Balance vs Net Performance')
-    plt.colorbar(scatter2, ax=ax2, label='Score ML')
+    if len(valid_data) > 0:
+        # WG Ofensivo vs Defensivo
+        if 'Quadrante_ML_Score_Main' in valid_data.columns:
+            scatter1 = ax1.scatter(valid_data['WG_Diff'], valid_data['WG_Def_Diff'], 
+                                  c=valid_data['Quadrante_ML_Score_Main'],
+                                  cmap='RdYlGn', alpha=0.7, s=50)
+            plt.colorbar(scatter1, ax=ax1, label='Score ML')
+        else:
+            ax1.scatter(valid_data['WG_Diff'], valid_data['WG_Def_Diff'], 
+                       alpha=0.7, s=50, color='blue')
+        
+        ax1.axhline(y=0, color='black', linestyle='-', alpha=0.3)
+        ax1.axvline(x=0, color='black', linestyle='-', alpha=0.3)
+        ax1.set_xlabel('WG_Diff (Ataque Home - Away)')
+        ax1.set_ylabel('WG_Def_Diff (Defesa Home - Away)')
+        ax1.set_title('Ataque vs Defesa')
+        
+        # Balance vs Net
+        valid_data_balance = games_today.dropna(subset=['WG_Balance_Diff', 'WG_Net_Diff'])
+        if len(valid_data_balance) > 0:
+            if 'Quadrante_ML_Score_Main' in valid_data_balance.columns:
+                scatter2 = ax2.scatter(valid_data_balance['WG_Balance_Diff'], valid_data_balance['WG_Net_Diff'],
+                                      c=valid_data_balance['Quadrante_ML_Score_Main'],
+                                      cmap='RdYlGn', alpha=0.7, s=50)
+                plt.colorbar(scatter2, ax=ax2, label='Score ML')
+            else:
+                ax2.scatter(valid_data_balance['WG_Balance_Diff'], valid_data_balance['WG_Net_Diff'],
+                           alpha=0.7, s=50, color='green')
+            
+            ax2.axhline(y=0, color='black', linestyle='-', alpha=0.3)
+            ax2.axvline(x=0, color='black', linestyle='-', alpha=0.3)
+            ax2.set_xlabel('WG_Balance_Diff')
+            ax2.set_ylabel('WG_Net_Diff')
+            ax2.set_title('Balance vs Net Performance')
+        else:
+            ax2.text(0.5, 0.5, 'Dados insuficientes', ha='center', va='center', transform=ax2.transAxes)
+            ax2.set_title('Balance vs Net Performance')
+        
+        # Distribuição WG Defensivo
+        ax3.hist(games_today['WG_Def_Diff'].dropna(), bins=min(20, len(games_today)), 
+                alpha=0.7, color='skyblue', edgecolor='black')
+        if len(games_today['WG_Def_Diff'].dropna()) > 0:
+            ax3.axvline(x=games_today['WG_Def_Diff'].mean(), color='red', linestyle='--', 
+                       label=f'Média: {games_today["WG_Def_Diff"].mean():.3f}')
+        ax3.set_xlabel('WG_Def_Diff')
+        ax3.set_ylabel('Frequência')
+        ax3.set_title('Distribuição WG Defensivo')
+        ax3.legend()
+        
+        # Correlação entre features
+        corr_features = games_today[['WG_Diff', 'WG_Def_Diff', 'WG_Balance_Diff', 'WG_Net_Diff']].corr()
+        im = ax4.imshow(corr_features, cmap='coolwarm', aspect='auto', vmin=-1, vmax=1)
+        ax4.set_xticks(range(len(corr_features.columns)))
+        ax4.set_yticks(range(len(corr_features.columns)))
+        ax4.set_xticklabels(corr_features.columns, rotation=45)
+        ax4.set_yticklabels(corr_features.columns)
+        ax4.set_title('Correlação entre Features WG')
+        
+        # Adicionar valores na matriz de correlação
+        for i in range(len(corr_features.columns)):
+            for j in range(len(corr_features.columns)):
+                ax4.text(j, i, f'{corr_features.iloc[i, j]:.2f}', 
+                        ha='center', va='center', color='white' if abs(corr_features.iloc[i, j]) > 0.5 else 'black')
+        
+        plt.colorbar(im, ax=ax4)
+    else:
+        # Se não há dados válidos, mostrar mensagem
+        for ax in [ax1, ax2, ax3, ax4]:
+            ax.text(0.5, 0.5, 'Dados insuficientes para visualização', 
+                   ha='center', va='center', transform=ax.transAxes)
     
-    # Distribuição WG Defensivo
-    ax3.hist(games_today['WG_Def_Diff'], bins=20, alpha=0.7, color='skyblue', edgecolor='black')
-    ax3.axvline(x=games_today['WG_Def_Diff'].mean(), color='red', linestyle='--', label=f'Média: {games_today["WG_Def_Diff"].mean():.3f}')
-    ax3.set_xlabel('WG_Def_Diff')
-    ax3.set_ylabel('Frequência')
-    ax3.set_title('Distribuição WG Defensivo')
-    ax3.legend()
-    
-    # Correlação entre features
-    corr_features = games_today[['WG_Diff', 'WG_Def_Diff', 'WG_Balance_Diff', 'WG_Net_Diff']].corr()
-    im = ax4.imshow(corr_features, cmap='coolwarm', aspect='auto', vmin=-1, vmax=1)
-    ax4.set_xticks(range(len(corr_features.columns)))
-    ax4.set_yticks(range(len(corr_features.columns)))
-    ax4.set_xticklabels(corr_features.columns, rotation=45)
-    ax4.set_yticklabels(corr_features.columns)
-    ax4.set_title('Correlação entre Features WG')
-    
-    # Adicionar valores na matriz de correlação
-    for i in range(len(corr_features.columns)):
-        for j in range(len(corr_features.columns)):
-            ax4.text(j, i, f'{corr_features.iloc[i, j]:.2f}', 
-                    ha='center', va='center', color='white' if abs(corr_features.iloc[i, j]) > 0.5 else 'black')
-    
-    plt.colorbar(im, ax=ax4)
     plt.tight_layout()
     st.pyplot(fig)
 
@@ -1032,6 +1060,16 @@ def treinar_modelo_quadrantes_dual_completo(history, games_today):
     history = calcular_distancias_quadrantes(history)
     games_today = calcular_distancias_quadrantes(games_today)
 
+    # Verificar se temos dados suficientes
+    if len(history) < 10:
+        st.warning("⚠️ Histórico insuficiente para treinar o modelo")
+        # Retornar valores padrão
+        games_today['Quadrante_ML_Score_Home'] = 0.5
+        games_today['Quadrante_ML_Score_Away'] = 0.5
+        games_today['Quadrante_ML_Score_Main'] = 0.5
+        games_today['ML_Side'] = 'HOME'
+        return None, None, games_today
+
     # Preparar features
     quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
     quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
@@ -1049,49 +1087,90 @@ def treinar_modelo_quadrantes_dual_completo(history, games_today):
     y_home = history['Target_AH_Home']
     y_away = 1 - y_home
 
+    # Verificar se temos pelo menos 2 classes
+    if y_home.nunique() < 2:
+        st.warning("⚠️ Dados de target insuficientes para treinamento")
+        games_today['Quadrante_ML_Score_Home'] = 0.5
+        games_today['Quadrante_ML_Score_Away'] = 0.5
+        games_today['Quadrante_ML_Score_Main'] = 0.5
+        games_today['ML_Side'] = 'HOME'
+        return None, None, games_today
+
     # Treinar modelos
-    model_home = RandomForestClassifier(
-        n_estimators=500, max_depth=10, random_state=42, class_weight='balanced_subsample', n_jobs=-1
-    )
-    model_away = RandomForestClassifier(
-        n_estimators=500, max_depth=10, random_state=42, class_weight='balanced_subsample', n_jobs=-1
-    )
-
-    model_home.fit(X, y_home)
-    model_away.fit(X, y_away)
-
-    # Preparar games_today
-    qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
-    qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
-    ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized']].fillna(0)
-
-    wg_today = games_today[[
-        'WG_Diff', 'WG_AH_Diff', 'WG_Def_Diff', 'WG_Balance_Diff', 'WG_Net_Diff', 'WG_Confidence'
-    ]].fillna(0)
-
-    X_today = pd.concat([ligas_today, extras_today, wg_today, qh_today, qa_today], axis=1)
-
-    # Previsões
-    probas_home = model_home.predict_proba(X_today)[:, 1]
-    probas_away = model_away.predict_proba(X_today)[:, 1]
-
-    games_today['Quadrante_ML_Score_Home'] = probas_home
-    games_today['Quadrante_ML_Score_Away'] = probas_away
-    games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
-    games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
-
-    # Feature importance
     try:
-        importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
-        top_feats = importances.head(20)
-        st.markdown("### 🔍 Top Features mais importantes (Modelo HOME - Completo)")
-        st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
-    except Exception as e:
-        st.warning(f"Não foi possível calcular importâncias: {e}")
+        model_home = RandomForestClassifier(
+            n_estimators=min(100, len(history)),  # Ajustar número de árvores baseado no tamanho dos dados
+            max_depth=8, 
+            random_state=42, 
+            class_weight='balanced_subsample', 
+            n_jobs=-1
+        )
+        model_away = RandomForestClassifier(
+            n_estimators=min(100, len(history)),
+            max_depth=8,
+            random_state=42, 
+            class_weight='balanced_subsample', 
+            n_jobs=-1
+        )
 
-    st.success("✅ Modelo dual completo (com features defensivas) treinado com sucesso!")
-    return model_home, model_away, games_today
+        model_home.fit(X, y_home)
+        model_away.fit(X, y_away)
+
+        # Preparar games_today - garantir que todas as colunas existam
+        qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH')
+        qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA')
+        ligas_today = pd.get_dummies(games_today['League'], prefix='League')
+        
+        # Garantir que as colunas correspondam ao treinamento
+        for df in [qh_today, qa_today, ligas_today]:
+            missing_cols = set(X.columns) - set(df.columns)
+            for col in missing_cols:
+                if col.startswith(('QH_', 'QA_', 'League_')):
+                    df[col] = 0
+        
+        # Reindexar para garantir a mesma ordem
+        qh_today = qh_today.reindex(columns=X.columns, fill_value=0)
+        qa_today = qa_today.reindex(columns=X.columns, fill_value=0)
+        ligas_today = ligas_today.reindex(columns=X.columns, fill_value=0)
+        
+        extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized']].fillna(0)
+        wg_today = games_today[[
+            'WG_Diff', 'WG_AH_Diff', 'WG_Def_Diff', 'WG_Balance_Diff', 'WG_Net_Diff', 'WG_Confidence'
+        ]].fillna(0)
+
+        X_today = pd.concat([ligas_today, extras_today, wg_today, qh_today, qa_today], axis=1)
+        X_today = X_today.reindex(columns=X.columns, fill_value=0)
+
+        # Previsões
+        probas_home = model_home.predict_proba(X_today)[:, 1]
+        probas_away = model_away.predict_proba(X_today)[:, 1]
+
+        games_today['Quadrante_ML_Score_Home'] = probas_home
+        games_today['Quadrante_ML_Score_Away'] = probas_away
+        games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
+        games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
+
+        # Feature importance
+        try:
+            importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
+            top_feats = importances.head(20)
+            st.markdown("### 🔍 Top Features mais importantes (Modelo HOME - Completo)")
+            st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
+        except Exception as e:
+            st.warning(f"Não foi possível calcular importâncias: {e}")
+
+        st.success("✅ Modelo dual completo (com features defensivas) treinado com sucesso!")
+        return model_home, model_away, games_today
+        
+    except Exception as e:
+        st.error(f"❌ Erro no treinamento do modelo: {e}")
+        # Valores padrão em caso de erro
+        games_today['Quadrante_ML_Score_Home'] = 0.5
+        games_today['Quadrante_ML_Score_Away'] = 0.5
+        games_today['Quadrante_ML_Score_Main'] = 0.5
+        games_today['ML_Side'] = 'HOME'
+        return None, None, games_today
+        
 
 # ---------------- SISTEMA DE INDICAÇÕES EXPLÍCITAS DUAL ----------------
 def adicionar_indicadores_explicativos_dual(df):
