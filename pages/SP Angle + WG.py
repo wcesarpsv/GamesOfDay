@@ -817,45 +817,45 @@ def main():
     selected_file = st.sidebar.selectbox("Selecionar Arquivo:", options, index=len(options) - 1)
 
     @st.cache_data(ttl=3600)
-def load_cached_data(sel_file: str):
-    games_today = pd.read_csv(os.path.join(GAMES_FOLDER, sel_file))
-    games_today = filter_leagues(games_today)
-
-    history = filter_leagues(load_all_games(GAMES_FOLDER))
-    history = preprocess_df(history)
-
-    # Garantir colunas essenciais
-    if 'Asian_Line' in history.columns:
-        history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
-    if 'Asian_Line' in games_today.columns:
-        games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
-
-    history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line_Decimal"]).copy()
-
-    # Target base AH Home
-    history["Target_AH_Home"] = history.apply(calculate_ah_home_target, axis=1)
-    history = history.dropna(subset=["Target_AH_Home"]).copy()
-    history["Target_AH_Home"] = history["Target_AH_Home"].astype(int)
-
-    # ============ NOVO: SISTEMA WEIGHTED GOALS ============
-    st.info("📊 Calculando Weighted Goals...")
+    def load_cached_data(sel_file: str):
+        games_today = pd.read_csv(os.path.join(GAMES_FOLDER, sel_file))
+        games_today = filter_leagues(games_today)
     
-    # Aplicar WG no histórico
-    history = adicionar_weighted_goals(history)
-    history = adicionar_weighted_goals_ah(history)
-    history = calcular_rolling_wg(history)
+        history = filter_leagues(load_all_games(GAMES_FOLDER))
+        history = preprocess_df(history)
     
-    # Aplicar WG nos jogos de hoje (sem target)
-    games_today = adicionar_weighted_goals(games_today)
-    games_today = adicionar_weighted_goals_ah(games_today)
-    games_today = calcular_rolling_wg(games_today)
-    # ============ FIM SISTEMA WG ============
-
-    # Momentum (se tiver HandScore)
-    history_mt = calcular_momentum_time(history)
-    games_today_mt = calcular_momentum_time(games_today)
-
-    return games_today_mt, history_mt
+        # Garantir colunas essenciais
+        if 'Asian_Line' in history.columns:
+            history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
+        if 'Asian_Line' in games_today.columns:
+            games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
+    
+        history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line_Decimal"]).copy()
+    
+        # Target base AH Home
+        history["Target_AH_Home"] = history.apply(calculate_ah_home_target, axis=1)
+        history = history.dropna(subset=["Target_AH_Home"]).copy()
+        history["Target_AH_Home"] = history["Target_AH_Home"].astype(int)
+    
+        # ============ NOVO: SISTEMA WEIGHTED GOALS ============
+        st.info("📊 Calculando Weighted Goals...")
+        
+        # Aplicar WG no histórico
+        history = adicionar_weighted_goals(history)
+        history = adicionar_weighted_goals_ah(history)
+        history = calcular_rolling_wg(history)
+        
+        # Aplicar WG nos jogos de hoje (sem target)
+        games_today = adicionar_weighted_goals(games_today)
+        games_today = adicionar_weighted_goals_ah(games_today)
+        games_today = calcular_rolling_wg(games_today)
+        # ============ FIM SISTEMA WG ============
+    
+        # Momentum (se tiver HandScore)
+        history_mt = calcular_momentum_time(history)
+        games_today_mt = calcular_momentum_time(games_today)
+    
+        return games_today_mt, history_mt
 
     games_today, history = load_cached_data(selected_file)
 
