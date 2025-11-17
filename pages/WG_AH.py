@@ -1045,7 +1045,7 @@ def main_handicap_v1():
             cols_base = [c for c in cols_base if c in df_filtrado_base.columns]
 
             st.dataframe(
-                df_filtrado_base[cols_base].style.apply(highlight_confirmed, axis=1),
+                df_filtrado_base[cols_base].style,
                 use_container_width=True
             )
         else:
@@ -1076,7 +1076,7 @@ def main_handicap_v1():
             cols_ah = [c for c in cols_ah if c in df_filtrado_ah.columns]
 
             st.dataframe(
-                df_filtrado_ah[cols_ah].style.apply(highlight_confirmed, axis=1),
+                df_filtrado_ah[cols_ah].style,
                 use_container_width=True
             )
         else:
