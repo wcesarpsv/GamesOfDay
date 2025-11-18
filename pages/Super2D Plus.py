@@ -1671,8 +1671,8 @@ if 'P_Home_Cover_AH_WG' in games_today.columns:
 
     # Filtrar só confrontos onde pelo menos um lado tem EV > 0
     mask_valor = (
-        (df_wg_value['Value_Home_WG'] > 0) |
-        (df_wg_value['Value_Away_WG'] > 0)
+        (df_wg_value['Value_Home_AH_WG'] > 0) |
+        (df_wg_value['Value_Away_AH_WG'] > 0)
     )
     df_wg_value = df_wg_value[mask_valor].copy()
 
@@ -1680,14 +1680,14 @@ if 'P_Home_Cover_AH_WG' in games_today.columns:
         st.info("⚠️ Nenhuma aposta com EV > 0 pelo modelo WG_Diff hoje.")
     else:
         # Ordenar pelos maiores EVs absolutos (home ou away)
-        df_wg_value['EV_Max'] = df_wg_value[['Value_Home_WG', 'Value_Away_WG']].max(axis=1)
+        df_wg_value['EV_Max'] = df_wg_value[['Value_Home_AH_WG', 'Value_Away_AH_WG']].max(axis=1)
         df_wg_value = df_wg_value.sort_values('EV_Max', ascending=False)
 
         cols_show = [
             'League', 'Home', 'Away',
             'WG_Diff', 'WG_Def_Diff', 'WG_Balance_Diff',
-            'P_Home_Win_WG', 'Odd_H', 'Value_Home_WG',
-            'P_Away_or_Draw_WG', 'Odd_A', 'Value_Away_WG',
+            'P_Home_Win_WG', 'Odd_H', 'Value_Home_AH_WG',
+            'P_Away_or_Draw_WG', 'Odd_A', 'Value_Away_AH_WG',
             'Melhor_Lado_WG'
         ]
         cols_show = [c for c in cols_show if c in df_wg_value.columns]
@@ -1702,8 +1702,8 @@ if 'P_Home_Cover_AH_WG' in games_today.columns:
                 'P_Away_or_Draw_WG': '{:.1%}',
                 'Odd_H': '{:.2f}',
                 'Odd_A': '{:.2f}',
-                'Value_Home_WG': '{:.2f}',
-                'Value_Away_WG': '{:.2f}'
+                'Value_Home_AH_WG': '{:.2f}',
+                'Value_Away_AH_WG': '{:.2f}'
             }),
             use_container_width=True
         )
