@@ -1647,7 +1647,7 @@ if 'ML_Side' in ranking_quadrantes.columns:
 # ======================== 📊 VALUE BETS – WG_Diff vs Odds ========================
 st.markdown("## 📊 Value Bets – Probabilidade WG_Diff vs Odds")
 
-if 'P_Home_Win_WG' in games_today.columns:
+if 'P_Home_Cover_AH_WG' in games_today.columns:
     df_wg_value = games_today.copy()
 
     # Mantém só jogos com odds disponíveis
