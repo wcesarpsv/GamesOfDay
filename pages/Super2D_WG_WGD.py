@@ -171,54 +171,35 @@ def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
 
 def adicionar_weighted_goals_defensivos(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calcula Weighted Goals para performance defensiva
+    NOVO cálculo WG_def:
+    Usa xGoals baseados em odds e Asian Line
+    WG_Def = xGA - GA (defesa melhor = positivo)
     """
+
     df_temp = df.copy()
 
-    def odds_to_market_probs(row):
-        try:
-            odd_h = float(row.get('Odd_H', 0))
-            odd_a = float(row.get('Odd_A', 0))
+    # Parâmetros do modelo
+    base_goals = 2.5
+    asian_weight = 0.6
 
-            if odd_h <= 0 or odd_a <= 0:
-                return 0.50, 0.50
+    # Calcular xGF home e away, ajustado pela força do handicap
+    df_temp['xGF_H'] = base_goals/2 + df_temp['Asian_Line_Decimal'] * asian_weight
+    df_temp['xGF_A'] = base_goals/2 - df_temp['Asian_Line_Decimal'] * asian_weight
 
-            inv_h = 1 / odd_h
-            inv_a = 1 / odd_a
-            total = inv_h + inv_a
-            return inv_h / total, inv_a / total
-        except:
-            return 0.50, 0.50
+    # xGA é o xGF do adversário
+    df_temp['xGA_H'] = df_temp['xGF_A']
+    df_temp['xGA_A'] = df_temp['xGF_H']
 
-    def wg_defensivo_home(row):
-        """WG defensivo para time da casa (gols sofridos vs expectativa)"""
-        p_h, p_a = odds_to_market_probs(row)
-        goals_h = row.get('Goals_H_FT', 0)  # Gols feitos
-        goals_a = row.get('Goals_A_FT', 0)  # Gols sofridos
-        
-        # Lógica: sofrer menos gols que o esperado = positivo
-        expected_goals_against = p_a * 2.5  # Expectativa normalizada
-        defensive_performance = expected_goals_against - goals_a
-        
-        # Bonus por clean sheet
-        clean_sheet_bonus = 0.3 if goals_a == 0 else 0
-        
-        return defensive_performance + clean_sheet_bonus
+    # Gols sofridos (reais)
+    df_temp['GA_H'] = df_temp['Goals_A_FT'].fillna(0)
+    df_temp['GA_A'] = df_temp['Goals_H_FT'].fillna(0)
 
-    def wg_defensivo_away(row):
-        """WG defensivo para time visitante"""
-        p_h, p_a = odds_to_market_probs(row)
-        goals_h = row.get('Goals_H_FT', 0)  # Gols sofridos
-        goals_a = row.get('Goals_A_FT', 0)  # Gols feitos
-        
-        expected_goals_against = p_h * 2.5
-        defensive_performance = expected_goals_against - goals_h
-        clean_sheet_bonus = 0.3 if goals_h == 0 else 0
-        
-        return defensive_performance + clean_sheet_bonus
+    # Weighted Defensive Performance
+    df_temp['WG_Def_Home'] = df_temp['xGA_H'] - df_temp['GA_H']
+    df_temp['WG_Def_Away'] = df_temp['xGA_A'] - df_temp['GA_A']
 
-    df_temp['WG_Def_Home'] = df_temp.apply(wg_defensivo_home, axis=1)
-    df_temp['WG_Def_Away'] = df_temp.apply(wg_defensivo_away, axis=1)
+    # Limpeza
+    df_temp.drop(columns=['xGF_H', 'xGF_A', 'xGA_H', 'xGA_A', 'GA_H', 'GA_A'], inplace=True)
 
     return df_temp
 
