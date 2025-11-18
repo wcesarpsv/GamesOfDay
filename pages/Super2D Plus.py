@@ -619,12 +619,39 @@ history = adicionar_weighted_goals_ah_defensivos(history)  # NOVO
 history = calcular_metricas_completas(history)  # NOVO
 history = calcular_rolling_wg_features_completo(history)  # ATUALIZADO
 
+
 games_today = adicionar_weighted_goals(games_today)
 games_today = adicionar_weighted_goals_ah(games_today)
 games_today = calcular_metricas_completas(games_today)  # NOVO
 games_today = enrich_games_today_with_wg_completo(games_today, history)  # ATUALIZADO
 
 st.success(f"✅ Weighted Goals completos calculados: {len(history)} jogos históricos processados")
+
+
+
+# ======================= MONTAR ALVOS AH PARA O HISTÓRICO =======================
+if 'Margin' not in history.columns:
+    history['Margin'] = history['Goals_H_FT'] - history['Goals_A_FT']
+
+if 'Target_AH_Home' not in history.columns:
+    history['Target_AH_Home'] = history.apply(
+        lambda r: 1 if calc_handicap_result(
+            r.get("Margin", 0),
+            r.get("Asian_Line_Decimal", 0)
+        ) > 0.5 else 0,
+        axis=1
+    )
+
+# Garantir WG_Diff
+if 'WG_Diff' not in history.columns:
+    history['WG_Diff'] = history['WG_Home'] - history['WG_Away']
+
+# Filtrar somente jogos com Asian Line válido
+history = history.dropna(subset=['Asian_Line_Decimal']).copy()
+
+st.success(f"📊 Treinando modelo logístico com {len(history)} jogos válidos com AH...")
+
+
 
 
 # ========================= PROBABILIDADE VIA WG_Diff (TREINO + APLICAÇÃO) =========================
