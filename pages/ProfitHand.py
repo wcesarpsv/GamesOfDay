@@ -1028,69 +1028,78 @@ QUADRANTES_3D_LABELS = {
     16: "Alerta Away"
 }
 
-
-
 # =====================================================
-# Recomendação / Score 3D / Live
+# CORREÇÃO: Função adicionar_indicadores_explicativos_3d_16_dual corrigida
 # =====================================================
 def adicionar_indicadores_explicativos_3d_16_dual(df):
     """
     Adiciona indicadores e recomendações do Sistema 3D Inteligente
     com lógica de EV para apostar apenas quando lucrativo.
     """
-
     df = df.copy()
 
-    # Garantir preenchimento
-    for col in ['EV_Main', 'Pred_Profit_Home', 'Pred_Profit_Away']:
+    # Garantir preenchimento das colunas necessárias
+    for col in ['EV_Main', 'Pred_Profit_Home', 'Pred_Profit_Away', 
+                'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away',
+                'Quadrante_ML_Score_Main', 'ML_Side', 'ML_Confidence']:
         if col not in df.columns:
-            df[col] = 0.0
+            if 'Score' in col:
+                df[col] = 0.5
+            elif 'EV' in col or 'Profit' in col:
+                df[col] = 0.0
+            elif 'Side' in col:
+                df[col] = 'PASS'
     
+    # Garantir que os quadrantes existam
+    if 'Quadrante_Home' not in df.columns:
+        df['Quadrante_Home'] = 0
+    if 'Quadrante_Away' not in df.columns:
+        df['Quadrante_Away'] = 0
+        
     df['Quadrante_Home_Label'] = df['Quadrante_Home'].apply(
-        lambda x: QUADRANTES_3D_LABELS.get(int(x), "Sem Quadrante")
+        lambda x: QUADRANTES_3D_LABELS.get(int(x) if pd.notna(x) else 0, "Sem Quadrante")
     )
     df['Quadrante_Away_Label'] = df['Quadrante_Away'].apply(
-        lambda x: QUADRANTES_3D_LABELS.get(int(x), "Sem Quadrante")
+        lambda x: QUADRANTES_3D_LABELS.get(int(x) if pd.notna(x) else 0, "Sem Quadrante")
     )
 
     # ------------------- Regras com EV + Momentum + Regressão -------------------
     def gerar_recomendacao_3d_ev(row):
-        ev_main = row.get('EV_Main', 0.0)
-        ev_home = row.get('Pred_Profit_Home', 0.0)
-        ev_away = row.get('Pred_Profit_Away', 0.0)
-        ml_side = row.get('ML_Side', 'PASS')
-        score_home = row.get('Quadrante_ML_Score_Home', 0.5)
-        score_away = row.get('Quadrante_ML_Score_Away', 0.5)
-        momentum_h = row.get('M_H', 0.0)
-        momentum_a = row.get('M_A', 0.0)
-        tendencia_h = row.get('Tendencia_Home', '⚖️')
-        tendencia_a = row.get('Tendencia_Away', '⚖️')
+        try:
+            ev_main = float(row.get('EV_Main', 0.0))
+            ev_home = float(row.get('Pred_Profit_Home', 0.0))
+            ev_away = float(row.get('Pred_Profit_Away', 0.0))
+            ml_side = str(row.get('ML_Side', 'PASS'))
+            
+            # **PASS** → EV ruim
+            if ev_main <= 0:
+                return f"⏸ PASS (EV={ev_main:.2f}u)"
 
-        # **PASS** → EV ruim
-        if ev_main <= 0:
-            return f"⏸ PASS (EV={ev_main:.2f}u)"
-
-        # Se EV positivo → analisar padrões inteligentes
-        # Prioridade à escolha do modelo por lucro esperado
-        if ml_side == "HOME":
-            return f"🏠 HOME +AH (EV={ev_home:.2f}u)"
-        else:
-            return f"🚀 AWAY +AH (EV={ev_away:.2f}u)"
+            # Se EV positivo → analisar padrões inteligentes
+            # Prioridade à escolha do modelo por lucro esperado
+            if ml_side == "HOME":
+                return f"🏠 HOME +AH (EV={ev_home:.2f}u)"
+            else:
+                return f"🚀 AWAY +AH (EV={ev_away:.2f}u)"
+        except (ValueError, TypeError):
+            return "⏸ PASS (Erro cálculo)"
 
     df['Recomendacao_EV'] = df.apply(gerar_recomendacao_3d_ev, axis=1)
 
     # ----------------- Classificação do Potencial 3D -----------------
-    df['Classificacao_Potencial_3D'] = df['Quadrante_ML_Score_Main'].apply(
-        lambda p: '🌟 ALTO POTENCIAL 3D' if p >= 0.65
-        else '💼 VALOR SOLIDO 3D' if p >= 0.55
-        else '⚖️ EQUILIBRADO'
-    )
+    if 'Quadrante_ML_Score_Main' in df.columns:
+        df['Classificacao_Potencial_3D'] = df['Quadrante_ML_Score_Main'].apply(
+            lambda p: '🌟 ALTO POTENCIAL 3D' if p >= 0.65
+            else '💼 VALOR SOLIDO 3D' if p >= 0.55
+            else '⚖️ EQUILIBRADO'
+        )
+    else:
+        df['Classificacao_Potencial_3D'] = '⚖️ EQUILIBRADO'
 
     # -------------------- Indicação final exibida --------------------
     df['Recomendacao'] = df['Recomendacao_EV']
 
     return df
-
 
 def calcular_pontuacao_3d_quadrante_16(quadrante_id, momentum=0):
     scores_base = {
@@ -1099,7 +1108,7 @@ def calcular_pontuacao_3d_quadrante_16(quadrante_id, momentum=0):
         9: 50, 10: 45, 11: 40, 12: 35,
         13: 35, 14: 30, 15: 25, 16: 20
     }
-    base = scores_base.get(quadrante_id, 50)
+    base = scores_base.get(int(quadrante_id) if pd.notna(quadrante_id) else 0, 50)
     adjusted = base + momentum * 10
     return max(0, min(100, adjusted))
 
@@ -1109,6 +1118,11 @@ def gerar_score_combinado_3d_16(df):
         df['Quadrant_Dist_3D'] = 0.0
     if 'Quadrante_ML_Score_Main' not in df.columns:
         df['Quadrante_ML_Score_Main'] = 0.5
+
+    # Garantir que as colunas necessárias existam
+    for col in ['Quadrante_Home', 'Quadrante_Away', 'M_H', 'M_A']:
+        if col not in df.columns:
+            df[col] = 0.0
 
     df['Score_Base_Home'] = df.apply(
         lambda x: calcular_pontuacao_3d_quadrante_16(x['Quadrante_Home'], x.get('M_H', 0)), axis=1
@@ -1285,6 +1299,11 @@ def resumo_3d_16_quadrantes_hoje(df):
         return
 
     total_jogos = len(df)
+    
+    # Garantir que a coluna existe
+    if 'Classificacao_Potencial_3D' not in df.columns:
+        df['Classificacao_Potencial_3D'] = '⚖️ EQUILIBRADO'
+    
     alto_potencial_3d = (df['Classificacao_Potencial_3D'] == '🌟 ALTO POTENCIAL 3D').sum()
     valor_solido_3d = (df['Classificacao_Potencial_3D'] == '💼 VALOR SOLIDO 3D').sum()
 
@@ -1324,7 +1343,11 @@ def resumo_3d_16_quadrantes_hoje(df):
 
     if 'Recomendacao' in df.columns:
         st.markdown("#### 📊 Distribuição de Recomendações 3D Inteligentes")
-        st.dataframe(df['Recomendacao'].value_counts(), use_container_width=True)
+        rec_counts = df['Recomendacao'].value_counts()
+        if not rec_counts.empty:
+            st.dataframe(rec_counts, use_container_width=True)
+        else:
+            st.info("Nenhuma recomendação disponível")
 
 # ========================= EXECUÇÃO FINAL =========================
 st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes (ML Inteligente)")
@@ -1333,11 +1356,30 @@ if games_today.empty:
     st.error("📭 Nenhum jogo disponível hoje. Verifique o CSV da pasta GamesDay.")
     st.stop()
 
+# CORREÇÃO: Verificar se temos dados suficientes antes de processar
+if len(games_today) == 0:
+    st.error("❌ Nenhum jogo disponível para análise.")
+    st.stop()
+
 ranking_3d = games_today.copy()
-ranking_3d = adicionar_indicadores_explicativos_3d_16_dual(ranking_3d)
-ranking_3d = gerar_score_combinado_3d_16(ranking_3d)
-ranking_3d = update_real_time_data_3d(ranking_3d)
-ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
+
+# CORREÇÃO: Aplicar as funções de forma segura
+try:
+    ranking_3d = adicionar_indicadores_explicativos_3d_16_dual(ranking_3d)
+    ranking_3d = gerar_score_combinado_3d_16(ranking_3d)
+    ranking_3d = update_real_time_data_3d(ranking_3d)
+    
+    # CORREÇÃO: Verificar se a coluna Score_Final_3D existe antes de ordenar
+    if 'Score_Final_3D' in ranking_3d.columns:
+        ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
+    else:
+        st.warning("⚠️ Coluna Score_Final_3D não encontrada - ordenando por EV_Main")
+        if 'EV_Main' in ranking_3d.columns:
+            ranking_3d = ranking_3d.sort_values('EV_Main', ascending=False)
+        
+except Exception as e:
+    st.error(f"❌ Erro ao processar dados: {e}")
+    st.stop()
 
 st.success(f"🎯 {len(ranking_3d)} jogos processados pelo Sistema 3D Inteligente")
 
@@ -1347,36 +1389,43 @@ st.json(live_summary_3d)
 
 resumo_3d_16_quadrantes_hoje(ranking_3d)
 
+# CORREÇÃO: Slider seguro para número de jogos
 num_show = st.slider(
     "📌 Quantos jogos exibir na tabela?",
-    min_value=5,
-    max_value=len(ranking_3d),
-    value=min(40, len(ranking_3d))
+    min_value=1,
+    max_value=min(40, len(ranking_3d)),
+    value=min(10, len(ranking_3d))
 )
 
 df_show = ranking_3d.head(num_show).copy()
 
 st.markdown("### 📋 Lista de Recomendações - Ordenado por Score 3D")
+
+# CORREÇÃO: Formatação segura da tabela
+format_dict = {
+    'Goals_H_Today': '{:.0f}',
+    'Goals_A_Today': '{:.0f}',
+    'Asian_Line_Decimal': '{:.2f}',
+    'Profit_Quadrante': '{:.2f}',
+    'M_H': '{:.2f}',
+    'M_A': '{:.2f}',
+    'Quadrant_Dist_3D': '{:.2f}',
+    'Momentum_Diff': '{:.2f}',
+    'Magnitude_3D': '{:.2f}'
+}
+
+# Adicionar colunas condicionalmente ao format_dict
+for col in ['Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 'Quadrante_ML_Score_Main']:
+    if col in df_show.columns:
+        format_dict[col] = '{:.1%}'
+
+for col in ['Score_Final_3D', 'Media_Score_Home', 'Media_Score_Away', 
+            'Regressao_Force_Home', 'Regressao_Force_Away', 'score_confianca_composto']:
+    if col in df_show.columns:
+        format_dict[col] = '{:.2f}'
+
 st.dataframe(
-    estilo_tabela_3d_quadrantes(df_show)
-    .format({
-        'Goals_H_Today': '{:.0f}',
-        'Goals_A_Today': '{:.0f}',
-        'Asian_Line_Decimal': '{:.2f}',
-        'Profit_Quadrante': '{:.2f}',
-        'Quadrante_ML_Score_Home': '{:.1%}',
-        'Quadrante_ML_Score_Away': '{:.1%}',
-        'Score_Final_3D': '{:.1f}',
-        'M_H': '{:.2f}',
-        'M_A': '{:.2f}',
-        'Quadrant_Dist_3D': '{:.2f}',
-        'Momentum_Diff': '{:.2f}',
-        'Media_Score_Home': '{:.2f}',
-        'Media_Score_Away': '{:.2f}',
-        'Regressao_Force_Home': '{:.2f}',
-        'Regressao_Force_Away': '{:.2f}',
-        'score_confianca_composto': '{:.2f}'
-    }, na_rep="-"),
+    estilo_tabela_3d_quadrantes(df_show).format(format_dict, na_rep="-"),
     use_container_width=True
 )
 
@@ -1384,10 +1433,6 @@ if "Profit_Quadrante" in ranking_3d.columns and ranking_3d['Profit_Quadrante'].n
     st.success("📈 Monitoramento de lucro operacional ativo!")
 else:
     st.info("🕗 Aguardando LiveScore ou Odds Asiáticas para monitorar o lucro em tempo real...")
-
-
-
-
 
 # ========================= 📊 TABELA EXTRA – PICK QUALITY TABLE =========================
 
@@ -1398,10 +1443,14 @@ colunas_extra = [
     'Asian_Line_Decimal',
     'Goals_H_Today', 'Goals_A_Today',
     'Best_Side', 'EV_Home', 'EV_Away',
-    'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away',
     'ML_Confidence', 'Recomendacao_EV',
     'Handicap_Result', 'Profit_Quadrante', 'Bet_Result_Label'
 ]
+
+# Adicionar colunas condicionalmente
+for col in ['Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away']:
+    if col in ranking_3d.columns:
+        colunas_extra.append(col)
 
 df_final_extra = ranking_3d.copy()
 
@@ -1416,69 +1465,74 @@ df_final_extra = df_final_extra[colunas_extra]
 if 'Score_Final_3D' in ranking_3d.columns:
     df_final_extra = df_final_extra.loc[ranking_3d.sort_values('Score_Final_3D', ascending=False).index]
 
+# Formatação segura
+extra_format_dict = {
+    'Asian_Line_Decimal': '{:.2f}',
+    'Goals_H_Today': '{:.0f}',
+    'Goals_A_Today': '{:.0f}',
+    'EV_Home': '{:.2f}',
+    'EV_Away': '{:.2f}',
+    'ML_Confidence': '{:.2f}',
+    'Profit_Quadrante': '{:.2f}'
+}
+
+# Adicionar colunas condicionalmente
+for col in ['Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away']:
+    if col in df_final_extra.columns:
+        extra_format_dict[col] = '{:.2f}'
+
 st.dataframe(
-    df_final_extra.head(num_show).style.format({
-        'Asian_Line_Decimal': '{:.2f}',
-        'Goals_H_Today': '{:.0f}',
-        'Goals_A_Today': '{:.0f}',
-        'EV_Home': '{:.2f}',
-        'EV_Away': '{:.2f}',
-        'Quadrante_ML_Score_Home': '{:.2f}',
-        'Quadrante_ML_Score_Away': '{:.2f}',
-        'ML_Confidence': '{:.2f}',
-        'Profit_Quadrante': '{:.2f}'
-    }, na_rep="-"),
+    df_final_extra.head(num_show).style.format(extra_format_dict, na_rep="-"),
     use_container_width=True
 )
 
 st.info("📌 Esta tabela mostra EV + Resultados e deixa claro onde buscamos valor real!")
-
-
-
-
 
 # ========================= 🧠 ANALISE ESTRATÉGICA PURA (SEM EV) =========================
 
 st.markdown("### 🧠 Análise Estratégica Baseada em Momentum + Regressão (Sem EV)")
 
 def analise_estrategica_sem_ev(row):
-    mh = row.get('M_H', 0)
-    ma = row.get('M_A', 0)
-    tend_h = row.get('Tendencia_Home', '⚖️')
-    tend_a = row.get('Tendencia_Away', '⚖️')
-    cluster_h = row.get('Cluster3D_Desc', '')
-    cluster_a = row.get('Cluster3D_Desc', '')
+    try:
+        mh = row.get('M_H', 0)
+        ma = row.get('M_A', 0)
+        tend_h = str(row.get('Tendencia_Home', '⚖️'))
+        tend_a = str(row.get('Tendencia_Away', '⚖️'))
+        cluster_h = str(row.get('Cluster3D_Desc', ''))
+        cluster_a = str(row.get('Cluster3D_Desc', ''))
 
-    texto = []
+        texto = []
 
-    # Tendências e Momentum
-    if mh > 1.0:
-        texto.append("🔥 Home em forte evolução")
-    elif mh < -1.0:
-        texto.append("📉 Home em forte queda")
+        # Tendências e Momentum
+        if mh > 1.0:
+            texto.append("🔥 Home em forte evolução")
+        elif mh < -1.0:
+            texto.append("📉 Home em forte queda")
 
-    if ma > 1.0:
-        texto.append("🚀 Away em forte evolução")
-    elif ma < -1.0:
-        texto.append("📉 Away em forte queda")
+        if ma > 1.0:
+            texto.append("🚀 Away em forte evolução")
+        elif ma < -1.0:
+            texto.append("📉 Away em forte queda")
 
-    # Clusters mostrando vantagem tática
-    if "Under" in cluster_a or "Underdog" in cluster_a:
-        texto.append("📊 Away com perfil de Underdog Forte")
-    if "Fav Forte" in cluster_h:
-        texto.append("💪 Perfil de Favorito Forte em casa")
+        # Clusters mostrando vantagem tática
+        if "Under" in cluster_a or "Underdog" in cluster_a:
+            texto.append("📊 Away com perfil de Underdog Forte")
+        if "Fav Forte" in cluster_h:
+            texto.append("💪 Perfil de Favorito Forte em casa")
 
-    # Conflito entre expectativas e tendência
-    if "FORTE QUEDA" in tend_h and mh < 0:
-        texto.append("⚠ Favorito da casa inflado → cuidado")
-    if "FORTE MELHORA" in tend_a and ma > 0:
-        texto.append("💡 Underdog em ascensão → pode ter valor")
+        # Conflito entre expectativas e tendência
+        if "FORTE QUEDA" in tend_h and mh < 0:
+            texto.append("⚠ Favorito da casa inflado → cuidado")
+        if "FORTE MELHORA" in tend_a and ma > 0:
+            texto.append("💡 Underdog em ascensão → pode ter valor")
 
-    # Conclusão simples caso nenhum insight forte
-    if not texto:
-        texto.append("↔ Equilíbrio — jogo difícil de ler")
+        # Conclusão simples caso nenhum insight forte
+        if not texto:
+            texto.append("↔ Equilíbrio — jogo difícil de ler")
 
-    return " | ".join(texto)
+        return " | ".join(texto)
+    except Exception:
+        return "↔ Análise indisponível"
 
 ranking_3d['Analysis_Text_Pure'] = ranking_3d.apply(analise_estrategica_sem_ev, axis=1)
 
@@ -1486,36 +1540,42 @@ colunas_analise_pura = [
     'League', 'Home', 'Away','Goals_H_Today','Goals_A_Today',
     'Asian_Line_Decimal',
     'M_H', 'M_A','Extremidade_Home','Extremidade_Away',
-    'Prob_Regressao_Home','Prob_Regressao_Away',
     'Tendencia_Home', 'Tendencia_Away',
     'Cluster3D_Label', 'Cluster3D_Desc',
     'Analysis_Text_Pure'
 ]
 
+# Adicionar colunas condicionalmente
+for col in ['Prob_Regressao_Home', 'Prob_Regressao_Away']:
+    if col in ranking_3d.columns:
+        colunas_analise_pura.append(col)
+
 # Ordena antes para manter Score_Final_3D válido
-ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
+if 'Score_Final_3D' in ranking_3d.columns:
+    ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
 
 df_ana_pura = ranking_3d[colunas_analise_pura].copy()
 
+# Formatação segura
+ana_format_dict = {
+    'Goals_H_Today': '{:.0f}',
+    'Goals_A_Today': '{:.0f}',
+    'Asian_Line_Decimal': '{:.2f}',
+    'M_H': '{:.2f}',
+    'M_A': '{:.2f}'
+}
+
+# Adicionar colunas condicionalmente
+for col in ['Extremidade_Home', 'Extremidade_Away', 'Prob_Regressao_Home', 'Prob_Regressao_Away']:
+    if col in df_ana_pura.columns:
+        ana_format_dict[col] = '{:.2f}'
+
 st.dataframe(
-    df_ana_pura.head(num_show).style.format({
-        'Goals_H_Today': '{:.0f}',
-        'Goals_A_Today': '{:.0f}',
-        'Extremidade_Home': '{:.2f}',
-        'Extremidade_Away': '{:.2f}',
-        'Prob_Regressao_Home': '{:.2f}',
-        'Prob_Regressao_Away': '{:.2f}',
-        'M_H': '{:.2f}',
-        'M_A': '{:.2f}',
-        'Asian_Line_Decimal': '{:.2f}',
-    }, na_rep="-"),
+    df_ana_pura.head(num_show).style.format(ana_format_dict, na_rep="-"),
     use_container_width=True
 )
 
 st.markdown("✔ Esta análise é independente do EV e mostra os sinais reais do comportamento dos times.")
-
-
-
 
 st.markdown("---")
 st.markdown("🏁 Fim da execução — Sistema 3D Inteligente totalmente operacional 🚀")
