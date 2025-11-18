@@ -222,64 +222,74 @@ def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
 
 
 
-def adicionar_weighted_goals_defensivos(df: pd.DataFrame, history: pd.DataFrame = None) -> pd.DataFrame:
-    df_temp = df.copy()  # Sempre trabalhamos com cópia
-    
+def adicionar_weighted_goals_defensivos(df: pd.DataFrame, liga_params: pd.DataFrame | None = None) -> pd.DataFrame:
+    """
+    NOVO cálculo WG_def:
+    Usa xGoals baseados em odds, Asian Line E parâmetros por liga.
+    WG_Def = xGA - GA (defesa melhor = positivo)
+
+    - Se liga tiver histórico → usa Base_Goals_Liga e Asian_Weight_Liga
+    - Senão → usa defaults globais (2.5 gols, 0.6 de peso)
+    """
+    df_temp = df.copy()
+
+    # Garantir colunas de gols (para evitar KeyError em games_today)
+    if 'Goals_H_FT' not in df_temp.columns:
+        df_temp['Goals_H_FT'] = df_temp.get('Goals_H_Today', np.nan)
+    if 'Goals_A_FT' not in df_temp.columns:
+        df_temp['Goals_A_FT'] = df_temp.get('Goals_A_Today', np.nan)
+
+    # Defaults
+    default_base_goals = 2.5
+    default_asian_weight = 0.6
+
+    # Se não tiver Asian_Line_Decimal, não dá pra ajustar por handicap
     if 'Asian_Line_Decimal' not in df_temp.columns:
         df_temp['WG_Def_Home'] = 0.0
         df_temp['WG_Def_Away'] = 0.0
         return df_temp
 
-    # ===== CÁLCULO AUTOMÁTICO DA MÉDIA DE GOLS POR LIGA =====
-    if history is not None and not history.empty:
-        valid = history.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
-        valid['Total_Goals'] = valid['Goals_H_FT'] + valid['Goals_A_FT']
-        
-        league_stats = valid.groupby('League')['Total_Goals'].agg([
-            ('mean_goals', 'mean'),
-            ('count', 'count')
-        ]).reset_index()
-        
-        global_mean = valid['Total_Goals'].mean()
-        
-        league_stats['base_goals_smooth'] = np.where(
-            league_stats['count'] >= 30,
-            league_stats['mean_goals'],
-            (league_stats['mean_goals'] * league_stats['count'] + global_mean * 50) / (league_stats['count'] + 50)
-        )
-        
-        # Merge seguro
+    # Anexar parâmetros por liga, se disponíveis
+    if liga_params is not None and not liga_params.empty and 'League' in df_temp.columns:
         df_temp = df_temp.merge(
-            league_stats[['League', 'base_goals_smooth']],
+            liga_params[['League', 'Base_Goals_Liga', 'Asian_Weight_Liga']],
             on='League',
             how='left'
         )
-        df_temp['Base_Goals'] = df_temp['base_goals_smooth'].fillna(global_mean)
-        df_temp.drop(columns=['base_goals_smooth'], inplace=True)
+        df_temp['Base_Goals_Usado'] = df_temp['Base_Goals_Liga'].fillna(default_base_goals)
+        df_temp['Asian_Weight_Usado'] = df_temp['Asian_Weight_Liga'].fillna(default_asian_weight)
     else:
-        df_temp['Base_Goals'] = 2.70
+        df_temp['Base_Goals_Usado'] = default_base_goals
+        df_temp['Asian_Weight_Usado'] = default_asian_weight
 
-    # Peso dinâmico do handicap
-    df_temp['Asian_Weight'] = 0.60 - 0.08 * (df_temp['Base_Goals'] - 2.70).clip(-0.5, 0.8)
+    # xGF home e away ajustados por handicap + parâmetros da liga
+    df_temp['xGF_H'] = (df_temp['Base_Goals_Usado'] / 2) + df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight_Usado']
+    df_temp['xGF_A'] = (df_temp['Base_Goals_Usado'] / 2) - df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight_Usado']
 
-    # Cálculo final
-    df_temp['xGF_H'] = df_temp['Base_Goals'] / 2 + df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight']
-    df_temp['xGF_A'] = df_temp['Base_Goals'] / 2 - df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight']
-    
+    # xGA é o xGF do adversário
     df_temp['xGA_H'] = df_temp['xGF_A']
     df_temp['xGA_A'] = df_temp['xGF_H']
-    
-    df_temp['GA_H'] = df_temp.get('Goals_A_FT', 0).fillna(0)
-    df_temp['GA_A'] = df_temp.get('Goals_H_FT', 0).fillna(0)
-    
+
+    # Gols sofridos (reais)
+    df_temp['GA_H'] = df_temp['Goals_A_FT'].fillna(0)
+    df_temp['GA_A'] = df_temp['Goals_H_FT'].fillna(0)
+
+    # Weighted Defensive Performance (defesa boa = sofre menos do que o xGA)
     df_temp['WG_Def_Home'] = df_temp['xGA_H'] - df_temp['GA_H']
     df_temp['WG_Def_Away'] = df_temp['xGA_A'] - df_temp['GA_A']
-    
-    # Limpeza
-    cols_to_drop = ['Base_Goals', 'Asian_Weight', 'xGF_H', 'xGF_A', 'xGA_H', 'xGA_A', 'GA_H', 'GA_A']
-    df_temp.drop(columns=[c for c in cols_to_drop if c in df_temp.columns], inplace=True)
-    
+
+    # Limpeza de colunas auxiliares
+    df_temp.drop(
+        columns=[
+            'xGF_H', 'xGF_A', 'xGA_H', 'xGA_A', 'GA_H', 'GA_A',
+            'Base_Goals_Usado', 'Asian_Weight_Usado'
+        ],
+        inplace=True,
+        errors='ignore'
+    )
+
     return df_temp
+
 
 def adicionar_weighted_goals_ah(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -501,38 +511,52 @@ def enrich_games_today_with_wg_completo(games_today, history):
 
 
 @st.cache_data(ttl=7*24*3600)
-def calcular_parametros_liga(history):
-    league_stats = {}
+def calcular_parametros_liga(history: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula parâmetros por liga usando o histórico:
+    - Média de gols por jogo (base_goals_liga)
+    - Intensidade média de handicap (asi_weight_liga)
+    """
+    df = history.copy()
 
-    for lg, df_lg in history.groupby("League"):
+    # Garantir colunas necessárias
+    if 'Goals_H_FT' not in df.columns or 'Goals_A_FT' not in df.columns:
+        return pd.DataFrame()
 
-        # Média real de gols
-        avg_goals = (
-            df_lg["Goals_H_FT"].fillna(0) +
-            df_lg["Goals_A_FT"].fillna(0)
-        ).mean()
+    df['Gols_Total'] = df['Goals_H_FT'].fillna(0) + df['Goals_A_FT'].fillna(0)
 
-        # Otimizar peso asiático (0.3 a 0.8)
-        best_weight = 0.6
-        best_score = 9e9
+    liga_stats = df.groupby('League').agg(
+        Jogos_Liga=('League', 'size'),
+        Gols_Medios_Liga=('Gols_Total', 'mean'),
+        Asi_Mean_Liga=('Asian_Line_Decimal', lambda x: x.abs().mean())
+    ).reset_index()
 
-        for w in np.arange(0.3, 0.85, 0.05):
-            wg = df_lg["WG_Home"]*w + df_lg["WG_Away"]*(1-w)  # simplificação
-            target = (df_lg["Goals_H_FT"] > df_lg["Goals_A_FT"]).astype(int)
+    # Defaults globais
+    gols_global = df['Gols_Total'].mean() if not df.empty else 2.5
+    asi_global = df['Asian_Line_Decimal'].abs().mean() if 'Asian_Line_Decimal' in df.columns else 0.6
 
-            # Brier Score = melhor calibração
-            score = ((wg - target)**2).mean()
+    liga_stats['Gols_Medios_Liga'] = liga_stats['Gols_Medios_Liga'].fillna(gols_global)
+    liga_stats['Asi_Mean_Liga'] = liga_stats['Asi_Mean_Liga'].fillna(asi_global)
 
-            if score < best_score:
-                best_score = score
-                best_weight = w
+    # Transformar Asi_Mean_Liga em peso (0.4 a 0.8 por exemplo)
+    if not liga_stats['Asi_Mean_Liga'].isna().all():
+        asi_min = liga_stats['Asi_Mean_Liga'].min()
+        asi_max = liga_stats['Asi_Mean_Liga'].max()
+        if asi_max > asi_min:
+            liga_stats['Asian_Weight_Liga'] = 0.4 + 0.4 * (
+                (liga_stats['Asi_Mean_Liga'] - asi_min) / (asi_max - asi_min)
+            )
+        else:
+            liga_stats['Asian_Weight_Liga'] = 0.6
+    else:
+        liga_stats['Asian_Weight_Liga'] = 0.6
 
-        league_stats[lg] = {
-            "avg_goals": avg_goals,
-            "asian_weight": best_weight
-        }
+    liga_stats.rename(columns={
+        'Gols_Medios_Liga': 'Base_Goals_Liga',
+    }, inplace=True)
 
-    return league_stats
+    return liga_stats
+
 
 
 
@@ -632,26 +656,35 @@ if not history.empty:
             st.error(f"Erro ao aplicar filtro temporal: {e}")
 
 # ---------------- APLICAR TODAS AS FEATURES WG (OFENSIVAS + DEFENSIVAS) ----------------
-st.info("🧮 Calculando features completas de Weighted Goals...")
+st.info("🧮 Calculando features completas de Weighted Goals por liga...")
 
-if not history.empty:
-    history = adicionar_weighted_goals(history)
-    history = adicionar_weighted_goals_defensivos(history)  # NOVO
-    history = adicionar_weighted_goals_ah(history)
-    history = adicionar_weighted_goals_ah_defensivos(history)  # NOVO
-    history = calcular_metricas_completas(history)  # NOVO
-    history = calcular_rolling_wg_features_completo(history)  # ATUALIZADO
+# 1) Calcular parâmetros por liga com base no histórico (cache 7 dias)
+liga_params = calcular_parametros_liga(history)
 
+# ====================== HISTORY (jogos passados) ======================
+history = adicionar_weighted_goals(history)  # WG ofensivo
+history = adicionar_weighted_goals_defensivos(history, liga_params)  # WG defensivo com média/asi por liga
+history = adicionar_weighted_goals_ah(history)  # WG baseado em AH
+history = adicionar_weighted_goals_ah_defensivos(history)  # WG defensivo baseado em AH
+history = calcular_metricas_completas(history)  # computa WG_Diff, Balance, Net, etc.
+history = calcular_rolling_wg_features_completo(history)  # rolling seguro temporalmente
+
+# ====================== GAMES TODAY (jogos futuros) ======================
+# WG ofensivo precisa ser calculado antes do merge
 games_today = adicionar_weighted_goals(games_today)
-games_today = adicionar_weighted_goals_defensivos(games_today)  # NOVO
+
+# WG defensivo usando parâmetros por liga, mas sem usar gols finais (safe)
+games_today = adicionar_weighted_goals_defensivos(games_today, liga_params)
+
 games_today = adicionar_weighted_goals_ah(games_today)
-games_today = adicionar_weighted_goals_ah_defensivos(games_today)  # NOVO
-games_today = calcular_metricas_completas(games_today)  # NOVO
+games_today = adicionar_weighted_goals_ah_defensivos(games_today)  # sem vazamento
+games_today = calcular_metricas_completas(games_today)  # computa diffs
 
-if not history.empty:
-    games_today = enrich_games_today_with_wg_completo(games_today, history)  # ATUALIZADO
+# Muito importante → herdamos histórico para rolling e contexto real
+games_today = enrich_games_today_with_wg_completo(games_today, history)
 
-st.success(f"✅ Weighted Goals completos calculados: {len(history) if not history.empty else 0} jogos históricos processados")
+st.success(f"✅ Weighted Goals completos por liga calculados: {len(history)} jogos históricos processados")
+
 
 # Targets AH históricos
 if not history.empty:
@@ -1601,6 +1634,68 @@ if 'ML_Side' in locals() or ('ML_Side' in games_today.columns):
             .background_gradient(subset=['Quadrante_ML_Score_Main'], cmap='RdYlGn'),
             use_container_width=True
         )
+
+
+
+
+# ======================== 📊 LIGA SCOREBOARD ========================
+st.markdown("## 🏟️ Liga Scoreboard – Desempenho do Modelo por Liga")
+
+try:
+    if 'League' in ranking_quadrantes.columns:
+        df_sb = ranking_quadrantes.copy()
+
+        # Marca quais linhas realmente tiveram aposta (Recomendacao diferente de '⚖️ ANALISAR' etc)
+        df_sb['Tem_Aposta'] = df_sb['Recomendacao'].astype(str).str.contains(
+            'VALUE|FAVORITO|MODELO CONFIA|SUPERAVALIADO', case=False, na=False
+        )
+
+        liga_score = df_sb.groupby('League').agg(
+            Jogos=('League', 'size'),
+            Jogos_Finalizados=('Handicap_Result', lambda x: x.notna().sum()),
+            Apostas=('Tem_Aposta', lambda x: x.sum()),
+            Profit_Total=('Profit_Quadrante', 'sum'),
+            ROI=lambda x: (x.sum() / max((df_sb.loc[x.index, 'Tem_Aposta'].sum()), 1)) * 100,
+            Conf_Media=('Confidence_Score', 'mean')
+        ).reset_index()
+
+        # Anexar parâmetros de gols/asi por liga (se existirem)
+        if 'liga_params' in locals() and not liga_params.empty:
+            liga_score = liga_score.merge(
+                liga_params[['League', 'Base_Goals_Liga', 'Asian_Weight_Liga']],
+                on='League',
+                how='left'
+            )
+
+        # Score simples (sem filtrar nada)
+        liga_score['Liga_Score'] = (
+            0.4 * liga_score['ROI'].fillna(0) +
+            0.4 * (liga_score['Conf_Media'].fillna(0) * 100) +
+            0.2 * liga_score['Jogos_Finalizados'].clip(upper=200) / 2
+        )
+
+        liga_score = liga_score.sort_values('Liga_Score', ascending=False)
+
+        st.dataframe(
+            liga_score.style.format({
+                'Profit_Total': '{:.2f}u',
+                'ROI': '{:.1f}%',
+                'Conf_Media': '{:.3f}',
+                'Base_Goals_Liga': '{:.2f}',
+                'Asian_Weight_Liga': '{:.2f}',
+                'Liga_Score': '{:.1f}'
+            }),
+            use_container_width=True
+        )
+
+        st.caption("🔎 *Sem filtro automático: scoreboard serve como radar. Você decide quais ligas focar ou evitar.*")
+    else:
+        st.info("Liga Scoreboard indisponível (coluna 'League' não encontrada em ranking_quadrantes).")
+except Exception as e:
+    st.warning(f"Não foi possível gerar o Liga Scoreboard: {e}")
+
+
+
 
 st.markdown("---")
 st.success("🎯 **Análise de Quadrantes ML Dual Completa** - Sistema avançado com features ofensivas e defensivas de Weighted Goals para identificação de value bets!")
