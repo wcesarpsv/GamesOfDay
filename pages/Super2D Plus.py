@@ -429,102 +429,94 @@ def enrich_games_today_with_wg_completo(games_today, history):
 
 
 # ========================= PROBABILIDADE VIA WG_Diff (LOGISTIC) =========================
-def treinar_logit_wg(history: pd.DataFrame):
+# ========================= PROBABILIDADE VIA WG_Diff vs ASIAN HANDICAP =========================
+def treinar_logit_wg_ah(history: pd.DataFrame):
     """
     Treina um modelo de regressão logística simples:
-    Input: WG_Diff  -> Output: P(Home vencer)
-    Target: 1 se Home ganhou, 0 se não (derrota ou empate)
+    Input: WG_Diff  -> Output: P(Home COBRIR o Asian_Line_Decimal)
+    Target: Target_AH_Home (0/1)
     """
     hist = history.copy()
 
-    # Garantir que temos as colunas necessárias
-    required_cols = ['WG_Diff', 'Goals_H_FT', 'Goals_A_FT']
+    required_cols = ['WG_Diff', 'Target_AH_Home']
     if any(col not in hist.columns for col in required_cols):
-        st.warning("⚠️ Não foi possível treinar o modelo logístico WG_Diff (colunas ausentes).")
+        st.warning("⚠️ Não foi possível treinar o modelo logístico WG_Diff x AH (colunas ausentes).")
         return None
 
-    # Criar target binário: vitória do Home
-    hist = hist.dropna(subset=['WG_Diff', 'Goals_H_FT', 'Goals_A_FT']).copy()
+    hist = hist.dropna(subset=['WG_Diff', 'Target_AH_Home']).copy()
     if hist.empty:
-        st.warning("⚠️ Histórico sem dados suficientes para o modelo logístico WG_Diff.")
+        st.warning("⚠️ Histórico sem dados suficientes para modelo logístico WG_Diff x AH.")
         return None
-
-    hist['Home_Win'] = (hist['Goals_H_FT'] > hist['Goals_A_FT']).astype(int)
 
     X = hist[['WG_Diff']].values
-    y = hist['Home_Win'].values
+    y = hist['Target_AH_Home'].astype(int).values
 
-    # Verificar se há pelo menos dois rótulos
     if len(np.unique(y)) < 2:
-        st.warning("⚠️ Target do modelo logístico WG_Diff tem apenas uma classe.")
+        st.warning("⚠️ Target_AH_Home tem apenas uma classe (não dá pra treinar).")
         return None
 
     try:
         model = LogisticRegression()
         model.fit(X, y)
 
-        # Debug opcional
         a = float(model.coef_[0][0])
         b = float(model.intercept_[0])
-        st.info(f"🔧 Modelo logístico WG_Diff treinado: P(HomeWin) = sigmoid({a:.3f} * WG_Diff + {b:.3f})")
+        st.info(f"🔧 Modelo logístico AH treinado: P(Home_cobre_AH) = sigmoid({a:.3f} * WG_Diff + {b:.3f})")
 
         return model
     except Exception as e:
-        st.error(f"❌ Erro ao treinar modelo logístico WG_Diff: {e}")
+        st.error(f"❌ Erro ao treinar modelo logístico WG_Diff x AH: {e}")
         return None
 
 
-def aplicar_logit_wg(model, df: pd.DataFrame) -> pd.DataFrame:
+def aplicar_logit_wg_ah(model, df: pd.DataFrame) -> pd.DataFrame:
     """
-    Aplica o modelo logístico treinado a um DataFrame com WG_Diff
+    Aplica o modelo logístico de WG_Diff -> P(Home COBRIR AH)
     Adiciona:
-      - P_Home_Win_WG  (prob. Home ganhar pelo WG)
-      - Odd_Fair_Home_WG (odd justa pelo WG)
-      - Value_Home_WG  (EV da aposta no Home baseado em Odd_H)
-      - P_Away_or_Draw_WG e Value_Away_WG (se Odd_A disponível)
+      - P_Home_Cover_AH_WG
+      - P_Away_Cover_AH_WG (1 - P_Home_Cover_AH_WG)
+      - Odd_Fair_Home_AH_WG, Odd_Fair_Away_AH_WG
+      - Value_Home_AH_WG, Value_Away_AH_WG (usando Odd_H_Asi / Odd_A_Asi)
     """
     df_out = df.copy()
 
-    if model is None:
-        # Sem modelo, colocamos 0.5 como neutro
-        df_out['P_Home_Win_WG'] = 0.5
-        df_out['Odd_Fair_Home_WG'] = 2.0
-        df_out['Value_Home_WG'] = 0.0
-        df_out['P_Away_or_Draw_WG'] = 0.5
-        df_out['Value_Away_WG'] = 0.0
-        return df_out
-
-    if 'WG_Diff' not in df_out.columns:
-        st.warning("⚠️ WG_Diff não encontrado em games_today para aplicar o modelo WG_Diff.")
+    if model is None or 'WG_Diff' not in df_out.columns:
+        st.warning("⚠️ Modelo logístico AH ausente ou WG_Diff não encontrado.")
+        df_out['P_Home_Cover_AH_WG'] = 0.5
+        df_out['P_Away_Cover_AH_WG'] = 0.5
+        df_out['Odd_Fair_Home_AH_WG'] = 2.0
+        df_out['Odd_Fair_Away_AH_WG'] = 2.0
+        df_out['Value_Home_AH_WG'] = 0.0
+        df_out['Value_Away_AH_WG'] = 0.0
         return df_out
 
     try:
         X_today = df_out[['WG_Diff']].fillna(0).values
-        probs_home = model.predict_proba(X_today)[:, 1]
+        p_home_cover = model.predict_proba(X_today)[:, 1]
 
-        df_out['P_Home_Win_WG'] = probs_home
-        df_out['Odd_Fair_Home_WG'] = 1.0 / np.clip(probs_home, 1e-6, 1 - 1e-6)
+        df_out['P_Home_Cover_AH_WG'] = p_home_cover
+        df_out['P_Away_Cover_AH_WG'] = 1.0 - p_home_cover  # simétrico na linha asiática
 
-        # EV para aposta no Home (1x2 simples)
-        if 'Odd_H' in df_out.columns:
-            df_out['Value_Home_WG'] = df_out['P_Home_Win_WG'] * df_out['Odd_H'] - 1
+        df_out['Odd_Fair_Home_AH_WG'] = 1.0 / np.clip(df_out['P_Home_Cover_AH_WG'], 1e-6, 1 - 1e-6)
+        df_out['Odd_Fair_Away_AH_WG'] = 1.0 / np.clip(df_out['P_Away_Cover_AH_WG'], 1e-6, 1 - 1e-6)
+
+        # EV usando odds de handicap da casa
+        if 'Odd_H_Asi' in df_out.columns:
+            df_out['Value_Home_AH_WG'] = df_out['P_Home_Cover_AH_WG'] * df_out['Odd_H_Asi'] - 1
         else:
-            df_out['Value_Home_WG'] = np.nan
+            df_out['Value_Home_AH_WG'] = np.nan
 
-        # Probabilidade de NÃO vitória do Home (derrota + empate)
-        p_not_home = 1.0 - df_out['P_Home_Win_WG']
-        df_out['P_Away_or_Draw_WG'] = p_not_home
-
-        if 'Odd_A' in df_out.columns:
-            df_out['Value_Away_WG'] = df_out['P_Away_or_Draw_WG'] * df_out['Odd_A'] - 1
+        if 'Odd_A_Asi' in df_out.columns:
+            df_out['Value_Away_AH_WG'] = df_out['P_Away_Cover_AH_WG'] * df_out['Odd_A_Asi'] - 1
         else:
-            df_out['Value_Away_WG'] = np.nan
+            df_out['Value_Away_AH_WG'] = np.nan
 
         return df_out
 
     except Exception as e:
-        st.error(f"❌ Erro ao aplicar modelo logístico WG_Diff: {e}")
+        st.error(f"❌ Erro ao aplicar modelo logístico WG_Diff x AH: {e}")
         return df_out
+
 
 
 
@@ -636,8 +628,9 @@ st.success(f"✅ Weighted Goals completos calculados: {len(history)} jogos hist�
 
 
 # ========================= PROBABILIDADE VIA WG_Diff (TREINO + APLICAÇÃO) =========================
-modelo_logit_wg = treinar_logit_wg(history)
-games_today = aplicar_logit_wg(modelo_logit_wg, games_today)
+modelo_logit_wg_ah = treinar_logit_wg_ah(history)
+games_today = aplicar_logit_wg_ah(modelo_logit_wg_ah, games_today)
+
 
 
 # Targets AH históricos
@@ -1636,17 +1629,16 @@ if 'P_Home_Win_WG' in games_today.columns:
 
     # Criar indicação de lado com maior EV por WG
     def escolher_lado_wg(row):
-        vh = row.get('Value_Home_WG', np.nan)
-        va = row.get('Value_Away_WG', np.nan)
-
-        # Se nenhum lado tem valor positivo, retorna vazio
+        vh = row.get('Value_Home_AH_WG', np.nan)
+        va = row.get('Value_Away_AH_WG', np.nan)
+    
         if (pd.isna(vh) or vh <= 0) and (pd.isna(va) or va <= 0):
             return "❌ Sem valor claro"
-
+    
         if vh >= va:
-            return f"HOME (EV={vh:.2f})"
+            return f"HOME AH (EV={vh:.2f})"
         else:
-            return f"AWAY (EV={va:.2f})"
+            return f"AWAY AH (EV={va:.2f})"
 
     df_wg_value['Melhor_Lado_WG'] = df_wg_value.apply(escolher_lado_wg, axis=1)
 
