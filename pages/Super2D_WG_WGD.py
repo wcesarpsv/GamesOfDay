@@ -187,8 +187,10 @@ def adicionar_weighted_goals_defensivos(df: pd.DataFrame) -> pd.DataFrame:
         return df_temp
 
     # Parâmetros do modelo
-    base_goals = 2.5
-    asian_weight = 0.6
+    params = liga_stats.get(row["League"], {"avg_goals": 2.5, "asian_weight": 0.6})
+    base_goals = params["avg_goals"]
+    asian_weight = params["asian_weight"]
+
 
     # Calcular xGF home e away, ajustado pela força do handicap
     df_temp['xGF_H'] = base_goals / 2 + df_temp['Asian_Line_Decimal'] * asian_weight
@@ -434,6 +436,44 @@ def enrich_games_today_with_wg_completo(games_today, history):
     )
 
     return games_today
+
+
+
+@st.cache_data(ttl=7*24*3600)
+def calcular_parametros_liga(history):
+    league_stats = {}
+
+    for lg, df_lg in history.groupby("League"):
+
+        # Média real de gols
+        avg_goals = (
+            df_lg["Goals_H_FT"].fillna(0) +
+            df_lg["Goals_A_FT"].fillna(0)
+        ).mean()
+
+        # Otimizar peso asiático (0.3 a 0.8)
+        best_weight = 0.6
+        best_score = 9e9
+
+        for w in np.arange(0.3, 0.85, 0.05):
+            wg = df_lg["WG_Home"]*w + df_lg["WG_Away"]*(1-w)  # simplificação
+            target = (df_lg["Goals_H_FT"] > df_lg["Goals_A_FT"]).astype(int)
+
+            # Brier Score = melhor calibração
+            score = ((wg - target)**2).mean()
+
+            if score < best_score:
+                best_score = score
+                best_weight = w
+
+        league_stats[lg] = {
+            "avg_goals": avg_goals,
+            "asian_weight": best_weight
+        }
+
+    return league_stats
+
+
 
 # ---------------- Carregar Dados ----------------
 st.info("📂 Carregando dados para análise de quadrantes...")
