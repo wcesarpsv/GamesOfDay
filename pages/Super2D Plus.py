@@ -1686,8 +1686,8 @@ if 'P_Home_Cover_AH_WG' in games_today.columns:
         cols_show = [
             'League', 'Home', 'Away',
             'WG_Diff', 'WG_Def_Diff', 'WG_Balance_Diff',
-            'P_Home_Win_WG', 'Odd_H', 'Value_Home_AH_WG',
-            'P_Away_or_Draw_WG', 'Odd_A', 'Value_Away_AH_WG',
+            'P_Home_Cover_AH_WG', 'Odd_H', 'Value_Home_AH_WG',
+            'P_Away_Cover_AH_WG', 'Odd_A', 'Value_Away_AH_WG',
             'Melhor_Lado_WG'
         ]
         cols_show = [c for c in cols_show if c in df_wg_value.columns]
@@ -1698,8 +1698,8 @@ if 'P_Home_Cover_AH_WG' in games_today.columns:
                 'WG_Diff': '{:.3f}',
                 'WG_Def_Diff': '{:.3f}',
                 'WG_Balance_Diff': '{:.3f}',
-                'P_Home_Win_WG': '{:.1%}',
-                'P_Away_or_Draw_WG': '{:.1%}',
+                'P_Home_Cover_AH_WG': '{:.1%}',
+                'P_Away_Cover_AH_WG': '{:.1%}',
                 'Odd_H': '{:.2f}',
                 'Odd_A': '{:.2f}',
                 'Value_Home_AH_WG': '{:.2f}',
