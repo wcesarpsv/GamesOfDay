@@ -6,7 +6,6 @@ import os
 import joblib
 import re
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression  # ⬅️ ADD
 import matplotlib.pyplot as plt
 from datetime import datetime
 import math
@@ -204,6 +203,7 @@ def adicionar_weighted_goals_defensivos(df: pd.DataFrame) -> pd.DataFrame:
 
     return df_temp
 
+
 def adicionar_weighted_goals_ah(df: pd.DataFrame) -> pd.DataFrame:
     """
     Ajusta o WG com base na dificuldade do handicap do mercado.
@@ -245,27 +245,20 @@ def calcular_metricas_completas(df: pd.DataFrame) -> pd.DataFrame:
     Cria métricas que combinam ataque e defesa
     """
     df_temp = df.copy()
-
-    # Se não tiver dados defensivos (jogos do dia), usar 0
-    if 'WG_Def_Home' not in df_temp.columns:
-        df_temp['WG_Def_Home'] = 0.0
-    if 'WG_Def_Away' not in df_temp.columns:
-        df_temp['WG_Def_Away'] = 0.0
-
+    
     # Balance Offensive/Defensive
-    df_temp['WG_Balance_Home'] = df_temp['WG_Home'] + df_temp['WG_Def_Home']
+    df_temp['WG_Balance_Home'] = df_temp['WG_Home'] + df_temp['WG_Def_Home']  # Soma porque ambos positivos são bons
     df_temp['WG_Balance_Away'] = df_temp['WG_Away'] + df_temp['WG_Def_Away']
-
-    # Performance Total
+    
+    # Performance Total (ataque + defesa)
     df_temp['WG_Total_Home'] = df_temp['WG_Home'] + df_temp['WG_Def_Home']
     df_temp['WG_Total_Away'] = df_temp['WG_Away'] + df_temp['WG_Def_Away']
-
-    # Net Performance
+    
+    # Net Performance (ataque - defesa oponente)
     df_temp['WG_Net_Home'] = df_temp['WG_Home'] - df_temp['WG_Def_Away']
     df_temp['WG_Net_Away'] = df_temp['WG_Away'] - df_temp['WG_Def_Home']
-
+    
     return df_temp
-
 
 def calcular_rolling_wg_features_completo(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -425,104 +418,6 @@ def enrich_games_today_with_wg_completo(games_today, history):
 
     return games_today
 
-
-
-
-# ========================= PROBABILIDADE VIA WG_Diff (LOGISTIC) =========================
-# ========================= PROBABILIDADE VIA WG_Diff vs ASIAN HANDICAP =========================
-def treinar_logit_wg_ah(history: pd.DataFrame):
-    """
-    Treina um modelo de regressão logística simples:
-    Input: WG_Diff  -> Output: P(Home COBRIR o Asian_Line_Decimal)
-    Target: Target_AH_Home (0/1)
-    """
-    hist = history.copy()
-
-    required_cols = ['WG_Diff', 'Target_AH_Home']
-    if any(col not in hist.columns for col in required_cols):
-        st.warning("⚠️ Não foi possível treinar o modelo logístico WG_Diff x AH (colunas ausentes).")
-        return None
-
-    hist = hist.dropna(subset=['WG_Diff', 'Target_AH_Home']).copy()
-    if hist.empty:
-        st.warning("⚠️ Histórico sem dados suficientes para modelo logístico WG_Diff x AH.")
-        return None
-
-    X = hist[['WG_Diff']].values
-    y = hist['Target_AH_Home'].astype(int).values
-
-    if len(np.unique(y)) < 2:
-        st.warning("⚠️ Target_AH_Home tem apenas uma classe (não dá pra treinar).")
-        return None
-
-    try:
-        model = LogisticRegression()
-        model.fit(X, y)
-
-        a = float(model.coef_[0][0])
-        b = float(model.intercept_[0])
-        st.info(f"🔧 Modelo logístico AH treinado: P(Home_cobre_AH) = sigmoid({a:.3f} * WG_Diff + {b:.3f})")
-
-        return model
-    except Exception as e:
-        st.error(f"❌ Erro ao treinar modelo logístico WG_Diff x AH: {e}")
-        return None
-
-
-def aplicar_logit_wg_ah(model, df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Aplica o modelo logístico de WG_Diff -> P(Home COBRIR AH)
-    Adiciona:
-      - P_Home_Cover_AH_WG
-      - P_Away_Cover_AH_WG (1 - P_Home_Cover_AH_WG)
-      - Odd_Fair_Home_AH_WG, Odd_Fair_Away_AH_WG
-      - Value_Home_AH_WG, Value_Away_AH_WG (usando Odd_H_Asi / Odd_A_Asi)
-    """
-    df_out = df.copy()
-
-    if model is None or 'WG_Diff' not in df_out.columns:
-        st.warning("⚠️ Modelo logístico AH ausente ou WG_Diff não encontrado.")
-        df_out['P_Home_Cover_AH_WG'] = 0.5
-        df_out['P_Away_Cover_AH_WG'] = 0.5
-        df_out['Odd_Fair_Home_AH_WG'] = 2.0
-        df_out['Odd_Fair_Away_AH_WG'] = 2.0
-        df_out['Value_Home_AH_WG'] = 0.0
-        df_out['Value_Away_AH_WG'] = 0.0
-        return df_out
-
-    try:
-        X_today = df_out[['WG_Diff']].fillna(0).values
-        p_home_cover = model.predict_proba(X_today)[:, 1]
-
-        df_out['P_Home_Cover_AH_WG'] = p_home_cover
-        df_out['P_Away_Cover_AH_WG'] = 1.0 - p_home_cover  # simétrico na linha asiática
-
-        df_out['Odd_Fair_Home_AH_WG'] = 1.0 / np.clip(df_out['P_Home_Cover_AH_WG'], 1e-6, 1 - 1e-6)
-        df_out['Odd_Fair_Away_AH_WG'] = 1.0 / np.clip(df_out['P_Away_Cover_AH_WG'], 1e-6, 1 - 1e-6)
-
-        # EV usando odds de handicap da casa
-        if 'Odd_H_Asi' in df_out.columns:
-            df_out['Value_Home_AH_WG'] = df_out['P_Home_Cover_AH_WG'] * df_out['Odd_H_Asi'] - 1
-        else:
-            df_out['Value_Home_AH_WG'] = np.nan
-
-        if 'Odd_A_Asi' in df_out.columns:
-            df_out['Value_Away_AH_WG'] = df_out['P_Away_Cover_AH_WG'] * df_out['Odd_A_Asi'] - 1
-        else:
-            df_out['Value_Away_AH_WG'] = np.nan
-
-        return df_out
-
-    except Exception as e:
-        st.error(f"❌ Erro ao aplicar modelo logístico WG_Diff x AH: {e}")
-        return df_out
-
-
-
-
-
-
-
 # ---------------- Carregar Dados ----------------
 st.info("📂 Carregando dados para análise de quadrantes...")
 
@@ -619,46 +514,14 @@ history = adicionar_weighted_goals_ah_defensivos(history)  # NOVO
 history = calcular_metricas_completas(history)  # NOVO
 history = calcular_rolling_wg_features_completo(history)  # ATUALIZADO
 
-
 games_today = adicionar_weighted_goals(games_today)
+games_today = adicionar_weighted_goals_defensivos(games_today)  # NOVO
 games_today = adicionar_weighted_goals_ah(games_today)
+games_today = adicionar_weighted_goals_ah_defensivos(games_today)  # NOVO
 games_today = calcular_metricas_completas(games_today)  # NOVO
 games_today = enrich_games_today_with_wg_completo(games_today, history)  # ATUALIZADO
 
 st.success(f"✅ Weighted Goals completos calculados: {len(history)} jogos históricos processados")
-
-
-
-# ======================= MONTAR ALVOS AH PARA O HISTÓRICO =======================
-if 'Margin' not in history.columns:
-    history['Margin'] = history['Goals_H_FT'] - history['Goals_A_FT']
-
-if 'Target_AH_Home' not in history.columns:
-    history['Target_AH_Home'] = history.apply(
-        lambda r: 1 if calc_handicap_result(
-            r.get("Margin", 0),
-            r.get("Asian_Line_Decimal", 0)
-        ) > 0.5 else 0,
-        axis=1
-    )
-
-# Garantir WG_Diff
-if 'WG_Diff' not in history.columns:
-    history['WG_Diff'] = history['WG_Home'] - history['WG_Away']
-
-# Filtrar somente jogos com Asian Line válido
-history = history.dropna(subset=['Asian_Line_Decimal']).copy()
-
-st.success(f"📊 Treinando modelo logístico com {len(history)} jogos válidos com AH...")
-
-
-
-
-# ========================= PROBABILIDADE VIA WG_Diff (TREINO + APLICAÇÃO) =========================
-modelo_logit_wg_ah = treinar_logit_wg_ah(history)
-games_today = aplicar_logit_wg_ah(modelo_logit_wg_ah, games_today)
-
-
 
 # Targets AH históricos
 history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
@@ -1643,73 +1506,6 @@ if 'ML_Side' in ranking_quadrantes.columns:
             })
             .background_gradient(subset=['Quadrante_ML_Score_Main'], cmap='RdYlGn')
         )
-
-# ======================== 📊 VALUE BETS – WG_Diff vs Odds ========================
-st.markdown("## 📊 Value Bets – Probabilidade WG_Diff vs Odds")
-
-if 'P_Home_Cover_AH_WG' in games_today.columns:
-    df_wg_value = games_today.copy()
-
-    mask_valor = (
-        (df_wg_value['Value_Home_AH_WG'] > 0) |
-        (df_wg_value['Value_Away_AH_WG'] > 0)
-    )
-
-    df_wg_value = df_wg_value[mask_valor].copy()
-
-    def escolher_lado_wg(row):
-        vh = row.get('Value_Home_AH_WG', np.nan)
-        va = row.get('Value_Away_AH_WG', np.nan)
-
-        if (pd.isna(vh) or vh <= 0) and (pd.isna(va) or va <= 0):
-            return "❌ Sem valor claro"
-
-        return "HOME AH" if vh >= va else "AWAY AH"
-
-    df_wg_value['Melhor_Lado_WG'] = df_wg_value.apply(escolher_lado_wg, axis=1)
-
-
-    # Filtrar só confrontos onde pelo menos um lado tem EV > 0
-    mask_valor = (
-        (df_wg_value['Value_Home_AH_WG'] > 0) |
-        (df_wg_value['Value_Away_AH_WG'] > 0)
-    )
-    df_wg_value = df_wg_value[mask_valor].copy()
-
-    if df_wg_value.empty:
-        st.info("⚠️ Nenhuma aposta com EV > 0 pelo modelo WG_Diff hoje.")
-    else:
-        # Ordenar pelos maiores EVs absolutos (home ou away)
-        df_wg_value['EV_Max'] = df_wg_value[['Value_Home_AH_WG', 'Value_Away_AH_WG']].max(axis=1)
-        df_wg_value = df_wg_value.sort_values('EV_Max', ascending=False)
-
-        cols_show = [
-            'League', 'Home', 'Away',
-            'WG_Diff', 'WG_Def_Diff', 'WG_Balance_Diff',
-            'P_Home_Cover_AH_WG', 'Odd_H', 'Value_Home_AH_WG',
-            'P_Away_Cover_AH_WG', 'Odd_A', 'Value_Away_AH_WG',
-            'Melhor_Lado_WG'
-        ]
-        cols_show = [c for c in cols_show if c in df_wg_value.columns]
-
-        st.dataframe(
-            df_wg_value[cols_show]
-            .style.format({
-                'WG_Diff': '{:.3f}',
-                'WG_Def_Diff': '{:.3f}',
-                'WG_Balance_Diff': '{:.3f}',
-                'P_Home_Cover_AH_WG': '{:.1%}',
-                'P_Away_Cover_AH_WG': '{:.1%}',
-                'Odd_H': '{:.2f}',
-                'Odd_A': '{:.2f}',
-                'Value_Home_AH_WG': '{:.2f}',
-                'Value_Away_AH_WG': '{:.2f}'
-            }),
-            use_container_width=True
-        )
-else:
-    st.info("Modelo WG_Diff ainda não foi aplicado nos jogos de hoje.")
-
 
 st.markdown("---")
 st.success("🎯 **Análise de Quadrantes ML Dual Completa** - Sistema avançado com features ofensivas e defensivas de Weighted Goals para identificação de value bets!")
