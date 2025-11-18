@@ -1478,5 +1478,52 @@ def resumo_quadrantes_hoje_dual(df):
 if not games_today.empty and 'Classificacao_Valor_Home' in games_today.columns:
     resumo_quadrantes_hoje_dual(games_today)
 
+# ======================== 🎯 VALUE BETS – FILTRADAS ========================
+st.markdown("## 💰 Value Bets Confirmadas – Zona Ideal")
+
+if 'ML_Side' in ranking_quadrantes.columns:
+
+    df_value = ranking_quadrantes.copy()
+
+    # Regras de valor
+    df_value = df_value[
+        (df_value['Quadrante_ML_Score_Main'] >= 0.55) &
+        (df_value['WG_Def_Diff'] > 0) &
+        (df_value['WG_Balance_Diff'] > 0.50)
+    ]
+
+    # Filtro de handicap por lado da aposta
+    df_value = df_value[
+        ((df_value['ML_Side'] == 'HOME') & (df_value['Asian_Line_Decimal'] >= -0.50)) |
+        ((df_value['ML_Side'] == 'AWAY') & (df_value['Asian_Line_Decimal'] <= +0.50))
+    ]
+
+    if df_value.empty:
+        st.info("⚠️ Nenhuma aposta atingiu o nível ideal de valor hoje.")
+    else:
+        df_value = df_value.sort_values('Quadrante_ML_Score_Main', ascending=False)
+
+        col_visu = [
+            'League', 'Home', 'Away', 'ML_Side', 'Recomendacao',
+            'Quadrante_ML_Score_Main',
+            'WG_Balance_Diff', 'WG_Def_Diff',
+            'Asian_Line_Decimal', 'Quadrant_Dist',
+            'Confidence_Score'
+        ]
+        col_visu = [c for c in col_visu if c in df_value.columns]
+
+        st.dataframe(
+            df_value[col_visu]
+            .style.format({
+                'Quadrante_ML_Score_Main': '{:.1%}',
+                'WG_Balance_Diff': '{:.3f}',
+                'WG_Def_Diff': '{:.3f}',
+                'Asian_Line_Decimal': '{:.2f}',
+                'Quadrant_Dist': '{:.2f}',
+                'Confidence_Score': '{:.2f}'
+            })
+            .background_gradient(subset=['Quadrante_ML_Score_Main'], cmap='RdYlGn')
+        )
+
 st.markdown("---")
 st.success("🎯 **Análise de Quadrantes ML Dual Completa** - Sistema avançado com features ofensivas e defensivas de Weighted Goals para identificação de value bets!")
