@@ -245,20 +245,27 @@ def calcular_metricas_completas(df: pd.DataFrame) -> pd.DataFrame:
     Cria métricas que combinam ataque e defesa
     """
     df_temp = df.copy()
-    
+
+    # Se não tiver dados defensivos (jogos do dia), usar 0
+    if 'WG_Def_Home' not in df_temp.columns:
+        df_temp['WG_Def_Home'] = 0.0
+    if 'WG_Def_Away' not in df_temp.columns:
+        df_temp['WG_Def_Away'] = 0.0
+
     # Balance Offensive/Defensive
-    df_temp['WG_Balance_Home'] = df_temp['WG_Home'] + df_temp['WG_Def_Home']  # Soma porque ambos positivos são bons
+    df_temp['WG_Balance_Home'] = df_temp['WG_Home'] + df_temp['WG_Def_Home']
     df_temp['WG_Balance_Away'] = df_temp['WG_Away'] + df_temp['WG_Def_Away']
-    
-    # Performance Total (ataque + defesa)
+
+    # Performance Total
     df_temp['WG_Total_Home'] = df_temp['WG_Home'] + df_temp['WG_Def_Home']
     df_temp['WG_Total_Away'] = df_temp['WG_Away'] + df_temp['WG_Def_Away']
-    
-    # Net Performance (ataque - defesa oponente)
+
+    # Net Performance
     df_temp['WG_Net_Home'] = df_temp['WG_Home'] - df_temp['WG_Def_Away']
     df_temp['WG_Net_Away'] = df_temp['WG_Away'] - df_temp['WG_Def_Home']
-    
+
     return df_temp
+
 
 def calcular_rolling_wg_features_completo(df: pd.DataFrame) -> pd.DataFrame:
     """
