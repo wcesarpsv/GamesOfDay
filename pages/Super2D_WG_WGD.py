@@ -1643,31 +1643,43 @@ st.markdown("## 🏟️ Liga Scoreboard – Desempenho do Modelo por Liga")
 
 try:
     if 'League' in ranking_quadrantes.columns:
+
         df_sb = ranking_quadrantes.copy()
 
-        # Marca quais linhas realmente tiveram aposta (Recomendacao diferente de '⚖️ ANALISAR' etc)
+        # Garantir colunas necessárias
+        if 'Handicap_Result' not in df_sb.columns:
+            df_sb['Handicap_Result'] = np.nan
+        if 'Confidence_Score' not in df_sb.columns:
+            df_sb['Confidence_Score'] = 0.0
+
+        # Marcamos onde realmente houve aposta (Recomendacao de aposta)
         df_sb['Tem_Aposta'] = df_sb['Recomendacao'].astype(str).str.contains(
-            'VALUE|FAVORITO|MODELO CONFIA|SUPERAVALIADO', case=False, na=False
+            'VALUE|CONF|OVERVAL', case=False, na=False
         )
 
         liga_score = df_sb.groupby('League').agg(
             Jogos=('League', 'size'),
             Jogos_Finalizados=('Handicap_Result', lambda x: x.notna().sum()),
             Apostas=('Tem_Aposta', lambda x: x.sum()),
-            Profit_Total=('Profit_Quadrante', 'sum'),
-            ROI=lambda x: (x.sum() / max((df_sb.loc[x.index, 'Tem_Aposta'].sum()), 1)) * 100,
-            Conf_Media=('Confidence_Score', 'mean')
+            Profit_Total=('Profit_Quadrante', lambda x: x.fillna(0).sum()),
+            Conf_Media=('Confidence_Score', lambda x: x.fillna(0).mean()),
         ).reset_index()
 
-        # Anexar parâmetros de gols/asi por liga (se existirem)
-        if 'liga_params' in locals() and not liga_params.empty:
+        # ROI baseada APENAS em apostas reais
+        liga_score['ROI'] = np.where(
+            liga_score['Apostas'] > 0,
+            (liga_score['Profit_Total'] / liga_score['Apostas']) * 100,
+            np.nan,
+        )
+
+        # Merge com parâmetros de liga
+        if 'liga_params' in locals() and liga_params is not None and not liga_params.empty:
             liga_score = liga_score.merge(
                 liga_params[['League', 'Base_Goals_Liga', 'Asian_Weight_Liga']],
-                on='League',
-                how='left'
+                on='League', how='left'
             )
 
-        # Score simples (sem filtrar nada)
+        # Score da liga com regras ajustadas
         liga_score['Liga_Score'] = (
             0.4 * liga_score['ROI'].fillna(0) +
             0.4 * (liga_score['Conf_Media'].fillna(0) * 100) +
@@ -1688,11 +1700,14 @@ try:
             use_container_width=True
         )
 
-        st.caption("🔎 *Sem filtro automático: scoreboard serve como radar. Você decide quais ligas focar ou evitar.*")
+        st.caption("🔎 *Radar de ligas: ROI e confiança por liga sem filtros automáticos.*")
+
     else:
-        st.info("Liga Scoreboard indisponível (coluna 'League' não encontrada em ranking_quadrantes).")
+        st.info("Liga Scoreboard indisponível (coluna 'League' não encontrada).")
+
 except Exception as e:
     st.warning(f"Não foi possível gerar o Liga Scoreboard: {e}")
+
 
 
 
