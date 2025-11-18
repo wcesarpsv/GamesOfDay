@@ -1650,24 +1650,24 @@ st.markdown("## 📊 Value Bets – Probabilidade WG_Diff vs Odds")
 if 'P_Home_Cover_AH_WG' in games_today.columns:
     df_wg_value = games_today.copy()
 
-    # Mantém só jogos com odds disponíveis
-    if 'Odd_H' in df_wg_value.columns and 'Odd_A' in df_wg_value.columns:
-        df_wg_value = df_wg_value.dropna(subset=['Odd_H', 'Odd_A'])
+    mask_valor = (
+        (df_wg_value['Value_Home_AH_WG'] > 0) |
+        (df_wg_value['Value_Away_AH_WG'] > 0)
+    )
 
-    # Criar indicação de lado com maior EV por WG
+    df_wg_value = df_wg_value[mask_valor].copy()
+
     def escolher_lado_wg(row):
         vh = row.get('Value_Home_AH_WG', np.nan)
         va = row.get('Value_Away_AH_WG', np.nan)
-    
+
         if (pd.isna(vh) or vh <= 0) and (pd.isna(va) or va <= 0):
             return "❌ Sem valor claro"
-    
-        if vh >= va:
-            return f"HOME AH (EV={vh:.2f})"
-        else:
-            return f"AWAY AH (EV={va:.2f})"
+
+        return "HOME AH" if vh >= va else "AWAY AH"
 
     df_wg_value['Melhor_Lado_WG'] = df_wg_value.apply(escolher_lado_wg, axis=1)
+
 
     # Filtrar só confrontos onde pelo menos um lado tem EV > 0
     mask_valor = (
