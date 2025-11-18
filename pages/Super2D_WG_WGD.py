@@ -172,52 +172,113 @@ def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
 
     return df_temp
 
-def adicionar_weighted_goals_defensivos(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    NOVO cálculo WG_def:
-    Usa xGoals baseados em odds e Asian Line
-    WG_Def = xGA - GA (defesa melhor = positivo)
-    """
-    df_temp = df.copy()
+# def adicionar_weighted_goals_defensivos(df: pd.DataFrame) -> pd.DataFrame:
+#     """
+#     NOVO cálculo WG_def:
+#     Usa xGoals baseados em odds e Asian Line
+#     WG_Def = xGA - GA (defesa melhor = positivo)
+#     """
+#     df_temp = df.copy()
 
-    # Se não tiver Asian_Line_Decimal, não tem como calcular: retorna 0
+#     # Se não tiver Asian_Line_Decimal, não tem como calcular: retorna 0
+#     if 'Asian_Line_Decimal' not in df_temp.columns:
+#         df_temp['WG_Def_Home'] = 0.0
+#         df_temp['WG_Def_Away'] = 0.0
+#         return df_temp
+
+#     # Parâmetros do modelo
+#     params = liga_stats.get(row["League"], {"avg_goals": 2.5, "asian_weight": 0.6})
+#     base_goals = params["avg_goals"]
+#     asian_weight = params["asian_weight"]
+
+
+#     # Calcular xGF home e away, ajustado pela força do handicap
+#     df_temp['xGF_H'] = base_goals / 2 + df_temp['Asian_Line_Decimal'] * asian_weight
+#     df_temp['xGF_A'] = base_goals / 2 - df_temp['Asian_Line_Decimal'] * asian_weight
+
+#     # xGA é o xGF do adversário
+#     df_temp['xGA_H'] = df_temp['xGF_A']
+#     df_temp['xGA_A'] = df_temp['xGF_H']
+
+#     # Gols sofridos (reais) – tratar ausência de colunas em games_today
+#     if 'Goals_A_FT' in df_temp.columns:
+#         df_temp['GA_H'] = df_temp['Goals_A_FT'].fillna(0)
+#     else:
+#         df_temp['GA_H'] = 0
+
+#     if 'Goals_H_FT' in df_temp.columns:
+#         df_temp['GA_A'] = df_temp['Goals_H_FT'].fillna(0)
+#     else:
+#         df_temp['GA_A'] = 0
+
+#     # Weighted Defensive Performance
+#     df_temp['WG_Def_Home'] = df_temp['xGA_H'] - df_temp['GA_H']
+#     df_temp['WG_Def_Away'] = df_temp['xGA_A'] - df_temp['GA_A']
+
+#     # Limpeza
+#     df_temp.drop(columns=['xGF_H', 'xGF_A', 'xGA_H', 'xGA_A', 'GA_H', 'GA_A'], inplace=True)
+
+#     return df_temp
+
+
+
+def adicionar_weighted_goals_defensivos(df: pd.DataFrame, history: pd.DataFrame = None) -> pd.DataFrame:
+    df_temp = df.copy()  # Sempre trabalhamos com cópia
+    
     if 'Asian_Line_Decimal' not in df_temp.columns:
         df_temp['WG_Def_Home'] = 0.0
         df_temp['WG_Def_Away'] = 0.0
         return df_temp
 
-    # Parâmetros do modelo
-    params = liga_stats.get(row["League"], {"avg_goals": 2.5, "asian_weight": 0.6})
-    base_goals = params["avg_goals"]
-    asian_weight = params["asian_weight"]
+    # ===== CÁLCULO AUTOMÁTICO DA MÉDIA DE GOLS POR LIGA =====
+    if history is not None and not history.empty:
+        valid = history.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
+        valid['Total_Goals'] = valid['Goals_H_FT'] + valid['Goals_A_FT']
+        
+        league_stats = valid.groupby('League')['Total_Goals'].agg([
+            ('mean_goals', 'mean'),
+            ('count', 'count')
+        ]).reset_index()
+        
+        global_mean = valid['Total_Goals'].mean()
+        
+        league_stats['base_goals_smooth'] = np.where(
+            league_stats['count'] >= 30,
+            league_stats['mean_goals'],
+            (league_stats['mean_goals'] * league_stats['count'] + global_mean * 50) / (league_stats['count'] + 50)
+        )
+        
+        # Merge seguro
+        df_temp = df_temp.merge(
+            league_stats[['League', 'base_goals_smooth']],
+            on='League',
+            how='left'
+        )
+        df_temp['Base_Goals'] = df_temp['base_goals_smooth'].fillna(global_mean)
+        df_temp.drop(columns=['base_goals_smooth'], inplace=True)
+    else:
+        df_temp['Base_Goals'] = 2.70
 
+    # Peso dinâmico do handicap
+    df_temp['Asian_Weight'] = 0.60 - 0.08 * (df_temp['Base_Goals'] - 2.70).clip(-0.5, 0.8)
 
-    # Calcular xGF home e away, ajustado pela força do handicap
-    df_temp['xGF_H'] = base_goals / 2 + df_temp['Asian_Line_Decimal'] * asian_weight
-    df_temp['xGF_A'] = base_goals / 2 - df_temp['Asian_Line_Decimal'] * asian_weight
-
-    # xGA é o xGF do adversário
+    # Cálculo final
+    df_temp['xGF_H'] = df_temp['Base_Goals'] / 2 + df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight']
+    df_temp['xGF_A'] = df_temp['Base_Goals'] / 2 - df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight']
+    
     df_temp['xGA_H'] = df_temp['xGF_A']
     df_temp['xGA_A'] = df_temp['xGF_H']
-
-    # Gols sofridos (reais) – tratar ausência de colunas em games_today
-    if 'Goals_A_FT' in df_temp.columns:
-        df_temp['GA_H'] = df_temp['Goals_A_FT'].fillna(0)
-    else:
-        df_temp['GA_H'] = 0
-
-    if 'Goals_H_FT' in df_temp.columns:
-        df_temp['GA_A'] = df_temp['Goals_H_FT'].fillna(0)
-    else:
-        df_temp['GA_A'] = 0
-
-    # Weighted Defensive Performance
+    
+    df_temp['GA_H'] = df_temp.get('Goals_A_FT', 0).fillna(0)
+    df_temp['GA_A'] = df_temp.get('Goals_H_FT', 0).fillna(0)
+    
     df_temp['WG_Def_Home'] = df_temp['xGA_H'] - df_temp['GA_H']
     df_temp['WG_Def_Away'] = df_temp['xGA_A'] - df_temp['GA_A']
-
+    
     # Limpeza
-    df_temp.drop(columns=['xGF_H', 'xGF_A', 'xGA_H', 'xGA_A', 'GA_H', 'GA_A'], inplace=True)
-
+    cols_to_drop = ['Base_Goals', 'Asian_Weight', 'xGF_H', 'xGF_A', 'xGA_H', 'xGA_A', 'GA_H', 'GA_A']
+    df_temp.drop(columns=[c for c in cols_to_drop if c in df_temp.columns], inplace=True)
+    
     return df_temp
 
 def adicionar_weighted_goals_ah(df: pd.DataFrame) -> pd.DataFrame:
