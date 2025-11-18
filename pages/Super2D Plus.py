@@ -621,9 +621,7 @@ history = calcular_metricas_completas(history)  # NOVO
 history = calcular_rolling_wg_features_completo(history)  # ATUALIZADO
 
 games_today = adicionar_weighted_goals(games_today)
-games_today = adicionar_weighted_goals_defensivos(games_today)  # NOVO
 games_today = adicionar_weighted_goals_ah(games_today)
-games_today = adicionar_weighted_goals_ah_defensivos(games_today)  # NOVO
 games_today = calcular_metricas_completas(games_today)  # NOVO
 games_today = enrich_games_today_with_wg_completo(games_today, history)  # ATUALIZADO
 
