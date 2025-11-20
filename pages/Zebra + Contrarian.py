@@ -1041,18 +1041,18 @@ def create_robust_features(df: pd.DataFrame) -> pd.DataFrame:
         'WG_Diff', 'WG_AH_Diff', 'WG_Def_Diff',
         'WG_Balance_Diff', 'WG_Net_Diff'
     ]
-      market_features = [
-        'Market_Score_Home',
-        'Market_Score_Away',
-        'Market_Rating_Diff'
-    ]
-  
-      market_flag_features = [
-        'Market_Overpriced_Home',
-        'Market_Overpriced_Away',
-        'Market_Underpriced_Home',
-        'Market_Underpriced_Away'
-    ]
+  market_features = [
+    'Market_Score_Home',
+    'Market_Score_Away',
+    'Market_Rating_Diff'
+]
+
+  market_flag_features = [
+    'Market_Overpriced_Home',
+    'Market_Overpriced_Away',
+    'Market_Underpriced_Home',
+    'Market_Underpriced_Away'
+]
 
 
 
