@@ -1342,17 +1342,17 @@ if not history.empty:
 if not games_today.empty and not history.empty:
     st.subheader("📌 Enriquecendo jogos de hoje com WG histórico...")
     games_today = enrich_games_today_with_wg_completo(games_today, history)
-  # Contrarian Score nos jogos do dia
-  last_market_home = history.groupby('Home')['Market_Score_Home'].last().reset_index()
-  games_today = games_today.merge(last_market_home, on='Home', how='left')
+    # Contrarian Score nos jogos do dia
+    last_market_home = history.groupby('Home')['Market_Score_Home'].last().reset_index()
+    games_today = games_today.merge(last_market_home, on='Home', how='left')
   
-  last_market_away = history.groupby('Away')['Market_Score_Away'].last().reset_index()
-  games_today = games_today.merge(last_market_away, on='Away', how='left')
+    last_market_away = history.groupby('Away')['Market_Score_Away'].last().reset_index()
+    games_today = games_today.merge(last_market_away, on='Away', how='left')
   
-  games_today['Market_Rating_Diff'] = (
-      games_today['Market_Score_Home'].fillna(0) -
-      games_today['Market_Score_Away'].fillna(0)
-  )
+    games_today['Market_Rating_Diff'] = (
+        games_today['Market_Score_Home'].fillna(0) -
+        games_today['Market_Score_Away'].fillna(0)
+    )
 
 # ================= CONTRARIAN FLAGS BINÁRIAS =================
 
