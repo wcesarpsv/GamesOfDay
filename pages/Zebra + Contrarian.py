@@ -1385,8 +1385,7 @@ games_today['Market_Underpriced_Away'] = (games_today['Market_Score_Away'] <= -t
 
 st.info(f"Contrarian Threshold: {threshold_contrarian:.3f}")
 
-
-    st.success(f"WG aplicado em games_today: {games_today.shape}")
+st.success(f"WG aplicado em games_today: {games_today.shape}")
 
 # ---------------- THRESHOLD DINÂMICO POR HANDICAP (ESTRATÉGIA B - AGRESSIVA) ----------------
 def min_confidence_by_line(line):
