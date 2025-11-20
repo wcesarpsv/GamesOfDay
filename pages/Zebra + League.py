@@ -9,6 +9,7 @@ import re
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import cross_val_score
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from datetime import datetime
 import math
 
@@ -737,19 +738,16 @@ def train_improved_model(X, y, feature_names):
 
 ##########################################################
 
-def plot_wg_vs_wgdef_scatter(games_today: pd.DataFrame):
+def plot_wg_vs_wgdef_scatter_interactive(games_today: pd.DataFrame):
     """
-    Gráfico 2D mostrando WG (ataque) x WG_Def (defesa) para Home e Away,
-    conectados por uma linha cinza.
-    
-    - Eixo X: WG ofensivo (rolling histórico)
-    - Eixo Y: WG defensivo (rolling histórico)
-    - Ponto laranja: HOME
-    - Ponto azul: AWAY
-    - Linha cinza ligando os dois times do mesmo jogo
-    - Filtro por liga (multi-select)
-    - Slider para limitar o número de jogos exibidos
+    Gráfico 2D interativo (Plotly) mostrando WG Ofensivo x WG Defensivo
+    para Home (laranja) e Away (azul), ligados por linha cinza.
+
+    - Filtro de ligas com botão "Aplicar filtros" para evitar recálculo a cada clique
+    - Slider para quantidade máxima de jogos
+    - Tooltip com: Time, Liga, WG_Of e WG_Def + insight textual
     """
+
     if games_today.empty:
         st.info("Sem jogos para exibir no gráfico WG x WG_Def.")
         return
@@ -766,13 +764,25 @@ def plot_wg_vs_wgdef_scatter(games_today: pd.DataFrame):
 
     st.markdown("## 📊 Mapa 2D – WG Ofensivo x WG Defensivo (Histórico por Time)")
 
-    # ---- Filtros na lateral ----
+    # ---------- Estado de filtros em session_state ----------
     ligas_disponiveis = sorted(games_today['League'].dropna().unique().tolist())
-    ligas_selecionadas = st.multiselect(
-        "Filtrar por liga(s):",
+
+    if 'wg_ligas_aplicadas' not in st.session_state:
+        st.session_state['wg_ligas_aplicadas'] = ligas_disponiveis
+
+    # Multiselect "temporário" (não afeta o gráfico até clicar no botão)
+    ligas_temp = st.multiselect(
+        "Selecione as ligas (confirme depois em 'Aplicar filtros')",
         options=ligas_disponiveis,
-        default=ligas_disponiveis
+        default=st.session_state['wg_ligas_aplicadas']
     )
+
+    if st.button("Aplicar filtros de ligas (WG)", type="primary"):
+        # Atualiza apenas quando o usuário clica
+        if ligas_temp:
+            st.session_state['wg_ligas_aplicadas'] = ligas_temp
+
+    ligas_usadas = st.session_state['wg_ligas_aplicadas']
 
     max_jogos = st.slider(
         "Quantidade máxima de jogos exibidos no gráfico:",
@@ -782,76 +792,146 @@ def plot_wg_vs_wgdef_scatter(games_today: pd.DataFrame):
         step=1
     )
 
-    df_plot = games_today.copy()
-    if ligas_selecionadas:
-        df_plot = df_plot[df_plot['League'].isin(ligas_selecionadas)]
+    # ---------- Filtragem e ordenação ----------
+    df_plot = games_today[games_today['League'].isin(ligas_usadas)].copy()
 
     if df_plot.empty:
         st.info("Nenhum jogo encontrado para as ligas selecionadas.")
         return
 
-    # Ordenar pelos confrontos mais assimétricos em WG (ataque)
+    # Maior assimetria ofensiva primeiro
     df_plot['WG_Diff_Grafico'] = (
         df_plot['WG_Home_Team_Last'] - df_plot['WG_Away_Team_Last']
     ).abs()
-
     df_plot = df_plot.sort_values('WG_Diff_Grafico', ascending=False).head(max_jogos)
 
-    # Abreviação simples para rótulos
+    # ---------- Helpers ----------
     def abreviar_nome(nome, max_len=8):
         if pd.isna(nome):
             return ""
         s = str(nome)
         return s if len(s) <= max_len else s[:max_len]
 
-    # ---- Construção do gráfico ----
-    fig, ax = plt.subplots(figsize=(10, 6))
+    def insight_wg(wg_of, wg_def):
+        if wg_of > 0 and wg_def > 0:
+            return "Ataque forte & defesa sólida"
+        elif wg_of > 0 and wg_def <= 0:
+            return "Ataque forte & defesa vulnerável"
+        elif wg_of <= 0 and wg_def > 0:
+            return "Ataque fraco & defesa sólida"
+        else:
+            return "Ataque fraco & defesa vulnerável"
 
-    for _, row in df_plot.iterrows():
-        x_home = row['WG_Home_Team_Last']
-        y_home = row['WG_Def_Home_Team_Last']
-        x_away = row['WG_Away_Team_Last']
-        y_away = row['WG_Def_Away_Team_Last']
+    # ---------- Dados para HOME ----------
+    home_x = df_plot['WG_Home_Team_Last'].values
+    home_y = df_plot['WG_Def_Home_Team_Last'].values
+    home_text = df_plot['Home'].apply(abreviar_nome).values
+    home_customdata = np.stack([
+        df_plot['Home'].astype(str).values,        # 0 - nome completo
+        df_plot['League'].astype(str).values,      # 1 - liga
+        df_plot['WG_Home_Team_Last'].values,       # 2 - WG ofensivo
+        df_plot['WG_Def_Home_Team_Last'].values,   # 3 - WG defensivo
+        df_plot.apply(lambda r: insight_wg(
+            r['WG_Home_Team_Last'],
+            r['WG_Def_Home_Team_Last']
+        ), axis=1).astype(str).values             # 4 - insight
+    ], axis=-1)
 
-        # Linha cinza ligando HOME ↔ AWAY
-        ax.plot(
-            [x_home, x_away],
-            [y_home, y_away],
-            color="gray",
-            linewidth=0.8,
-            alpha=0.8
+    # ---------- Dados para AWAY ----------
+    away_x = df_plot['WG_Away_Team_Last'].values
+    away_y = df_plot['WG_Def_Away_Team_Last'].values
+    away_text = df_plot['Away'].apply(abreviar_nome).values
+    away_customdata = np.stack([
+        df_plot['Away'].astype(str).values,
+        df_plot['League'].astype(str).values,
+        df_plot['WG_Away_Team_Last'].values,
+        df_plot['WG_Def_Away_Team_Last'].values,
+        df_plot.apply(lambda r: insight_wg(
+            r['WG_Away_Team_Last'],
+            r['WG_Def_Away_Team_Last']
+        ), axis=1).astype(str).values
+    ], axis=-1)
+
+    # ---------- Construção das linhas HOME ↔ AWAY ----------
+    line_traces = []
+    for _, r in df_plot.iterrows():
+        line_traces.append(
+            go.Scatter(
+                x=[r['WG_Home_Team_Last'], r['WG_Away_Team_Last']],
+                y=[r['WG_Def_Home_Team_Last'], r['WG_Def_Away_Team_Last']],
+                mode="lines",
+                line=dict(color="rgba(150,150,150,0.7)", width=1),
+                hoverinfo="skip",
+                showlegend=False
+            )
         )
 
-        # Ponto HOME (laranja)
-        ax.scatter(x_home, y_home, color="orange", s=40)
-        ax.text(
-            x_home, y_home,
-            abreviar_nome(row['Home']),
-            fontsize=8,
-            ha='right',
-            va='bottom'
+    # ---------- Traces HOME e AWAY ----------
+    trace_home = go.Scatter(
+        x=home_x,
+        y=home_y,
+        mode="markers+text",
+        name="Home",
+        text=home_text,
+        textposition="top right",
+        marker=dict(size=9, color="orange"),
+        customdata=home_customdata,
+        hovertemplate=(
+            "<b>%{customdata[0]}</b><br>"  # nome time
+            "Liga: %{customdata[1]}<br>"
+            "WG Ofensivo: %{customdata[2]:.3f}<br>"
+            "WG Defensivo: %{customdata[3]:.3f}<br>"
+            "Insight: %{customdata[4]}<extra></extra>"
         )
+    )
 
-        # Ponto AWAY (azul)
-        ax.scatter(x_away, y_away, color="blue", s=40)
-        ax.text(
-            x_away, y_away,
-            abreviar_nome(row['Away']),
-            fontsize=8,
-            ha='left',
-            va='top'
+    trace_away = go.Scatter(
+        x=away_x,
+        y=away_y,
+        mode="markers+text",
+        name="Away",
+        text=away_text,
+        textposition="bottom left",
+        marker=dict(size=9, color="blue"),
+        customdata=away_customdata,
+        hovertemplate=(
+            "<b>%{customdata[0]}</b><br>"
+            "Liga: %{customdata[1]}<br>"
+            "WG Ofensivo: %{customdata[2]:.3f}<br>"
+            "WG Defensivo: %{customdata[3]:.3f}<br>"
+            "Insight: %{customdata[4]}<extra></extra>"
         )
+    )
 
-    # Eixos e linhas de referência em 0
-    ax.axvline(0, color="black", linewidth=1, alpha=0.4)
-    ax.axhline(0, color="black", linewidth=1, alpha=0.4)
+    # ---------- Montagem da figura ----------
+    fig = go.Figure()
 
-    ax.set_xlabel("WG Ofensivo (Rolling histórico)")
-    ax.set_ylabel("WG Defensivo (Rolling histórico)")
-    ax.set_title("WG x WG_Def – Comparação Home (laranja) vs Away (azul)")
-    ax.grid(alpha=0.2)
+    # linhas primeiro (fica por baixo)
+    for lt in line_traces:
+        fig.add_trace(lt)
 
-    st.pyplot(fig)
+    fig.add_trace(trace_home)
+    fig.add_trace(trace_away)
+
+    # Eixos 0 / 0
+    fig.add_hline(y=0, line=dict(color="black", width=1, dash="dot", opacity=0.4))
+    fig.add_vline(x=0, line=dict(color="black", width=1, dash="dot", opacity=0.4))
+
+    fig.update_layout(
+        title="WG x WG_Def – Comparação Home (laranja) vs Away (azul)",
+        xaxis_title="WG Ofensivo (Rolling histórico)",
+        yaxis_title="WG Defensivo (Rolling histórico)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        height=600,
+    )
+
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="rgba(200,200,200,0.2)")
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor="rgba(200,200,200,0.2)")
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+######################################################
 
 
 
@@ -1409,10 +1489,9 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
     return df
 
 
-# ---------------- GRÁFICO 2D WG x WG_Def (ACIMA DOS PICKS) ----------------
+# ---------------- GRÁFICO 2D INTERATIVO WG x WG_Def (ACIMA DOS PICKS) ----------------
 if not games_today.empty:
-    plot_wg_vs_wgdef_scatter(games_today)
-
+    plot_wg_vs_wgdef_scatter_interactive(games_today)
 
 
 
