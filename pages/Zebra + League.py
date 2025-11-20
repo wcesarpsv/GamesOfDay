@@ -735,6 +735,128 @@ def train_improved_model(X, y, feature_names):
 
     return model
 
+##########################################################
+
+def plot_wg_vs_wgdef_scatter(games_today: pd.DataFrame):
+    """
+    Gráfico 2D mostrando WG (ataque) x WG_Def (defesa) para Home e Away,
+    conectados por uma linha cinza.
+    
+    - Eixo X: WG ofensivo (rolling histórico)
+    - Eixo Y: WG defensivo (rolling histórico)
+    - Ponto laranja: HOME
+    - Ponto azul: AWAY
+    - Linha cinza ligando os dois times do mesmo jogo
+    - Filtro por liga (multi-select)
+    - Slider para limitar o número de jogos exibidos
+    """
+    if games_today.empty:
+        st.info("Sem jogos para exibir no gráfico WG x WG_Def.")
+        return
+
+    required_cols = [
+        'League', 'Home', 'Away',
+        'WG_Home_Team_Last', 'WG_Away_Team_Last',
+        'WG_Def_Home_Team_Last', 'WG_Def_Away_Team_Last'
+    ]
+    missing = [c for c in required_cols if c not in games_today.columns]
+    if missing:
+        st.warning(f"Não é possível gerar o gráfico WG x WG_Def. Faltam colunas: {missing}")
+        return
+
+    st.markdown("## 📊 Mapa 2D – WG Ofensivo x WG Defensivo (Histórico por Time)")
+
+    # ---- Filtros na lateral ----
+    ligas_disponiveis = sorted(games_today['League'].dropna().unique().tolist())
+    ligas_selecionadas = st.multiselect(
+        "Filtrar por liga(s):",
+        options=ligas_disponiveis,
+        default=ligas_disponiveis
+    )
+
+    max_jogos = st.slider(
+        "Quantidade máxima de jogos exibidos no gráfico:",
+        min_value=5,
+        max_value=50,
+        value=30,
+        step=1
+    )
+
+    df_plot = games_today.copy()
+    if ligas_selecionadas:
+        df_plot = df_plot[df_plot['League'].isin(ligas_selecionadas)]
+
+    if df_plot.empty:
+        st.info("Nenhum jogo encontrado para as ligas selecionadas.")
+        return
+
+    # Ordenar pelos confrontos mais assimétricos em WG (ataque)
+    df_plot['WG_Diff_Grafico'] = (
+        df_plot['WG_Home_Team_Last'] - df_plot['WG_Away_Team_Last']
+    ).abs()
+
+    df_plot = df_plot.sort_values('WG_Diff_Grafico', ascending=False).head(max_jogos)
+
+    # Abreviação simples para rótulos
+    def abreviar_nome(nome, max_len=8):
+        if pd.isna(nome):
+            return ""
+        s = str(nome)
+        return s if len(s) <= max_len else s[:max_len]
+
+    # ---- Construção do gráfico ----
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    for _, row in df_plot.iterrows():
+        x_home = row['WG_Home_Team_Last']
+        y_home = row['WG_Def_Home_Team_Last']
+        x_away = row['WG_Away_Team_Last']
+        y_away = row['WG_Def_Away_Team_Last']
+
+        # Linha cinza ligando HOME ↔ AWAY
+        ax.plot(
+            [x_home, x_away],
+            [y_home, y_away],
+            color="gray",
+            linewidth=0.8,
+            alpha=0.8
+        )
+
+        # Ponto HOME (laranja)
+        ax.scatter(x_home, y_home, color="orange", s=40)
+        ax.text(
+            x_home, y_home,
+            abreviar_nome(row['Home']),
+            fontsize=8,
+            ha='right',
+            va='bottom'
+        )
+
+        # Ponto AWAY (azul)
+        ax.scatter(x_away, y_away, color="blue", s=40)
+        ax.text(
+            x_away, y_away,
+            abreviar_nome(row['Away']),
+            fontsize=8,
+            ha='left',
+            va='top'
+        )
+
+    # Eixos e linhas de referência em 0
+    ax.axvline(0, color="black", linewidth=1, alpha=0.4)
+    ax.axhline(0, color="black", linewidth=1, alpha=0.4)
+
+    ax.set_xlabel("WG Ofensivo (Rolling histórico)")
+    ax.set_ylabel("WG Defensivo (Rolling histórico)")
+    ax.set_title("WG x WG_Def – Comparação Home (laranja) vs Away (azul)")
+    ax.grid(alpha=0.2)
+
+    st.pyplot(fig)
+
+
+
+
+
 @st.cache_data(ttl=3600)
 def load_cached_data(selected_file):
     games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
@@ -1285,6 +1407,14 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
     df['Ranking'] = df['Bet_Confidence_Adjusted'].rank(ascending=False, method='dense').astype(int)
 
     return df
+
+
+# ---------------- GRÁFICO 2D WG x WG_Def (ACIMA DOS PICKS) ----------------
+if not games_today.empty:
+    plot_wg_vs_wgdef_scatter(games_today)
+
+
+
 
 st.markdown("## 🏆 Melhores Confrontos 3D por 16 Quadrantes ML")
 
