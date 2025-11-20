@@ -816,6 +816,14 @@ def plot_wg_vs_wgdef_scatter_interactive(games_today: pd.DataFrame):
         else:
             return "Ataque fraco & defesa vulnerável"
 
+    # Coordenadas dos pontos HOME e AWAY
+    home_x = df_plot['WG_Home_Team_Last'].values
+    home_y = df_plot['WG_Def_Home_Team_Last'].values
+    
+    away_x = df_plot['WG_Away_Team_Last'].values
+    away_y = df_plot['WG_Def_Away_Team_Last'].values
+
+
     # ---------- customdata para HOME ----------
     home_customdata = np.stack([
         df_plot['Home'].astype(str).values,        # customdata[0] - Home
