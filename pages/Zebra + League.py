@@ -766,16 +766,26 @@ def plot_wg_vs_wgdef_scatter_interactive(games_today: pd.DataFrame):
 
     # ---------- Estado de filtros em session_state ----------
     ligas_disponiveis = sorted(games_today['League'].dropna().unique().tolist())
-
+    
     if 'wg_ligas_aplicadas' not in st.session_state:
         st.session_state['wg_ligas_aplicadas'] = ligas_disponiveis
-
-    # Multiselect "temporário" (não afeta o gráfico até clicar no botão)
+    
+    # 🔒 Filtra para garantir que defaults sempre existem nas opções
+    defaults_filtrados = [
+        l for l in st.session_state['wg_ligas_aplicadas']
+        if l in ligas_disponiveis
+    ]
+    
+    # Se todas as ligas default sumiram → seleciona todas as atuais
+    if not defaults_filtrados:
+        defaults_filtrados = ligas_disponiveis
+    
     ligas_temp = st.multiselect(
         "Selecione as ligas (confirme depois em 'Aplicar filtros')",
         options=ligas_disponiveis,
-        default=st.session_state['wg_ligas_aplicadas']
+        default=defaults_filtrados
     )
+
 
     if st.button("Aplicar filtros de ligas (WG)", type="primary"):
         # Atualiza apenas quando o usuário clica
