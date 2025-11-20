@@ -914,8 +914,9 @@ def plot_wg_vs_wgdef_scatter_interactive(games_today: pd.DataFrame):
     fig.add_trace(trace_away)
 
     # Eixos 0 / 0
-    fig.add_hline(y=0, line=dict(color="black", width=1, dash="dot", opacity=0.4))
-    fig.add_vline(x=0, line=dict(color="black", width=1, dash="dot", opacity=0.4))
+    fig.add_hline(y=0, line=dict(color="rgba(0,0,0,0.4)", width=1, dash="dot"))
+    fig.add_vline(x=0, line=dict(color="rgba(0,0,0,0.4)", width=1, dash="dot"))
+
 
     fig.update_layout(
         title="WG x WG_Def – Comparação Home (laranja) vs Away (azul)",
