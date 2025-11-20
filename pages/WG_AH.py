@@ -1066,8 +1066,8 @@ def main_handicap_v1():
 
         if not df_filtrado_ah.empty:
             cols_ah = [
-                'League', 'Home', 'Away',
-                'Asian_Line_Decimal', 'Handicap_Info',
+                'League', 'Time', 'Home', 'Away',
+                'Asian_Line_Decimal',
                 'AIL_Pick_AH', 'AIL_Confidence_AH', 'AIL_Stamp_AH', 'Confirmed',
                 'AIL_Value_Score_AH',
                 'P_Cover_Home_Especifico', 'Market_Cover_Prob', 'Edge_Pick',
