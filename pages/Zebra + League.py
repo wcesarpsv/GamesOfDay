@@ -867,9 +867,10 @@ def plot_wg_vs_wgdef_scatter_interactive(games_today: pd.DataFrame):
         )
 
     # ---------- Traces HOME e AWAY ----------
+    home_text = df_plot['Home'].astype(str).values
+
     trace_home = go.Scatter(
-        x=home_x,
-        y=home_y,
+        x=home_x, y=home_y,
         mode="markers+text",
         name="Home",
         text=home_text,
@@ -877,17 +878,19 @@ def plot_wg_vs_wgdef_scatter_interactive(games_today: pd.DataFrame):
         marker=dict(size=9, color="orange"),
         customdata=home_customdata,
         hovertemplate=(
-            "<b>%{customdata[0]}</b><br>"  # nome time
-            "Liga: %{customdata[1]}<br>"
-            "WG Ofensivo: %{customdata[2]:.3f}<br>"
-            "WG Defensivo: %{customdata[3]:.3f}<br>"
-            "Insight: %{customdata[4]}<extra></extra>"
+            "<b>%{customdata[0]} x %{customdata[1]}</b><br>"    # Home x Away
+            "Liga: %{customdata[2]}<br>"
+            "WG Ofensivo: %{customdata[3]:.3f}<br>"
+            "WG Defensivo: %{customdata[4]:.3f}<br>"
+            "Insight: %{customdata[5]}<extra></extra>"
         )
     )
 
+
+   away_text = df_plot['Away'].astype(str).values
+
     trace_away = go.Scatter(
-        x=away_x,
-        y=away_y,
+        x=away_x, y=away_y,
         mode="markers+text",
         name="Away",
         text=away_text,
@@ -895,11 +898,11 @@ def plot_wg_vs_wgdef_scatter_interactive(games_today: pd.DataFrame):
         marker=dict(size=9, color="blue"),
         customdata=away_customdata,
         hovertemplate=(
-            "<b>%{customdata[0]}</b><br>"
-            "Liga: %{customdata[1]}<br>"
-            "WG Ofensivo: %{customdata[2]:.3f}<br>"
-            "WG Defensivo: %{customdata[3]:.3f}<br>"
-            "Insight: %{customdata[4]}<extra></extra>"
+            "<b>%{customdata[0]} x %{customdata[1]}</b><br>"
+            "Liga: %{customdata[2]}<br>"
+            "WG Ofensivo: %{customdata[3]:.3f}<br>"
+            "WG Defensivo: %{customdata[4]:.3f}<br>"
+            "Insight: %{customdata[5]}<extra></extra>"
         )
     )
 
