@@ -805,108 +805,95 @@ def plot_wg_vs_wgdef_scatter_interactive(games_today: pd.DataFrame):
     ).abs()
     df_plot = df_plot.sort_values('WG_Diff_Grafico', ascending=False).head(max_jogos)
 
-    # ---------- Helpers ----------
-    def abreviar_nome(nome, max_len=8):
-        if pd.isna(nome):
-            return ""
-        s = str(nome)
-        return s if len(s) <= max_len else s[:max_len]
-
-    def insight_wg(wg_of, wg_def):
-        if wg_of > 0 and wg_def > 0:
-            return "Ataque forte & defesa sólida"
-        elif wg_of > 0 and wg_def <= 0:
-            return "Ataque forte & defesa vulnerável"
-        elif wg_of <= 0 and wg_def > 0:
-            return "Ataque fraco & defesa sólida"
-        else:
-            return "Ataque fraco & defesa vulnerável"
-
-    # ---------- Dados para HOME ----------
-    home_customdata = np.stack([
-        df_plot['Home'].astype(str).values,       # customdata[0]
-        df_plot['Away'].astype(str).values,       # customdata[1]  🆕 ter o Away
-        df_plot['League'].astype(str).values,     # customdata[2]
-        df_plot['WG_Home_Team_Last'].values,     # customdata[3]
-        df_plot['WG_Def_Home_Team_Last'].values, # customdata[4]
-        df_plot.apply(lambda r: insight_wg(
-            r['WG_Home_Team_Last'],
-            r['WG_Def_Home_Team_Last']
-        ), axis=1).astype(str).values            # customdata[5]
-    ], axis=-1)
-
-
-
-    # ---------- Dados para AWAY ----------
-    away_customdata = np.stack([
-        df_plot['Home'].astype(str).values,      # customdata[0]  🆕 ter o Home
-        df_plot['Away'].astype(str).values,      # customdata[1]
-        df_plot['League'].astype(str).values,    # customdata[2]
-        df_plot['WG_Away_Team_Last'].values,    # customdata[3]
-        df_plot['WG_Def_Away_Team_Last'].values,# customdata[4]
-        df_plot.apply(lambda r: insight_wg(
-            r['WG_Away_Team_Last'],
-            r['WG_Def_Away_Team_Last']
-        ), axis=1).astype(str).values           # customdata[5]
-    ], axis=-1)
-
-
-
-    # ---------- Construção das linhas HOME ↔ AWAY ----------
-    line_traces = []
-    for _, r in df_plot.iterrows():
-        line_traces.append(
-            go.Scatter(
-                x=[r['WG_Home_Team_Last'], r['WG_Away_Team_Last']],
-                y=[r['WG_Def_Home_Team_Last'], r['WG_Def_Away_Team_Last']],
-                mode="lines",
-                line=dict(color="rgba(150,150,150,0.7)", width=1),
-                hoverinfo="skip",
-                showlegend=False
+        # ---------- Helpers ----------
+        def insight_wg(wg_of, wg_def):
+            if wg_of > 0 and wg_def > 0:
+                return "Ataque forte & defesa sólida"
+            elif wg_of > 0 and wg_def <= 0:
+                return "Ataque forte & defesa vulnerável"
+            elif wg_of <= 0 and wg_def > 0:
+                return "Ataque fraco & defesa sólida"
+            else:
+                return "Ataque fraco & defesa vulnerável"
+    
+        # ---------- customdata para HOME ----------
+        home_customdata = np.stack([
+            df_plot['Home'].astype(str).values,        # customdata[0] - Home
+            df_plot['Away'].astype(str).values,        # customdata[1] - Away
+            df_plot['League'].astype(str).values,      # customdata[2] - Liga
+            df_plot['WG_Home_Team_Last'].values,       # customdata[3] - WG Of Home
+            df_plot['WG_Def_Home_Team_Last'].values,   # customdata[4] - WG Def Home
+            df_plot.apply(lambda r: insight_wg(
+                r['WG_Home_Team_Last'], r['WG_Def_Home_Team_Last']
+            ), axis=1).astype(str).values              # customdata[5] - Insight Home
+        ], axis=-1)
+    
+        # ---------- customdata para AWAY ----------
+        away_customdata = np.stack([
+            df_plot['Home'].astype(str).values,        # customdata[0] - Home
+            df_plot['Away'].astype(str).values,        # customdata[1] - Away
+            df_plot['League'].astype(str).values,      # customdata[2] - Liga
+            df_plot['WG_Away_Team_Last'].values,       # customdata[3] - WG Of Away
+            df_plot['WG_Def_Away_Team_Last'].values,   # customdata[4] - WG Def Away
+            df_plot.apply(lambda r: insight_wg(
+                r['WG_Away_Team_Last'], r['WG_Def_Away_Team_Last']
+            ), axis=1).astype(str).values              # customdata[5] - Insight Away
+        ], axis=-1)
+    
+        # ---------- Construção das linhas HOME ↔ AWAY ----------
+        line_traces = []
+        for _, r in df_plot.iterrows():
+            line_traces.append(
+                go.Scatter(
+                    x=[r['WG_Home_Team_Last'], r['WG_Away_Team_Last']],
+                    y=[r['WG_Def_Home_Team_Last'], r['WG_Def_Away_Team_Last']],
+                    mode="lines",
+                    line=dict(color="rgba(150,150,150,0.7)", width=1),
+                    hoverinfo="skip",
+                    showlegend=False
+                )
+            )
+    
+        # ---------- Traces HOME e AWAY ----------
+        home_text = df_plot['Home'].astype(str).values
+        away_text = df_plot['Away'].astype(str).values
+    
+        trace_home = go.Scatter(
+            x=home_x, y=home_y,
+            mode="markers+text",
+            name="Home",
+            text=home_text,
+            textposition="top right",
+            marker=dict(size=9, color="orange"),
+            customdata=home_customdata,
+            hovertemplate=(
+                "<b>%{customdata[0]} x %{customdata[1]}</b><br>"
+                "Liga: %{customdata[2]}<br>"
+                "WG Ofensivo: %{customdata[3]:.3f}<br>"
+                "WG Defensivo: %{customdata[4]:.3f}<br>"
+                "Insight: %{customdata[5]}<extra></extra>"
             )
         )
-
-    # ---------- Traces HOME e AWAY ----------
-    home_text = df_plot['Home'].astype(str).values
-
-    trace_home = go.Scatter(
-        x=home_x, y=home_y,
-        mode="markers+text",
-        name="Home",
-        text=home_text,
-        textposition="top right",
-        marker=dict(size=9, color="orange"),
-        customdata=home_customdata,
-        hovertemplate=(
-            "<b>%{customdata[0]} x %{customdata[1]}</b><br>"    # Home x Away
-            "Liga: %{customdata[2]}<br>"
-            "WG Ofensivo: %{customdata[3]:.3f}<br>"
-            "WG Defensivo: %{customdata[4]:.3f}<br>"
-            "Insight: %{customdata[5]}<extra></extra>"
+    
+        trace_away = go.Scatter(
+            x=away_x, y=away_y,
+            mode="markers+text",
+            name="Away",
+            text=away_text,
+            textposition="bottom left",
+            marker=dict(size=9, color="blue"),
+            customdata=away_customdata,
+            hovertemplate=(
+                "<b>%{customdata[0]} x %{customdata[1]}</b><br>"
+                "Liga: %{customdata[2]}<br>"
+                "WG Ofensivo: %{customdata[3]:.3f}<br>"
+                "WG Defensivo: %{customdata[4]:.3f}<br>"
+                "Insight: %{customdata[5]}<extra></extra>"
+            )
         )
-    )
+    
+        # ---------- Montagem da figura ----------
 
-
-   away_text = df_plot['Away'].astype(str).values
-
-    trace_away = go.Scatter(
-        x=away_x, y=away_y,
-        mode="markers+text",
-        name="Away",
-        text=away_text,
-        textposition="bottom left",
-        marker=dict(size=9, color="blue"),
-        customdata=away_customdata,
-        hovertemplate=(
-            "<b>%{customdata[0]} x %{customdata[1]}</b><br>"
-            "Liga: %{customdata[2]}<br>"
-            "WG Ofensivo: %{customdata[3]:.3f}<br>"
-            "WG Defensivo: %{customdata[4]:.3f}<br>"
-            "Insight: %{customdata[5]}<extra></extra>"
-        )
-    )
-
-    # ---------- Montagem da figura ----------
     fig = go.Figure()
 
     # linhas primeiro (fica por baixo)
