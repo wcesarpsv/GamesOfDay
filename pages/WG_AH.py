@@ -1035,8 +1035,8 @@ def main_handicap_v1():
 
         if not df_filtrado_base.empty:
             cols_base = [
-                'League', 'Home', 'Away',
-                'Asian_Line_Decimal', 'Handicap_Info',
+                'League', 'Time', 'Home', 'Away',
+                'Asian_Line_Decimal',
                 'AIL_Pick', 'AIL_Confidence', 'AIL_Stamp', 'Confirmed',
                 'AIL_Value_Score',
                 'P_Cover_Home_Especifico', 'Market_Cover_Prob', 'Edge_Pick',
