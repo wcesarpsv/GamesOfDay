@@ -680,6 +680,53 @@ def calcular_rolling_wg_features_completo(df: pd.DataFrame) -> pd.DataFrame:
 
     return df_temp
 
+
+
+# ========================= CONTRARIAN MARKET SCORE =========================
+def adicionar_market_contrarian_score(history: pd.DataFrame) -> pd.DataFrame:
+    df = history.copy()
+
+    if 'Odd_H' not in df.columns or 'Odd_A' not in df.columns:
+        st.warning("⚠️ Odds 1x2 não encontradas para Contrarian Score")
+        df['Market_Return_H'] = 0
+        df['Market_Return_A'] = 0
+        df['Market_Score_Home'] = 0
+        df['Market_Score_Away'] = 0
+        return df
+    
+    df['P_H'] = 1 / df['Odd_H'].replace(0, np.nan)
+    df['P_A'] = 1 / df['Odd_A'].replace(0, np.nan)
+    df['P_Sum'] = df['P_H'] + df['P_A']
+
+    df['Odd_H_Fair'] = df['P_Sum'] / df['P_H']
+    df['Odd_A_Fair'] = df['P_Sum'] / df['P_A']
+
+    def market_return(row, side):
+        g_h = row["Goals_H_FT"]
+        g_a = row["Goals_A_FT"]
+        odd_fair = row[f'Odd_{side}_Fair']
+
+        if pd.isna(odd_fair) or odd_fair <= 1:
+            return 0.0
+
+        win = (side == 'H' and g_h > g_a) or (side == 'A' and g_a > g_h)
+        if win:
+            return 1 - 1/odd_fair
+        else:
+            return -1/odd_fair
+
+    df["Market_Return_H"] = df.apply(lambda row: market_return(row, 'H'), axis=1)
+    df["Market_Return_A"] = df.apply(lambda row: market_return(row, 'A'), axis=1)
+
+    df = df.sort_values("Date")
+
+    df['Market_Score_Home'] = df.groupby('Home')["Market_Return_H"].cumsum()
+    df['Market_Score_Away'] = df.groupby('Away')["Market_Return_A"].cumsum()
+
+    return df
+
+
+
 # ---------------- ENRIQUECER GAMES_TODAY COM WG DO HISTÓRICO ----------------
 def enrich_games_today_with_wg_completo(games_today: pd.DataFrame, history: pd.DataFrame) -> pd.DataFrame:
     """
@@ -1504,48 +1551,7 @@ def treinar_modelo_3d_quadrantes_16_corrigido(history, games_today):
     return model_home, model_away, games_today
 
 
-# ========================= CONTRARIAN MARKET SCORE =========================
-def adicionar_market_contrarian_score(history: pd.DataFrame) -> pd.DataFrame:
-    df = history.copy()
 
-    if 'Odd_H' not in df.columns or 'Odd_A' not in df.columns:
-        st.warning("⚠️ Odds 1x2 não encontradas para Contrarian Score")
-        df['Market_Return_H'] = 0
-        df['Market_Return_A'] = 0
-        df['Market_Score_Home'] = 0
-        df['Market_Score_Away'] = 0
-        return df
-    
-    df['P_H'] = 1 / df['Odd_H'].replace(0, np.nan)
-    df['P_A'] = 1 / df['Odd_A'].replace(0, np.nan)
-    df['P_Sum'] = df['P_H'] + df['P_A']
-
-    df['Odd_H_Fair'] = df['P_Sum'] / df['P_H']
-    df['Odd_A_Fair'] = df['P_Sum'] / df['P_A']
-
-    def market_return(row, side):
-        g_h = row["Goals_H_FT"]
-        g_a = row["Goals_A_FT"]
-        odd_fair = row[f'Odd_{side}_Fair']
-
-        if pd.isna(odd_fair) or odd_fair <= 1:
-            return 0.0
-
-        win = (side == 'H' and g_h > g_a) or (side == 'A' and g_a > g_h)
-        if win:
-            return 1 - 1/odd_fair
-        else:
-            return -1/odd_fair
-
-    df["Market_Return_H"] = df.apply(lambda row: market_return(row, 'H'), axis=1)
-    df["Market_Return_A"] = df.apply(lambda row: market_return(row, 'A'), axis=1)
-
-    df = df.sort_values("Date")
-
-    df['Market_Score_Home'] = df.groupby('Home')["Market_Return_H"].cumsum()
-    df['Market_Score_Away'] = df.groupby('Away')["Market_Return_A"].cumsum()
-
-    return df
 
 
   
