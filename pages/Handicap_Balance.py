@@ -709,8 +709,31 @@ def main_handicap_v1():
         history = aplicar_clusterizacao_3d(calcular_distancias_3d(history))
 
         games_today = calcular_zscores_detalhados(games_today)
-        games_today = adicionar_weighted_goals(games_today)
         games_today = aplicar_clusterizacao_3d(calcular_distancias_3d(games_today))
+
+        # ============================================
+        # 🆕 Merge WG do histórico → games_today
+        # ============================================
+        wg_cols = ['Home', 'WG_Home_Team', 'WG_Diff']
+        wg_home = history[['Home', 'WG_Home_Team']].dropna().drop_duplicates(subset=['Home'], keep='last')
+        wg_away = history[['Away', 'WG_Away_Team']].dropna().drop_duplicates(subset=['Away'], keep='last')
+        
+        # Merge para trazer WG histórico
+        games_today = games_today.merge(wg_home.rename(columns={'Home':'Team'}),
+                                        left_on='Home', right_on='Team', how='left').drop(columns=['Team'])
+        
+        games_today = games_today.merge(wg_away.rename(columns={'Away':'Team'}),
+                                        left_on='Away', right_on='Team', how='left').drop(columns=['Team'])
+        
+        # Calcular WG_Diff para jogos de hoje
+        games_today['WG_Diff'] = games_today['WG_Home_Team'] - games_today['WG_Away_Team']
+        
+        # Substituir NaN por 0 (caso time novo)
+        games_today[['WG_Home_Team','WG_Away_Team','WG_Diff']] = \
+            games_today[['WG_Home_Team','WG_Away_Team','WG_Diff']].fillna(0)
+        
+        st.success("🔥 Features WG trazidas do histórico para os jogos do dia!")
+
 
         # Criar targets
         history = criar_targets_cobertura(history)
