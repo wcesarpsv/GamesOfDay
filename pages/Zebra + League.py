@@ -445,46 +445,46 @@ def calcular_rolling_wg_features_completo(df: pd.DataFrame) -> pd.DataFrame:
             df_temp[col] = 0.0
 
     df_temp['WG_Home_Team'] = df_temp.groupby('Home')['WG_Home'].transform(
-        lambda x: x.rolling(5, min_periods=1).mean()
+        lambda x: x.rolling(6, min_periods=1).mean()
     )
     df_temp['WG_Away_Team'] = df_temp.groupby('Away')['WG_Away'].transform(
-        lambda x: x.rolling(5, min_periods=1).mean()
+        lambda x: x.rolling(6, min_periods=1).mean()
     )
     df_temp['WG_AH_Home_Team'] = df_temp.groupby('Home')['WG_AH_Home'].transform(
-        lambda x: x.rolling(5, min_periods=1).mean()
+        lambda x: x.rolling(6, min_periods=1).mean()
     )
     df_temp['WG_AH_Away_Team'] = df_temp.groupby('Away')['WG_AH_Away'].transform(
-        lambda x: x.rolling(5, min_periods=1).mean()
+        lambda x: x.rolling(6, min_periods=1).mean()
     )
     df_temp['WG_Def_Home_Team'] = df_temp.groupby('Home')['WG_Def_Home'].transform(
-        lambda x: x.rolling(5, min_periods=1).mean()
+        lambda x: x.rolling(6, min_periods=1).mean()
     )
     df_temp['WG_Def_Away_Team'] = df_temp.groupby('Away')['WG_Def_Away'].transform(
-        lambda x: x.rolling(5, min_periods=1).mean()
+        lambda x: x.rolling(6, min_periods=1).mean()
     )
     df_temp['WG_AH_Def_Home_Team'] = df_temp.groupby('Home')['WG_AH_Def_Home'].transform(
-        lambda x: x.rolling(5, min_periods=1).mean()
+        lambda x: x.rolling(6, min_periods=1).mean()
     )
     df_temp['WG_AH_Def_Away_Team'] = df_temp.groupby('Away')['WG_AH_Def_Away'].transform(
-        lambda x: x.rolling(5, min_periods=1).mean()
+        lambda x: x.rolling(6, min_periods=1).mean()
     )
     df_temp['WG_Balance_Home_Team'] = df_temp.groupby('Home')['WG_Balance_Home'].transform(
-        lambda x: x.rolling(5, min_periods=1).mean()
+        lambda x: x.rolling(6, min_periods=1).mean()
     )
     df_temp['WG_Balance_Away_Team'] = df_temp.groupby('Away')['WG_Balance_Away'].transform(
-        lambda x: x.rolling(5, min_periods=1).mean()
+        lambda x: x.rolling(6, min_periods=1).mean()
     )
     df_temp['WG_Total_Home_Team'] = df_temp.groupby('Home')['WG_Total_Home'].transform(
-        lambda x: x.rolling(5, min_periods=1).mean()
+        lambda x: x.rolling(6, min_periods=1).mean()
     )
     df_temp['WG_Total_Away_Team'] = df_temp.groupby('Away')['WG_Total_Away'].transform(
-        lambda x: x.rolling(5, min_periods=1).mean()
+        lambda x: x.rolling(6, min_periods=1).mean()
     )
     df_temp['WG_Net_Home_Team'] = df_temp.groupby('Home')['WG_Net_Home'].transform(
-        lambda x: x.rolling(5, min_periods=1).mean()
+        lambda x: x.rolling(6, min_periods=1).mean()
     )
     df_temp['WG_Net_Away_Team'] = df_temp.groupby('Away')['WG_Net_Away'].transform(
-        lambda x: x.rolling(5, min_periods=1).mean()
+        lambda x: x.rolling(6, min_periods=1).mean()
     )
 
     df_temp['WG_Diff'] = df_temp['WG_Home_Team'] - df_temp['WG_Away_Team']
