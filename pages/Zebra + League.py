@@ -426,13 +426,16 @@ def calcular_metricas_completas(df: pd.DataFrame) -> pd.DataFrame:
 
 def calcular_rolling_wg_features_completo(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Rolling de WG ofensivo, defensivo, AH, balance, net (5 jogos).
+    Rolling de WG ofensivo, defensivo, AH, balance, net (6 jogos) com shift(1)
+    para evitar vazamento de informação (time-safe).
     """
     df_temp = df.copy()
+
     if 'Date' in df_temp.columns:
         df_temp['Date'] = pd.to_datetime(df_temp['Date'], errors='coerce')
         df_temp = df_temp.sort_values('Date')
 
+    # Garantir existência de todas as colunas necessárias
     for col in [
         'WG_Home', 'WG_Away',
         'WG_AH_Home', 'WG_AH_Away',
@@ -445,49 +448,31 @@ def calcular_rolling_wg_features_completo(df: pd.DataFrame) -> pd.DataFrame:
         if col not in df_temp.columns:
             df_temp[col] = 0.0
 
-    df_temp['WG_Home_Team'] = df_temp.groupby('Home')['WG_Home'].transform(
-        lambda x: x.rolling(6, min_periods=1).mean()
-    )
-    df_temp['WG_Away_Team'] = df_temp.groupby('Away')['WG_Away'].transform(
-        lambda x: x.rolling(6, min_periods=1).mean()
-    )
-    df_temp['WG_AH_Home_Team'] = df_temp.groupby('Home')['WG_AH_Home'].transform(
-        lambda x: x.rolling(6, min_periods=1).mean()
-    )
-    df_temp['WG_AH_Away_Team'] = df_temp.groupby('Away')['WG_AH_Away'].transform(
-        lambda x: x.rolling(6, min_periods=1).mean()
-    )
-    df_temp['WG_Def_Home_Team'] = df_temp.groupby('Home')['WG_Def_Home'].transform(
-        lambda x: x.rolling(6, min_periods=1).mean()
-    )
-    df_temp['WG_Def_Away_Team'] = df_temp.groupby('Away')['WG_Def_Away'].transform(
-        lambda x: x.rolling(6, min_periods=1).mean()
-    )
-    df_temp['WG_AH_Def_Home_Team'] = df_temp.groupby('Home')['WG_AH_Def_Home'].transform(
-        lambda x: x.rolling(6, min_periods=1).mean()
-    )
-    df_temp['WG_AH_Def_Away_Team'] = df_temp.groupby('Away')['WG_AH_Def_Away'].transform(
-        lambda x: x.rolling(6, min_periods=1).mean()
-    )
-    df_temp['WG_Balance_Home_Team'] = df_temp.groupby('Home')['WG_Balance_Home'].transform(
-        lambda x: x.rolling(6, min_periods=1).mean()
-    )
-    df_temp['WG_Balance_Away_Team'] = df_temp.groupby('Away')['WG_Balance_Away'].transform(
-        lambda x: x.rolling(6, min_periods=1).mean()
-    )
-    df_temp['WG_Total_Home_Team'] = df_temp.groupby('Home')['WG_Total_Home'].transform(
-        lambda x: x.rolling(6, min_periods=1).mean()
-    )
-    df_temp['WG_Total_Away_Team'] = df_temp.groupby('Away')['WG_Total_Away'].transform(
-        lambda x: x.rolling(6, min_periods=1).mean()
-    )
-    df_temp['WG_Net_Home_Team'] = df_temp.groupby('Home')['WG_Net_Home'].transform(
-        lambda x: x.rolling(6, min_periods=1).mean()
-    )
-    df_temp['WG_Net_Away_Team'] = df_temp.groupby('Away')['WG_Net_Away'].transform(
-        lambda x: x.rolling(6, min_periods=1).mean()
-    )
+    # Aplica shift(1) ANTES do rolling (Time-Safe)
+    roll = lambda x: x.shift(1).rolling(6, min_periods=1).mean()
 
+    df_temp['WG_Home_Team'] = df_temp.groupby('Home')['WG_Home'].transform(roll)
+    df_temp['WG_Away_Team'] = df_temp.groupby('Away')['WG_Away'].transform(roll)
+
+    df_temp['WG_AH_Home_Team'] = df_temp.groupby('Home')['WG_AH_Home'].transform(roll)
+    df_temp['WG_AH_Away_Team'] = df_temp.groupby('Away')['WG_AH_Away'].transform(roll)
+
+    df_temp['WG_Def_Home_Team'] = df_temp.groupby('Home')['WG_Def_Home'].transform(roll)
+    df_temp['WG_Def_Away_Team'] = df_temp.groupby('Away')['WG_Def_Away'].transform(roll)
+
+    df_temp['WG_AH_Def_Home_Team'] = df_temp.groupby('Home')['WG_AH_Def_Home'].transform(roll)
+    df_temp['WG_AH_Def_Away_Team'] = df_temp.groupby('Away')['WG_AH_Def_Away'].transform(roll)
+
+    df_temp['WG_Balance_Home_Team'] = df_temp.groupby('Home')['WG_Balance_Home'].transform(roll)
+    df_temp['WG_Balance_Away_Team'] = df_temp.groupby('Away')['WG_Balance_Away'].transform(roll)
+
+    df_temp['WG_Total_Home_Team'] = df_temp.groupby('Home')['WG_Total_Home'].transform(roll)
+    df_temp['WG_Total_Away_Team'] = df_temp.groupby('Away')['WG_Total_Away'].transform(roll)
+
+    df_temp['WG_Net_Home_Team'] = df_temp.groupby('Home')['WG_Net_Home'].transform(roll)
+    df_temp['WG_Net_Away_Team'] = df_temp.groupby('Away')['WG_Net_Away'].transform(roll)
+
+    # Diffs com base APENAS no histórico anterior (sem gols de hoje)
     df_temp['WG_Diff'] = df_temp['WG_Home_Team'] - df_temp['WG_Away_Team']
     df_temp['WG_AH_Diff'] = df_temp['WG_AH_Home_Team'] - df_temp['WG_AH_Away_Team']
     df_temp['WG_Def_Diff'] = df_temp['WG_Def_Home_Team'] - df_temp['WG_Def_Away_Team']
@@ -500,6 +485,7 @@ def calcular_rolling_wg_features_completo(df: pd.DataFrame) -> pd.DataFrame:
         df_temp['WG_Def_Home_Team'].notna().astype(int) +
         df_temp['WG_Def_Away_Team'].notna().astype(int)
     )
+
     return df_temp
 
 def enrich_games_today_with_wg_completo(games_today, history):
