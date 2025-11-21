@@ -1079,7 +1079,7 @@ def plot_wg_vs_wgdef_scatter_interactive(games_today: pd.DataFrame):
         name="Home",
         text=home_text,
         textposition="top right",
-        marker=dict(size=9, color="orange"),
+        marker=dict(size=9, color="blue"),
         customdata=home_customdata,
         hovertemplate=(
             "<b>%{customdata[0]} x %{customdata[1]}</b><br>"
@@ -1096,7 +1096,7 @@ def plot_wg_vs_wgdef_scatter_interactive(games_today: pd.DataFrame):
         name="Away",
         text=away_text,
         textposition="bottom left",
-        marker=dict(size=9, color="blue"),
+        marker=dict(size=9, color="orange"),
         customdata=away_customdata,
         hovertemplate=(
             "<b>%{customdata[0]} x %{customdata[1]}</b><br>"
