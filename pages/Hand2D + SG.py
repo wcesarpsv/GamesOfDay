@@ -261,7 +261,25 @@ history["Target_AH_Home"] = history.apply(
 st.markdown("### 🆕 Calculando MarketGap, Rolling e MEI...")
 
 # 1️⃣ Market Gap: desempenho relativo à expectativa do mercado
-history['MarketGap_Home'] = history['Margin'] - history['Asian_Line_Decimal']
+
+def calcular_marketgap_avancado(margin, asian_line):
+    # Transforma ambas as variáveis para escala logarítmica
+    margin_transformada = np.sign(margin) * np.log1p(abs(margin))
+    asian_line_transformada = np.sign(asian_line) * np.log1p(abs(asian_line))
+    
+    return margin_transformada - asian_line_transformada
+
+# Aplicar ao histórico
+history['MarketGap_Home'] = history.apply(
+    lambda x: calcular_marketgap_avancado(x['Margin'], x['Asian_Line_Decimal']), 
+    axis=1
+)
+history['MarketGap_Away'] = -history['MarketGap_Home']
+
+# Recalcular os weighted gaps também
+history['WeightedGap_Home'] = history['MarketGap_Home'] * history['Odd_H']
+history['WeightedGap_Away'] = history['MarketGap_Away'] * history['Odd_A']
+
 history['MarketGap_Away'] = -history['MarketGap_Home']
 
 # 2️⃣ Ponderação pelas odds (valor real da surpresa)
