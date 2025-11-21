@@ -276,11 +276,6 @@ history['MarketGap_Home'] = history.apply(
 )
 history['MarketGap_Away'] = -history['MarketGap_Home']
 
-# Recalcular os weighted gaps também
-history['WeightedGap_Home'] = history['MarketGap_Home'] * history['Odd_H']
-history['WeightedGap_Away'] = history['MarketGap_Away'] * history['Odd_A']
-
-history['MarketGap_Away'] = -history['MarketGap_Home']
 
 # 2️⃣ Ponderação pelas odds (valor real da surpresa)
 history['WeightedGap_Home'] = history['MarketGap_Home'] * history['Odd_H']
