@@ -263,9 +263,16 @@ st.markdown("### 🆕 Calculando MarketGap, Rolling e MEI...")
 # 1️⃣ Market Gap: desempenho relativo à expectativa do mercado
 
 def calcular_marketgap_avancado(margin, asian_line):
-    # Transforma ambas as variáveis para escala logarítmica
-    margin_transformada = np.sign(margin) * np.log1p(abs(margin))
-    asian_line_transformada = np.sign(asian_line) * np.log1p(abs(asian_line))
+    # Adicionar proteção
+    if margin == 0:
+        margin_transformada = 0
+    else:
+        margin_transformada = np.sign(margin) * np.log1p(abs(margin))
+    
+    if asian_line == 0:
+        asian_line_transformada = 0
+    else:
+        asian_line_transformada = np.sign(asian_line) * np.log1p(abs(asian_line))
     
     return margin_transformada - asian_line_transformada
 
@@ -1434,6 +1441,29 @@ def resumo_quadrantes_hoje_dual(df):
 
 if not games_today.empty and 'Classificacao_Valor_Home' in games_today.columns:
     resumo_quadrantes_hoje_dual(games_today)
+
+
+
+# Adicionar esta verificação
+st.markdown("### 📈 Validação do Novo MarketGap")
+
+col1, col2 = st.columns(2)
+with col1:
+    st.metric("MarketGap Antigo (média)", 
+             f"{(history['Margin'] - history['Asian_Line_Decimal']).mean():.3f}")
+with col2:
+    st.metric("MarketGap Novo (média)", 
+             f"{history['MarketGap_Home'].mean():.3f}")
+
+# Ver distribuição
+fig = plt.figure(figsize=(10, 4))
+plt.subplot(1, 2, 1)
+plt.hist(history['Margin'] - history['Asian_Line_Decimal'], bins=50, alpha=0.7)
+plt.title('MarketGap Antigo')
+plt.subplot(1, 2, 2)
+plt.hist(history['MarketGap_Home'], bins=50, alpha=0.7)
+plt.title('MarketGap Novo (Log)')
+st.pyplot(fig)
 
 
 
