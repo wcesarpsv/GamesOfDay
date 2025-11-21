@@ -1174,7 +1174,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
         'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
         'Quadrante_ML_Score_Main', 'Classificacao_Valor_Home', 
-        'Classificacao_Valor_Away', 
+        'Classificacao_Valor_Away', 'WG_Rolling_Home', 'WG_Rolling_Away',
         # Colunas Live Score
          'Handicap_Result',
         'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
@@ -1194,7 +1194,9 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             'Profit_Quadrante': '{:.2f}',
             'Quadrante_ML_Score_Home': '{:.1%}',
             'Quadrante_ML_Score_Away': '{:.1%}',
-            'Quadrante_ML_Score_Main': '{:.1%}'
+            'Quadrante_ML_Score_Main': '{:.1%}',
+            'WG_Rolling_Home': '{:.3f}',
+            'WG_Rolling_Away': '{:.3f}'
         }, na_rep="-"),
         use_container_width=True
     )
