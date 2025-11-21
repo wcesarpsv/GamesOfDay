@@ -1602,7 +1602,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     ranking_3d = ranking_3d.sort_values('Bet_Confidence_Adjusted', ascending=False)
 
     colunas_3d = [
-        'Ranking', 'League', 'Home', 'Away',
+        'Ranking', 'League', 'Time', 'Home', 'Away',
         'Goals_H_Today', 'Goals_A_Today',
         'Bet_Label', 'Bet_Side', 'Bet_Confidence', 'Bet_Confidence_Adjusted', 'Bet_Approved',
         'N_Similares', 'WinRate_Similares',
