@@ -1514,78 +1514,78 @@ if not ranking_quadrantes.empty:
         correct_test = check_handicap_recommendation_correct(test_row.get('Recomendacao', ''), handicap_test)
         st.write(f"Quadrante Correct: {correct_test}")
 
-# ============================================================
-# 📊 ANÁLISE CORRIGIDA DE PERFORMANCE
-# ============================================================
+# # ============================================================
+# # 📊 ANÁLISE CORRIGIDA DE PERFORMANCE
+# # ============================================================
 
-st.markdown("## 📈 Validação Corrigida - Performance das Top Features")
+# st.markdown("## 📈 Validação Corrigida - Performance das Top Features")
 
-if not ranking_quadrantes.empty and 'Quadrante_Correct' in ranking_quadrantes.columns:
+# if not ranking_quadrantes.empty and 'Quadrante_Correct' in ranking_quadrantes.columns:
     
-    # Filtrar apenas jogos com resultado calculado
-    valid_games = ranking_quadrantes[ranking_quadrantes['Quadrante_Correct'].notna()]
-    st.write(f"Jogos com resultado válido: {len(valid_games)}")
+#     # Filtrar apenas jogos com resultado calculado
+#     valid_games = ranking_quadrantes[ranking_quadrantes['Quadrante_Correct'].notna()]
+#     st.write(f"Jogos com resultado válido: {len(valid_games)}")
     
-    if len(valid_games) > 0:
+#     if len(valid_games) > 0:
         
-        # 1️⃣ Análise por Quadrant_Separation
-        if 'Quadrant_Separation' in valid_games.columns:
-            separation_median = valid_games['Quadrant_Separation'].median()
-            high_separation = valid_games[valid_games['Quadrant_Separation'] > separation_median]
-            low_separation = valid_games[valid_games['Quadrant_Separation'] <= separation_median]
+#         # 1️⃣ Análise por Quadrant_Separation
+#         if 'Quadrant_Separation' in valid_games.columns:
+#             separation_median = valid_games['Quadrant_Separation'].median()
+#             high_separation = valid_games[valid_games['Quadrant_Separation'] > separation_median]
+#             low_separation = valid_games[valid_games['Quadrant_Separation'] <= separation_median]
             
-            col1, col2 = st.columns(2)
-            with col1:
-                if not high_separation.empty:
-                    winrate_high = high_separation['Quadrante_Correct'].mean()
-                    st.metric("🎯 Alta Separação (Winrate)", f"{winrate_high:.1%}", 
-                             delta=f"{len(high_separation)} jogos")
-            with col2:
-                if not low_separation.empty:
-                    winrate_low = low_separation['Quadrante_Correct'].mean()
-                    st.metric("📉 Baixa Separação (Winrate)", f"{winrate_low:.1%}",
-                             delta=f"{len(low_separation)} jogos")
+#             col1, col2 = st.columns(2)
+#             with col1:
+#                 if not high_separation.empty:
+#                     winrate_high = high_separation['Quadrante_Correct'].mean()
+#                     st.metric("🎯 Alta Separação (Winrate)", f"{winrate_high:.1%}", 
+#                              delta=f"{len(high_separation)} jogos")
+#             with col2:
+#                 if not low_separation.empty:
+#                     winrate_low = low_separation['Quadrante_Correct'].mean()
+#                     st.metric("📉 Baixa Separação (Winrate)", f"{winrate_low:.1%}",
+#                              delta=f"{len(low_separation)} jogos")
         
-        # 2️⃣ Análise por MEI_Home
-        if 'MEI_Home' in valid_games.columns:
-            st.markdown("### 🧭 Performance por MEI_Home")
+#         # 2️⃣ Análise por MEI_Home
+#         if 'MEI_Home' in valid_games.columns:
+#             st.markdown("### 🧭 Performance por MEI_Home")
             
-            mei_positive = valid_games[valid_games['MEI_Home'] > 0.1]
-            mei_negative = valid_games[valid_games['MEI_Home'] < -0.1]
-            mei_neutral = valid_games[(valid_games['MEI_Home'] >= -0.1) & (valid_games['MEI_Home'] <= 0.1)]
+#             mei_positive = valid_games[valid_games['MEI_Home'] > 0.1]
+#             mei_negative = valid_games[valid_games['MEI_Home'] < -0.1]
+#             mei_neutral = valid_games[(valid_games['MEI_Home'] >= -0.1) & (valid_games['MEI_Home'] <= 0.1)]
             
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                if not mei_positive.empty:
-                    winrate_positive = mei_positive['Quadrante_Correct'].mean()
-                    st.metric("🟢 MEI > 0.1", f"{winrate_positive:.1%}", 
-                             delta=f"{len(mei_positive)} jogos")
-            with col2:
-                if not mei_negative.empty:
-                    winrate_negative = mei_negative['Quadrante_Correct'].mean()
-                    st.metric("🔴 MEI < -0.1", f"{winrate_negative:.1%}",
-                             delta=f"{len(mei_negative)} jogos")
-            with col3:
-                if not mei_neutral.empty:
-                    winrate_neutral = mei_neutral['Quadrante_Correct'].mean()
-                    st.metric("⚫ MEI Neutro", f"{winrate_neutral:.1%}",
-                             delta=f"{len(mei_neutral)} jogos")
+#             col1, col2, col3 = st.columns(3)
+#             with col1:
+#                 if not mei_positive.empty:
+#                     winrate_positive = mei_positive['Quadrante_Correct'].mean()
+#                     st.metric("🟢 MEI > 0.1", f"{winrate_positive:.1%}", 
+#                              delta=f"{len(mei_positive)} jogos")
+#             with col2:
+#                 if not mei_negative.empty:
+#                     winrate_negative = mei_negative['Quadrante_Correct'].mean()
+#                     st.metric("🔴 MEI < -0.1", f"{winrate_negative:.1%}",
+#                              delta=f"{len(mei_negative)} jogos")
+#             with col3:
+#                 if not mei_neutral.empty:
+#                     winrate_neutral = mei_neutral['Quadrante_Correct'].mean()
+#                     st.metric("⚫ MEI Neutro", f"{winrate_neutral:.1%}",
+#                              delta=f"{len(mei_neutral)} jogos")
     
-    else:
-        st.warning("⚠️ Nenhum jogo com resultado válido para análise.")
+#     else:
+#         st.warning("⚠️ Nenhum jogo com resultado válido para análise.")
         
-else:
-    st.info("📊 Aguardando dados de resultados para análise de performance...")
+# else:
+#     st.info("📊 Aguardando dados de resultados para análise de performance...")
 
-# ============================================================
-# 📄 Jogos removidos da análise (Sem histórico suficiente)
-# ============================================================
-if not games_missing.empty:
-    st.markdown("### 📄 Jogos sem histórico suficiente (excluídos da ML)")
-    st.dataframe(
-        games_missing[['League','Home','Away','Asian_Line_Decimal']],
-        use_container_width=True
-    )
+# # ============================================================
+# # 📄 Jogos removidos da análise (Sem histórico suficiente)
+# # ============================================================
+# if not games_missing.empty:
+#     st.markdown("### 📄 Jogos sem histórico suficiente (excluídos da ML)")
+#     st.dataframe(
+#         games_missing[['League','Home','Away','Asian_Line_Decimal']],
+#         use_container_width=True
+#     )
 
 
 
