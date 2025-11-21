@@ -133,60 +133,6 @@ def main_handicap_v1():
         return df
 
 
-# ============================================================
-# 📊 GOLS AJUSTADOS (Lógica do Professor)
-# ============================================================
-def adicionar_gols_ajustados_prof(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-
-    # 🚨 Verifica colunas necessárias
-    if not set(['Goals_H_FT', 'Goals_A_FT', 'League']).issubset(df.columns):
-        st.warning("⚠️ Faltando colunas para Gols Ajustados (professor)")
-        df['GD_Rolling'] = 0
-        df['GF_ZScore_Liga_H'] = 0
-        df['GA_ZScore_Liga_H'] = 0
-        df['Return_To_Mean_Flag_H'] = 0
-        return df
-
-    # 🔹 Saldo de gols por partida
-    df['Goal_Diff'] = df['Goals_H_FT'] - df['Goals_A_FT']
-
-    # 🔹 Rolling GD – ataque real mais estável
-    df['GD_Rolling'] = df.groupby('Home')['Goal_Diff'].transform(
-        lambda x: x.rolling(6, min_periods=1).mean()
-    )
-
-    # 🔹 Média e desvio padrão por LIGA
-    league_stats = df.groupby('League').agg({
-        'Goals_H_FT': ['mean', 'std'],
-        'Goals_A_FT': ['mean', 'std']
-    })
-    league_stats.columns = ['GF_mean_L', 'GF_std_L', 'GA_mean_L', 'GA_std_L']
-
-    league_stats['GF_std_L'] = league_stats['GF_std_L'].replace(0, 1)
-    league_stats['GA_std_L'] = league_stats['GA_std_L'].replace(0, 1)
-
-    df = df.merge(league_stats, on='League', how='left')
-
-    # 🔹 Z-score de ataque e defesa (ajuste da assimetria do professor)
-    df['GF_ZScore_Liga_H'] = (df['Goals_H_FT'] - df['GF_mean_L']) / df['GF_std_L']
-    df['GA_ZScore_Liga_H'] = (df['Goals_A_FT'] - df['GA_mean_L']) / df['GA_std_L']
-
-    # 🔹 Clamping (Evita explosão de valores)
-    df['GF_ZScore_Liga_H'] = np.clip(df['GF_ZScore_Liga_H'], -4, 4)
-    df['GA_ZScore_Liga_H'] = np.clip(df['GA_ZScore_Liga_H'], -4, 4)
-
-    # 🎯 Detector de Outlier (exemplo do professor)
-    df['Outlier_Goals_H'] = (df['Goals_H_FT'] >= df['GF_mean_L'] + 2 * df['GF_std_L']).astype(int)
-    df['Outlier_Goals_A'] = (df['Goals_A_FT'] >= df['GA_mean_L'] + 2 * df['GA_std_L']).astype(int)
-
-    # ⚡ Regressão à média — SE ataque está anormal → tendência a cair
-    df['Return_To_Mean_Flag_H'] = (df['GF_ZScore_Liga_H'] > 1.5).astype(int)
-
-    # Limpeza de colunas temporárias
-    df = df.drop(['GF_mean_L', 'GF_std_L', 'GA_mean_L', 'GA_std_L'], axis=1, errors='ignore')
-
-    return df
 
 
     # ============================================================
@@ -823,6 +769,68 @@ def adicionar_gols_ajustados_prof(df: pd.DataFrame) -> pd.DataFrame:
         df['AIL_Handicap_Display_AH'] = hc_display_list
 
         return df
+
+
+        # ============================================================
+        # 📊 GOLS AJUSTADOS (Lógica do Professor)
+        # ============================================================
+        def adicionar_gols_ajustados_prof(df: pd.DataFrame) -> pd.DataFrame:
+            df = df.copy()
+    
+            # 🚨 Verifica colunas necessárias
+            required_cols = ['Goals_H_FT', 'Goals_A_FT', 'League']
+            if not all(col in df.columns for col in required_cols):
+                st.warning("⚠️ Faltando colunas para Gols Ajustados (professor)")
+                df['GD_Rolling'] = 0
+                df['GF_ZScore_Liga_H'] = 0
+                df['GA_ZScore_Liga_H'] = 0
+                df['Return_To_Mean_Flag_H'] = 0
+                df['Outlier_Goals_H'] = 0
+                df['Outlier_Goals_A'] = 0
+                return df
+    
+            # 🔹 Saldo de gols por partida
+            df['Goal_Diff'] = df['Goals_H_FT'] - df['Goals_A_FT']
+    
+            # 🔹 Média móvel mais estável
+            df['GD_Rolling'] = df.groupby('Home')['Goal_Diff'].transform(
+                lambda x: x.rolling(6, min_periods=1).mean()
+            )
+    
+            # 📌 Agrupamento por liga para normalização
+            league_stats = df.groupby('League').agg({
+                'Goals_H_FT': ['mean', 'std'],
+                'Goals_A_FT': ['mean', 'std']
+            })
+            league_stats.columns = ['GF_mean_L', 'GF_std_L', 'GA_mean_L', 'GA_std_L']
+    
+            league_stats['GF_std_L'] = league_stats['GF_std_L'].replace(0, 1)
+            league_stats['GA_std_L'] = league_stats['GA_std_L'].replace(0, 1)
+    
+            df = df.merge(league_stats, on='League', how='left')
+    
+            # 🔹 Normalização de ataque e defesa (estatística correta)
+            df['GF_ZScore_Liga_H'] = (df['Goals_H_FT'] - df['GF_mean_L']) / df['GF_std_L']
+            df['GA_ZScore_Liga_H'] = (df['Goals_A_FT'] - df['GA_mean_L']) / df['GA_std_L']
+    
+            df['GF_ZScore_Liga_H'] = np.clip(df['GF_ZScore_Liga_H'], -4, 4)
+            df['GA_ZScore_Liga_H'] = np.clip(df['GA_ZScore_Liga_H'], -4, 4)
+    
+            # 🔥 Outliers ofensivos e defensivos
+            df['Outlier_Goals_H'] = (df['Goals_H_FT'] >= df['GF_mean_L'] + 2 * df['GF_std_L']).astype(int)
+            df['Outlier_Goals_A'] = (df['Goals_A_FT'] >= df['GA_mean_L'] + 2 * df['GA_std_L']).astype(int)
+    
+            # 🎯 Regressão à média → sinal de valor forte
+            df['Return_To_Mean_Flag_H'] = (df['GF_ZScore_Liga_H'] > 1.5).astype(int)
+    
+            # Remover estatísticas temporárias
+            df = df.drop(['GF_mean_L', 'GF_std_L', 'GA_mean_L', 'GA_std_L'], axis=1, errors='ignore')
+    
+            return df
+
+
+
+    
 
     # ============================================================
     # 🔷 STAMP PREMIUM
