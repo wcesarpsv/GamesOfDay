@@ -858,20 +858,20 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     model_home.fit(X, y_home)
     model_away.fit(X, y_away)
 
-    # ============================================================
-    # 🔍 Feature Importance – Modelo HOME com novas features
-    # ============================================================
-    try:
-        importances = pd.Series(model_home.feature_importances_, index=X.columns)
-        top_feats = importances.sort_values(ascending=False).head(20)
+    # # ============================================================
+    # # 🔍 Feature Importance – Modelo HOME com novas features
+    # # ============================================================
+    # try:
+    #     importances = pd.Series(model_home.feature_importances_, index=X.columns)
+    #     top_feats = importances.sort_values(ascending=False).head(20)
     
-        st.markdown("### 🔍 Top 20 Features mais importantes (Modelo HOME)")
-        st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
+    #     st.markdown("### 🔍 Top 20 Features mais importantes (Modelo HOME)")
+    #     st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
     
-        st.bar_chart(top_feats)
+    #     st.bar_chart(top_feats)
     
-    except Exception as e:
-        st.warning(f"Não foi possível calcular importâncias: {e}")
+    # except Exception as e:
+    #     st.warning(f"Não foi possível calcular importâncias: {e}")
 
 
     # -------------------------------
