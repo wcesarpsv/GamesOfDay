@@ -1222,13 +1222,15 @@ if not history.empty:
 
 # ---------------- GES + WG NO HISTÓRICO + ENRICH NOS JOGOS DE HOJE ----------------
 if not history.empty:
+
+    # Primeiro obtém parâmetros por liga
     liga_params = calcular_parametros_liga(history)
 
-    # --- GES (estatística robusta de eficiência de gols) ---
+    # --- GES primeiro ---
     history = adicionar_goal_efficiency_score(history, liga_params)
     history = calcular_rolling_ges(history)
 
-    # --- WG (mantém no A/B testing, sem quebrar seu código atual) ---
+    # --- SÓ depois o WG (porque precisa do Base_Goals_Liga dos liga_params!) ---
     history = adicionar_weighted_goals(history)
     history = adicionar_weighted_goals_defensivos(history, liga_params)
     history = adicionar_weighted_goals_ah(history)
@@ -1236,11 +1238,12 @@ if not history.empty:
     history = calcular_metricas_completas(history)
     history = calcular_rolling_wg_features_completo(history)
 
-    # Enriquecer jogos do dia com GES e WG
+    # Enriquecer os jogos de hoje com ambos
     if not games_today.empty:
         games_today = adicionar_goal_efficiency_score(games_today, liga_params)
         games_today = calcular_rolling_ges(games_today)
         games_today = enrich_games_today_with_wg_completo(games_today, history)
+
 
 
 # ---------------- THRESHOLD DINÂMICO POR HANDICAP ----------------
