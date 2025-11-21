@@ -775,40 +775,38 @@ def adicionar_goal_efficiency_score(df: pd.DataFrame, liga_params: pd.DataFrame)
 
 def calcular_rolling_ges(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-    df = df.sort_values('Date')
 
-    # HOME: últimos 3 jogos como mandante
-    df['GES_Of_H_Roll'] = (
-        df[df['Home'] == df['Home']].groupby('Home')['GES_Of_H_Norm']
-        .apply(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
+    if 'Date' in df.columns:
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+        df = df.sort_values('Date')
+
+    # HOME – apenas jogos como mandante
+    df['GES_Of_H_Roll'] = df.groupby('Home')['GES_Of_H_Norm'].transform(
+        lambda x: x.shift(1).rolling(3, min_periods=1).mean()
+    )
+    df['GES_Def_H_Roll'] = df.groupby('Home')['GES_Def_H_Norm'].transform(
+        lambda x: x.shift(1).rolling(3, min_periods=1).mean()
     )
 
-    df['GES_Def_H_Roll'] = (
-        df[df['Home'] == df['Home']].groupby('Home')['GES_Def_H_Norm']
-        .apply(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
+    # AWAY – apenas jogos como visitante
+    df['GES_Of_A_Roll'] = df.groupby('Away')['GES_Of_A_Norm'].transform(
+        lambda x: x.shift(1).rolling(3, min_periods=1).mean()
+    )
+    df['GES_Def_A_Roll'] = df.groupby('Away')['GES_Def_A_Norm'].transform(
+        lambda x: x.shift(1).rolling(3, min_periods=1).mean()
     )
 
-    # AWAY: últimos 3 jogos como visitante
-    df['GES_Of_A_Roll'] = (
-        df[df['Away'] == df['Away']].groupby('Away')['GES_Of_A_Norm']
-        .apply(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
-    )
-
-    df['GES_Def_A_Roll'] = (
-        df[df['Away'] == df['Away']].groupby('Away')['GES_Def_A_Norm']
-        .apply(lambda x: x.shift(1).rolling(3, min_periods=1).mean())
-    )
-
+    # Fallback para evitar NaN no início de campeonato
     df[['GES_Of_H_Roll', 'GES_Of_A_Roll',
         'GES_Def_H_Roll', 'GES_Def_A_Roll']] = df[[
-            'GES_Of_H_Roll', 'GES_Of_A_Roll',
-            'GES_Def_H_Roll', 'GES_Def_A_Roll'
+        'GES_Of_H_Roll', 'GES_Of_A_Roll',
+        'GES_Def_H_Roll', 'GES_Def_A_Roll'
     ]].fillna(0)
 
     # Diferenças finais com peso ofensivo 60% + defensivo 40%
     df['GES_Of_Diff'] = df['GES_Of_H_Roll'] - df['GES_Of_A_Roll']
     df['GES_Def_Diff'] = df['GES_Def_H_Roll'] - df['GES_Def_A_Roll']
+
     df['GES_Total_Diff'] = (df['GES_Of_Diff'] * 0.60) + (df['GES_Def_Diff'] * 0.40)
 
     return df
