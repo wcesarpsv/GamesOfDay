@@ -132,6 +132,63 @@ def main_handicap_v1():
 
         return df
 
+
+        # ============================================================
+        # 📊 GOLS AJUSTADOS (Lógica do Professor)
+        # ============================================================
+        def adicionar_gols_ajustados_prof(df: pd.DataFrame) -> pd.DataFrame:
+            df = df.copy()
+    
+            # 🚨 Verifica colunas necessárias
+            if not set(['Goals_H_FT', 'Goals_A_FT', 'League']).issubset(df.columns):
+                st.warning("⚠️ Faltando colunas para Gols Ajustados (professor)")
+                df['GD_Rolling'] = 0
+                df['GF_ZScore_Liga_H'] = 0
+                df['GA_ZScore_Liga_H'] = 0
+                df['Return_To_Mean_Flag_H'] = 0
+                return df
+    
+            # 🔹 Saldo de gols por partida
+            df['Goal_Diff'] = df['Goals_H_FT'] - df['Goals_A_FT']
+    
+            # 🔹 Rolling GD – ataque real mais estável
+            df['GD_Rolling'] = df.groupby('Home')['Goal_Diff'].transform(
+                lambda x: x.rolling(6, min_periods=1).mean()
+            )
+    
+            # 🔹 Média e desvio padrão por LIGA
+            league_stats = df.groupby('League').agg({
+                'Goals_H_FT': ['mean', 'std'],
+                'Goals_A_FT': ['mean', 'std']
+            })
+            league_stats.columns = ['GF_mean_L', 'GF_std_L', 'GA_mean_L', 'GA_std_L']
+    
+            league_stats['GF_std_L'] = league_stats['GF_std_L'].replace(0, 1)
+            league_stats['GA_std_L'] = league_stats['GA_std_L'].replace(0, 1)
+    
+            df = df.merge(league_stats, on='League', how='left')
+    
+            # 🔹 Z-score de ataque e defesa (ajuste da assimetria do professor)
+            df['GF_ZScore_Liga_H'] = (df['Goals_H_FT'] - df['GF_mean_L']) / df['GF_std_L']
+            df['GA_ZScore_Liga_H'] = (df['Goals_A_FT'] - df['GA_mean_L']) / df['GA_std_L']
+    
+            # 🔹 Clamping (Evita explosão de valores)
+            df['GF_ZScore_Liga_H'] = np.clip(df['GF_ZScore_Liga_H'], -4, 4)
+            df['GA_ZScore_Liga_H'] = np.clip(df['GA_ZScore_Liga_H'], -4, 4)
+    
+            # 🎯 Detector de Outlier (exemplo do professor)
+            df['Outlier_Goals_H'] = (df['Goals_H_FT'] >= df['GF_mean_L'] + 2 * df['GF_std_L']).astype(int)
+            df['Outlier_Goals_A'] = (df['Goals_A_FT'] >= df['GA_mean_L'] + 2 * df['GA_std_L']).astype(int)
+    
+            # ⚡ Regressão à média — SE ataque está anormal → tendência a cair
+            df['Return_To_Mean_Flag_H'] = (df['GF_ZScore_Liga_H'] > 1.5).astype(int)
+    
+            # Limpeza de colunas temporárias
+            df = df.drop(['GF_mean_L', 'GF_std_L', 'GA_mean_L', 'GA_std_L'], axis=1, errors='ignore')
+    
+            return df
+
+
     # ============================================================
     # ⚽ WEIGHTED GOALS + PROBABILIDADES
     # ============================================================
@@ -903,11 +960,13 @@ def main_handicap_v1():
             games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
 
         history = calcular_zscores_detalhados(history)
+        history = adicionar_gols_ajustados_prof(history)
         history = adicionar_weighted_goals(history)
         history = aplicar_clusterizacao_3d(calcular_distancias_3d(history))
 
         games_today = calcular_zscores_detalhados(games_today)
         games_today = aplicar_weighted_goals_today(history, games_today)
+        games_today = adicionar_gols_ajustados_prof(games_today)  # << AQUI
         games_today = aplicar_clusterizacao_3d(calcular_distancias_3d(games_today))
 
         history = criar_targets_cobertura(history)
@@ -947,27 +1006,44 @@ def main_handicap_v1():
             st.markdown("---")
             criar_heatmap_handicap_features(history)
 
+    
     # ---------------- MODO 2: TREINO DE MODELOS ----------------
     elif analise_modo == "🤖 Modelos Específicos":
         st.header("🤖 Treinar Modelos por Handicap (Time-Safe)")
-
+    
         handicaps_treinar = st.multiselect(
             "Handicaps para Treinar Modelos (Home):",
             [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0],
             default=[-0.5, 0.0, 0.5]
         )
-
+    
+        # 📌 Features antigas + NOVAS features do professor
         features_base = [
+            # ➖ Weighted Goals (base e handicap)
             'WG_Home_Team', 'WG_Away_Team', 'WG_Diff',
             'WG_AH_Home_Team', 'WG_AH_Away_Team', 'WG_AH_Diff',
+    
+            # 📊 Momentum & Z-Scores 3D
             'M_H', 'M_A', 'MT_H', 'MT_A',
+    
+            # 🔥 NOVAS FEATURES (estatística robusta do professor)
+            'GD_Rolling',            # Saldo de gols estável
+            'GF_ZScore_Liga_H',      # Ataque ajustado à liga
+            'GA_ZScore_Liga_H',      # Defesa ajustada
+            'Return_To_Mean_Flag_H', # Tendência de regressão à média
+            'Outlier_Goals_H',       # Detecção de outliers ofensivos
+            'Outlier_Goals_A',       # Detecção de outliers defensivos
+    
+            # 🧨 Aggressão + 3D Spatial
             'Aggression_Home', 'Aggression_Away',
             'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
-            'Vector_Sign', 'Magnitude_3D', 'Momentum_Diff', 'Momentum_Diff_MT',
+            'Vector_Sign', 'Magnitude_3D',
+            'Momentum_Diff', 'Momentum_Diff_MT',
             'Cluster3D_Label'
         ]
-
+    
         modelos_treinados = {}
+
 
         if st.button("🚀 Treinar Modelos Específicos", type="primary"):
             for handicap in handicaps_treinar:
