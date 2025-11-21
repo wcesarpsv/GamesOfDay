@@ -1159,21 +1159,37 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
 
 
-    # ---------------- STATUS DE AJUSTE DO MERCADO (MEI)
-    def classificar_mei(mei):
-        if pd.isna(mei):
-            return "⚪ Sem histórico"
-        if mei >= 0.30:
-            return "🟢 Mercado atrasado (valor forte Home)"
-        if mei >= 0.10:
-            return "🟡 Mercado atrasado leve"
-        if mei <= -0.30:
-            return "🔴 Superajustado (cuidado com narrativas recentes)"
-        if mei <= -0.10:
-            return "🟠 Mercado em ajuste"
-        return "⚫ Mercado relativamente eficiente"
+    # CORREÇÃO RÁPIDA - substituir a função classificar_mei existente
+def classificar_mei_corrigido(mei, asian_line, ml_side):
+    """Versão corrigida do MEI considerando linha asiática e lado"""
+    if pd.isna(mei):
+        return "⚪ Sem histórico"
     
-    ranking_quadrantes['MEI_Status'] = ranking_quadrantes['MEI_Home'].apply(classificar_mei)
+    # Determinar se é favorito ou underdog
+    is_home_favorite = asian_line < -0.25 if ml_side == 'HOME' else asian_line > 0.25
+    
+    if mei >= 0.3:
+        if is_home_favorite:
+            return "🟢 Mercado subestima Favorito"
+        else:
+            return "🟢 Mercado subestima Underdog (VALUE!)"
+    elif mei >= 0.1:
+        return "🟡 Mercado levemente subestima"
+    elif mei <= -0.3:
+        if is_home_favorite:
+            return "🔴 Superfavoritismo (Cuidado!)"
+        else:
+            return "🔴 Mercado superestima Underdog"
+    elif mei <= -0.1:
+        return "🟠 Mercado levemente superestima"
+    else:
+        return "⚫ Mercado eficiente"
+
+# Aplicar correção
+games_today['MEI_Status'] = games_today.apply(
+    lambda x: classificar_mei_corrigido(x['MEI_Home'], x['Asian_Line_Decimal'], x['ML_Side']), 
+    axis=1
+)
 
 
     # ---------------- ATUALIZAR COM DADOS LIVE ----------------
