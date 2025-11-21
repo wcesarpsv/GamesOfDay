@@ -401,14 +401,26 @@ def adicionar_weighted_goals_defensivos(df: pd.DataFrame, liga_params: pd.DataFr
         return df_temp
 
     # Liga params traz Base_Goals_Liga e Asian_Weight_Liga
+    # 🔒 Garante colunas, mesmo se merge falhar!
+    df_temp['Base_Goals_Liga'] = default_base_goals
+    df_temp['Asian_Weight_Liga'] = default_asian_weight
+    
     if liga_params is not None and not liga_params.empty and 'League' in df_temp.columns:
         df_temp = df_temp.merge(
             liga_params[['League', 'Base_Goals_Liga', 'Asian_Weight_Liga', 'Jogos_Liga']],
             on='League',
-            how='left'
+            how='left',
+            suffixes=('', '_m')
         )
-        df_temp['Base_Goals_Usado'] = df_temp['Base_Goals_Liga'].fillna(default_base_goals)
-        df_temp['Asian_Weight_Usado'] = df_temp['Asian_Weight_Liga'].fillna(default_asian_weight)
+    
+        # Preenche valores faltantes
+        df_temp['Base_Goals_Liga'] = df_temp['Base_Goals_Liga'].fillna(df_temp['Base_Goals_Liga_m'])
+        df_temp['Asian_Weight_Liga'] = df_temp['Asian_Weight_Liga'].fillna(df_temp['Asian_Weight_Liga_m'])
+    
+    # Valores finais
+    df_temp['Base_Goals_Usado'] = df_temp['Base_Goals_Liga'].fillna(default_base_goals)
+    df_temp['Asian_Weight_Usado'] = df_temp['Asian_Weight_Liga'].fillna(default_asian_weight)
+
     else:
         df_temp['Base_Goals_Usado'] = default_base_goals
         df_temp['Asian_Weight_Usado'] = default_asian_weight
