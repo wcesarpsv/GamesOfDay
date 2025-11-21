@@ -910,7 +910,7 @@ def main_handicap_v1():
         st.dataframe(
             df_filtrado[[
                 'League', 'Time' ,'Home', 'Away',
-                'Asian_Line_Decimal', 'Handicap_Info',
+                'Asian_Line_Decimal',
                 'AIL_Pick', 'AIL_Confidence', 'AIL_Stamp', 'AIL_Value_Score',
                 'P_Cover_Home_Especifico', 'Market_Cover_Prob', 'Edge_Pick',
                 'WG_Home_Team', 'WG_Away_Team', 'WG_Diff'
