@@ -258,64 +258,79 @@ history["Target_AH_Home"] = history.apply(
 # 🆕 MarketGap Rolling Features (vs Expectativas do Mercado)
 # ============================================================
 
-st.markdown("### 🆕 Calculando MarketGap e Rolling Weighted Gap...")
+st.markdown("### 🆕 Calculando MarketGap, Rolling e MEI...")
 
-def calcular_marketgap_avancado(margin, asian_line):
-    # Transforma a margin com log para reduzir impacto de goleadas
-    margin_transformada = np.sign(margin) * np.log1p(abs(margin))
-    
-    # Também ajusta a Asian Line para mesma escala
-    # Asian Line de ±2.5 precisa ser escalonada para ~±1.1
-    asian_line_transformada = np.sign(asian_line) * np.log1p(abs(asian_line))
-    
-    return margin_transformada - asian_line_transformada
-
-history['MarketGap_Home'] = history.apply(
-    lambda x: calcular_marketgap_avancado(x['Margin'], x['Asian_Line_Decimal']), 
-    axis=1
-)
-
+# 1️⃣ Market Gap: desempenho relativo à expectativa do mercado
+history['MarketGap_Home'] = history['Margin'] - history['Asian_Line_Decimal']
 history['MarketGap_Away'] = -history['MarketGap_Home']
 
 # 2️⃣ Ponderação pelas odds (valor real da surpresa)
 history['WeightedGap_Home'] = history['MarketGap_Home'] * history['Odd_H']
 history['WeightedGap_Away'] = history['MarketGap_Away'] * history['Odd_A']
 
-# 3️⃣ Rolling por time com shift(1) para evitar leakage
+# 3️⃣ Função genérica de rolling com shift(1) para evitar leakage
 history = history.sort_values('Date')
 
-def generate_rolling(df, col_input, col_team, newcol):
+def generate_rolling(df, col_input, col_team, newcol, window):
     df[newcol] = (
         df.groupby(col_team)[col_input]
-        .rolling(6, min_periods=1)
+        .rolling(window, min_periods=1)
         .mean()
         .shift(1)
         .reset_index(level=0, drop=True)
     )
     return df
 
-history = generate_rolling(history, 'WeightedGap_Home', 'Home', 'WG_Rolling_Home')
-history = generate_rolling(history, 'WeightedGap_Away', 'Away', 'WG_Rolling_Away')
+# 4️⃣ Rolling de 6 jogos (já existente) e novo rolling de 3 jogos
+history = generate_rolling(history, 'WeightedGap_Home', 'Home', 'WG_Rolling_Home', window=6)
+history = generate_rolling(history, 'WeightedGap_Away', 'Away', 'WG_Rolling_Away', window=6)
+
+history = generate_rolling(history, 'WeightedGap_Home', 'Home', 'WG_Rolling_Home_3', window=3)
+history = generate_rolling(history, 'WeightedGap_Away', 'Away', 'WG_Rolling_Away_3', window=3)
+
+# Tendência de desempenho vs mercado (últimos 3 x últimos 6)
+history['MarketGapTrend_Home'] = history['WG_Rolling_Home_3'] - history['WG_Rolling_Home']
+history['MarketGapTrend_Away'] = history['WG_Rolling_Away_3'] - history['WG_Rolling_Away']
+
+# Diferença bruta (continua útil)
 history['WG_Rolling_Diff'] = history['WG_Rolling_Home'] - history['WG_Rolling_Away']
+
+# 5️⃣ Tendência do handicap (AsianTrend) – só do lado HOME (Opção A)
+history = generate_rolling(history, 'Asian_Line_Decimal', 'Home', 'Asian_Rolling_Home_6', window=6)
+history = generate_rolling(history, 'Asian_Line_Decimal', 'Home', 'Asian_Rolling_Home_3', window=3)
+
+history['AsianTrend_Home'] = history['Asian_Rolling_Home_3'] - history['Asian_Rolling_Home_6']
+
+# 6️⃣ MEI – Market Efficiency Index (mercado atrasado x ajustado)
+# MEI > 0 → mercado atrasado / valor;  MEI < 0 → mercado já ajustando / superajustado
+history['MEI_Home'] = history['MarketGapTrend_Home'] - history['AsianTrend_Home']
+
 
 
 # ============================================================
-# 🔍 Enriquecendo games_today com rolling histórico
+# 🔍 Enriquecendo games_today com rolling histórico + MEI
 # ============================================================
 
 games_today = games_today.copy()
-games_today['WG_Rolling_Home'] = games_today['Home'].map(
-    history.groupby('Home')['WG_Rolling_Home'].last()
-)
-games_today['WG_Rolling_Away'] = games_today['Away'].map(
-    history.groupby('Away')['WG_Rolling_Away'].last()
-)
 
-games_today['WG_Rolling_Diff'] = (
-    games_today['WG_Rolling_Home'] - games_today['WG_Rolling_Away']
-)
+# Mapear últimos valores por time no histórico
+wg_home_map  = history.groupby('Home')['WG_Rolling_Home'].last()
+wg_away_map  = history.groupby('Away')['WG_Rolling_Away'].last()
+wg_diff_map  = history.groupby('Home')['WG_Rolling_Diff'].last()
+mei_map      = history.groupby('Home')['MEI_Home'].last()
+mg_trend_map = history.groupby('Home')['MarketGapTrend_Home'].last()
+asian_trend_map = history.groupby('Home')['AsianTrend_Home'].last()
 
-# ➜ Jogos sem histórico: guardar separadamente
+games_today['WG_Rolling_Home'] = games_today['Home'].map(wg_home_map)
+games_today['WG_Rolling_Away'] = games_today['Away'].map(wg_away_map)
+games_today['WG_Rolling_Diff'] = games_today['Home'].map(wg_diff_map)
+
+# MEI e trends do ponto de vista do time mandante
+games_today['MEI_Home'] = games_today['Home'].map(mei_map)
+games_today['MarketGapTrend_Home'] = games_today['Home'].map(mg_trend_map)
+games_today['AsianTrend_Home'] = games_today['Home'].map(asian_trend_map)
+
+# ➜ Jogos sem histórico: guardar separadamente (sem WG ou sem MEI)
 games_missing = games_today[
     games_today[['WG_Rolling_Home', 'WG_Rolling_Away']].isna().any(axis=1)
 ].copy()
@@ -324,6 +339,7 @@ games_today = games_today.dropna(subset=['WG_Rolling_Home', 'WG_Rolling_Away']).
 
 st.success(f"🎯 Jogos com histórico suficiente: {len(games_today)}")
 st.warning(f"⚠️ Jogos sem histórico suficiente: {len(games_missing)}")
+
 
 # ---------------- SISTEMA DE 8 QUADRANTES ----------------
 st.markdown("## 🎯 Sistema de 8 Quadrantes")
@@ -847,7 +863,8 @@ def treinar_modelo_quadrantes_dual(history, games_today):
         'Quadrant_Angle_Normalized',
         'WG_Rolling_Home',
         'WG_Rolling_Away',
-        'WG_Rolling_Diff'
+        'WG_Rolling_Diff',
+        'MEI_Home'
     ]].fillna(0)
 
     # Combinar todas as features
@@ -900,7 +917,8 @@ def treinar_modelo_quadrantes_dual(history, games_today):
         'Quadrant_Angle_Normalized',
         'WG_Rolling_Home',
         'WG_Rolling_Away',
-        'WG_Rolling_Diff'
+        'WG_Rolling_Diff',
+        'MEI_Home'
     ]].fillna(0)
 
     X_today = pd.concat([ligas_today, extras_today,qh_today, qa_today], axis=1)
@@ -1119,6 +1137,25 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # Aplicar indicadores explicativos dual
     ranking_quadrantes = adicionar_indicadores_explicativos_dual(ranking_quadrantes)
 
+
+
+    # ---------------- STATUS DE AJUSTE DO MERCADO (MEI)
+    def classificar_mei(mei):
+        if pd.isna(mei):
+            return "⚪ Sem histórico"
+        if mei >= 0.30:
+            return "🟢 Mercado atrasado (valor forte Home)"
+        if mei >= 0.10:
+            return "🟡 Mercado atrasado leve"
+        if mei <= -0.30:
+            return "🔴 Superajustado (cuidado com narrativas recentes)"
+        if mei <= -0.10:
+            return "🟠 Mercado em ajuste"
+        return "⚫ Mercado relativamente eficiente"
+    
+    ranking_quadrantes['MEI_Status'] = ranking_quadrantes['MEI_Home'].apply(classificar_mei)
+
+
     # ---------------- ATUALIZAR COM DADOS LIVE ----------------
     def update_real_time_data(df):
         """Atualiza todos os dados em tempo real para HANDICAP"""
@@ -1187,7 +1224,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
         'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
         'Quadrante_ML_Score_Main', 'Classificacao_Valor_Home', 
-        'Classificacao_Valor_Away', 'WG_Rolling_Home', 'WG_Rolling_Away',
+        'Classificacao_Valor_Away', 'WG_Rolling_Home', 'WG_Rolling_Away', 'MEI_Home', 'MEI_Status',
         # Colunas Live Score
          'Handicap_Result',
         'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
@@ -1224,17 +1261,19 @@ else:
 
 def calc_convergencia(row):
     """
-    Mede o grau de convergência entre modelo, contexto tático e separação visual.
-    Valores mais altos indicam cenários 'redondos' (tudo coerente).
-    Retorna escore entre 0 e 1.
+    Mede o grau de convergência entre:
+    - confiança do modelo
+    - separação tática (distância entre times)
+    - padrão dos quadrantes
+    - eficiência do mercado (MEI_Home)
     """
-
     try:
         score_home = float(row.get('Quadrante_ML_Score_Home', 0))
         score_away = float(row.get('Quadrante_ML_Score_Away', 0))
         dist = float(row.get('Quadrant_Dist', 0))
         ml_side = "HOME" if score_home > score_away else "AWAY"
         diff = abs(score_home - score_away)
+        mei = float(row.get('MEI_Home', 0))
     except Exception:
         return 0.0
 
@@ -1248,7 +1287,6 @@ def calc_convergencia(row):
     home_q = str(row.get('Quadrante_Home_Label', ''))
     away_q = str(row.get('Quadrante_Away_Label', ''))
 
-    # Coerência tática → quando padrão e lado do modelo apontam juntos
     padrao_favoravel = (
         ('Underdog Value' in home_q and ml_side == 'HOME') or
         ('Market Overrates' in away_q and ml_side == 'HOME') or
@@ -1257,8 +1295,14 @@ def calc_convergencia(row):
     )
     w_pattern = 1.0 if padrao_favoravel else 0.0
 
-    # 4️⃣ Convergência total (ponderada)
-    confidence_score = round((0.5 * w_ml + 0.3 * w_dist + 0.2 * w_pattern), 3)
+    # 4️⃣ Peso do MEI – reescala de -0.5..+0.5 para 0..1 (clipping)
+    w_mei = np.clip((mei + 0.5), 0, 1)
+
+    # 5️⃣ Convergência total (ponderada)
+    confidence_score = round(
+        (0.4 * w_ml + 0.25 * w_dist + 0.20 * w_pattern + 0.15 * w_mei),
+        3
+    )
     return confidence_score
 
 
@@ -1286,6 +1330,56 @@ if not gold_matches.empty:
     )
 else:
     st.info("Nenhum confronto atingiu nível de convergência 🥇 Gold hoje.")
+
+
+
+# ============================================================
+# 🧭 Mapa de Valor – MEI × WG_Rolling_Diff
+# ============================================================
+st.markdown("### 🧭 Mapa de Valor – MEI × Forma vs Mercado")
+
+valor_df = ranking_quadrantes.dropna(subset=['WG_Rolling_Diff', 'MEI_Home']).copy()
+if not valor_df.empty:
+    import plotly.graph_objects as go
+
+    fig_valor = go.Figure()
+
+    # Cores por lado sugerido
+    color_map = valor_df['ML_Side'].map({'HOME': 'royalblue', 'AWAY': 'orangered'}).fillna('gray')
+
+    fig_valor.add_trace(go.Scatter(
+        x=valor_df['WG_Rolling_Diff'],
+        y=valor_df['MEI_Home'],
+        mode='markers',
+        marker=dict(
+            size=8 + 20*valor_df['Quadrante_ML_Score_Main'].fillna(0),
+            opacity=0.8,
+            color=color_map
+        ),
+        text=valor_df.apply(lambda r: f"{r['Home']} vs {r['Away']}<br>"
+                                      f"WG_Diff: {r['WG_Rolling_Diff']:.2f}<br>"
+                                      f"MEI_Home: {r['MEI_Home']:.2f}<br>"
+                                      f"{r['MEI_Status']}<br>"
+                                      f"Recomendação: {r['Recomendacao']}", axis=1),
+        hoverinfo='text'
+    ))
+
+    # Linhas de referência
+    fig_valor.add_vline(x=0, line=dict(color="black", width=1, dash="dash"))
+    fig_valor.add_hline(y=0, line=dict(color="black", width=1, dash="dash"))
+
+    fig_valor.update_layout(
+        xaxis_title="WG_Rolling_Diff (Home - Away) – forma recente vs mercado",
+        yaxis_title="MEI_Home (Market Efficiency Index)",
+        template="plotly_white",
+        height=550
+    )
+
+    st.plotly_chart(fig_valor, use_container_width=True)
+
+else:
+    st.info("Sem dados suficientes para exibir o mapa de valor hoje.")
+
 
 
 
