@@ -1468,94 +1468,114 @@ st.pyplot(fig)
 
 
 # ============================================================
-# 📊 ANÁLISE DE PERFORMANCE POR FEATURE IMPORTANCE
+# 🔍 DIAGNÓSTICO DOS DADOS DE PERFORMANCE
 # ============================================================
 
-st.markdown("## 📈 Validação: Performance das Top Features")
+st.markdown("## 🔍 Diagnóstico - Por que winrate zerado?")
+
+if not ranking_quadrantes.empty:
+    
+    # 1️⃣ Verificar colunas disponíveis
+    st.write("### Colunas disponíveis no ranking_quadrantes:")
+    st.write(list(ranking_quadrantes.columns))
+    
+    # 2️⃣ Verificar dados de resultados
+    st.write("### Estatísticas dos resultados:")
+    if 'Handicap_Result' in ranking_quadrantes.columns:
+        st.write("Handicap_Result values:", ranking_quadrantes['Handicap_Result'].value_counts(dropna=False))
+    
+    if 'Quadrante_Correct' in ranking_quadrantes.columns:
+        st.write("Quadrante_Correct values:", ranking_quadrantes['Quadrante_Correct'].value_counts(dropna=False))
+        st.write("Quadrante_Correct não-nulos:", ranking_quadrantes['Quadrante_Correct'].notna().sum())
+        st.write("Quadrante_Correct True/False:", ranking_quadrantes['Quadrante_Correct'].sum(), "acertos em", len(ranking_quadrantes))
+    
+    # 3️⃣ Verificar jogos finalizados
+    if 'Goals_H_Today' in ranking_quadrantes.columns:
+        finished_games = ranking_quadrantes[ranking_quadrantes['Goals_H_Today'].notna()]
+        st.write(f"Jogos finalizados: {len(finished_games)} de {len(ranking_quadrantes)}")
+        
+        # Mostrar alguns jogos com dados
+        if len(finished_games) > 0:
+            st.write("### Exemplo de jogos finalizados:")
+            st.dataframe(finished_games[['Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Handicap_Result', 'Quadrante_Correct']].head(10))
+    
+    # 4️⃣ Verificar a função determine_handicap_result
+    st.write("### Teste da função determine_handicap_result:")
+    test_row = ranking_quadrantes.iloc[0] if len(ranking_quadrantes) > 0 else None
+    if test_row is not None:
+        st.write(f"Home: {test_row['Home']}, Away: {test_row['Away']}")
+        st.write(f"Goals: {test_row.get('Goals_H_Today', 'N/A')} - {test_row.get('Goals_A_Today', 'N/A')}")
+        st.write(f"Recomendação: {test_row.get('Recomendacao', 'N/A')}")
+        st.write(f"Asian Line: {test_row.get('Asian_Line_Decimal', 'N/A')}")
+        
+        handicap_test = determine_handicap_result(test_row)
+        st.write(f"Handicap Result: {handicap_test}")
+        
+        correct_test = check_handicap_recommendation_correct(test_row.get('Recomendacao', ''), handicap_test)
+        st.write(f"Quadrante Correct: {correct_test}")
+
+# ============================================================
+# 📊 ANÁLISE CORRIGIDA DE PERFORMANCE
+# ============================================================
+
+st.markdown("## 📈 Validação Corrigida - Performance das Top Features")
 
 if not ranking_quadrantes.empty and 'Quadrante_Correct' in ranking_quadrantes.columns:
     
-    # 1️⃣ Análise por Quadrant_Separation (Feature #1)
-    if 'Quadrant_Separation' in ranking_quadrantes.columns:
-        separation_median = ranking_quadrantes['Quadrant_Separation'].median()
-        high_separation = ranking_quadrantes[ranking_quadrantes['Quadrant_Separation'] > separation_median]
-        low_separation = ranking_quadrantes[ranking_quadrantes['Quadrant_Separation'] <= separation_median]
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if not high_separation.empty and 'Quadrante_Correct' in high_separation.columns:
-                winrate_high = high_separation['Quadrante_Correct'].mean()
-                st.metric("🎯 Alta Separação (Winrate)", f"{winrate_high:.1%}")
-        with col2:
-            if not low_separation.empty and 'Quadrante_Correct' in low_separation.columns:
-                winrate_low = low_separation['Quadrante_Correct'].mean()
-                st.metric("📉 Baixa Separação (Winrate)", f"{winrate_low:.1%}")
+    # Filtrar apenas jogos com resultado calculado
+    valid_games = ranking_quadrantes[ranking_quadrantes['Quadrante_Correct'].notna()]
+    st.write(f"Jogos com resultado válido: {len(valid_games)}")
     
-    # 2️⃣ Análise por MEI_Home (Feature #10)
-    if 'MEI_Home' in ranking_quadrantes.columns:
-        st.markdown("### 🧭 Performance por MEI_Home")
+    if len(valid_games) > 0:
         
-        # Categorizar MEI
-        mei_positive = ranking_quadrantes[ranking_quadrantes['MEI_Home'] > 0.1]  # Mercado atrasado
-        mei_negative = ranking_quadrantes[ranking_quadrantes['MEI_Home'] < -0.1] # Mercado superajustado
-        mei_neutral = ranking_quadrantes[(ranking_quadrantes['MEI_Home'] >= -0.1) & (ranking_quadrantes['MEI_Home'] <= 0.1)]
+        # 1️⃣ Análise por Quadrant_Separation
+        if 'Quadrant_Separation' in valid_games.columns:
+            separation_median = valid_games['Quadrant_Separation'].median()
+            high_separation = valid_games[valid_games['Quadrant_Separation'] > separation_median]
+            low_separation = valid_games[valid_games['Quadrant_Separation'] <= separation_median]
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if not high_separation.empty:
+                    winrate_high = high_separation['Quadrante_Correct'].mean()
+                    st.metric("🎯 Alta Separação (Winrate)", f"{winrate_high:.1%}", 
+                             delta=f"{len(high_separation)} jogos")
+            with col2:
+                if not low_separation.empty:
+                    winrate_low = low_separation['Quadrante_Correct'].mean()
+                    st.metric("📉 Baixa Separação (Winrate)", f"{winrate_low:.1%}",
+                             delta=f"{len(low_separation)} jogos")
         
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if not mei_positive.empty and 'Quadrante_Correct' in mei_positive.columns:
-                winrate_positive = mei_positive['Quadrante_Correct'].mean()
-                st.metric("🟢 MEI > 0.1 (Atrasado)", f"{winrate_positive:.1%}")
-        with col2:
-            if not mei_negative.empty and 'Quadrante_Correct' in mei_negative.columns:
-                winrate_negative = mei_negative['Quadrante_Correct'].mean()
-                st.metric("🔴 MEI < -0.1 (Superajustado)", f"{winrate_negative:.1%}")
-        with col3:
-            if not mei_neutral.empty and 'Quadrante_Correct' in mei_neutral.columns:
-                winrate_neutral = mei_neutral['Quadrante_Correct'].mean()
-                st.metric("⚫ MEI Neutro", f"{winrate_neutral:.1%}")
+        # 2️⃣ Análise por MEI_Home
+        if 'MEI_Home' in valid_games.columns:
+            st.markdown("### 🧭 Performance por MEI_Home")
+            
+            mei_positive = valid_games[valid_games['MEI_Home'] > 0.1]
+            mei_negative = valid_games[valid_games['MEI_Home'] < -0.1]
+            mei_neutral = valid_games[(valid_games['MEI_Home'] >= -0.1) & (valid_games['MEI_Home'] <= 0.1)]
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if not mei_positive.empty:
+                    winrate_positive = mei_positive['Quadrante_Correct'].mean()
+                    st.metric("🟢 MEI > 0.1", f"{winrate_positive:.1%}", 
+                             delta=f"{len(mei_positive)} jogos")
+            with col2:
+                if not mei_negative.empty:
+                    winrate_negative = mei_negative['Quadrante_Correct'].mean()
+                    st.metric("🔴 MEI < -0.1", f"{winrate_negative:.1%}",
+                             delta=f"{len(mei_negative)} jogos")
+            with col3:
+                if not mei_neutral.empty:
+                    winrate_neutral = mei_neutral['Quadrante_Correct'].mean()
+                    st.metric("⚫ MEI Neutro", f"{winrate_neutral:.1%}",
+                             delta=f"{len(mei_neutral)} jogos")
     
-    # 3️⃣ Análise por Quadrante 4 (Favorite Reliable)
-    if 'Quadrante_Home_Label' in ranking_quadrantes.columns:
-        st.markdown("### 👑 Performance do Quadrante 'Favorite Reliable'")
+    else:
+        st.warning("⚠️ Nenhum jogo com resultado válido para análise.")
         
-        home_favorite = ranking_quadrantes[ranking_quadrantes['Quadrante_Home_Label'] == 'Favorite Reliable']
-        away_favorite = ranking_quadrantes[ranking_quadrantes['Quadrante_Away_Label'] == 'Favorite Reliable']
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if not home_favorite.empty and 'Quadrante_Correct' in home_favorite.columns:
-                winrate_home_fav = home_favorite['Quadrante_Correct'].mean()
-                st.metric("🏠 Home Favorite Reliable", f"{winrate_home_fav:.1%}")
-        with col2:
-            if not away_favorite.empty and 'Quadrante_Correct' in away_favorite.columns:
-                winrate_away_fav = away_favorite['Quadrante_Correct'].mean()
-                st.metric("✈️ Away Favorite Reliable", f"{winrate_away_fav:.1%}")
-
 else:
     st.info("📊 Aguardando dados de resultados para análise de performance...")
-
-# ============================================================
-# 🎯 RESUMO DAS FEATURES MAIS IMPORTANTES
-# ============================================================
-
-st.markdown("## 🏆 Top 10 Features Mais Importantes")
-
-features_ranking = {
-    'Quadrant_Separation': '20.2% - Distância combinada entre times',
-    'Quadrant_Angle_Geometric': '12.6% - Ângulo geométrico no espaço 2D', 
-    'Quadrant_Dist': '12.3% - Distância euclidiana entre pontos',
-    'Quadrant_Angle_Normalized': '11.9% - Ângulo normalizado',
-    'WG_Rolling_Diff': '5.2% - Diferença de performance vs mercado',
-    'WG_Rolling_Away': '4.5% - Performance recente Away vs mercado',
-    'WG_Rolling_Home': '4.5% - Performance recente Home vs mercado',
-    'QA_4': '1.5% - Away no Quadrante "Favorite Reliable"',
-    'QH_4': '1.5% - Home no Quadrante "Favorite Reliable"',
-    'MEI_Home': '1.5% - Market Efficiency Index (Home)'
-}
-
-for feature, desc in features_ranking.items():
-    st.write(f"**{feature}**: {desc}")
-
 
 # ============================================================
 # 📄 Jogos removidos da análise (Sem histórico suficiente)
