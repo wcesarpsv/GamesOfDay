@@ -1444,75 +1444,53 @@ if not games_today.empty and 'Classificacao_Valor_Home' in games_today.columns:
 
 
 
-# Adicionar esta verificação
-st.markdown("### 📈 Validação do Novo MarketGap")
 
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("MarketGap Antigo (média)", 
-             f"{(history['Margin'] - history['Asian_Line_Decimal']).mean():.3f}")
-with col2:
-    st.metric("MarketGap Novo (média)", 
-             f"{history['MarketGap_Home'].mean():.3f}")
+# # ============================================================
+# # 🔍 DIAGNÓSTICO DOS DADOS DE PERFORMANCE
+# # ============================================================
 
-# Ver distribuição
-fig = plt.figure(figsize=(10, 4))
-plt.subplot(1, 2, 1)
-plt.hist(history['Margin'] - history['Asian_Line_Decimal'], bins=50, alpha=0.7)
-plt.title('MarketGap Antigo')
-plt.subplot(1, 2, 2)
-plt.hist(history['MarketGap_Home'], bins=50, alpha=0.7)
-plt.title('MarketGap Novo (Log)')
-st.pyplot(fig)
+# st.markdown("## 🔍 Diagnóstico - Por que winrate zerado?")
 
-
-
-# ============================================================
-# 🔍 DIAGNÓSTICO DOS DADOS DE PERFORMANCE
-# ============================================================
-
-st.markdown("## 🔍 Diagnóstico - Por que winrate zerado?")
-
-if not ranking_quadrantes.empty:
+# if not ranking_quadrantes.empty:
     
-    # 1️⃣ Verificar colunas disponíveis
-    st.write("### Colunas disponíveis no ranking_quadrantes:")
-    st.write(list(ranking_quadrantes.columns))
+#     # 1️⃣ Verificar colunas disponíveis
+#     st.write("### Colunas disponíveis no ranking_quadrantes:")
+#     st.write(list(ranking_quadrantes.columns))
     
-    # 2️⃣ Verificar dados de resultados
-    st.write("### Estatísticas dos resultados:")
-    if 'Handicap_Result' in ranking_quadrantes.columns:
-        st.write("Handicap_Result values:", ranking_quadrantes['Handicap_Result'].value_counts(dropna=False))
+#     # 2️⃣ Verificar dados de resultados
+#     st.write("### Estatísticas dos resultados:")
+#     if 'Handicap_Result' in ranking_quadrantes.columns:
+#         st.write("Handicap_Result values:", ranking_quadrantes['Handicap_Result'].value_counts(dropna=False))
     
-    if 'Quadrante_Correct' in ranking_quadrantes.columns:
-        st.write("Quadrante_Correct values:", ranking_quadrantes['Quadrante_Correct'].value_counts(dropna=False))
-        st.write("Quadrante_Correct não-nulos:", ranking_quadrantes['Quadrante_Correct'].notna().sum())
-        st.write("Quadrante_Correct True/False:", ranking_quadrantes['Quadrante_Correct'].sum(), "acertos em", len(ranking_quadrantes))
+#     if 'Quadrante_Correct' in ranking_quadrantes.columns:
+#         st.write("Quadrante_Correct values:", ranking_quadrantes['Quadrante_Correct'].value_counts(dropna=False))
+#         st.write("Quadrante_Correct não-nulos:", ranking_quadrantes['Quadrante_Correct'].notna().sum())
+#         st.write("Quadrante_Correct True/False:", ranking_quadrantes['Quadrante_Correct'].sum(), "acertos em", len(ranking_quadrantes))
     
-    # 3️⃣ Verificar jogos finalizados
-    if 'Goals_H_Today' in ranking_quadrantes.columns:
-        finished_games = ranking_quadrantes[ranking_quadrantes['Goals_H_Today'].notna()]
-        st.write(f"Jogos finalizados: {len(finished_games)} de {len(ranking_quadrantes)}")
+#     # 3️⃣ Verificar jogos finalizados
+#     if 'Goals_H_Today' in ranking_quadrantes.columns:
+#         finished_games = ranking_quadrantes[ranking_quadrantes['Goals_H_Today'].notna()]
+#         st.write(f"Jogos finalizados: {len(finished_games)} de {len(ranking_quadrantes)}")
         
-        # Mostrar alguns jogos com dados
-        if len(finished_games) > 0:
-            st.write("### Exemplo de jogos finalizados:")
-            st.dataframe(finished_games[['Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Handicap_Result', 'Quadrante_Correct']].head(10))
+#         # Mostrar alguns jogos com dados
+#         if len(finished_games) > 0:
+#             st.write("### Exemplo de jogos finalizados:")
+#             st.dataframe(finished_games[['Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Handicap_Result', 'Quadrante_Correct']].head(10))
     
-    # 4️⃣ Verificar a função determine_handicap_result
-    st.write("### Teste da função determine_handicap_result:")
-    test_row = ranking_quadrantes.iloc[0] if len(ranking_quadrantes) > 0 else None
-    if test_row is not None:
-        st.write(f"Home: {test_row['Home']}, Away: {test_row['Away']}")
-        st.write(f"Goals: {test_row.get('Goals_H_Today', 'N/A')} - {test_row.get('Goals_A_Today', 'N/A')}")
-        st.write(f"Recomendação: {test_row.get('Recomendacao', 'N/A')}")
-        st.write(f"Asian Line: {test_row.get('Asian_Line_Decimal', 'N/A')}")
+#     # 4️⃣ Verificar a função determine_handicap_result
+#     st.write("### Teste da função determine_handicap_result:")
+#     test_row = ranking_quadrantes.iloc[0] if len(ranking_quadrantes) > 0 else None
+#     if test_row is not None:
+#         st.write(f"Home: {test_row['Home']}, Away: {test_row['Away']}")
+#         st.write(f"Goals: {test_row.get('Goals_H_Today', 'N/A')} - {test_row.get('Goals_A_Today', 'N/A')}")
+#         st.write(f"Recomendação: {test_row.get('Recomendacao', 'N/A')}")
+#         st.write(f"Asian Line: {test_row.get('Asian_Line_Decimal', 'N/A')}")
         
-        handicap_test = determine_handicap_result(test_row)
-        st.write(f"Handicap Result: {handicap_test}")
+#         handicap_test = determine_handicap_result(test_row)
+#         st.write(f"Handicap Result: {handicap_test}")
         
-        correct_test = check_handicap_recommendation_correct(test_row.get('Recomendacao', ''), handicap_test)
-        st.write(f"Quadrante Correct: {correct_test}")
+#         correct_test = check_handicap_recommendation_correct(test_row.get('Recomendacao', ''), handicap_test)
+#         st.write(f"Quadrante Correct: {correct_test}")
 
 # # ============================================================
 # # 📊 ANÁLISE CORRIGIDA DE PERFORMANCE
