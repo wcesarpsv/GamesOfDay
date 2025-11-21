@@ -219,34 +219,6 @@ def load_and_merge_livescore(games_today, selected_date_str):
 games_today = load_and_merge_livescore(games_today, selected_date_str)
 
 
-# ============================================================
-# 🔍 Enriquecendo games_today com rolling histórico
-# ============================================================
-
-games_today = games_today.copy()
-games_today['WG_Rolling_Home'] = games_today['Home'].map(
-    history.groupby('Home')['WG_Rolling_Home'].last()
-)
-games_today['WG_Rolling_Away'] = games_today['Away'].map(
-    history.groupby('Away')['WG_Rolling_Away'].last()
-)
-
-games_today['WG_Rolling_Diff'] = (
-    games_today['WG_Rolling_Home'] - games_today['WG_Rolling_Away']
-)
-
-# ➜ Jogos sem histórico: guardar separadamente
-games_missing = games_today[
-    games_today[['WG_Rolling_Home', 'WG_Rolling_Away']].isna().any(axis=1)
-].copy()
-
-games_today = games_today.dropna(subset=['WG_Rolling_Home', 'WG_Rolling_Away']).copy()
-
-st.success(f"🎯 Jogos com histórico suficiente: {len(games_today)}")
-st.warning(f"⚠️ Jogos sem histórico suficiente: {len(games_missing)}")
-
-
-
 
 # Histórico consolidado
 history = filter_leagues(load_all_games(GAMES_FOLDER))
@@ -282,7 +254,6 @@ history["Target_AH_Home"] = history.apply(
 )
 
 
-
 # ============================================================
 # 🆕 MarketGap Rolling Features (vs Expectativas do Mercado)
 # ============================================================
@@ -315,7 +286,31 @@ history = generate_rolling(history, 'WeightedGap_Away', 'Away', 'WG_Rolling_Away
 history['WG_Rolling_Diff'] = history['WG_Rolling_Home'] - history['WG_Rolling_Away']
 
 
+# ============================================================
+# 🔍 Enriquecendo games_today com rolling histórico
+# ============================================================
 
+games_today = games_today.copy()
+games_today['WG_Rolling_Home'] = games_today['Home'].map(
+    history.groupby('Home')['WG_Rolling_Home'].last()
+)
+games_today['WG_Rolling_Away'] = games_today['Away'].map(
+    history.groupby('Away')['WG_Rolling_Away'].last()
+)
+
+games_today['WG_Rolling_Diff'] = (
+    games_today['WG_Rolling_Home'] - games_today['WG_Rolling_Away']
+)
+
+# ➜ Jogos sem histórico: guardar separadamente
+games_missing = games_today[
+    games_today[['WG_Rolling_Home', 'WG_Rolling_Away']].isna().any(axis=1)
+].copy()
+
+games_today = games_today.dropna(subset=['WG_Rolling_Home', 'WG_Rolling_Away']).copy()
+
+st.success(f"🎯 Jogos com histórico suficiente: {len(games_today)}")
+st.warning(f"⚠️ Jogos sem histórico suficiente: {len(games_missing)}")
 
 # ---------------- SISTEMA DE 8 QUADRANTES ----------------
 st.markdown("## 🎯 Sistema de 8 Quadrantes")
