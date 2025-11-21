@@ -296,126 +296,232 @@ def create_better_target_corrigido(df):
     st.info(f"🦓 Taxa de Zebra (favorito falhou): {zebra_rate:.1%}")
     return df
 
-# ---------------- WEIGHTED GOALS FEATURES ----------------
+# ---------------- WEIGHTED GOALS FEATURES (WG NOVO, COERENTE) ----------------
 def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
     """
-    WG_Home / WG_Away ofensivos baseado em odds 1x2 + gols reais.
+    WG_Home / WG_Away ofensivos baseado em:
+      - Gols marcados / sofridos (FULL TIME)
+      - Odds 1x2 (Odd_H, Odd_D, Odd_A)
+
+    Ideia:
+      - Marcar gols quando você era ZEBRA vale MAIS
+      - Sofrer gols quando você era FAVORITO pesa MAIS contra
+      - Usa probabilidades implícitas das odds 1x2
     """
     df_temp = df.copy()
-    for col in ['WG_Home', 'WG_Away']:
-        if col not in df_temp.columns:
-            df_temp[col] = 0.0
 
-    def odds_to_market_probs(row):
+    # Garante colunas numéricas de gols FT (NUNCA usa Goals_Today)
+    for col in ['Goals_H_FT', 'Goals_A_FT']:
+        if col not in df_temp.columns:
+            df_temp[col] = np.nan
+
+    # Converte odds 1x2 em probabilidades de mercado (com empate)
+    def odds_to_probs_1x2(row):
         try:
             odd_h = float(row.get('Odd_H', 0))
+            odd_d = float(row.get('Odd_D', 0))
             odd_a = float(row.get('Odd_A', 0))
-            if odd_h <= 0 or odd_a <= 0:
-                return 0.50, 0.50
-            inv_h = 1 / odd_h
-            inv_a = 1 / odd_a
-            total = inv_h + inv_a
-            return inv_h / total, inv_a / total
         except Exception:
-            return 0.50, 0.50
+            return 0.33, 0.34, 0.33  # fallback neutro
+
+        # Se odds inválidas, fallback
+        if odd_h <= 1.01 or odd_a <= 1.01:
+            return 0.33, 0.34, 0.33
+
+        inv_h = 1.0 / odd_h if odd_h > 0 else 0.0
+        inv_d = 1.0 / odd_d if odd_d > 0 else 0.0
+        inv_a = 1.0 / odd_a if odd_a > 0 else 0.0
+
+        total = inv_h + inv_d + inv_a
+        if total <= 0:
+            return 0.33, 0.34, 0.33
+
+        p_h = inv_h / total
+        p_d = inv_d / total
+        p_a = inv_a / total
+        return p_h, p_d, p_a
 
     def wg_home(row):
-        p_h, p_a = odds_to_market_probs(row)
-        goals_h = row.get('Goals_H_FT', 0)
-        goals_a = row.get('Goals_A_FT', 0)
-        return (goals_h * (1 - p_h)) - (goals_a * p_h)
+        gh = row.get('Goals_H_FT', np.nan)
+        ga = row.get('Goals_A_FT', np.nan)
+        if pd.isna(gh) or pd.isna(ga):
+            return np.nan
+
+        p_h, p_d, p_a = odds_to_probs_1x2(row)
+
+        # Quanto mais FAVORITO, menor peso pros gols marcados e MAIOR peso pros sofridos
+        weight_for = (1 - p_h) + 0.5 * p_d      # marcar como zebra vale mais
+        weight_against = p_h + 0.5 * p_d        # sofrer sendo favorito dói mais
+
+        return gh * weight_for - ga * weight_against
 
     def wg_away(row):
-        p_h, p_a = odds_to_market_probs(row)
-        goals_h = row.get('Goals_H_FT', 0)
-        goals_a = row.get('Goals_A_FT', 0)
-        return (goals_a * (1 - p_a)) - (goals_h * p_a)
+        gh = row.get('Goals_H_FT', np.nan)
+        ga = row.get('Goals_A_FT', np.nan)
+        if pd.isna(gh) or pd.isna(ga):
+            return np.nan
+
+        p_h, p_d, p_a = odds_to_probs_1x2(row)
+
+        # Agora do ponto de vista do visitante
+        weight_for = (1 - p_a) + 0.5 * p_d      # marcar como zebra fora vale mais
+        weight_against = p_a + 0.5 * p_d        # sofrer sendo favorito fora dói mais
+
+        return ga * weight_for - gh * weight_against
 
     df_temp['WG_Home'] = df_temp.apply(wg_home, axis=1)
     df_temp['WG_Away'] = df_temp.apply(wg_away, axis=1)
+
     return df_temp
 
+
 def adicionar_weighted_goals_defensivos(df: pd.DataFrame, liga_params: pd.DataFrame | None = None) -> pd.DataFrame:
+    """
+    WG_Def_Home / WG_Def_Away:
+      - Mede quanto a defesa sofreu em relação ao ESPERADO (xGA)
+      - xGA vem de:
+          * Média de gols da liga (Base_Goals_Liga)
+          * Linha asiática (Asian_Line_Decimal)
+          * Peso asiático da liga (Asian_Weight_Liga)
+      - Defesa boa => valor POSITIVO (sofreu menos do que o esperado)
+    """
     df_temp = df.copy()
 
-    if 'Goals_H_FT' not in df_temp.columns:
-        df_temp['Goals_H_FT'] = df_temp.get('Goals_H_Today', np.nan)
-    if 'Goals_A_FT' not in df_temp.columns:
-        df_temp['Goals_A_FT'] = df_temp.get('Goals_A_Today', np.nan)
+    # Garantir colunas de gols FT (não usa Today)
+    for col in ['Goals_H_FT', 'Goals_A_FT']:
+        if col not in df_temp.columns:
+            df_temp[col] = np.nan
 
     default_base_goals = 2.5
     default_asian_weight = 0.6
 
-    # 🔒 Cria colunas padrão ANTES do merge (evita KeyError)
-    df_temp['Base_Goals_Liga'] = default_base_goals
-    df_temp['Asian_Weight_Liga'] = default_asian_weight
-    df_temp['Jogos_Liga'] = 0
+    if 'Asian_Line_Decimal' not in df_temp.columns:
+        df_temp['WG_Def_Home'] = 0.0
+        df_temp['WG_Def_Away'] = 0.0
+        return df_temp
 
+    # Liga params traz Base_Goals_Liga e Asian_Weight_Liga
     if liga_params is not None and not liga_params.empty and 'League' in df_temp.columns:
         df_temp = df_temp.merge(
             liga_params[['League', 'Base_Goals_Liga', 'Asian_Weight_Liga', 'Jogos_Liga']],
             on='League',
-            how='left',
-            suffixes=('', '_m')
+            how='left'
         )
-        # 🔄 fallback após merge (preenche se liga não existia no mapping)
-        df_temp['Base_Goals_Liga'] = df_temp['Base_Goals_Liga'].fillna(default_base_goals)
-        df_temp['Asian_Weight_Liga'] = df_temp['Asian_Weight_Liga'].fillna(default_asian_weight)
+        df_temp['Base_Goals_Usado'] = df_temp['Base_Goals_Liga'].fillna(default_base_goals)
+        df_temp['Asian_Weight_Usado'] = df_temp['Asian_Weight_Liga'].fillna(default_asian_weight)
+    else:
+        df_temp['Base_Goals_Usado'] = default_base_goals
+        df_temp['Asian_Weight_Usado'] = default_asian_weight
 
-    df_temp['xGF_H'] = (df_temp['Base_Goals_Liga'] / 2) + df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight_Liga']
-    df_temp['xGF_A'] = (df_temp['Base_Goals_Liga'] / 2) - df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight_Liga']
+    # xGF por time via média da liga + linha asiática
+    df_temp['xGF_H'] = (df_temp['Base_Goals_Usado'] / 2) + df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight_Usado']
+    df_temp['xGF_A'] = (df_temp['Base_Goals_Usado'] / 2) - df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight_Usado']
+
+    # xGA é o xGF do adversário
     df_temp['xGA_H'] = df_temp['xGF_A']
     df_temp['xGA_A'] = df_temp['xGF_H']
 
-    df_temp['WG_Def_Home'] = df_temp['xGA_H'] - df_temp['Goals_A_FT'].fillna(0)
-    df_temp['WG_Def_Away'] = df_temp['xGA_A'] - df_temp['Goals_H_FT'].fillna(0)
+    # Gols sofridos reais
+    df_temp['GA_H'] = df_temp['Goals_A_FT'].fillna(0)
+    df_temp['GA_A'] = df_temp['Goals_H_FT'].fillna(0)
+
+    # Defesa boa => sofreu MENOS que o esperado => xGA - GA > 0
+    df_temp['WG_Def_Home'] = df_temp['xGA_H'] - df_temp['GA_H']
+    df_temp['WG_Def_Away'] = df_temp['xGA_A'] - df_temp['GA_A']
+
+    df_temp.drop(
+        columns=[
+            'xGF_H', 'xGF_A', 'xGA_H', 'xGA_A', 'GA_H', 'GA_A',
+            'Base_Goals_Usado', 'Asian_Weight_Usado'
+        ],
+        inplace=True,
+        errors='ignore'
+    )
 
     return df_temp
 
 
 def adicionar_weighted_goals_ah(df: pd.DataFrame) -> pd.DataFrame:
     """
-    WG_AH_Home / WG_AH_Away: ajusta WG ofensivo pela dificuldade da linha.
+    WG_AH_Home / WG_AH_Away:
+      - Ajusta WG ofensivo pela dificuldade da linha asiática
+      - Quanto maior o handicap absoluto, maior o peso
     """
     df_temp = df.copy()
     if 'Asian_Line_Decimal' not in df_temp.columns:
         df_temp['WG_AH_Home'] = 0.0
         df_temp['WG_AH_Away'] = 0.0
         return df_temp
-    df_temp['WG_AH_Home'] = df_temp['WG_Home'] * (1 + df_temp['Asian_Line_Decimal'].abs())
-    df_temp['WG_AH_Away'] = df_temp['WG_Away'] * (1 + df_temp['Asian_Line_Decimal'].abs())
+
+    for col in ['WG_Home', 'WG_Away']:
+        if col not in df_temp.columns:
+            df_temp[col] = 0.0
+
+    fator = 1 + df_temp['Asian_Line_Decimal'].abs()
+    df_temp['WG_AH_Home'] = df_temp['WG_Home'] * fator
+    df_temp['WG_AH_Away'] = df_temp['WG_Away'] * fator
+
     return df_temp
+
 
 def adicionar_weighted_goals_ah_defensivos(df: pd.DataFrame) -> pd.DataFrame:
     """
-    WG_AH_Def_Home / WG_AH_Def_Away: ajusta WG defensivo pela dificuldade da linha.
+    WG_AH_Def_Home / WG_AH_Def_Away:
+      - Ajusta WG defensivo pela dificuldade da linha (mesma lógica do ofensivo)
     """
     df_temp = df.copy()
     if 'Asian_Line_Decimal' not in df_temp.columns:
         df_temp['WG_AH_Def_Home'] = 0.0
         df_temp['WG_AH_Def_Away'] = 0.0
         return df_temp
-    df_temp['WG_AH_Def_Home'] = df_temp['WG_Def_Home'] * (1 + df_temp['Asian_Line_Decimal'].abs())
-    df_temp['WG_AH_Def_Away'] = df_temp['WG_Def_Away'] * (1 + df_temp['Asian_Line_Decimal'].abs())
+
+    for col in ['WG_Def_Home', 'WG_Def_Away']:
+        if col not in df_temp.columns:
+            df_temp[col] = 0.0
+
+    fator = 1 + df_temp['Asian_Line_Decimal'].abs()
+    df_temp['WG_AH_Def_Home'] = df_temp['WG_Def_Home'] * fator
+    df_temp['WG_AH_Def_Away'] = df_temp['WG_Def_Away'] * fator
+
     return df_temp
+
 
 def calcular_metricas_completas(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Métricas combinando ataque/defesa.
+    Métricas combinando ataque/defesa para cada jogo (nível match):
+      - Balance: ataque + defesa
+      - Total: mesma coisa (mantido p/ compatibilidade)
+      - Net: ataque próprio - defesa adversária
     """
     df_temp = df.copy()
+
+    for col in [
+        'WG_Home', 'WG_Away',
+        'WG_Def_Home', 'WG_Def_Away'
+    ]:
+        if col not in df_temp.columns:
+            df_temp[col] = 0.0
+
+    # Balance (ataque + defesa)
     df_temp['WG_Balance_Home'] = df_temp['WG_Home'] + df_temp['WG_Def_Home']
     df_temp['WG_Balance_Away'] = df_temp['WG_Away'] + df_temp['WG_Def_Away']
-    df_temp['WG_Total_Home'] = df_temp['WG_Home'] + df_temp['WG_Def_Home']
-    df_temp['WG_Total_Away'] = df_temp['WG_Away'] + df_temp['WG_Def_Away']
+
+    # Total (igual ao balance – mantido para não quebrar nada)
+    df_temp['WG_Total_Home'] = df_temp['WG_Balance_Home']
+    df_temp['WG_Total_Away'] = df_temp['WG_Balance_Away']
+
+    # Net: ataque próprio - defesa adversária
     df_temp['WG_Net_Home'] = df_temp['WG_Home'] - df_temp['WG_Def_Away']
     df_temp['WG_Net_Away'] = df_temp['WG_Away'] - df_temp['WG_Def_Home']
+
     return df_temp
+
 
 def calcular_rolling_wg_features_completo(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Rolling de WG ofensivo, defensivo, AH, balance, net (6 jogos) com shift(1)
-    para evitar vazamento de informação (time-safe).
+    Rolling de WG ofensivo, defensivo e derivados (3 jogos) com shift(1)
+    → time-safe (só usa o que já aconteceu ANTES do jogo)
+    → separado por time em casa e fora
     """
     df_temp = df.copy()
 
@@ -423,7 +529,7 @@ def calcular_rolling_wg_features_completo(df: pd.DataFrame) -> pd.DataFrame:
         df_temp['Date'] = pd.to_datetime(df_temp['Date'], errors='coerce')
         df_temp = df_temp.sort_values('Date')
 
-    # Garantir existência de todas as colunas necessárias
+    # Garante colunas base
     for col in [
         'WG_Home', 'WG_Away',
         'WG_AH_Home', 'WG_AH_Away',
@@ -436,9 +542,10 @@ def calcular_rolling_wg_features_completo(df: pd.DataFrame) -> pd.DataFrame:
         if col not in df_temp.columns:
             df_temp[col] = 0.0
 
-    # Aplica shift(1) ANTES do rolling (Time-Safe)
-    roll = lambda x: x.shift(1).rolling(6, min_periods=1).mean()
+    # Rolling de 3 jogos, com shift(1)
+    roll = lambda x: x.shift(1).rolling(3, min_periods=1).mean()
 
+    # HOME / AWAY separados
     df_temp['WG_Home_Team'] = df_temp.groupby('Home')['WG_Home'].transform(roll)
     df_temp['WG_Away_Team'] = df_temp.groupby('Away')['WG_Away'].transform(roll)
 
@@ -460,13 +567,14 @@ def calcular_rolling_wg_features_completo(df: pd.DataFrame) -> pd.DataFrame:
     df_temp['WG_Net_Home_Team'] = df_temp.groupby('Home')['WG_Net_Home'].transform(roll)
     df_temp['WG_Net_Away_Team'] = df_temp.groupby('Away')['WG_Net_Away'].transform(roll)
 
-    # Diffs com base APENAS no histórico anterior (sem gols de hoje)
+    # Diffs entre as médias históricas dos dois times
     df_temp['WG_Diff'] = df_temp['WG_Home_Team'] - df_temp['WG_Away_Team']
     df_temp['WG_AH_Diff'] = df_temp['WG_AH_Home_Team'] - df_temp['WG_AH_Away_Team']
     df_temp['WG_Def_Diff'] = df_temp['WG_Def_Home_Team'] - df_temp['WG_Def_Away_Team']
     df_temp['WG_Balance_Diff'] = df_temp['WG_Balance_Home_Team'] - df_temp['WG_Balance_Away_Team']
     df_temp['WG_Net_Diff'] = df_temp['WG_Net_Home_Team'] - df_temp['WG_Net_Away_Team']
 
+    # Confiança: quantas peças de WG temos históricos para esse jogo
     df_temp['WG_Confidence'] = (
         df_temp['WG_Home_Team'].notna().astype(int) +
         df_temp['WG_Away_Team'].notna().astype(int) +
@@ -476,13 +584,17 @@ def calcular_rolling_wg_features_completo(df: pd.DataFrame) -> pd.DataFrame:
 
     return df_temp
 
+
 def enrich_games_today_with_wg_completo(games_today, history):
     """
-    Usa o histórico (rolling WG) e traz o ÚLTIMO valor por time para os jogos de hoje.
+    Para os jogos de hoje:
+      - Puxa o ÚLTIMO valor de WG rolling (Ofensivo, Defensivo, AH, Net, etc.) de cada time
+      - Calcula os diffs Home x Away só com base NO HISTÓRICO (sem gols de hoje)
     """
-    if history.empty:
+    if history.empty or games_today.empty:
         return games_today
 
+    # Últimos valores por time como mandante
     last_wg_home = history.groupby('Home').agg({
         'WG_Home_Team': 'last',
         'WG_AH_Home_Team': 'last',
@@ -502,6 +614,7 @@ def enrich_games_today_with_wg_completo(games_today, history):
         'WG_Net_Home_Team': 'WG_Net_Home_Team_Last'
     })
 
+    # Últimos valores por time como visitante
     last_wg_away = history.groupby('Away').agg({
         'WG_Away_Team': 'last',
         'WG_AH_Away_Team': 'last',
@@ -521,37 +634,36 @@ def enrich_games_today_with_wg_completo(games_today, history):
         'WG_Net_Away_Team': 'WG_Net_Away_Team_Last'
     })
 
-    # Merge Home
+    # Merge para HOME
     games_today = games_today.merge(
         last_wg_home, left_on='Home', right_on='Team', how='left'
     ).drop('Team', axis=1)
 
-    # Merge Away
+    # Merge para AWAY
     games_today = games_today.merge(
         last_wg_away, left_on='Away', right_on='Team', how='left'
     ).drop('Team', axis=1)
 
-    # Preencher NaN
     wg_cols = [
         'WG_Home_Team_Last', 'WG_AH_Home_Team_Last', 'WG_Def_Home_Team_Last', 'WG_AH_Def_Home_Team_Last',
         'WG_Balance_Home_Team_Last', 'WG_Total_Home_Team_Last', 'WG_Net_Home_Team_Last',
         'WG_Away_Team_Last', 'WG_AH_Away_Team_Last', 'WG_Def_Away_Team_Last', 'WG_AH_Def_Away_Team_Last',
         'WG_Balance_Away_Team_Last', 'WG_Total_Away_Team_Last', 'WG_Net_Away_Team_Last'
     ]
-    
+
     for col in wg_cols:
         if col in games_today.columns:
-            games_today[col] = games_today[col].fillna(0)
+            games_today[col] = games_today[col].fillna(0.0)
         else:
-            games_today[col] = 0
+            games_today[col] = 0.0
 
-    # Calcular diffs com base no histórico (não nos gols de hoje)
+    # Diffs só com histórico
     games_today['WG_Diff'] = games_today['WG_Home_Team_Last'] - games_today['WG_Away_Team_Last']
     games_today['WG_AH_Diff'] = games_today['WG_AH_Home_Team_Last'] - games_today['WG_AH_Away_Team_Last']
     games_today['WG_Def_Diff'] = games_today['WG_Def_Home_Team_Last'] - games_today['WG_Def_Away_Team_Last']
     games_today['WG_Balance_Diff'] = games_today['WG_Balance_Home_Team_Last'] - games_today['WG_Balance_Away_Team_Last']
     games_today['WG_Net_Diff'] = games_today['WG_Net_Home_Team_Last'] - games_today['WG_Net_Away_Team_Last']
-    
+
     games_today['WG_Confidence'] = (
         games_today['WG_Home_Team_Last'].notna().astype(int) +
         games_today['WG_Away_Team_Last'].notna().astype(int) +
@@ -560,6 +672,8 @@ def enrich_games_today_with_wg_completo(games_today, history):
     )
 
     return games_today
+
+
 
 @st.cache_data(ttl=7*24*3600)
 def calcular_parametros_liga(history: pd.DataFrame) -> pd.DataFrame:
@@ -665,7 +779,7 @@ def create_robust_features(df):
       'GES_Total_Diff'
     ]
 
-    all_features = basic_features + derived_features + vector_features + ges_features
+    all_features = basic_features + derived_features + vector_features + wg_features + ges_features
     available_features = [f for f in all_features if f in df.columns]
 
     st.info(f"📋 Features disponíveis para ML: {len(available_features)}/{len(all_features)}")
