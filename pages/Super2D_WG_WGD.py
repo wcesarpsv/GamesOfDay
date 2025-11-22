@@ -419,12 +419,16 @@ def calcular_rolling_wg_features_completo(df: pd.DataFrame) -> pd.DataFrame:
     df_temp['WG_Net_Diff'] = df_temp['WG_Net_Home_Team'] - df_temp['WG_Net_Away_Team']
 
     # ======== Confiança ========
-    df_temp['WG_Confidence'] = (
-        df_temp['WG_Home_Team'].notna().astype(int) +
-        df_temp['WG_Away_Team'].notna().astype(int) +
-        df_temp['WG_Def_Home_Team'].notna().astype(int) +
-        df_temp['WG_Def_Away_Team'].notna().astype(int)
-    )
+    # ======== Confiança baseada em histórico real (N jogos) ========
+    df_temp['WG_Confidence_Home'] = df_temp.groupby('Home').cumcount()
+    df_temp['WG_Confidence_Away'] = df_temp.groupby('Away').cumcount()
+
+    # Máximo útil para o modelo = 5 jogos por lado
+    df_temp['WG_Confidence_Home'] = df_temp['WG_Confidence_Home'].clip(upper=5)
+    df_temp['WG_Confidence_Away'] = df_temp['WG_Confidence_Away'].clip(upper=5)
+
+    # Normaliza em escala 0–10 (Home + Away)
+    df_temp['WG_Confidence'] = df_temp['WG_Confidence_Home'] + df_temp['WG_Confidence_Away']
 
     return df_temp
 
