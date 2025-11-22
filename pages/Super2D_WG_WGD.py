@@ -517,6 +517,212 @@ def enrich_games_today_with_wg_completo(games_today, history):
 
 
 
+def build_hcapzone_tables(history: pd.DataFrame,
+                          min_line: float = -1.5,
+                          max_line: float = 1.5) -> dict:
+    """
+    Gera tabelas de estatística Handicap x Quadrante para HOME e AWAY.
+
+    - Usa resultado REAL de handicap (com lógica equivalente ao Target_AH)
+    - Considera apenas linhas entre min_line e max_line (default: -1.5 a +1.5)
+    - Bins de handicap arredondados para o quarto mais próximo (0.25)
+    """
+
+    df = history.copy()
+
+    cols_needed = ['Goals_H_FT', 'Goals_A_FT', 'Asian_Line_Decimal',
+                   'Quadrante_Home', 'Quadrante_Away']
+    if any(c not in df.columns for c in cols_needed):
+        return {
+            "global_home": pd.DataFrame(),
+            "global_away": pd.DataFrame(),
+            "league_home": pd.DataFrame(),
+            "league_away": pd.DataFrame(),
+        }
+
+    # Somente jogos com info completa e dentro do range de linhas
+    df = df.dropna(subset=['Goals_H_FT', 'Goals_A_FT', 'Asian_Line_Decimal',
+                           'Quadrante_Home', 'Quadrante_Away']).copy()
+    df = df[(df['Asian_Line_Decimal'] >= min_line) &
+            (df['Asian_Line_Decimal'] <= max_line)].copy()
+
+    if df.empty:
+        return {
+            "global_home": pd.DataFrame(),
+            "global_away": pd.DataFrame(),
+            "league_home": pd.DataFrame(),
+            "league_away": pd.DataFrame(),
+        }
+
+    # Margem de gols
+    df['Margin'] = df['Goals_H_FT'] - df['Goals_A_FT']
+
+    # Prob de cover do HOME (1 se média > 0.5, 0 caso contrário)
+    df['Cover_Home'] = df.apply(
+        lambda r: 1 if calc_handicap_result(r['Margin'], r['Asian_Line_Decimal']) > 0.5 else 0,
+        axis=1
+    )
+
+    # Prob de cover do AWAY: inverter margem e linha
+    df['Cover_Away'] = df.apply(
+        lambda r: 1 if calc_handicap_result(-r['Margin'], -r['Asian_Line_Decimal']) > 0.5 else 0,
+        axis=1
+    )
+
+    # Bin de linha para o quarto mais próximo (0.25)
+    df['Asian_Line_Bin'] = (df['Asian_Line_Decimal'] * 4).round() / 4
+
+    # GLOBAL – HOME
+    global_home = (
+        df.groupby(['Quadrante_Home', 'Asian_Line_Bin'])['Cover_Home']
+        .agg(['mean', 'size'])
+        .reset_index()
+        .rename(columns={'mean': 'CoverRate', 'size': 'N'})
+    )
+
+    # GLOBAL – AWAY
+    global_away = (
+        df.groupby(['Quadrante_Away', 'Asian_Line_Bin'])['Cover_Away']
+        .agg(['mean', 'size'])
+        .reset_index()
+        .rename(columns={'mean': 'CoverRate', 'size': 'N'})
+    )
+
+    # Por LIGA, se existir coluna
+    if 'League' in df.columns:
+        league_home = (
+            df.groupby(['League', 'Quadrante_Home', 'Asian_Line_Bin'])['Cover_Home']
+            .agg(['mean', 'size'])
+            .reset_index()
+            .rename(columns={'mean': 'CoverRate', 'size': 'N'})
+        )
+
+        league_away = (
+            df.groupby(['League', 'Quadrante_Away', 'Asian_Line_Bin'])['Cover_Away']
+            .agg(['mean', 'size'])
+            .reset_index()
+            .rename(columns={'mean': 'CoverRate', 'size': 'N'})
+        )
+    else:
+        league_home = pd.DataFrame(columns=['League', 'Quadrante_Home', 'Asian_Line_Bin', 'CoverRate', 'N'])
+        league_away = pd.DataFrame(columns=['League', 'Quadrante_Away', 'Asian_Line_Bin', 'CoverRate', 'N'])
+
+    return {
+        "global_home": global_home,
+        "global_away": global_away,
+        "league_home": league_home,
+        "league_away": league_away,
+    }
+
+
+def attach_hcapzone_score(df: pd.DataFrame,
+                          hcap_tables: dict,
+                          use_league: bool = True,
+                          min_n: int = 10) -> pd.DataFrame:
+    """
+    Para cada jogo do dia (df), calcula o HcapZone_Score:
+
+    - Usa o lado sugerido pelo modelo (ML_Side: HOME/AWAY)
+    - Busca CoverRate e N na tabela GLOBAL ou por LIGA
+    - Fallback automático para GLOBAL se N da liga < min_n
+    """
+
+    df = df.copy()
+
+    df['HcapZone_Score'] = np.nan   # valor 0–1 (para %)
+    df['HcapZone_N'] = np.nan       # tamanho da amostra
+    df['HcapZone_Source'] = ""      # 'League', 'Global' ou ''
+
+    global_home = hcap_tables.get("global_home", pd.DataFrame())
+    global_away = hcap_tables.get("global_away", pd.DataFrame())
+    league_home = hcap_tables.get("league_home", pd.DataFrame())
+    league_away = hcap_tables.get("league_away", pd.DataFrame())
+
+    def lookup_row(row):
+        side = row.get('ML_Side', 'HOME')
+        league = row.get('League', None)
+        line = row.get('Asian_Line_Decimal', np.nan)
+
+        if pd.isna(line):
+            return np.nan, np.nan, ""
+
+        line_bin = round(line * 4) / 4  # quarto mais próximo
+
+        if side == 'HOME':
+            quadr = row.get('Quadrante_Home', np.nan)
+            if pd.isna(quadr):
+                return np.nan, np.nan, ""
+
+            # tenta por liga
+            if use_league and league is not None and league != "" and not league_home.empty:
+                mask_l = (
+                    (league_home['League'] == league) &
+                    (league_home['Quadrante_Home'] == quadr) &
+                    (league_home['Asian_Line_Bin'] == line_bin)
+                )
+                sub_l = league_home[mask_l]
+                if not sub_l.empty:
+                    cover = float(sub_l['CoverRate'].iloc[0])
+                    n = int(sub_l['N'].iloc[0])
+                    if n >= min_n:
+                        return cover, n, "League"
+
+            # fallback GLOBAL
+            if global_home.empty:
+                return np.nan, np.nan, ""
+
+            mask_g = (
+                (global_home['Quadrante_Home'] == quadr) &
+                (global_home['Asian_Line_Bin'] == line_bin)
+            )
+            sub_g = global_home[mask_g]
+            if sub_g.empty:
+                return np.nan, np.nan, ""
+            cover = float(sub_g['CoverRate'].iloc[0])
+            n = int(sub_g['N'].iloc[0])
+            return cover, n, "Global"
+
+        else:  # AWAY
+            quadr = row.get('Quadrante_Away', np.nan)
+            if pd.isna(quadr):
+                return np.nan, np.nan, ""
+
+            if use_league and league is not None and league != "" and not league_away.empty:
+                mask_l = (
+                    (league_away['League'] == league) &
+                    (league_away['Quadrante_Away'] == quadr) &
+                    (league_away['Asian_Line_Bin'] == line_bin)
+                )
+                sub_l = league_away[mask_l]
+                if not sub_l.empty:
+                    cover = float(sub_l['CoverRate'].iloc[0])
+                    n = int(sub_l['N'].iloc[0])
+                    if n >= min_n:
+                        return cover, n, "League"
+
+            if global_away.empty:
+                return np.nan, np.nan, ""
+
+            mask_g = (
+                (global_away['Quadrante_Away'] == quadr) &
+                (global_away['Asian_Line_Bin'] == line_bin)
+            )
+            sub_g = global_away[mask_g]
+            if sub_g.empty:
+                return np.nan, np.nan, ""
+            cover = float(sub_g['CoverRate'].iloc[0])
+            n = int(sub_g['N'].iloc[0])
+            return cover, n, "Global"
+
+    df[['HcapZone_Score', 'HcapZone_N', 'HcapZone_Source']] = df.apply(
+        lambda r: pd.Series(lookup_row(r)), axis=1
+    )
+
+    return df
+
+
+
+
 @st.cache_data(ttl=7*24*3600)
 def calcular_parametros_liga(history: pd.DataFrame) -> pd.DataFrame:
     """
@@ -1189,6 +1395,11 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
     # Mantido como no seu código original (podemos alinhar depois)
     return 0
 
+
+# ---------------- HCAPZONE TABLES (GLOBAL + LIGA) ----------------
+hcap_tables = build_hcapzone_tables(history)
+
+
 # ---------------- TREINAMENTO ML DUAL COM TODAS AS FEATURES ----------------
 def treinar_modelo_quadrantes_dual_completo(history, games_today):
     """
@@ -1371,6 +1582,20 @@ def estilo_tabela_quadrantes_dual(df):
         elif 'SUPERAVALIADO' in str(valor): return 'font-weight: bold'
         else: return ''
 
+    def cor_hcapzone(val):
+        if pd.isna(val):
+            return 'background-color: #f0f0f0; color: #666;'
+        try:
+            v = float(val) * 100  # vira %
+        except:
+            return ''
+        if v >= 70:
+            return 'background-color: #c6efce; color: #006100;'  # verde
+        elif v >= 55:
+            return 'background-color: #ffeb9c; color: #9c5700;'  # amarelo
+        else:
+            return 'background-color: #ffc7ce; color: #9c0006;'  # vermelho
+
     colunas_para_estilo = []
     if 'Classificacao_Valor_Home' in df.columns:
         colunas_para_estilo.append('Classificacao_Valor_Home')
@@ -1383,6 +1608,7 @@ def estilo_tabela_quadrantes_dual(df):
     if colunas_para_estilo:
         styler = styler.applymap(cor_classificacao, subset=colunas_para_estilo)
 
+    # Gradiente nos scores ML
     if 'Quadrante_ML_Score_Home' in df.columns:
         styler = styler.background_gradient(subset=['Quadrante_ML_Score_Home'], cmap='RdYlGn')
     if 'Quadrante_ML_Score_Away' in df.columns:
@@ -1390,7 +1616,12 @@ def estilo_tabela_quadrantes_dual(df):
     if 'Quadrante_ML_Score_Main' in df.columns:
         styler = styler.background_gradient(subset=['Quadrante_ML_Score_Main'], cmap='RdYlGn')
 
+    # HcapZone_Score com as faixas 70 / 55
+    if 'HcapZone_Score' in df.columns:
+        styler = styler.applymap(cor_hcapzone, subset=['HcapZone_Score'])
+
     return styler
+
 
 # ---------------- EXECUÇÃO PRINCIPAL ----------------
 if not history.empty:
@@ -1407,6 +1638,12 @@ else:
     games_today['Quadrante_ML_Score_Main'] = 0.5
     games_today['ML_Side'] = 'HOME'
 
+
+use_league_hcap = st.checkbox(
+    "🎯 Usar estatísticas HcapZone específicas da liga (fallback global se N baixo)",
+    value=True
+)
+
 # ---------------- EXIBIÇÃO DOS RESULTADOS DUAL ----------------
 st.markdown("## 🏆 Melhores Confrontos por Quadrantes ML (Home & Away)")
 
@@ -1420,6 +1657,15 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     )
 
     ranking_quadrantes = adicionar_indicadores_explicativos_dual(ranking_quadrantes)
+
+        # Após adicionar indicadores explicativos
+        ranking_quadrantes = attach_hcapzone_score(
+            ranking_quadrantes,
+            hcap_tables,
+            use_league=use_league_hcap,
+            min_n=10  # N mínimo por célula
+        )
+
 
     def update_real_time_data(df):
         df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
@@ -1475,7 +1721,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
     colunas_possiveis = [
         'League', 'Time', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'ML_Side', 'Recomendacao',
-        'Quadrante_Home_Label', 'Quadrante_Away_Label',
+        'Quadrante_Home_Label', 'Quadrante_Away_Label', 'HcapZone_Score', 'HcapZone_N', 'HcapZone_Source',
         'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 'Quadrante_ML_Score_Main', 
         'Classificacao_Valor_Home', 'Classificacao_Valor_Away',
         'WG_Diff', 'WG_Def_Diff', 'WG_Balance_Diff', 'WG_Net_Diff', 'WG_Confidence',
@@ -1491,6 +1737,8 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             'Goals_H_Today': '{:.0f}',
             'Goals_A_Today': '{:.0f}',
             'Asian_Line_Decimal': '{:.2f}',
+            'HcapZone_Score': '{:.1%}',
+            'HcapZone_N': '{:.0f}',
             'Home_Red': '{:.0f}',
             'Away_Red': '{:.0f}',
             'Profit_Quadrante': '{:.2f}',
