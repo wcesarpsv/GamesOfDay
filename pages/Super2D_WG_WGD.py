@@ -1658,13 +1658,13 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
     ranking_quadrantes = adicionar_indicadores_explicativos_dual(ranking_quadrantes)
 
-        # Após adicionar indicadores explicativos
-        ranking_quadrantes = attach_hcapzone_score(
-            ranking_quadrantes,
-            hcap_tables,
-            use_league=use_league_hcap,
-            min_n=10  # N mínimo por célula
-        )
+    # Após adicionar indicadores explicativos
+    ranking_quadrantes = attach_hcapzone_score(
+        ranking_quadrantes,
+        hcap_tables,
+        use_league=use_league_hcap,
+        min_n=10  # N mínimo por célula
+    )
 
 
     def update_real_time_data(df):
