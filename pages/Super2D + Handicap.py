@@ -200,7 +200,7 @@ def calculate_handicap_profit_3d(row):
     if row['Quadrante_Correct'] is None:
         return 0
 
-    odd = row['Odd_H'] if 'Home' in row['Recommendation_Text'] else row['Odd_A']
+    odd = row['Odd_H'] if 'Home' in row['Recommendation'] else row['Odd_A']
     result = row['Handicap_Result']
 
     if result == 'HOME_COVERED' or result == 'AWAY_COVERED':
@@ -225,12 +225,12 @@ def update_real_time_data(df):
 def check_1x2_correct(row):
     if row['Result_1x2'] is None:
         return None
-    if row['Recommendation_Text'] is None:
+    if row['Recommendation'] is None:
         return None
 
     recommended_side = (
-        'HOME' if 'Home' in row['Recommendation_Text'] else
-        'AWAY' if 'Away' in row['Recommendation_Text'] else None
+        'HOME' if 'Home' in row['Recommendation'] else
+        'AWAY' if 'Away' in row['Recommendation'] else None
     )
 
     if recommended_side == 'HOME':
@@ -243,7 +243,7 @@ def calculate_profit_1x2(row):
     if row['Correct_1x2'] is None:
         return 0
 
-    odd = row['Odd_H'] if 'Home' in row['Recommendation_Text'] else row['Odd_A']
+    odd = row['Odd_H'] if 'Home' in row['Recommendation'] else row['Odd_A']
     return odd - 1 if row['Correct_1x2'] else -1
 
 
