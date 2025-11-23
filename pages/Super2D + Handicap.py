@@ -1749,7 +1749,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
 
     def update_real_time_data(df):
-        df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
+        df['Handicap_Result'] = df.apply(determine_handicap_result_3d, axis=1)
         df['Quadrante_Correct'] = df.apply(
             lambda r: check_handicap_recommendation_correct_3d(r['Recomendacao'], r['Handicap_Result']), axis=1
         )
