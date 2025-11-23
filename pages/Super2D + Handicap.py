@@ -208,7 +208,7 @@ def calculate_handicap_profit_3d(row):
         return -1
 
 
-def update_real_time_data_3d(df):
+def update_real_time_data(df):
     df['Handicap_Result'] = df.apply(determine_handicap_result_3d, axis=1)
     df['Quadrante_Correct'] = df.apply(check_handicap_recommendation_correct_3d, axis=1)
     df['Profit_Quadrante'] = df.apply(calculate_handicap_profit_3d, axis=1)
@@ -1748,15 +1748,6 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     )
 
 
-    def update_real_time_data(df):
-        df['Handicap_Result'] = df.apply(determine_handicap_result_3d, axis=1)
-        df['Quadrante_Correct'] = df.apply(
-            lambda r: check_handicap_recommendation_correct_3d(r['Recomendacao'], r['Handicap_Result']), axis=1
-        )
-        df['Profit_Quadrante'] = df.apply(
-            lambda r: calculate_handicap_profit_3d(r['Recomendacao'], r['Handicap_Result'], r, r.get('Asian_Line_Decimal', np.nan)), axis=1
-        )
-        return df
 
     ranking_quadrantes = update_real_time_data(ranking_quadrantes)
 
