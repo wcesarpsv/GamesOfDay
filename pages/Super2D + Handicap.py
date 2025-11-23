@@ -200,7 +200,7 @@ def calculate_handicap_profit_3d(row):
     if row['Quadrante_Correct'] is None:
         return 0
 
-    odd = row['Odd_H'] if 'Home' in row['Recommendation'] else row['Odd_A']
+    odd = row['Odd_H'] if 'Home' in row['Recomendacao'] else row['Odd_A']
     result = row['Handicap_Result']
 
     if result == 'HOME_COVERED' or result == 'AWAY_COVERED':
