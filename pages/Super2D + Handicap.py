@@ -169,24 +169,31 @@ def determine_handicap_result_3d(row):
 
 
 def check_handicap_recommendation_correct_3d(row):
-    if row['Handicap_Result'] is None:
-        return None
-    if row['Recommendation_Text'] is None:
+    if row.get('Handicap_Result') is None:
         return None
 
-    recommended_side = (
-        'HOME' if 'Home' in row['Recommendation_Text'] else
-        'AWAY' if 'Away' in row['Recommendation_Text'] else None
-    )
-    if recommended_side is None:
+    rec = str(row.get('Recomendacao', '')).upper()
+    if not rec:
         return None
 
+    # Determina se a recomendação é HOME ou AWAY
+    is_home_bet = any(k in rec for k in ['HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'H:'])
+    is_away_bet = any(k in rec for k in ['AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'A:'])
+
+    if not is_home_bet and not is_away_bet:
+        return None
+
+    bet_side = 'HOME' if is_home_bet else 'AWAY'
+
+    # Resultado do handicap já calculado corretamente
     result = row['Handicap_Result']
 
-    if recommended_side == 'HOME':
-        return result in ['HOME_COVERED', 'HALF_WIN', 'PUSH']
+    # Se a recomendação acerta o handicap
+    if bet_side in result:
+        return 1  # acerto
     else:
-        return result in ['AWAY_COVERED', 'HALF_WIN', 'PUSH']
+        return 0  # erro
+
 
 
 def calculate_handicap_profit_3d(row):
