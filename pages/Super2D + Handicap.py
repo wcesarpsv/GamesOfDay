@@ -654,15 +654,17 @@ def attach_hcapzone_score(df: pd.DataFrame,
     Para cada jogo do dia (df), calcula o HcapZone_Score:
 
     - Usa o lado sugerido pelo modelo (ML_Side: HOME/AWAY)
-    - Busca CoverRate e N na tabela GLOBAL ou por LIGA
+    - Usa AH_ML_Side (handicap da aposta, já invertido se AWAY)
+    - Busca cover rate na tabela por LIGA ou GLOBAL
     - Fallback automático para GLOBAL se N da liga < min_n
+    - Apenas dentro do range estatístico [-1.50, +1.50]
     """
 
     df = df.copy()
 
-    df['HcapZone_Score'] = np.nan   # valor 0–1 (para %)
-    df['HcapZone_N'] = np.nan       # tamanho da amostra
-    df['HcapZone_Source'] = ""      # 'League', 'Global' ou ''
+    df['HcapZone_Score'] = np.nan   # valor 0–1 (percentual)
+    df['HcapZone_N'] = np.nan       # tamanho da amostra usada
+    df['HcapZone_Source'] = ""      # 'League', 'Global' ou em branco
 
     global_home = hcap_tables.get("global_home", pd.DataFrame())
     global_away = hcap_tables.get("global_away", pd.DataFrame())
@@ -672,84 +674,74 @@ def attach_hcapzone_score(df: pd.DataFrame,
     def lookup_row(row):
         side = row.get('ML_Side', 'HOME')
         league = row.get('League', None)
-        line = row.get('Asian_Line_Decimal', np.nan)
+
+        # Agora sempre usa o handicap na perspectiva do lado da aposta
+        line = row.get('AH_ML_Side', np.nan)
 
         if pd.isna(line):
             return np.nan, np.nan, ""
 
-        line_bin = round(line * 4) / 4  # quarto mais próximo
+        line = float(line)
 
+        # Cortar fora do range estatístico definido
+        if line < -1.5 or line > 1.5:
+            return np.nan, np.nan, ""
+
+        # Binning para quartas de linha: -1.50, -1.25, -1.00, ..., +1.50
+        line_bin = round(line * 4) / 4
+
+        # Quadrante coerente com o lado da aposta
+        quadr = row.get(f'Quadrante_{side.capitalize()}', np.nan)
+        if pd.isna(quadr):
+            return np.nan, np.nan, ""
+
+        # Seleção das tabelas conforme o lado
         if side == 'HOME':
-            quadr = row.get('Quadrante_Home', np.nan)
-            if pd.isna(quadr):
-                return np.nan, np.nan, ""
+            t_league = league_home
+            t_global = global_home
+            quadr_col = 'Quadrante_Home'
+        else:
+            t_league = league_away
+            t_global = global_away
+            quadr_col = f'Quadrante_{side.capitalize()}'
 
-            # tenta por liga
-            if use_league and league is not None and league != "" and not league_home.empty:
-                mask_l = (
-                    (league_home['League'] == league) &
-                    (league_home['Quadrante_Home'] == quadr) &
-                    (league_home['Asian_Line_Bin'] == line_bin)
-                )
-                sub_l = league_home[mask_l]
-                if not sub_l.empty:
-                    cover = float(sub_l['CoverRate'].iloc[0])
-                    n = int(sub_l['N'].iloc[0])
-                    if n >= min_n:
-                        return cover, n, "League"
-
-            # fallback GLOBAL
-            if global_home.empty:
-                return np.nan, np.nan, ""
-
-            mask_g = (
-                (global_home['Quadrante_Home'] == quadr) &
-                (global_home['Asian_Line_Bin'] == line_bin)
+        # 🥇 1º Tentativa → LIGA
+        if (
+            use_league and league is not None and league != "" and
+            not t_league.empty
+        ):
+            mask_l = (
+                (t_league['League'] == league) &
+                (t_league[quadr_col] == quadr) &
+                (t_league['Asian_Line_Bin'] == line_bin)
             )
-            sub_g = global_home[mask_g]
-            if sub_g.empty:
-                return np.nan, np.nan, ""
-            cover = float(sub_g['CoverRate'].iloc[0])
-            n = int(sub_g['N'].iloc[0])
-            return cover, n, "Global"
+            sub_l = t_league[mask_l]
+            if not sub_l.empty:
+                cover = float(sub_l['CoverRate'].iloc[0])
+                n = int(sub_l['N'].iloc[0])
+                if n >= min_n:
+                    return cover, n, "League"
 
-        else:  # AWAY
-            quadr = row.get('Quadrante_Away', np.nan)
-            if pd.isna(quadr):
-                return np.nan, np.nan, ""
-
-            if use_league and league is not None and league != "" and not league_away.empty:
-                mask_l = (
-                    (league_away['League'] == league) &
-                    (league_away['Quadrante_Away'] == quadr) &
-                    (league_away['Asian_Line_Bin'] == line_bin)
-                )
-                sub_l = league_away[mask_l]
-                if not sub_l.empty:
-                    cover = float(sub_l['CoverRate'].iloc[0])
-                    n = int(sub_l['N'].iloc[0])
-                    if n >= min_n:
-                        return cover, n, "League"
-
-            if global_away.empty:
-                return np.nan, np.nan, ""
-
+        # 🥈 2º Tentativa → GLOBAL
+        if not t_global.empty:
             mask_g = (
-                (global_away['Quadrante_Away'] == quadr) &
-                (global_away['Asian_Line_Bin'] == line_bin)
+                (t_global[quadr_col] == quadr) &
+                (t_global['Asian_Line_Bin'] == line_bin)
             )
-            sub_g = global_away[mask_g]
-            if sub_g.empty:
-                return np.nan, np.nan, ""
-            cover = float(sub_g['CoverRate'].iloc[0])
-            n = int(sub_g['N'].iloc[0])
-            return cover, n, "Global"
+            sub_g = t_global[mask_g]
+            if not sub_g.empty:
+                cover = float(sub_g['CoverRate'].iloc[0])
+                n = int(sub_g['N'].iloc[0])
+                return cover, n, "Global"
+
+        return np.nan, np.nan, ""
 
     df[['HcapZone_Score', 'HcapZone_N', 'HcapZone_Source']] = df.apply(
         lambda r: pd.Series(lookup_row(r)), axis=1
     )
 
     return df
+
 
 
 
