@@ -1688,9 +1688,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     ranking_quadrantes = attach_hcapzone_score(
         ranking_quadrantes,
         hcap_tables,
-        use_league=use_league_hcap,
-        min_n=10,          # mínimo de jogos
-        max_abs_line=1.5   # range estatístico
+        use_league=use_league_hcap
     )
 
 
