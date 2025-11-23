@@ -701,11 +701,11 @@ def attach_hcapzone_score(df: pd.DataFrame,
         if side == 'HOME':
             t_league = league_home
             t_global = global_home
-            quadr_col = 'Quadrante_Home'
+            quadr_col = 'Quadrante'
         else:
             t_league = league_away
             t_global = global_away
-            quadr_col = f'Quadrante_{side.capitalize()}'
+            quadr_col = 'Quadrante'
 
         # 🥇 1º Tentativa → LIGA
         if (
