@@ -646,6 +646,8 @@ def build_hcapzone_tables(history: pd.DataFrame,
 
 
 
+
+
 def attach_hcapzone_score(df: pd.DataFrame,
                           hcap_tables: dict,
                           use_league: bool = True,
@@ -1676,6 +1678,17 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     )
 
     ranking_quadrantes = adicionar_indicadores_explicativos_dual(ranking_quadrantes)
+
+    # Calcular AH_ML_Side (handicap da aposta)
+    if 'Asian_Line_Decimal' in ranking_quadrantes.columns:
+        ranking_quadrantes['AH_ML_Side'] = np.where(
+            ranking_quadrantes['ML_Side'] == 'HOME',
+            ranking_quadrantes['Asian_Line_Decimal'],
+            -ranking_quadrantes['Asian_Line_Decimal']
+        )
+    else:
+        ranking_quadrantes['AH_ML_Side'] = np.nan
+
 
     # Após adicionar indicadores explicativos
     # Checkbox para escolher Liga x Global
