@@ -110,26 +110,30 @@ def convert_asian_line_to_decimal(line_str):
 
 def calc_handicap_result(margin: float, handicap: float) -> float:
     """
-    Cálculo universal do resultado do Handicap Asiático.
+    Cálculo CORRIGIDO do resultado do Handicap Asiático.
     Sempre na perspectiva do time da casa.
+    
+    handicap > 0: Home recebendo vantagem
+    handicap < 0: Home dando vantagem
     
     Retorno:
         1   -> Vitória do handicap (cobriu totalmente)
         0.5 -> Push (empate no handicap -> aposta devolvida)
         0   -> Derrota do handicap
     """
-
+    # Margem ajustada pelo handicap
+    adjusted_margin = margin + handicap
+    
     # Vitória
-    if margin > handicap:
+    if adjusted_margin > 0:
         return 1.0
-
+    
     # Push
-    if margin == handicap:
+    if adjusted_margin == 0:
         return 0.5
-
+    
     # Derrota
     return 0.0
-
 
 
 # ==========================================================
@@ -1986,6 +1990,7 @@ if not ranking_quadrantes.empty and 'HcapZone_Source' in ranking_quadrantes.colu
             (df_audit['Quadrante_Away'] == qa) &
             (df_audit['Asian_Line_Bin'] == line_bin)
         ].copy()
+        # Na função debug_hcapzone_lookup_v2 ou similar:
         df_audit['CoverRate_Used'] = df_audit.apply(
             lambda r: 1 if calc_handicap_result(r['Margin'], r['Asian_Line_Decimal']) > 0.5 else 0,
             axis=1
