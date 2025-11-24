@@ -1762,7 +1762,10 @@ hcap_tables = build_hcapzone_tables_confronto(history) if not history.empty else
 st.markdown("## 🏆 Melhores Confrontos por Quadrantes ML (Home & Away)")
 
 if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
+    
     ranking_quadrantes = games_today.copy()
+
+    # Labels dos Quadrantes
     ranking_quadrantes['Quadrante_Home_Label'] = ranking_quadrantes['Quadrante_Home'].map(
         lambda x: QUADRANTES_8.get(x, {}).get('nome', 'Neutro') if x != 0 else 'Neutro'
     )
@@ -1770,42 +1773,25 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         lambda x: QUADRANTES_8.get(x, {}).get('nome', 'Neutro') if x != 0 else 'Neutro'
     )
 
+    # Adiciona recomendações (Modelo Confia / Value, etc)
     ranking_quadrantes = adicionar_indicadores_explicativos_dual(ranking_quadrantes)
+
+    # Ajustar o handicap na direção do lado previsto pelo modelo
     ranking_quadrantes['AH_ML_Side'] = ranking_quadrantes.apply(compute_ah_side, axis=1)
+
+    # Score HcapZone por confronto (quadrante × quadrante)
     ranking_quadrantes = attach_hcapzone_score_to_games(
         ranking_quadrantes,
         hcap_tables
     )
 
-    # Calcular AH_ML_Side (handicap da aposta)
-    if 'Asian_Line_Decimal' in ranking_quadrantes.columns:
-        ranking_quadrantes['AH_ML_Side'] = np.where(
-            ranking_quadrantes['ML_Side'] == 'HOME',
-            ranking_quadrantes['Asian_Line_Decimal'],
-            -ranking_quadrantes['Asian_Line_Decimal']
-        )
-    else:
-        ranking_quadrantes['AH_ML_Side'] = np.nan
-
-    # Checkbox para escolher Liga x Global
-    use_league_hcap = st.checkbox(
-        "🎯 Usar estatísticas HcapZone específicas da liga (fallback global se N baixo)",
-        value=True
-    )
-    
-    # Anexar HcapZone_Score com base no confronto
-    ranking_quadrantes = attach_hcapzone_score_confronto(
-        ranking_quadrantes,
-        hcap_tables,
-        use_league=use_league_hcap
-    )
-
+    # LIVE UPDATE dos jogos que já possuem placar
     def update_real_time_data(df: pd.DataFrame) -> pd.DataFrame:
-        """Atualiza resultado, acerto e lucro (placeholder) em tempo real."""
         df = df.copy()
         df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
         df['Quadrante_Correct'] = df.apply(
-            lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']), axis=1
+            lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']),
+            axis=1
         )
         df['Profit_Quadrante'] = df.apply(
             lambda r: calculate_handicap_profit(
@@ -1820,80 +1806,70 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
     ranking_quadrantes = update_real_time_data(ranking_quadrantes)
 
+    # LIVE SCORE RESUMO
     def generate_live_summary(df: pd.DataFrame) -> dict:
-        """Gera um pequeno painel resumo das apostas e resultados já finalizados."""
-        finished_games = df.dropna(subset=['Handicap_Result'])
+        finished = df.dropna(subset=['Handicap_Result'])
 
-        if finished_games.empty:
-            return {
-                "Total Jogos": len(df),
-                "Jogos Finalizados": 0,
-                "Apostas Quadrante": 0,
-                "Acertos Quadrante": 0,
-                "Winrate Quadrante": "0%",
-                "Profit Quadrante": 0,
-                "ROI Quadrante": "0%"
-            }
+        if finished.empty:
+            return {"Total Jogos": len(df),"Jogos Finalizados": 0,
+                    "Apostas Quadrante": 0,"Acertos Quadrante": 0,
+                    "Winrate Quadrante": "0%","Profit Quadrante": 0,
+                    "ROI Quadrante": "0%"}
 
-        quadrante_bets = finished_games[finished_games['Quadrante_Correct'].notna()]
-        total_bets = len(quadrante_bets)
-        correct_bets = quadrante_bets['Quadrante_Correct'].sum() if not quadrante_bets.empty else 0
-        winrate = (correct_bets / total_bets) * 100 if total_bets > 0 else 0
-        total_profit = quadrante_bets['Profit_Quadrante'].sum()
-        roi = (total_profit / total_bets) * 100 if total_bets > 0 else 0
-
+        bets = finished[finished['Quadrante_Correct'].notna()]
+        total_bets = len(bets)
+        correct_bets = bets['Quadrante_Correct'].sum() if total_bets > 0 else 0
+        winrate = (correct_bets / total_bets) * 100 if total_bets else 0
+        profit = bets['Profit_Quadrante'].sum()
+        roi = (profit / total_bets) * 100 if total_bets else 0
+        
         return {
             "Total Jogos": len(df),
-            "Jogos Finalizados": len(finished_games),
+            "Jogos Finalizados": len(finished),
             "Apostas Quadrante": total_bets,
             "Acertos Quadrante": int(correct_bets),
             "Winrate Quadrante": f"{winrate:.1f}%",
-            "Profit Quadrante": f"{total_profit:.2f}u",
+            "Profit Quadrante": f"{profit:.2f}u",
             "ROI Quadrante": f"{roi:.1f}%"
         }
 
     st.markdown("## 📡 Live Score Monitor")
-    live_summary = generate_live_summary(ranking_quadrantes)
-    st.json(live_summary)
+    summary = generate_live_summary(ranking_quadrantes)
+    st.json(summary)
 
-    if 'Quadrante_ML_Score_Main' in ranking_quadrantes.columns:
-        ranking_quadrantes = ranking_quadrantes.sort_values('Quadrante_ML_Score_Main', ascending=False)
-    else:
-        ranking_quadrantes = ranking_quadrantes.sort_values('Quadrante_ML_Score_Home', ascending=False)
+    # Ordenar os melhores jogos de hoje
+    ranking_quadrantes = ranking_quadrantes.sort_values(
+        'Quadrante_ML_Score_Main', ascending=False
+    )
 
-    colunas_possiveis = [
-        'League', 'Time', 'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'ML_Side', 'Recomendacao',
-        'Quadrante_Home_Label', 'Quadrante_Away_Label','AH_ML_Side', 'HcapZone_Score', 'HcapZone_N', 'HcapZone_Source',
-        'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 'Quadrante_ML_Score_Main', 
-        'Classificacao_Valor_Home', 'Classificacao_Valor_Away',
-        'WG_Diff', 'WG_Def_Diff', 'WG_Balance_Diff', 'WG_Net_Diff', 'WG_Confidence',
-        'Handicap_Result',
-        'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
+    # Colunas de exibição
+    visible_cols = [
+        'League','Home','Away',
+        'Goals_H_Today','Goals_A_Today',
+        'ML_Side','Recomendacao',
+        'Quadrante_Home_Label','Quadrante_Away_Label',
+        'AH_ML_Side','HcapZone_Score','HcapZone_N','HcapZone_Source',
+        'Quadrante_ML_Score_Home','Quadrante_ML_Score_Away',
+        'Quadrante_ML_Score_Main',
+        'WG_Diff','WG_Def_Diff','WG_Balance_Diff','WG_Net_Diff','WG_Confidence',
+        'Handicap_Result','Quadrante_Correct','Profit_Quadrante'
     ]
 
-    cols_finais = [c for c in colunas_possiveis if c in ranking_quadrantes.columns]
+    visible_cols = [c for c in visible_cols if c in ranking_quadrantes.columns]
 
     st.dataframe(
-        estilo_tabela_quadrantes_dual(ranking_quadrantes[cols_finais])
+        estilo_tabela_quadrantes_dual(ranking_quadrantes[visible_cols])
         .format({
-            'Goals_H_Today': '{:.0f}',
-            'Goals_A_Today': '{:.0f}',
-            'Asian_Line_Decimal': '{:.2f}',
-            'HcapZone_Score': '{:.1%}',
-            'HcapZone_N': '{:.0f}',
-            'AH_ML_Side': '{:+.2f}',
-            'Home_Red': '{:.0f}',
-            'Away_Red': '{:.0f}',
-            'Profit_Quadrante': '{:.2f}',
-            'Quadrante_ML_Score_Home': '{:.1%}',
-            'Quadrante_ML_Score_Away': '{:.1%}',
-            'Quadrante_ML_Score_Main': '{:.1%}',
-            'WG_Diff': '{:.3f}',
-            'WG_Def_Diff': '{:.3f}',
-            'WG_Balance_Diff': '{:.3f}',
-            'WG_Net_Diff': '{:.3f}',
-            'WG_Confidence': '{:.0f}'
-        }, na_rep="-"),
+            'Goals_H_Today':'{:.0f}','Goals_A_Today':'{:.0f}',
+            'HcapZone_Score':'{:.1%}','HcapZone_N':'{:.0f}',
+            'AH_ML_Side':'{:+.2f}',
+            'Quadrante_ML_Score_Home':'{:.1%}',
+            'Quadrante_ML_Score_Away':'{:.1%}',
+            'Quadrante_ML_Score_Main':'{:.1%}',
+            'WG_Diff':'{:.3f}','WG_Def_Diff':'{:.3f}',
+            'WG_Balance_Diff':'{:.3f}','WG_Net_Diff':'{:.3f}',
+            'WG_Confidence':'{:.0f}','Profit_Quadrante':'{:.2f}',
+        }, na_rep='-'),
         use_container_width=True
     )
 
