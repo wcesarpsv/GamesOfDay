@@ -1735,12 +1735,6 @@ hcap_tables = build_hcapzone_tables_confronto(history) if not history.empty else
     "global_away": pd.DataFrame(),
 }
 
-# Aplicar HcapZone (global ou liga)
-ranking_quadrantes = attach_hcapzone_score_to_games(
-    ranking_quadrantes,
-    hcap_tables
-)
-
 
 # ==========================================================
 # 1️⃣8️⃣ EXIBIÇÃO DOS RESULTADOS DUAL + LIVE SCORE
@@ -1757,6 +1751,10 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     )
 
     ranking_quadrantes = adicionar_indicadores_explicativos_dual(ranking_quadrantes)
+    ranking_quadrantes = attach_hcapzone_score_to_games(
+        ranking_quadrantes,
+        hcap_tables
+    )
 
     # Calcular AH_ML_Side (handicap da aposta)
     if 'Asian_Line_Decimal' in ranking_quadrantes.columns:
