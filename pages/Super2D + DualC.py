@@ -1930,6 +1930,10 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     else:
         st.info("Nenhum confronto atingiu nível de convergência 🥇 Gold hoje.")
 
+st.subheader("DEBUG TEMP – Colunas nas tabelas HcapZone")
+for key, df in hcap_tables.items():
+    st.write(f"📌 {key} — colunas disponíveis:")
+    st.write(list(df.columns))
 
 
 # 1️⃣9️⃣ Auditoria do HcapZone — Ver jogos usados no histórico
