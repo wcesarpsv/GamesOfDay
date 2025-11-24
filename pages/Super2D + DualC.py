@@ -790,12 +790,26 @@ games_today['Quadrante_Away'] = games_today.apply(
 )
 
 if not history.empty:
+    # Garantir que use valores preenchidos e limpos
     history['Quadrante_Home'] = history.apply(
-        lambda x: classificar_quadrante(x.get('Aggression_Home'), x.get('HandScore_Home')), axis=1
+        lambda x: classificar_quadrante(
+            float(x.get('Aggression_Home', np.nan)),
+            float(x.get('HandScore_Home', np.nan))
+        ), axis=1
     )
     history['Quadrante_Away'] = history.apply(
-        lambda x: classificar_quadrante(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
+        lambda x: classificar_quadrante(
+            float(x.get('Aggression_Away', np.nan)),
+            float(x.get('HandScore_Away', np.nan))
+        ), axis=1
     )
+
+    # Remover jogos sem quadrante válido
+    history = history[
+        (history['Quadrante_Home'] != 0) |
+        (history['Quadrante_Away'] != 0)
+    ].copy()
+
 
 
 # ==========================================================
