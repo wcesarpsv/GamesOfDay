@@ -656,17 +656,17 @@ def attach_hcapzone_score(df: pd.DataFrame,
     Para cada jogo do dia (df), calcula o HcapZone_Score:
 
     - Usa o lado sugerido pelo modelo (ML_Side: HOME/AWAY)
-    - Usa AH_ML_Side (handicap da aposta, já invertido se AWAY)
-    - Busca cover rate na tabela por LIGA ou GLOBAL
-    - Fallback automático para GLOBAL se N da liga < min_n
-    - Apenas dentro do range estatístico [-1.50, +1.50]
+    - Usa AH_ML_Side (handicap na perspectiva da aposta)
+    - HOME  -> consulta Cover_Home em league_home/global_home
+    - AWAY  -> consulta Cover_Away em league_away/global_away
+    - Quadrante sempre do lado correto (Quadrante_Home ou Quadrante_Away)
     """
 
     df = df.copy()
 
-    df['HcapZone_Score'] = np.nan   # valor 0–1 (percentual)
-    df['HcapZone_N'] = np.nan       # tamanho da amostra usada
-    df['HcapZone_Source'] = ""      # 'League', 'Global' ou em branco
+    df['HcapZone_Score'] = np.nan
+    df['HcapZone_N'] = np.nan
+    df['HcapZone_Source'] = ""
 
     global_home = hcap_tables.get("global_home", pd.DataFrame())
     global_away = hcap_tables.get("global_away", pd.DataFrame())
@@ -674,47 +674,43 @@ def attach_hcapzone_score(df: pd.DataFrame,
     league_away = hcap_tables.get("league_away", pd.DataFrame())
 
     def lookup_row(row):
-        side = row.get('ML_Side', 'HOME')
+        side = row.get('ML_Side', 'HOME')   # 'HOME' ou 'AWAY'
         league = row.get('League', None)
 
-        # Agora sempre usa o handicap na perspectiva do lado da aposta
+        # Handicap da aposta já na perspectiva do lado (HOME: +x, AWAY: -x)
         line = row.get('AH_ML_Side', np.nan)
-
         if pd.isna(line):
             return np.nan, np.nan, ""
 
         line = float(line)
 
-        # Cortar fora do range estatístico definido
+        # Range estatístico onde temos dados confiáveis
         if line < -1.5 or line > 1.5:
             return np.nan, np.nan, ""
 
-        # Binning para quartas de linha: -1.50, -1.25, -1.00, ..., +1.50
-        line_bin = round(line * 4) / 4
+        line_bin = round(line * 4) / 4  # -1.50, -1.25, ..., +1.50
 
-        # Quadrante coerente com o lado da aposta
-        quadr = row.get(f'Quadrante_{side.capitalize()}', np.nan)
+        # Quadrante do lado da aposta
+        if side == 'HOME':
+            quadr = row.get('Quadrante_Home', np.nan)
+            t_league = league_home
+            t_global = global_home
+        else:
+            quadr = row.get('Quadrante_Away', np.nan)
+            t_league = league_away
+            t_global = global_away
+
         if pd.isna(quadr):
             return np.nan, np.nan, ""
 
-        # Seleção das tabelas conforme o lado
-        if side == 'HOME':
-            t_league = league_home
-            t_global = global_home
-            quadr_col = 'Quadrante'
-        else:
-            t_league = league_away
-            t_global = global_away
-            quadr_col = 'Quadrante'
-
-        # 🥇 1º Tentativa → LIGA
+        # 1) Tentar tabela por liga
         if (
             use_league and league is not None and league != "" and
             not t_league.empty
         ):
             mask_l = (
                 (t_league['League'] == league) &
-                (t_league[quadr_col] == quadr) &
+                (t_league['Quadrante'] == quadr) &
                 (t_league['Asian_Line_Bin'] == line_bin)
             )
             sub_l = t_league[mask_l]
@@ -724,10 +720,10 @@ def attach_hcapzone_score(df: pd.DataFrame,
                 if n >= min_n:
                     return cover, n, "League"
 
-        # 🥈 2º Tentativa → GLOBAL
+        # 2) Fallback: tabela global (mesmo lado, mesmo quadrante, mesma linha)
         if not t_global.empty:
             mask_g = (
-                (t_global[quadr_col] == quadr) &
+                (t_global['Quadrante'] == quadr) &
                 (t_global['Asian_Line_Bin'] == line_bin)
             )
             sub_g = t_global[mask_g]
@@ -739,10 +735,12 @@ def attach_hcapzone_score(df: pd.DataFrame,
         return np.nan, np.nan, ""
 
     df[['HcapZone_Score', 'HcapZone_N', 'HcapZone_Source']] = df.apply(
-        lambda r: pd.Series(lookup_row(r)), axis=1
+        lambda r: pd.Series(lookup_row(r)),
+        axis=1
     )
 
     return df
+
 
 
 
@@ -931,6 +929,18 @@ if not history.empty:
         lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]) > 0.5 else 0, 
         axis=1
     )
+
+
+# Linha do visitante na perspectiva AWAY
+history["Asian_Line_Away"] = -history["Asian_Line_Decimal"]
+
+# Target correto para o lado AWAY (visitante cobre o seu handicap)
+history["Target_AH_Away"] = history.apply(
+    lambda r: 1 if calc_handicap_result(-r["Margin"], r["Asian_Line_Away"]) > 0.5 else 0,
+    axis=1
+)
+
+
 
 # ---------------- SISTEMA DE 8 QUADRANTES ----------------
 st.markdown("## 🎯 Sistema de 8 Quadrantes")
@@ -1460,7 +1470,7 @@ def treinar_modelo_quadrantes_dual_completo(history, games_today):
     X = X.loc[:, ~X.columns.duplicated()]
 
     y_home = history['Target_AH_Home']
-    y_away = 1 - y_home
+    y_away = history['Target_AH_Away']
 
     if y_home.nunique() < 2:
         st.warning("⚠️ Dados de target insuficientes para treinamento")
