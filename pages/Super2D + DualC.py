@@ -1403,30 +1403,71 @@ def debug_hcapzone_lookup(row, history, min_n=5):
 
 
 
-def attach_hcapzone_score_confronto(df: pd.DataFrame,
-                                   hcap_tables: dict,
-                                   use_league: bool = True,
-                                   min_n: int = 10) -> pd.DataFrame:
+def attach_hcapzone_score_confronto(history: pd.DataFrame) -> dict:
     """
-    Anexa HcapZone_Score ao df com base no CONFRONTO:
-
-    - Se ML_Side == HOME:
-        usa (Quadrante_Home, Quadrante_Away, AH_ML_Side)
-        consulta league_home / global_home
-
-    - Se ML_Side == AWAY:
-        usa (Quadrante_Away, Quadrante_Home, AH_ML_Side)
-        consulta league_away / global_away
+    Constrói tabelas de WinRate (CoverRate) para cada combinação:
+    - Partido de referência: HOME
+    - Categorias: Global e League
+    - Chave: (Quadrante_Home, Quadrante_Away, AsianLine_Bin)
     """
-    df = df.copy()
-    df['HcapZone_Score'] = np.nan
-    df['HcapZone_N'] = np.nan
-    df['HcapZone_Source'] = ""
 
-    global_home = hcap_tables["global_home"]
-    global_away = hcap_tables["global_away"]
-    league_home = hcap_tables["league_home"]
-    league_away = hcap_tables["league_away"]
+    history = history.copy()
+
+    # Garantir normalização
+    history['Margin'] = history['Goals_H_FT'] - history['Goals_A_FT']
+    history['Asian_Line_Bin'] = (history['Asian_Line_Decimal'] * 4).round() / 4
+    history['Asian_Line_Away'] = -history['Asian_Line_Decimal']
+
+    # Cálculo correto do resultado AH
+    def score_home(r):
+        return calc_handicap_result(r['Margin'], r['Asian_Line_Decimal'])
+
+    def score_away(r):
+        return calc_handicap_result(-r['Margin'], r['Asian_Line_Away'])
+
+    history['CoverRate_Home'] = history.apply(score_home, axis=1)
+    history['CoverRate_Away'] = history.apply(score_away, axis=1)
+
+    # =========================
+    # Tabelas Globais
+    # =========================
+    global_tables = {}
+
+    # HOME perspective
+    grouped = history.groupby(['Quadrante_Home', 'Quadrante_Away', 'Asian_Line_Bin'])
+    global_tables['home'] = grouped['CoverRate_Home'].agg(['mean', 'count']).rename(
+        columns={'mean': 'cover_rate', 'count': 'n'}
+    )
+
+    # AWAY perspective
+    grouped = history.groupby(['Quadrante_Away', 'Quadrante_Home', 'Asian_Line_Away'])
+    global_tables['away'] = grouped['CoverRate_Away'].agg(['mean', 'count']).rename(
+        columns={'mean': 'cover_rate', 'count': 'n'}
+    )
+
+    # =========================
+    # Tabelas por Liga
+    # =========================
+    league_tables = {"home": {}, "away": {}}
+
+    for l, df_lg in history.groupby('League'):
+        # HOME
+        g_home = df_lg.groupby(['Quadrante_Home', 'Quadrante_Away', 'Asian_Line_Bin'])
+        league_tables['home'][l] = g_home['CoverRate_Home'].agg(['mean', 'count']).rename(
+            columns={'mean': 'cover_rate', 'count': 'n'}
+        )
+
+        # AWAY
+        g_away = df_lg.groupby(['Quadrante_Away', 'Quadrante_Home', 'Asian_Line_Away'])
+        league_tables['away'][l] = g_away['CoverRate_Away'].agg(['mean', 'count']).rename(
+            columns={'mean': 'cover_rate', 'count': 'n'}
+        )
+
+    return {
+        "global": global_tables,
+        "league": league_tables
+    }
+
 
     def lookup_row(row):
         side = row.get('ML_Side', 'HOME')
