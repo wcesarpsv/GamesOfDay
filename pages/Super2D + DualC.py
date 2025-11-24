@@ -1972,7 +1972,10 @@ if not ranking_quadrantes.empty and 'HcapZone_Source' in ranking_quadrantes.colu
     st.write(f"📌 ML Side: **{side}**")
     st.write(f"📌 Quadrantes: Home={qh} × Away={qa}")
     st.write(f"📌 Linha Bin: **{line_bin:+.2f}**")
-    st.write(f"🎯 Origem: **{source}** | N={int(row['HcapZone_N'] or 0)} jogos")
+    hcap_n = row.get('HcapZone_N', 0)
+    hcap_n = int(hcap_n) if pd.notna(hcap_n) else 0
+    st.write(f"🎯 Origem: **{source}** | N={hcap_n} jogos")
+
 
     # Copiar histórico
     df_audit = history.copy()
@@ -2026,7 +2029,10 @@ if not ranking_quadrantes.empty and 'HcapZone_Source' in ranking_quadrantes.colu
         )
 
         real_score = df_audit['CoverRate_Used'].mean()
+        if pd.isna(real_score):
+            real_score = 0.0
         st.info(f"📌 CoverRate Realizado para essa amostra: **{real_score:.1%}**")
+
 
 else:
     st.info("Nenhuma linha disponível para auditoria.")
