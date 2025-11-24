@@ -130,7 +130,7 @@ def calc_handicap_result(margin: float, handicap: float) -> float:
     
     # Push
     if adjusted_margin == 0:
-        return 0.0
+        return 0.5
     
     # Derrota
     return 0.0
@@ -739,7 +739,7 @@ else:
 if not history.empty:
     history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
     history["Target_AH_Home"] = history.apply(
-        lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]) > 0.5 else 0, 
+        lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]) > 0.24 else 0, 
         axis=1
     )
 
