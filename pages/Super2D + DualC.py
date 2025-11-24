@@ -1967,11 +1967,16 @@ if len(ranking_quadrantes) > 0:
             df_source = hcap_tables['global_away']
 
     # Filtragem EXATA do scoring v2
+    # Converter nomes dos quadrantes para códigos numéricos
+    qh_num = [k for k,v in QUADRANTES_8.items() if v == qh][0]
+    qa_num = [k for k,v in QUADRANTES_8.items() if v == qa][0]
+    
     df_debug = df_source[
-        (df_source['Quadrante_Home_Label'] == qh) &
-        (df_source['Quadrante_Away_Label'] == qa) &
+        (df_source['Quadrante_Home'] == qh_num) &
+        (df_source['Quadrante_Away'] == qa_num) &
         (df_source['Asian_Line_Bin'] == line_bin)
     ].copy()
+
 
     df_debug = df_debug.sort_values('Date')  # Ordem cronológica
 
