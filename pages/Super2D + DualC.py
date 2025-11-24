@@ -1930,65 +1930,78 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     else:
         st.info("Nenhum confronto atingiu nível de convergência 🥇 Gold hoje.")
 
-st.subheader("DEBUG TEMP – Colunas nas tabelas HcapZone")
-for key, df in hcap_tables.items():
-    st.write(f"📌 {key} — colunas disponíveis:")
-    st.write(list(df.columns))
 
 
-# 1️⃣9️⃣ Auditoria do HcapZone — Ver jogos usados no histórico
-st.markdown("## 🕵️ Auditoria do HcapZone — Ver jogos usados no histórico")
-st.info("Selecione uma linha do ranking para verificar os jogos históricos usados no cálculo de cobertura do handicap.")
+# ==========================================================
+# 🕵️ Auditoria do HcapZone — Jogos usados no Score
+# ==========================================================
+st.markdown("## 🕵️ Auditoria do HcapZone — Jogos usados no histórico")
 
-if len(ranking_quadrantes) > 0:
+if not ranking_quadrantes.empty and 'HcapZone_Source' in ranking_quadrantes.columns:
 
     idx = st.number_input(
-        "Número da linha para analisar:", 
-        min_value=0, 
-        max_value=len(ranking_quadrantes)-1, 
-        step=1
+        "Número da linha para analisar:",
+        min_value=0,
+        max_value=len(ranking_quadrantes)-1,
+        step=1,
+        format="%d"
     )
 
     row_sel = ranking_quadrantes.iloc[int(idx)]
     side = row_sel["ML_Side"]
-    source = row_sel["HcapZone_Source"]
-
-    # Correto: pegar os números dos quadrantes para filtrar nas tabelas origem
-    qh_num = int(row_sel["Quadrante_Home"])
-    qa_num = int(row_sel["Quadrante_Away"])
+    league = row_sel["League"]
+    qh = int(row_sel["Quadrante_Home"])
+    qa = int(row_sel["Quadrante_Away"])
     line_bin = round(float(row_sel["AH_ML_Side"]) * 4) / 4
 
-    # Selecionar tabela correta usada no score
+    st.write(f"📌 ML Side: **{side}** | Linha Bin: **{line_bin:+.2f}**")
+    st.write(f"📌 Quadrantes: Home={qh} × Away={qa}")
+    st.write(f"📌 Fonte utilizada: **{row_sel['HcapZone_Source']}**")
+    st.write(f"🎯 N jogos no score: **{int(row_sel['HcapZone_N'] or 0)}**")
+
+    # Preparação idêntica ao attach_hcapzone_score_confronto()
+    df_hist = history.copy()
+    df_hist['Margin'] = df_hist['Goals_H_FT'] - df_hist['Goals_A_FT']
+    df_hist['Asian_Line_Bin'] = (df_hist['Asian_Line_Decimal'] * 4).round() / 4
+    df_hist['Asian_Line_Away'] = -df_hist['Asian_Line_Decimal']
+
+    # 🎯 Filtro idêntico ao usado no Score
     if side == "HOME":
-        df_source = hcap_tables['league_home'] if source == "LEAGUE" else hcap_tables['global_home']
-    else:  # AWAY
-        df_source = hcap_tables['league_away'] if source == "LEAGUE" else hcap_tables['global_away']
+        df_debug = df_hist[
+            (df_hist['Quadrante_Home'] == qh) &
+            (df_hist['Quadrante_Away'] == qa) &
+            (df_hist['Asian_Line_Bin'] == line_bin)
+        ].copy()
+    else:
+        df_debug = df_hist[
+            (df_hist['Quadrante_Away'] == qh) &
+            (df_hist['Quadrante_Home'] == qa) &
+            (df_hist['Asian_Line_Bin'] == line_bin)
+        ].copy()
 
-    # Filtragem EXATA que foi usada no score (idêntica ao attach_hcapzone_score_confronto)
-    df_debug = df_source[
-        (df_source['Quadrante_Home'] == qh_num) &
-        (df_source['Quadrante_Away'] == qa_num) &
-        (df_source['Asian_Line_Bin'] == line_bin)
-    ].copy()
+    # Priorizar liga se foi o que o score usou
+    if row_sel['HcapZone_Source'] == "League":
+        df_debug = df_debug[df_debug['League'] == league]
 
-    # Garantir ordenação cronológica apenas se 'Date' estiver presente
+    # Ordenar cronologicamente
     if 'Date' in df_debug.columns:
         df_debug['Date'] = pd.to_datetime(df_debug['Date'], errors='coerce')
         df_debug = df_debug.sort_values('Date')
 
-
-    st.write(f"📌 Fonte utilizada no score: **{source}** | Jogos encontrados: **{len(df_debug)}**")
-
-    # Exibe somente as colunas solicitadas
-    st.dataframe(df_debug[[
-        'Date', 'League', 'Home', 'Away',
-        'Goals_H_FT', 'Goals_A_FT',
-        'Quadrante_Home_Label', 'Quadrante_Away_Label',
-        'Asian_Line_Decimal'
-    ]])
+    st.markdown("### 📜 Jogos usados no cálculo do HcapZone Score")
+    if df_debug.empty:
+        st.warning("Nenhum jogo encontrado com os mesmos critérios deste confronto.")
+    else:
+        st.dataframe(df_debug[[
+            'Date', 'League', 'Home', 'Away',
+            'Goals_H_FT', 'Goals_A_FT',
+            'Quadrante_Home', 'Quadrante_Away',
+            'Asian_Line_Decimal'
+        ]], use_container_width=True)
 
 else:
-    st.warning("Nenhum jogo para auditar.")
+    st.info("Nenhuma recomendação calculada ainda para auditoria.")
+
 
 
 
