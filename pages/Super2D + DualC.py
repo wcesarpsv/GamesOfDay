@@ -1751,6 +1751,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     )
 
     ranking_quadrantes = adicionar_indicadores_explicativos_dual(ranking_quadrantes)
+    ranking_quadrantes['AH_ML_Side'] = ranking_quadrantes.apply(compute_ah_side, axis=1)
     ranking_quadrantes = attach_hcapzone_score_to_games(
         ranking_quadrantes,
         hcap_tables
