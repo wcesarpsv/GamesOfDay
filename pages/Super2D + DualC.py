@@ -108,30 +108,28 @@ def convert_asian_line_to_decimal(line_str):
         return None
 
 
-def calc_handicap_result(margin, asian_line_str, invert=False):
+def calc_handicap_result(margin: float, handicap: float) -> float:
     """
-    Retorna média de pontos por linha (1 win, 0.5 push, 0 loss) para uma string de linha asiática.
-    Usado para calcular Cover_Home e Cover_Away no histórico.
+    Cálculo universal do resultado do Handicap Asiático.
+    Sempre na perspectiva do time da casa.
+    
+    Retorno:
+        1   -> Vitória do handicap (cobriu totalmente)
+        0.5 -> Push (empate no handicap -> aposta devolvida)
+        0   -> Derrota do handicap
     """
-    if pd.isna(asian_line_str):
-        return np.nan
 
-    try:
-        parts = [float(x) for x in str(asian_line_str).split('/')]
-    except Exception:
-        return np.nan
+    # Vitória
+    if margin > handicap:
+        return 1.0
 
-    results = []
-    for line in parts:
-        # se invert=True poderíamos inverter aqui, mas hoje está sempre na mesma lógica (Home margin vs line)
-        if margin > line:
-            results.append(1.0)   # Home cobre
-        elif margin == line:
-            results.append(0.5)   # Push
-        else:
-            results.append(0.0)   # Home não cobre
+    # Push
+    if margin == handicap:
+        return 0.5
 
-    return np.mean(results)
+    # Derrota
+    return 0.0
+
 
 
 # ==========================================================
