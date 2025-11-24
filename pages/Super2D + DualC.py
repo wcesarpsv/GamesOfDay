@@ -1552,11 +1552,11 @@ def treinar_modelo_quadrantes_dual_completo(history: pd.DataFrame,
     ]].fillna(0)
 
     wg_features = history[[
-        c for c in ['WG_Diff', 'WG_AH_Diff', 'WG_Def_Diff', 'WG_Balance_Diff', 'WG_Net_Diff', 'WG_Confidence']
+        c for c in ['WG_Diff', 'WG_AH_Diff', 'WG_Def_Diff', 'WG_Balance_Diff', 'WG_Net_Diff', 'WG_Confidence', 'Asian_Line_Decimal']
         if c in history.columns
     ]].fillna(0)
 
-    X = pd.concat([ligas_dummies, extras, wg_features, quadrantes_home, quadrantes_away, 'Asian_Line_Decimal'], axis=1)
+    X = pd.concat([ligas_dummies, extras, wg_features, quadrantes_home, quadrantes_away], axis=1)
     X = X.loc[:, ~X.columns.duplicated()]
 
     y_home = history['Target_AH_Home']
