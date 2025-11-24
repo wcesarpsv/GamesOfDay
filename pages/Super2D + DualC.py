@@ -809,6 +809,26 @@ if not history.empty:
     ].copy()
 
 
+def compute_ah_side(row):
+    """
+    Converte a linha asiática para a perspectiva do lado indicado pelo modelo.
+    Se ML_Side == HOME → mantém a linha original
+    Se ML_Side == AWAY → inverte o sinal da linha
+    """
+    ml_side = row.get('ML_Side', None)
+    asian_line = row.get('Asian_Line_Decimal', np.nan)
+
+    if pd.isna(asian_line) or ml_side is None:
+        return np.nan
+
+    if ml_side == 'HOME':
+        return asian_line
+    elif ml_side == 'AWAY':
+        return -asian_line
+
+    return np.nan
+
+
 
 # ==========================================================
 # 9️⃣ DISTÂNCIA, ÂNGULO E SEPARAÇÃO ENTRE QUADRANTES
