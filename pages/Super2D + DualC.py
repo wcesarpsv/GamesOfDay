@@ -1942,7 +1942,7 @@ if len(ranking_quadrantes) > 0:
                           step=1)
 
     row_sel = ranking_quadrantes.iloc[int(idx)]
-    source_used, df_debug = debug_hcapzone_lookup_v2(row_sel, df_history)
+    source_used, df_debug = debug_hcapzone_lookup_v2(row_sel, history)
 
     st.write(f"📌 Fonte usada: **{source_used}** | Jogos encontrados: **{len(df_debug)}**")
     st.dataframe(df_debug[[
