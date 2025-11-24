@@ -1952,71 +1952,84 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 st.markdown("## 🕵️ Auditoria do HcapZone — Jogos usados no histórico")
 
 if not ranking_quadrantes.empty and 'HcapZone_Source' in ranking_quadrantes.columns:
-
+    
     idx = st.number_input(
-        "Número da linha para analisar:",
+        "Selecione uma linha para auditar:",
         min_value=0,
         max_value=len(ranking_quadrantes)-1,
         step=1,
         format="%d"
     )
 
-    row_sel = ranking_quadrantes.iloc[int(idx)]
-    side = row_sel["ML_Side"]
-    league = row_sel["League"]
-    qh = int(row_sel["Quadrante_Home"])
-    qa = int(row_sel["Quadrante_Away"])
-    line_bin = round(float(row_sel["AH_ML_Side"]) * 4) / 4
+    row = ranking_quadrantes.iloc[int(idx)]
+    side = row['ML_Side']
+    league = row['League']
+    qh = int(row['Quadrante_Home'])
+    qa = int(row['Quadrante_Away'])
+    line_bin = round(float(row['AH_ML_Side']) * 4) / 4
+    source = row['HcapZone_Source']
 
-    st.write(f"📌 ML Side: **{side}** | Linha Bin: **{line_bin:+.2f}**")
+    st.write(f"📌 ML Side: **{side}**")
     st.write(f"📌 Quadrantes: Home={qh} × Away={qa}")
-    st.write(f"📌 Fonte utilizada: **{row_sel['HcapZone_Source']}**")
-    st.write(f"🎯 N jogos no score: **{int(row_sel['HcapZone_N'] or 0)}**")
+    st.write(f"📌 Linha Bin: **{line_bin:+.2f}**")
+    st.write(f"🎯 Origem: **{source}** | N={int(row['HcapZone_N'] or 0)} jogos")
 
-    # Preparação idêntica ao attach_hcapzone_score_confronto()
-    df_hist = history.copy()
-    df_hist['Margin'] = df_hist['Goals_H_FT'] - df_hist['Goals_A_FT']
-    df_hist['Asian_Line_Bin'] = (df_hist['Asian_Line_Decimal'] * 4).round() / 4
-    df_hist['Asian_Line_Away'] = -df_hist['Asian_Line_Decimal']
+    # Copiar histórico
+    df_audit = history.copy()
+    df_audit['Margin'] = df_audit['Goals_H_FT'] - df_audit['Goals_A_FT']
+    df_audit['Asian_Line_Bin'] = (df_audit['Asian_Line_Decimal'] * 4).round() / 4
+    df_audit['Asian_Line_Away'] = -df_audit['Asian_Line_Decimal']
 
-    # 🎯 Filtro idêntico ao usado no Score
+    # Filtro identico ao attach_hcapzone_score_confronto()
     if side == "HOME":
-        df_debug = df_hist[
-            (df_hist['Quadrante_Home'] == qh) &
-            (df_hist['Quadrante_Away'] == qa) &
-            (df_hist['Asian_Line_Bin'] == line_bin)
+        df_audit = df_audit[
+            (df_audit['Quadrante_Home'] == qh) &
+            (df_audit['Quadrante_Away'] == qa) &
+            (df_audit['Asian_Line_Bin'] == line_bin)
         ].copy()
+        df_audit['CoverRate_Used'] = df_audit.apply(
+            lambda r: 1 if calc_handicap_result(r['Margin'], r['Asian_Line_Decimal']) > 0.5 else 0,
+            axis=1
+        )
     else:
-        df_debug = df_hist[
-            (df_hist['Quadrante_Away'] == qh) &
-            (df_hist['Quadrante_Home'] == qa) &
-            (df_hist['Asian_Line_Bin'] == line_bin)
+        df_audit = df_audit[
+            (df_audit['Quadrante_Away'] == qh) &
+            (df_audit['Quadrante_Home'] == qa) &
+            (df_audit['Asian_Line_Bin'] == line_bin)
         ].copy()
+        df_audit['CoverRate_Used'] = df_audit.apply(
+            lambda r: 1 if calc_handicap_result(-r['Margin'], r['Asian_Line_Away']) > 0.5 else 0,
+            axis=1
+        )
 
-    # Priorizar liga se foi o que o score usou
-    if row_sel['HcapZone_Source'] == "League":
-        df_debug = df_debug[df_debug['League'] == league]
+    # Filtragem por liga, somente se o score usou liga
+    if source == "League":
+        df_audit = df_audit[df_audit['League'] == league]
 
-    # Ordenar cronologicamente
-    if 'Date' in df_debug.columns:
-        df_debug['Date'] = pd.to_datetime(df_debug['Date'], errors='coerce')
-        df_debug = df_debug.sort_values('Date')
+    # Ordenação temporal
+    if 'Date' in df_audit.columns:
+        df_audit['Date'] = pd.to_datetime(df_audit['Date'], errors='coerce')
+        df_audit = df_audit.sort_values('Date')
 
-    st.markdown("### 📜 Jogos usados no cálculo do HcapZone Score")
-    if df_debug.empty:
-        st.warning("Nenhum jogo encontrado com os mesmos critérios deste confronto.")
+    st.markdown("### 📜 Jogos Utilizados")
+    if df_audit.empty:
+        st.warning("Nenhum jogo correspondente encontrado.")
     else:
-        st.dataframe(df_debug[[
-            'Date', 'League', 'Home', 'Away',
-            'Goals_H_FT', 'Goals_A_FT',
-            'Quadrante_Home', 'Quadrante_Away',
-            'Asian_Line_Decimal'
-        ]], use_container_width=True)
+        st.dataframe(
+            df_audit[[
+                'Date', 'League', 'Home', 'Away',
+                'Goals_H_FT', 'Goals_A_FT',
+                'Quadrante_Home', 'Quadrante_Away',
+                'Asian_Line_Decimal', 'CoverRate_Used'
+            ]],
+            use_container_width=True
+        )
+
+        real_score = df_audit['CoverRate_Used'].mean()
+        st.info(f"📌 CoverRate Realizado para essa amostra: **{real_score:.1%}**")
 
 else:
-    st.info("Nenhuma recomendação calculada ainda para auditoria.")
-
-
+    st.info("Nenhuma linha disponível para auditoria.")
 
 
 
