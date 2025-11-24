@@ -1939,49 +1939,39 @@ st.info("Selecione uma linha do ranking para verificar os jogos históricos usad
 if len(ranking_quadrantes) > 0:
 
     idx = st.number_input(
-        "Número da linha para analisar:",
-        min_value=0,
-        max_value=len(ranking_quadrantes)-1,
+        "Número da linha para analisar:", 
+        min_value=0, 
+        max_value=len(ranking_quadrantes)-1, 
         step=1
     )
 
     row_sel = ranking_quadrantes.iloc[int(idx)]
-
     side = row_sel["ML_Side"]
-    qh = row_sel["Quadrante_Home_Label"]
-    qa = row_sel["Quadrante_Away_Label"]
-    line_bin = round(float(row_sel["AH_ML_Side"]) * 4) / 4
-
-    # Recupera as tabelas usadas pelo score
     source = row_sel["HcapZone_Source"]
 
-    if side == "HOME":
-        if source == "LEAGUE":
-            df_source = hcap_tables['league_home']
-        else:
-            df_source = hcap_tables['global_home']
-    else:  # AWAY
-        if source == "LEAGUE":
-            df_source = hcap_tables['league_away']
-        else:
-            df_source = hcap_tables['global_away']
+    # Correto: pegar os números dos quadrantes para filtrar nas tabelas origem
+    qh_num = int(row_sel["Quadrante_Home"])
+    qa_num = int(row_sel["Quadrante_Away"])
+    line_bin = round(float(row_sel["AH_ML_Side"]) * 4) / 4
 
-    # Filtragem EXATA do scoring v2
-    # Converter nomes dos quadrantes para códigos numéricos
-    qh_num = [k for k,v in QUADRANTES_8.items() if v == qh][0]
-    qa_num = [k for k,v in QUADRANTES_8.items() if v == qa][0]
-    
+    # Selecionar tabela correta usada no score
+    if side == "HOME":
+        df_source = hcap_tables['league_home'] if source == "LEAGUE" else hcap_tables['global_home']
+    else:  # AWAY
+        df_source = hcap_tables['league_away'] if source == "LEAGUE" else hcap_tables['global_away']
+
+    # Filtragem EXATA que foi usada no score (idêntica ao attach_hcapzone_score_confronto)
     df_debug = df_source[
         (df_source['Quadrante_Home'] == qh_num) &
         (df_source['Quadrante_Away'] == qa_num) &
         (df_source['Asian_Line_Bin'] == line_bin)
     ].copy()
 
+    df_debug = df_debug.sort_values("Date")  # Ordem cronológica
 
-    df_debug = df_debug.sort_values('Date')  # Ordem cronológica
+    st.write(f"📌 Fonte utilizada no score: **{source}** | Jogos encontrados: **{len(df_debug)}**")
 
-    st.write(f"📌 Fonte: **{source}** | Jogos usados: **{len(df_debug)}**")
-
+    # Exibe somente as colunas solicitadas
     st.dataframe(df_debug[[
         'Date', 'League', 'Home', 'Away',
         'Goals_H_FT', 'Goals_A_FT',
@@ -1990,7 +1980,8 @@ if len(ranking_quadrantes) > 0:
     ]])
 
 else:
-    st.warning("Nenhum jogo disponível para auditoria.")
+    st.warning("Nenhum jogo para auditar.")
+
 
 
 
