@@ -739,7 +739,7 @@ else:
 if not history.empty:
     history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
     history["Target_AH_Home"] = history.apply(
-        lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]) > 0.24 else 0, 
+        lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]) > 0 else 0, 
         axis=1
     )
 
@@ -748,7 +748,7 @@ if not history.empty:
 
     # Target correto para o lado AWAY (visitante cobre o seu handicap)
     history["Target_AH_Away"] = history.apply(
-        lambda r: 1 if calc_handicap_result(-r["Margin"], r["Asian_Line_Away"]) > 0.24 else 0,
+        lambda r: 1 if calc_handicap_result(-r["Margin"], r["Asian_Line_Away"]) > 0 else 0,
         axis=1
     )
 
