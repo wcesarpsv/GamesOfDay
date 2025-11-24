@@ -397,6 +397,56 @@ def calcular_rolling_wg_features_completo(df: pd.DataFrame) -> pd.DataFrame:
     return df_temp
 
 
+
+def debug_hcapzone_lookup_v2(row, history):
+    """Exibe os jogos do histórico usados no cálculo do HcapZone v2."""
+    if history is None or history.empty:
+        return None, pd.DataFrame()
+    
+    side = row.get('ML_Side')
+    league = row.get('League', "")
+    line = row.get('AH_ML_Side', np.nan)
+
+    if pd.isna(line):
+        return None, pd.DataFrame()
+        
+    line_bin = round(float(line) * 4) / 4
+    
+    q_home = row['Quadrante_Home']
+    q_away = row['Quadrante_Away']
+
+    df = history.copy()
+    df['Asian_Line_Bin'] = (df['Asian_Line_Decimal'] * 4).round() / 4
+    df['Margin'] = df['Goals_H_FT'] - df['Goals_A_FT']
+    
+    if side == 'HOME':
+        sub = df[
+            (df['Quadrante_Home'] == q_home) &
+            (df['Quadrante_Away'] == q_away) &
+            (df['Asian_Line_Bin'] == line_bin)
+        ].copy()
+    else:
+        sub = df[
+            (df['Quadrante_Away'] == q_home) &
+            (df['Quadrante_Home'] == q_away) &
+            (df['Asian_Line_Bin'] == line_bin)
+        ].copy()
+    
+    # Liga → prioridade se tiver pelo menos 1 jogo
+    league_rows = sub[sub['League'] == league]
+    if len(league_rows) > 0:
+        sub = league_rows
+        source = "LEAGUE"
+    else:
+        source = "GLOBAL"
+    
+    # Ordenar cronologicamente
+    sub = sub.sort_values('Date')
+    
+    return source, sub
+
+
+
 def enrich_games_today_with_wg_completo(games_today: pd.DataFrame,
                                         history: pd.DataFrame) -> pd.DataFrame:
     """
@@ -1882,26 +1932,27 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
 
 
-st.markdown("### 🔎 Auditoria do HcapZone — Ver jogos usados no histórico")
+st.markdown("## 🕵️ Auditoria do HcapZone — Ver jogos usados no histórico")
+st.info("Selecione uma linha do ranking para verificar os jogos históricos usados no cálculo de cobertura do handicap.")
 
-index_selected = st.number_input(
-    "Selecione uma linha do ranking para auditar:",
-    min_value=0,
-    max_value=len(ranking_quadrantes)-1,
-    step=1,
-)
+if len(ranking_quadrantes) > 0:
+    idx = st.number_input("Número da linha para analisar:", 
+                          min_value=0, 
+                          max_value=len(ranking_quadrantes)-1, 
+                          step=1)
 
-row = ranking_quadrantes.iloc[int(index_selected)]
-source_used, df_debug = debug_hcapzone_lookup(row, history, min_n=5)
+    row_sel = ranking_quadrantes.iloc[int(idx)]
+    source_used, df_debug = debug_hcapzone_lookup_v2(row_sel, df_history)
 
-if df_debug is not None and not df_debug.empty:
-    st.write(f"📌 Fonte usada: **{source_used}** | Jogos encontrados: {len(df_debug)}")
+    st.write(f"📌 Fonte usada: **{source_used}** | Jogos encontrados: **{len(df_debug)}**")
     st.dataframe(df_debug[[
-        'Date', 'League', 'Home', 'Away', 'Goals_H_FT', 'Goals_A_FT',
-        'Quadrante_Home', 'Quadrante_Away', 'Asian_Line_Decimal'
-    ]].sort_values('Date'))
+        'Date', 'League', 'Home', 'Away',
+        'Goals_H_FT', 'Goals_A_FT',
+        'Quadrante_Home', 'Quadrante_Away',
+        'Asian_Line_Decimal'
+    ]])
 else:
-    st.warning("⚠️ Nenhum jogo encontrado para este cenário no histórico!")
+    st.warning("Nenhum jogo para auditar.")
 
 
 
