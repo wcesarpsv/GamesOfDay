@@ -1552,7 +1552,7 @@ def treinar_modelo_quadrantes_dual_completo(history: pd.DataFrame,
     ]].fillna(0)
 
     wg_features = history[[
-        c for c in ['WG_Diff', 'WG_AH_Diff', 'WG_Def_Diff', 'WG_Balance_Diff', 'WG_Net_Diff', 'WG_Confidence', 'Asian_Line_Decimal']
+        c for c in ['WG_Diff', 'WG_AH_Diff', 'WG_Def_Diff', 'WG_Balance_Diff', 'WG_Net_Diff', 'WG_Confidence']
         if c in history.columns
     ]].fillna(0)
 
