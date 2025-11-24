@@ -1967,7 +1967,7 @@ if len(ranking_quadrantes) > 0:
         (df_source['Asian_Line_Bin'] == line_bin)
     ].copy()
 
-    df_debug = df_debug.sort_values("Date")  # Ordem cronológica
+    df_debug = df_debug.sort_values("League")  # Ordem cronológica
 
     st.write(f"📌 Fonte utilizada no score: **{source}** | Jogos encontrados: **{len(df_debug)}**")
 
