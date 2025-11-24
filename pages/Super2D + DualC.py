@@ -1932,27 +1932,60 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
 
 
+# 1️⃣9️⃣ Auditoria do HcapZone — Ver jogos usados no histórico
 st.markdown("## 🕵️ Auditoria do HcapZone — Ver jogos usados no histórico")
 st.info("Selecione uma linha do ranking para verificar os jogos históricos usados no cálculo de cobertura do handicap.")
 
 if len(ranking_quadrantes) > 0:
-    idx = st.number_input("Número da linha para analisar:", 
-                          min_value=0, 
-                          max_value=len(ranking_quadrantes)-1, 
-                          step=1)
+
+    idx = st.number_input(
+        "Número da linha para analisar:",
+        min_value=0,
+        max_value=len(ranking_quadrantes)-1,
+        step=1
+    )
 
     row_sel = ranking_quadrantes.iloc[int(idx)]
-    source_used, df_debug = debug_hcapzone_lookup_v2(row_sel, history)
 
-    st.write(f"📌 Fonte usada: **{source_used}** | Jogos encontrados: **{len(df_debug)}**")
+    side = row_sel["ML_Side"]
+    qh = row_sel["Quadrante_Home_Label"]
+    qa = row_sel["Quadrante_Away_Label"]
+    line_bin = round(float(row_sel["AH_ML_Side"]) * 4) / 4
+
+    # Recupera as tabelas usadas pelo score
+    source = row_sel["HcapZone_Source"]
+
+    if side == "HOME":
+        if source == "LEAGUE":
+            df_source = hcap_tables['league_home']
+        else:
+            df_source = hcap_tables['global_home']
+    else:  # AWAY
+        if source == "LEAGUE":
+            df_source = hcap_tables['league_away']
+        else:
+            df_source = hcap_tables['global_away']
+
+    # Filtragem EXATA do scoring v2
+    df_debug = df_source[
+        (df_source['Quadrante_Home_Label'] == qh) &
+        (df_source['Quadrante_Away_Label'] == qa) &
+        (df_source['Asian_Line_Bin'] == line_bin)
+    ].copy()
+
+    df_debug = df_debug.sort_values('Date')  # Ordem cronológica
+
+    st.write(f"📌 Fonte: **{source}** | Jogos usados: **{len(df_debug)}**")
+
     st.dataframe(df_debug[[
         'Date', 'League', 'Home', 'Away',
         'Goals_H_FT', 'Goals_A_FT',
-        'Quadrante_Home', 'Quadrante_Away',
+        'Quadrante_Home_Label', 'Quadrante_Away_Label',
         'Asian_Line_Decimal'
     ]])
+
 else:
-    st.warning("Nenhum jogo para auditar.")
+    st.warning("Nenhum jogo disponível para auditoria.")
 
 
 
