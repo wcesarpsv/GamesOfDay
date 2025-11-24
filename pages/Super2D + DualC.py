@@ -130,7 +130,7 @@ def calc_handicap_result(margin: float, handicap: float) -> float:
     
     # Push
     if adjusted_margin == 0:
-        return 0.5
+        return 0.0
     
     # Derrota
     return 0.0
