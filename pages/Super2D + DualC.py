@@ -136,6 +136,17 @@ def calc_handicap_result(margin: float, handicap: float) -> float:
     return 0.0
 
 
+def adjust_hcapzone_for_away(row):
+    """
+    Ajusta o HcapZone_Score quando o ML recomenda AWAY.
+    Se HcapZone_Score é calculado para HOME, então para AWAY = 1 - home_score
+    """
+    if row['ML_Side'] == 'AWAY':
+        return 1 - row['HcapZone_Score']
+    else:
+        return row['HcapZone_Score']
+
+
 # ==========================================================
 # 4️⃣ WEIGHTED GOALS (OFENSIVOS, DEFENSIVOS, AH, ROLLING)
 # ==========================================================
@@ -1458,9 +1469,10 @@ def build_hcapzone_tables_confronto(history: pd.DataFrame) -> dict:
 
 def attach_hcapzone_score_to_games(df: pd.DataFrame,
                                    tables: dict,
-                                   min_n: int = 10) -> pd.DataFrame:
+                                   min_n: int = 5) -> pd.DataFrame:
     """
     Para cada jogo do dia, encontra o CoverRate e N correspondente.
+    E ajusta o HcapZone_Score quando o ML recomenda AWAY.
     """
 
     df = df.copy()
@@ -1493,8 +1505,15 @@ def attach_hcapzone_score_to_games(df: pd.DataFrame,
 
         return sub['mean'].iloc[0], sub['count'].iloc[0], "Global"
 
+    # Aplicar lookup para obter HcapZone_Score original (sempre na perspectiva HOME)
     df[['HcapZone_Score', 'HcapZone_N', 'HcapZone_Source']] = df.apply(
         lambda x: pd.Series(lookup_row(x)), axis=1
+    )
+
+    # 🔧 AJUSTE CRÍTICO: Se ML recomenda AWAY, inverter o HcapZone_Score
+    df['HcapZone_Score'] = df.apply(
+        lambda row: 1 - row['HcapZone_Score'] if row['ML_Side'] == 'AWAY' else row['HcapZone_Score'],
+        axis=1
     )
 
     return df
