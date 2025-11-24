@@ -2220,6 +2220,53 @@ except Exception as e:
     st.warning(f"Não foi possível gerar o Liga Scoreboard: {e}")
 
 
+
+# ==========================================================
+# DEBUG: Analisar 50 linhas do histórico e exibir resultados AH
+# ==========================================================
+
+def debug_handicap_check(df_debug: pd.DataFrame):
+    print("======= DEBUG DE HANDICAP (Primeiras 50 linhas) =======")
+    
+    subset = df_debug.head(50).copy()
+
+    # Garantir colunas calculadas
+    subset["Margin"] = subset["Goals_H_FT"] - subset["Goals_A_FT"]
+    subset["Asian_Line_Away"] = -subset["Asian_Line_Decimal"]
+
+    # Aplicar calc_handicap_result Home
+    subset["Result_AH_Home"] = subset.apply(
+        lambda r: calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]),
+        axis=1
+    )
+
+    # Aplicar calc_handicap_result Away
+    subset["Result_AH_Away"] = subset.apply(
+        lambda r: calc_handicap_result(-r["Margin"], r["Asian_Line_Away"]),
+        axis=1
+    )
+
+    # Transformar resultado em sucesso ou fracasso (1 / 0)
+    subset["Cover_Home"] = subset["Result_AH_Home"].apply(lambda x: 1 if x > 0 else 0)
+    subset["Cover_Away"] = subset["Result_AH_Away"].apply(lambda x: 1 if x > 0 else 0)
+
+    # Selecionar colunas de interesse
+    debug_cols = [
+        "Date", "League", "Home", "Away",
+        "Goals_H_FT", "Goals_A_FT", "Margin",
+        "Asian_Line_Decimal", "Asian_Line_Away",
+        "Result_AH_Home", "Cover_Home",
+        "Result_AH_Away", "Cover_Away"
+    ]
+
+    print(subset[debug_cols].to_string(index=False))
+    print("========================================================")
+
+# 👉 Chamada do debug
+if not history.empty:
+    debug_handicap_check(history)
+
+
 # ==========================================================
 # ✅ FINALIZAÇÃO
 # ==========================================================
