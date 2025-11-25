@@ -1892,10 +1892,10 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         lambda x: QUADRANTES_8.get(x, {}).get('nome', 'Neutro') if x != 0 else 'Neutro'
     )
 
-    # Adiciona recomendações (Modelo Confia / Value, etc)
+    # Adicionar recomendações (modelo confia, value, etc)
     ranking_quadrantes = adicionar_indicadores_explicativos_dual(ranking_quadrantes)
 
-    # Ajustar o handicap na direção do lado previsto pelo modelo
+    # Ajustar Handicap para o lado previsto
     ranking_quadrantes['AH_ML_Side'] = ranking_quadrantes.apply(compute_ah_side, axis=1)
 
     # Score HcapZone por confronto (quadrante × quadrante)
@@ -1904,50 +1904,61 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         hcap_tables
     )
 
-    # LIVE UPDATE dos jogos que já possuem placar
-   def update_real_time_data(df: pd.DataFrame) -> pd.DataFrame:
+
+    # ==========================================================
+    # 🟢 LIVE UPDATE (RESULTADO + PROFIT REAL)
+    # ==========================================================
+    def update_real_time_data(df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
-    
+
         # Ajustar linha para o lado do modelo
         df['AH_ML_Side'] = df.apply(compute_ah_side, axis=1)
-    
+
         # Selecionar odd correta
         df['Odd_ML_Side'] = np.where(
             df['ML_Side'] == 'HOME',
             df['Odd_H'],
             df['Odd_A']
         )
-    
+
         # Resultado Handicap Asiático
         df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
-    
+
         # Profit real
         df['Profit_Quadrante'] = df.apply(
             lambda r: calculate_profit(r['Handicap_Result'], r['Odd_ML_Side']),
             axis=1
         )
-    
-        # Correção visual para acerto
+
+        # Correção visual → ✔️ / ❌ / ➖
         df['Quadrante_Correct'] = df['Handicap_Result'].apply(evaluate_quadrant_decision)
-    
+
         return df
 
-       
     ranking_quadrantes = update_real_time_data(ranking_quadrantes)
 
-    # LIVE SCORE RESUMO
+
+    # ==========================================================
+    # 📊 LIVE SCORE RESUMO — Métricas de Apostas
+    # ==========================================================
     def generate_live_summary(df: pd.DataFrame) -> dict:
         finished = df.dropna(subset=['Handicap_Result'])
 
         if finished.empty:
-            return {"Total Jogos": len(df),"Jogos Finalizados": 0,
-                    "Apostas Quadrante": 0,"Acertos Quadrante": 0,
-                    "Winrate Quadrante": "0%","Profit Quadrante": 0,
-                    "ROI Quadrante": "0%"}
+            return {
+                "Total Jogos": len(df),
+                "Jogos Finalizados": 0,
+                "Apostas Quadrante": 0,
+                "Acertos Quadrante": 0,
+                "Winrate Quadrante": "0%",
+                "Profit Quadrante": "0u",
+                "ROI Quadrante": "0%"
+            }
 
-        bets = finished[finished['Quadrante_Correct'].notna()]
+        bets = finished[finished['Profit_Quadrante'].notna()]
         total_bets = len(bets)
-        correct_bets = bets['Quadrante_Correct'].sum() if total_bets > 0 else 0
+        correct_bets = (bets['Profit_Quadrante'] > 0).sum()
+
         winrate = (correct_bets / total_bets) * 100 if total_bets else 0
         profit = bets['Profit_Quadrante'].sum()
         roi = (profit / total_bets) * 100 if total_bets else 0
@@ -1961,6 +1972,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             "Profit Quadrante": f"{profit:.2f}u",
             "ROI Quadrante": f"{roi:.1f}%"
         }
+
 
     st.markdown("## 📡 Live Score Monitor")
     summary = generate_live_summary(ranking_quadrantes)
