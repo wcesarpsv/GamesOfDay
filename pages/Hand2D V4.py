@@ -247,20 +247,44 @@ if "Date" in history.columns:
 
 
 
-# Targets AH históricos
-history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
-history["Target_AH_Home"] = history.apply(
-    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]) > 0.5 else 0, 
-    axis=1
-)
+def calculate_ah_targets_corrected(history):
+    """
+    Calcula targets CONSISTENTES considerando que:
+    - Asian_Line_Decimal já está na perspectiva HOME (após sua conversão)
+    - Margin = Goals_H - Goals_A (sempre do home)
+    """
+    history = history.copy()
+    
+    # Garantir que temos a linha convertida
+    history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
+    
+    # Margin sempre do ponto de vista do HOME
+    history['Margin'] = history['Goals_H_FT'] - history['Goals_A_FT']
+    
+    # ✅ TARGET HOME: Home cobre quando (Margin + Asian_Line_Decimal) > 0
+    history['Target_AH_Home'] = history.apply(
+        lambda r: 1 if (r['Margin'] + r['Asian_Line_Decimal']) > 0 else 0, 
+        axis=1
+    )
+    
+    # ✅ TARGET AWAY: Away cobre quando Home NÃO cobre (considerando a linha)
+    # Ou seja: Away cobre quando (Margin + Asian_Line_Decimal) < 0
+    history['Target_AH_Away'] = history.apply(
+        lambda r: 1 if (r['Margin'] + r['Asian_Line_Decimal']) < 0 else 0,
+        axis=1
+    )
+    
+    # Identificar pushes (para possível exclusão)
+    history['Is_Push'] = history.apply(
+        lambda r: 1 if abs(r['Margin'] + r['Asian_Line_Decimal']) < 0.1 else 0,
+        axis=1
+    )
+    
+    return history
 
-# Target Away com mesma lógica do Home (mas usando linha do Away)
-history["Margin_Away"] = history["Goals_A_FT"] - history["Goals_H_FT"]
+# Aplicar correção
+history = calculate_ah_targets_corrected(history)
 
-history["Target_AH_Away"] = history.apply(
-    lambda r: 1 if calc_handicap_result(r["Margin_Away"], r["Asian_Line"]) > 0.5 else 0,
-    axis=1
-)
 # ---------------- SISTEMA DE 8 QUADRANTES ----------------
 st.markdown("## 🎯 Sistema de 8 Quadrantes")
 
