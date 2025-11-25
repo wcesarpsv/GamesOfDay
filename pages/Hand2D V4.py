@@ -578,6 +578,21 @@ games_today = games_today.merge(
 st.success("📌 Handicap histórico agregado ao GamesToday por Liga + Time!")
 
 
+# ============================================================
+# 🩹 PATCH: Aliases para compatibilidade com UI + LiveScore
+# ============================================================
+alias_map = {
+    "CoverRate_Home": "CoverRate_Home_Hist",
+    "CoverRate_Away": "CoverRate_Away_Hist",
+    "AH_Margin_Mean": "AH_Margin_Mean_Hist"
+}
+
+for old_col, new_col in alias_map.items():
+    if old_col not in games_today.columns and new_col in games_today.columns:
+        games_today[old_col] = games_today[new_col]
+
+
+
 
 # ---------------- VISUALIZAÇÃO DOS QUADRANTES ----------------
 def plot_quadrantes_avancado(df, side="Home"):
