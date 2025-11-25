@@ -537,6 +537,48 @@ history = compute_handicap_features(history, last_n=5)
 
 st.success("✨ Features de histórico de handicap adicionadas ao histórico!")
 
+
+# ============================================================
+# 📌 MERGE das handicap features por Liga + Time
+# ============================================================
+
+# Garantir ordenação temporal
+history = history.sort_values("Date")
+
+# Selecionar últimas estatísticas para cada Liga + Home
+latest_home = (
+    history.dropna(subset=["CoverRate_Home", "AH_Margin_Mean"])
+    .groupby(["League", "Home"])
+    .tail(1)[["League", "Home", "CoverRate_Home", "AH_Margin_Mean"]]
+)
+
+latest_home.columns = ["League", "Home", "CoverRate_Home_Hist", "AH_Margin_Mean_Hist"]
+
+games_today = games_today.merge(
+    latest_home,
+    on=["League", "Home"],
+    how="left"
+)
+
+# Selecionar últimas estatísticas para cada Liga + Away
+latest_away = (
+    history.dropna(subset=["CoverRate_Away"])
+    .groupby(["League", "Away"])
+    .tail(1)[["League", "Away", "CoverRate_Away"]]
+)
+
+latest_away.columns = ["League", "Away", "CoverRate_Away_Hist"]
+
+games_today = games_today.merge(
+    latest_away,
+    on=["League", "Away"],
+    how="left"
+)
+
+st.success("📌 Handicap histórico agregado ao GamesToday por Liga + Time!")
+
+
+
 # ---------------- VISUALIZAÇÃO DOS QUADRANTES ----------------
 def plot_quadrantes_avancado(df, side="Home"):
     """Plot dos 8 quadrantes com cores e anotações"""
@@ -852,9 +894,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
     qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation',
-                            'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized',
-                            'CoverRate_Home', 'CoverRate_Away', 'AH_Margin_Mean']].fillna(0)
+    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized', 'CoverRate_Home', 'CoverRate_Away', 'AH_Margin_Mean']].fillna(0)
 
     X_today = pd.concat([ligas_today, extras_today,qh_today, qa_today], axis=1)
     # qh_today, qa_today,
