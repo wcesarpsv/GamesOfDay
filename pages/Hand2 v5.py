@@ -1361,31 +1361,46 @@ else:
 # 🧭 BLOCO – Índice de Convergência Total (Confidence_Score)
 # ============================================================
 
+def visual_side_match(row):
+    """
+    Coerência visual — quem está por cima no gráfico (Aggression + HandScore)
+    Quadrant_Power_Diff > 0 → Home superior
+    Quadrant_Power_Diff < 0 → Away superior
+    """
+    if row['ML_Side'] == 'HOME' and row['Quadrant_Power_Diff'] > 0:
+        return 1
+    if row['ML_Side'] == 'AWAY' and row['Quadrant_Power_Diff'] < 0:
+        return 1
+    return 0
+
+
 def calc_convergencia(row):
     """
-    Mede o grau de convergência entre modelo, contexto tático, separação visual
-    e lado visual (Visual_Side). Valores mais altos indicam cenários “redondos”.
+    Convergência TOTAL:
+    - Modelo ML (probabilidade)
+    - Distância visual
+    - Coerência tática por quadrantes
+    - Coerência V I S U A L (novo!)
     """
-
     try:
         score_home = float(row.get('Quadrante_ML_Score_Home', 0))
         score_away = float(row.get('Quadrante_ML_Score_Away', 0))
-        dist = float(row.get('Quadrant_Dist', 0))
-        ml_side = "HOME" if score_home > score_away else "AWAY"
         diff = abs(score_home - score_away)
+        dist = float(row.get('Quadrant_Dist', 0))
+        home_q = str(row.get('Quadrante_Home_Label', ''))
+        away_q = str(row.get('Quadrante_Away_Label', ''))
     except Exception:
         return 0.0
 
-    # 1️⃣ Peso da confiança do modelo (diferença H-A)
-    w_ml = min(diff * 2, 1.0)  # diferença de 0.5 já é força máxima
+    ml_side = "HOME" if score_home > score_away else "AWAY"
 
-    # 2️⃣ Peso da separação tática (distância entre quadrantes)
-    w_dist = min(dist / 0.8, 1.0)
+    # 1️⃣ Forte confiança do ML
+    w_ml = min(diff * 2, 1.0)
 
-    # 3️⃣ Peso da coerência entre padrão e lado do modelo
-    home_q = str(row.get('Quadrante_Home_Label', ''))
-    away_q = str(row.get('Quadrante_Away_Label', ''))
+    # 2️⃣ Distância visual
+    w_dist = min(dist / 1.0, 1.0)
 
+    # 3️⃣ Coerência de padrão tático
     padrao_favoravel = (
         ('Underdog Value' in home_q and ml_side == 'HOME') or
         ('Market Overrates' in away_q and ml_side == 'HOME') or
@@ -1394,23 +1409,23 @@ def calc_convergencia(row):
     )
     w_pattern = 1.0 if padrao_favoravel else 0.0
 
-    # 4️⃣ Coerência com lado visual
-    visual_side = row.get('Visual_Side', 'BALANCED')
-    if visual_side == 'BALANCED':
-        w_visual = 0.5
-    else:
-        w_visual = 1.0 if visual_side == ml_side else 0.0
+    # 4️⃣ ✔️ Coerência visual (novo critério)
+    w_visual = visual_side_match(row)
 
-    # 5️⃣ Convergência total (ponderada)
-    confidence_score = round(
-        (0.4 * w_ml + 0.25 * w_dist + 0.2 * w_pattern + 0.15 * w_visual),
-        3
-    )
+    # 🚀 Convergência final (novo peso)
+    confidence_score = round((
+        0.40 * w_ml +
+        0.25 * w_dist +
+        0.20 * w_pattern +
+        0.15 * w_visual
+    ), 3)
+
     return confidence_score
 
 
-# Aplicar cálculo
+# Recalcular 🎯
 ranking_quadrantes['Confidence_Score'] = ranking_quadrantes.apply(calc_convergencia, axis=1)
+
 
 # Exibir os 'Gold Matches' – cenários com tudo coerente
 st.markdown("### 🥇 Gold Matches – Convergência Máxima")
