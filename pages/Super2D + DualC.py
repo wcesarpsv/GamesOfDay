@@ -703,6 +703,108 @@ if not history.empty:
             st.error(f"Erro ao aplicar filtro temporal: {e}")
 
 
+
+
+# ==============================================================
+# 🔥 HANDICAP MODULE — IMPORTED FROM MODEL 1 (Full Asian Logic)
+# ==============================================================
+
+def compute_ah_line_for_side(row):
+    """
+    Ajusta a linha AH para o lado previsto pelo modelo.
+    Se ML_Side == 'AWAY', inverte o sinal da linha (via lógica Home perspective).
+    """
+    line = row['Asian_Line']
+    if row['ML_Side'] == 'AWAY':
+        return -line
+    return line
+
+
+def determine_handicap_result(row):
+    """
+    Calcula o resultado do Handicap Asiático com todas as regras:
+    - Half win / Half loss
+    - Push
+    - Full win / Full loss
+    Retorno:
+        +1.0 = win
+        0.0 = push
+        -1.0 = loss
+        +0.5 / -0.5 para half gain/loss
+    """
+    ml_side = row['ML_Side']  # 'HOME' ou 'AWAY'
+    line = row['AH_Line_Final']
+    
+    # Resultado do jogo
+    gH = row['Goals_H_FT']
+    gA = row['Goals_A_FT']
+    margin = gH - gA  # sempre na perspectiva do HOME
+
+    # Ajuste de perspectiva da margem para o lado apostado
+    if ml_side == 'AWAY':
+        margin = -margin
+    
+    adjusted_score = margin + line
+
+    # Full win / Full loss / Push diretão
+    if adjusted_score > 0.25:
+        return 1.0
+    elif adjusted_score < -0.25:
+        return -1.0
+    elif -0.25 <= adjusted_score <= 0.25:
+        # zona de half ou push
+        if adjusted_score > 0:
+            return 0.5
+        elif adjusted_score < 0:
+            return -0.5
+        else:
+            return 0.0  # PUSH
+
+
+def calculate_profit(row):
+    """
+    Calcula o lucro da aposta com base no Handicap_Result.
+    Profit:
+        Win → odd - 1
+        Half-win → (odd - 1) * 0.5
+        Half-loss → -0.5
+        Loss → -1
+        Push → 0
+    """
+    r = row['Handicap_Result']
+    if pd.isna(r):
+        return 0.0
+    
+    odd = row['Odd_ML_Side']
+    
+    if r == 1.0:
+        return odd - 1
+    elif r == 0.5:
+        return (odd - 1) * 0.5
+    elif r == -0.5:
+        return -0.5
+    elif r == -1.0:
+        return -1.0
+    return 0.0
+
+
+def evaluate_quadrant_decision(row):
+    """
+    Se Handicap_Result > 0 => Acertou
+    Se < 0 => Errou
+    Se == 0 => Push
+    """
+    r = row['Handicap_Result']
+    if r > 0:
+        return "✔️"
+    elif r < 0:
+        return "❌"
+    return "➖"  # Push
+
+
+
+
+
 # ---------------- APLICAR TODAS AS FEATURES WG (OFENSIVAS + DEFENSIVAS) ----------------
 st.info("🧮 Calculando features completas de Weighted Goals por liga...")
 
@@ -826,22 +928,17 @@ if not history.empty:
 
 def compute_ah_side(row):
     """
-    Converte a linha asiática para a perspectiva do lado indicado pelo modelo.
-    Se ML_Side == HOME → mantém a linha original
-    Se ML_Side == AWAY → inverte o sinal da linha
+    Seleciona a linha de handicap na perspectiva do lado previsto pelo modelo.
+    HOME → mantém Asian_Line_Decimal
+    AWAY → inverte o sinal
     """
-    ml_side = row.get('ML_Side', None)
-    asian_line = row.get('Asian_Line_Decimal', np.nan)
+    ml_side = row.get('ML_Side')
+    asian = row.get('Asian_Line_Decimal', np.nan)
 
-    if pd.isna(asian_line) or ml_side is None:
+    if pd.isna(asian) or ml_side is None:
         return np.nan
-
-    if ml_side == 'HOME':
-        return asian_line
-    elif ml_side == 'AWAY':
-        return -asian_line
-
-    return np.nan
+    
+    return asian if ml_side == 'HOME' else -asian
 
 
 
@@ -1210,114 +1307,113 @@ with col_q2:
 # ==========================================================
 # 1️⃣3️⃣ FUNÇÕES DE RESULTADO DE HANDICAP (LIVE SCORE)
 # ==========================================================
+# ==============================================================
+# 🔥 HANDICAP MODULE — IMPORTED FROM MODEL 1 (Full Asian Logic)
+# ==============================================================
+
+def compute_ah_line_for_side(row):
+    """
+    Ajusta a linha AH para o lado previsto pelo modelo.
+    Se ML_Side == 'AWAY', inverte o sinal da linha (via lógica Home perspective).
+    """
+    line = row['Asian_Line']
+    if row['ML_Side'] == 'AWAY':
+        return -line
+    return line
+
 def determine_handicap_result(row):
     """
-    Determina resultado do handicap da aposta com base no texto da recomendação.
-    Mantida exatamente como estava (lógica atual).
+    Calcula resultado do handicap asiático considerando:
+    - HALF-WIN
+    - HALF-LOSS
+    - PUSH
+    - WIN / LOSS
+
+    Retorno:
+        1.0   = FULL WIN
+        0.75  = HALF WIN
+        0.5   = PUSH
+        0.25  = HALF LOSS
+        0.0   = FULL LOSS
     """
     try:
-        gh = float(row['Goals_H_Today']) if pd.notna(row['Goals_H_Today']) else np.nan
-        ga = float(row['Goals_A_Today']) if pd.notna(row['Goals_A_Today']) else np.nan
-        asian_line_home = row['Asian_Line_Decimal']
-        recomendacao = str(row.get('Recomendacao', '')).upper()
-    except (ValueError, TypeError, KeyError):
+        gh = float(row.get('Goals_H_Today', np.nan))
+        ga = float(row.get('Goals_A_Today', np.nan))
+        line = float(row.get('AH_ML_Side', np.nan))
+    except Exception:
         return None
 
-    if pd.isna(gh) or pd.isna(ga) or pd.isna(asian_line_home):
+    if pd.isna(gh) or pd.isna(ga) or pd.isna(line):
         return None
 
-    is_home_bet = any(k in recomendacao for k in [
-        'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
-        'MODELO CONFIA HOME', 'H:', 'HOME)'
-    ])
-    is_away_bet = any(k in recomendacao for k in [
-        'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 
-        'MODELO CONFIA AWAY', 'A:', 'AWAY)'
-    ])
-
-    if not is_home_bet and not is_away_bet:
-        return None
-
-    if is_home_bet:
-        asian_line = asian_line_home
-    else:
-        asian_line = -asian_line_home
-
-    side = "HOME" if is_home_bet else "AWAY"
-
-    frac = abs(asian_line % 1)
+    # Ver se linha é fracionada (quarter)
+    frac = abs(line % 1)
     is_quarter = frac in [0.25, 0.75]
 
-    def single_result(gh, ga, line, side):
-        if side == "HOME":
-            adjusted = (gh + line) - ga
-        else:
-            adjusted = (ga + line) - gh
-
-        if adjusted > 0:
-            return 1.0
-        elif adjusted == 0:
-            return 0.5
-        else:
-            return 0.0
+    def result_single(g_h, g_a, ln):
+        adj = g_h + ln - g_a
+        if adj > 0: return 1.0
+        if adj == 0: return 0.5
+        return 0.0
 
     if is_quarter:
-        if asian_line > 0:
-            line1 = math.floor(asian_line * 2) / 2
-            line2 = line1 + 0.5
+        # Ex: -0.75 → -0.5 e -1.0
+        if line > 0:
+            ln1 = math.floor(line * 2) / 2
+            ln2 = ln1 + 0.5
         else:
-            line1 = math.ceil(asian_line * 2) / 2
-            line2 = line1 - 0.5
+            ln1 = math.ceil(line * 2) / 2
+            ln2 = ln1 - 0.5
 
-        r1 = single_result(gh, ga, line1, side)
-        r2 = single_result(gh, ga, line2, side)
+        r1 = result_single(gh, ga, ln1)
+        r2 = result_single(gh, ga, ln2)
         avg = (r1 + r2) / 2
+        return avg
 
-        if avg == 1:
-            return f"{side}_COVERED"
-        elif avg == 0.75:
-            return "HALF_WIN"
-        elif avg == 0.5:
-            return "PUSH"
-        elif avg == 0.25:
-            return "HALF_LOSS"
-        else:
-            return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
-
-    if side == "HOME":
-        adjusted = (gh + asian_line) - ga
-    else:
-        adjusted = (ga + asian_line) - gh
-
-    if adjusted > 0:
-        return f"{side}_COVERED"
-    elif adjusted < 0:
-        return f"{'AWAY' if side == 'HOME' else 'HOME'}_COVERED"
-    else:
-        return "PUSH"
+    # Linha padrão
+    return result_single(gh, ga, line)
 
 
-def check_handicap_recommendation_correct(rec, handicap_result):
+
+def calculate_profit(handicap_result, odd):
     """
-    Placeholder atual: sempre retorna None.
-    Mantido como está (TODO futuro para validar apostas).
+    ─────────────────────────────────────────────
+    Profit real da aposta:
+       WIN      → odd - 1 stake
+       HALF-WIN → (odd -1) / 2
+       PUSH     → 0
+       HALF-LOSS→ -1/2
+       LOSS     → -1
+    ─────────────────────────────────────────────
     """
-    if pd.isna(rec) or handicap_result is None or rec == '❌ Avoid':
+    if handicap_result is None or pd.isna(odd):
+        return 0
+    
+    if handicap_result == 1.0:  # win
+        return odd - 1
+    if handicap_result == 0.75: # half win
+        return (odd - 1) / 2
+    if handicap_result == 0.5:  # push
+        return 0
+    if handicap_result == 0.25: # half loss
+        return -0.5
+    
+    return -1  # full loss
+
+
+def evaluate_quadrant_decision(handicap_result):
+    """
+    1 = lucro (acertou totalmente)
+    0.5 = devolveu metade → verde fraco
+    0 = perda total
+    """
+    if handicap_result is None:
         return None
-
-    rec = str(rec)
-    # (mantido como estava – ainda podemos refinar depois)
-    return None
-
-
-def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal):
-    """
-    Placeholder atual: calcula sempre 0.
-    Mantido sem lógica para não alterar comportamento.
-    """
-    # Mantido como no seu código original (podemos alinhar depois)
+    if handicap_result > 0.5:
+        return 1
+    if handicap_result == 0.5:
+        return 0.5
     return 0
-
 
 # ==========================================================
 # 1️⃣4️⃣ HCAPZONE v2 – POR CONFRONTO (QUADRANTE × QUADRANTE)
@@ -1809,24 +1905,34 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     )
 
     # LIVE UPDATE dos jogos que já possuem placar
-    def update_real_time_data(df: pd.DataFrame) -> pd.DataFrame:
-        df = df.copy()
-        df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
-        df['Quadrante_Correct'] = df.apply(
-            lambda r: check_handicap_recommendation_correct(r['Recomendacao'], r['Handicap_Result']),
-            axis=1
-        )
-        df['Profit_Quadrante'] = df.apply(
-            lambda r: calculate_handicap_profit(
-                r['Recomendacao'],
-                r['Handicap_Result'],
-                r,
-                r.get('Asian_Line_Decimal', np.nan)
-            ),
-            axis=1
-        )
-        return df
+   def update_real_time_data(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
 
+    # Ajustar linha para o lado do modelo
+    df['AH_ML_Side'] = df.apply(compute_ah_side, axis=1)
+
+    # Selecionar odd correta
+    df['Odd_ML_Side'] = np.where(
+        df['ML_Side'] == 'HOME',
+        df['Odd_H'],
+        df['Odd_A']
+    )
+
+    # Resultado Handicap Asiático
+    df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
+
+    # Profit real
+    df['Profit_Quadrante'] = df.apply(
+        lambda r: calculate_profit(r['Handicap_Result'], r['Odd_ML_Side']),
+        axis=1
+    )
+
+    # Correção visual para acerto
+    df['Quadrante_Correct'] = df['Handicap_Result'].apply(evaluate_quadrant_decision)
+
+    return df
+
+       
     ranking_quadrantes = update_real_time_data(ranking_quadrantes)
 
     # LIVE SCORE RESUMO
