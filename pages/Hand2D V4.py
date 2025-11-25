@@ -592,6 +592,12 @@ for old_col, new_col in alias_map.items():
         games_today[old_col] = games_today[new_col]
 
 
+games_today['CoverRate_Home'] = games_today['CoverRate_Home_Hist']
+games_today['CoverRate_Away'] = games_today['CoverRate_Away_Hist']
+games_today['AH_Margin_Mean'] = games_today['AH_Margin_Mean_Hist']
+
+
+
 
 
 # ---------------- VISUALIZAÇÃO DOS QUADRANTES ----------------
