@@ -533,7 +533,7 @@ def compute_handicap_features(df, last_n=5):
 
 
 # 📌 Aplicar no histórico ANTES do treino
-history = compute_handicap_features(history, last_n=10)
+history = compute_handicap_features(history, last_n=5)
 
 st.success("✨ Features de histórico de handicap adicionadas ao histórico!")
 
@@ -823,8 +823,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
 
     # 🔹 Novas features contínuas (Distância, Separação e Ângulo)
-    extras = history[['Quadrant_Dist', 'Quadrant_Separation','Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized',
-                  'CoverRate_Home', 'CoverRate_Away', 'AH_Margin_Mean']].fillna(0)
+    extras = history[['Quadrant_Dist', 'Quadrant_Separation','Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized', 'CoverRate_Home', 'CoverRate_Away', 'AH_Margin_Mean']].fillna(0)
 
     # Combinar todas as features
     X = pd.concat([ligas_dummies, extras,quadrantes_home, quadrantes_away], axis=1)
