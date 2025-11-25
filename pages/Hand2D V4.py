@@ -901,7 +901,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
 
     # Targets
     y_home = history['Target_AH_Home']
-    y_away = 1 - y_home  # inverso lógico
+    y_away = history['Target_AH_Away']
 
     # -------------------------------
     # 🔹 Treinar modelos
