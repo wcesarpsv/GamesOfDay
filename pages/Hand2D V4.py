@@ -509,7 +509,67 @@ fig.update_layout(
     hovermode="closest",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
 )
-st.plotly_chart(fig, use_container_width=True)
+# st.plotly_chart(fig, use_container_width=True)
+
+
+
+# ✅ CORREÇÃO NO SEU GRÁFICO:
+def plot_corrected_perspective(df_plot):
+    fig = go.Figure()
+
+    for _, row in df_plot.iterrows():
+        # ✅ PERSPECTIVA CORRETA: Home sempre com dados HOME, Away sempre com dados AWAY
+        xh, xa = row["Aggression_Home"], row["Aggression_Away"]
+        yh, ya = row["HandScore_Home"], row["HandScore_Away"]
+
+        fig.add_trace(go.Scatter(
+            x=[xh, xa], y=[yh, ya],
+            mode="lines+markers",
+            line=dict(color="gray", width=1),
+            marker=dict(size=5),
+            hoverinfo="text",
+            hovertext=(
+                f"<b>{row['Home']} vs {row['Away']}</b><br>"
+                f"🏆 {row.get('League','N/A')}<br>"
+                f"📊 Home: Agg={xh:.2f}, HS={yh:.1f}<br>"
+                f"📊 Away: Agg={xa:.2f}, HS={ya:.1f}<br>"
+                f"🎯 {row.get('Recomendacao', '')}"
+            ),
+            showlegend=False
+        ))
+
+    # Home points (blue)
+    fig.add_trace(go.Scatter(
+        x=df_plot["Aggression_Home"], y=df_plot["HandScore_Home"],
+        mode="markers+text", name="Home",
+        marker=dict(color="royalblue", size=8, opacity=0.8),
+        text=df_plot["Home"], textposition="top center",
+        hoverinfo="skip"
+    ))
+
+    # Away points (red)  
+    fig.add_trace(go.Scatter(
+        x=df_plot["Aggression_Away"], y=df_plot["HandScore_Away"],
+        mode="markers+text", name="Away",
+        marker=dict(color="orangered", size=8, opacity=0.8),
+        text=df_plot["Away"], textposition="top center",
+        hoverinfo="skip"
+    ))
+
+    fig.update_layout(
+        title="Perspectiva Corrigida - Home vs Away no Mesmo Sistema",
+        xaxis_title="Aggression (Home: dados HOME | Away: dados AWAY)",
+        yaxis_title="HandScore",
+        template="plotly_white",
+        height=700
+    )
+    
+    return fig
+
+# No seu código principal, substitua:
+# st.plotly_chart(fig, use_container_width=True)  # ← linha atual
+# por:
+st.plotly_chart(plot_corrected_perspective(df_plot), use_container_width=True)
 
 
 # ============================================================
