@@ -509,7 +509,7 @@ fig.update_layout(
     hovermode="closest",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
 )
-# st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
 
 
 
@@ -569,7 +569,7 @@ def plot_corrected_perspective(df_plot):
 # No seu código principal, substitua:
 # st.plotly_chart(fig, use_container_width=True)  # ← linha atual
 # por:
-st.plotly_chart(plot_corrected_perspective(df_plot), use_container_width=True)
+# st.plotly_chart(plot_corrected_perspective(df_plot), use_container_width=True)
 
 
 # ============================================================
