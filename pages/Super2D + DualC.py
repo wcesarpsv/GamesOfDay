@@ -778,9 +778,9 @@ def calculate_profit(row):
     odd = row['Odd_ML_Side']
     
     if r == 1.0:
-        return odd - 1
+        return odd 
     elif r == 0.5:
-        return (odd - 1) * 0.5
+        return odd  * 0.5
     elif r == -0.5:
         return -0.5
     elif r == -1.0:
@@ -1917,8 +1917,8 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         # Selecionar odd correta
         df['Odd_ML_Side'] = np.where(
             df['ML_Side'] == 'HOME',
-            df['Odd_H'],
-            df['Odd_A']
+            df['Odd_H_Asi'],
+            df['Odd_A_Asi']
         )
 
         # Resultado Handicap Asiático
