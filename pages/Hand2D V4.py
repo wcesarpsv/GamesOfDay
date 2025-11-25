@@ -162,63 +162,6 @@ games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
 games_today = filter_leagues(games_today)
 
 
-# ============================================================
-# 📌 Features de Histórico de Handicap
-# ============================================================
-
-def compute_handicap_features(df, last_n=5):
-    """
-    Adiciona features baseadas na performance histórica de Handicap:
-    - CoverRate_Home: % dos últimos jogos do Home onde cobriu AH
-    - CoverRate_Away: % dos últimos jogos do Away onde o Home não cobriu
-    - AH_Margin_Mean: Média da margem real vs linha AH, captando erro do mercado
-    """
-
-    df = df.copy()
-
-    # Se não tiver margin, calcula
-    if 'Margin' not in df.columns:
-        df['Margin'] = df['Goals_H_FT'] - df['Goals_A_FT']
-
-    # Resultado binário já existe como Target_AH_Home
-    df['Covered'] = df['Target_AH_Home']
-
-    # Margem ajustada
-    df['AH_Margin'] = df['Margin'] - df['Asian_Line_Decimal']
-
-    # Rolling baseado em jogos do time da casa
-    df['CoverRate_Home'] = (
-        df.groupby('Home')['Covered']
-        .rolling(last_n, min_periods=3)
-        .mean()
-        .reset_index(level=0, drop=True)
-    )
-
-    # Away invertido → se Away cobre, Home não cobre
-    df['CoverRate_Away'] = (
-        1 - df.groupby('Away')['Covered']
-        .rolling(last_n, min_periods=3)
-        .mean()
-        .reset_index(level=0, drop=True)
-    )
-
-    # Média da margem histórica
-    df['AH_Margin_Mean'] = (
-        df.groupby('Home')['AH_Margin']
-        .rolling(last_n, min_periods=3)
-        .mean()
-        .reset_index(level=0, drop=True)
-    )
-
-    return df
-
-
-# 📌 Aplicar no histórico ANTES do treino
-history = compute_handicap_features(history, last_n=10)
-
-st.success("✨ Features de histórico de handicap adicionadas ao histórico!")
-
-
 # ---------------- LIVE SCORE INTEGRATION ----------------
 def load_and_merge_livescore(games_today, selected_date_str):
     """Carrega e faz merge dos dados do Live Score"""
@@ -538,7 +481,61 @@ fig.update_layout(
 st.plotly_chart(fig, use_container_width=True)
 
 
+# ============================================================
+# 📌 Features de Histórico de Handicap
+# ============================================================
 
+def compute_handicap_features(df, last_n=5):
+    """
+    Adiciona features baseadas na performance histórica de Handicap:
+    - CoverRate_Home: % dos últimos jogos do Home onde cobriu AH
+    - CoverRate_Away: % dos últimos jogos do Away onde o Home não cobriu
+    - AH_Margin_Mean: Média da margem real vs linha AH, captando erro do mercado
+    """
+
+    df = df.copy()
+
+    # Se não tiver margin, calcula
+    if 'Margin' not in df.columns:
+        df['Margin'] = df['Goals_H_FT'] - df['Goals_A_FT']
+
+    # Resultado binário já existe como Target_AH_Home
+    df['Covered'] = df['Target_AH_Home']
+
+    # Margem ajustada
+    df['AH_Margin'] = df['Margin'] - df['Asian_Line_Decimal']
+
+    # Rolling baseado em jogos do time da casa
+    df['CoverRate_Home'] = (
+        df.groupby('Home')['Covered']
+        .rolling(last_n, min_periods=3)
+        .mean()
+        .reset_index(level=0, drop=True)
+    )
+
+    # Away invertido → se Away cobre, Home não cobre
+    df['CoverRate_Away'] = (
+        1 - df.groupby('Away')['Covered']
+        .rolling(last_n, min_periods=3)
+        .mean()
+        .reset_index(level=0, drop=True)
+    )
+
+    # Média da margem histórica
+    df['AH_Margin_Mean'] = (
+        df.groupby('Home')['AH_Margin']
+        .rolling(last_n, min_periods=3)
+        .mean()
+        .reset_index(level=0, drop=True)
+    )
+
+    return df
+
+
+# 📌 Aplicar no histórico ANTES do treino
+history = compute_handicap_features(history, last_n=10)
+
+st.success("✨ Features de histórico de handicap adicionadas ao histórico!")
 
 # ---------------- VISUALIZAÇÃO DOS QUADRANTES ----------------
 def plot_quadrantes_avancado(df, side="Home"):
