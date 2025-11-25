@@ -1423,6 +1423,27 @@ def calc_convergencia(row):
     return confidence_score
 
 
+
+# ============================================================
+# 🧩 Quadrant_Power_Diff – Força visual real do confronto
+# ============================================================
+def compute_quadrant_power_diff(df):
+    """
+    Positivo → Home mais forte visualmente
+    Negativo → Away mais forte visualmente
+    """
+    df['Quadrant_Power_Diff'] = (
+        df['Aggression_Home'] - df['Aggression_Away']
+    ) * 0.6 + (
+        (df['HandScore_Home'] - df['HandScore_Away']) / 60
+    ) * 0.4
+    return df
+
+ranking_quadrantes = compute_quadrant_power_diff(ranking_quadrantes)
+
+
+
+
 # Recalcular 🎯
 ranking_quadrantes['Confidence_Score'] = ranking_quadrantes.apply(calc_convergencia, axis=1)
 
