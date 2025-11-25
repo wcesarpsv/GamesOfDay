@@ -865,7 +865,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
 
     # 🔹 Novas features contínuas (Distância, Separação e Ângulo)
-    extras = history[['Quadrant_Dist', 'Quadrant_Separation','Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized', 'CoverRate_Home', 'CoverRate_Away', 'AH_Margin_Mean']].fillna(0)
+    extras = history[['Quadrant_Dist', 'Quadrant_Separation','Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized', 'CoverRate_Home_Hist', 'CoverRate_Away_Hist', 'AH_Margin_Mean_Hist']].fillna(0)
 
     # Combinar todas as features
     X = pd.concat([ligas_dummies, extras,quadrantes_home, quadrantes_away], axis=1)
@@ -894,7 +894,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
     qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized', 'CoverRate_Home', 'CoverRate_Away', 'AH_Margin_Mean']].fillna(0)
+    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized', 'CoverRate_Home_Hist', 'CoverRate_Away_Hist', 'AH_Margin_Mean_Hist']].fillna(0)
 
     X_today = pd.concat([ligas_today, extras_today,qh_today, qa_today], axis=1)
     # qh_today, qa_today,
