@@ -254,6 +254,13 @@ history["Target_AH_Home"] = history.apply(
     axis=1
 )
 
+# Target Away com mesma lógica do Home (mas usando linha do Away)
+history["Margin_Away"] = history["Goals_A_FT"] - history["Goals_H_FT"]
+
+history["Target_AH_Away"] = history.apply(
+    lambda r: 1 if calc_handicap_result(r["Margin_Away"], r["Asian_Line"]) > 0.5 else 0,
+    axis=1
+)
 # ---------------- SISTEMA DE 8 QUADRANTES ----------------
 st.markdown("## 🎯 Sistema de 8 Quadrantes")
 
