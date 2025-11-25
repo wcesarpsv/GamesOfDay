@@ -1668,14 +1668,14 @@ def treinar_modelo_quadrantes_dual_completo(history: pd.DataFrame,
 
     try:
         model_home = RandomForestClassifier(
-            n_estimators=min(100, len(history)),
+            n_estimators=min(300, len(history)),
             max_depth=8, 
             random_state=42, 
             class_weight='balanced_subsample', 
             n_jobs=-1
         )
         model_away = RandomForestClassifier(
-            n_estimators=min(100, len(history)),
+            n_estimators=min(300, len(history)),
             max_depth=8,
             random_state=42, 
             class_weight='balanced_subsample', 
