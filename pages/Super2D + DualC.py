@@ -1906,31 +1906,31 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
     # LIVE UPDATE dos jogos que já possuem placar
    def update_real_time_data(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-
-    # Ajustar linha para o lado do modelo
-    df['AH_ML_Side'] = df.apply(compute_ah_side, axis=1)
-
-    # Selecionar odd correta
-    df['Odd_ML_Side'] = np.where(
-        df['ML_Side'] == 'HOME',
-        df['Odd_H'],
-        df['Odd_A']
-    )
-
-    # Resultado Handicap Asiático
-    df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
-
-    # Profit real
-    df['Profit_Quadrante'] = df.apply(
-        lambda r: calculate_profit(r['Handicap_Result'], r['Odd_ML_Side']),
-        axis=1
-    )
-
-    # Correção visual para acerto
-    df['Quadrante_Correct'] = df['Handicap_Result'].apply(evaluate_quadrant_decision)
-
-    return df
+        df = df.copy()
+    
+        # Ajustar linha para o lado do modelo
+        df['AH_ML_Side'] = df.apply(compute_ah_side, axis=1)
+    
+        # Selecionar odd correta
+        df['Odd_ML_Side'] = np.where(
+            df['ML_Side'] == 'HOME',
+            df['Odd_H'],
+            df['Odd_A']
+        )
+    
+        # Resultado Handicap Asiático
+        df['Handicap_Result'] = df.apply(determine_handicap_result, axis=1)
+    
+        # Profit real
+        df['Profit_Quadrante'] = df.apply(
+            lambda r: calculate_profit(r['Handicap_Result'], r['Odd_ML_Side']),
+            axis=1
+        )
+    
+        # Correção visual para acerto
+        df['Quadrante_Correct'] = df['Handicap_Result'].apply(evaluate_quadrant_decision)
+    
+        return df
 
        
     ranking_quadrantes = update_real_time_data(ranking_quadrantes)
