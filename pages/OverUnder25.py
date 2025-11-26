@@ -109,7 +109,7 @@ def create_over_under_features(df: pd.DataFrame) -> pd.DataFrame:
     # Features básicas de ataque
     basic_features = []
     
-    # Usar OverScore se disponível
+    # Usar OverScore se disponível - SEMPRE calcular avg aqui também
     if 'OverScore_Home' in df.columns and 'OverScore_Away' in df.columns:
         df['OverScore_Avg'] = (df['OverScore_Home'] + df['OverScore_Away']) / 2
         df['OverScore_Diff'] = df['OverScore_Home'] - df['OverScore_Away']
@@ -219,24 +219,32 @@ def enrich_games_today_with_offensive_features(games_today: pd.DataFrame, histor
     if history.empty or games_today.empty:
         return games_today
 
-    # Últimos valores ofensivos para times como home
+    # Últimos valores ofensivos para times como home (INCLUINDO OVERSCORE)
     last_offensive_home = history.groupby('Home').agg({
         'WG_Offensive_Home_Team': 'last',
-        'WG_Offensive_Total': 'last'
+        'WG_Offensive_Total': 'last',
+        'OverScore_Home': 'last',  # Trazer OverScore do histórico
+        'OverScore_Avg': 'last'    # Trazer OverScore_Avg do histórico
     }).reset_index().rename(columns={
         'Home': 'Team',
         'WG_Offensive_Home_Team': 'WG_Offensive_Home_Last',
-        'WG_Offensive_Total': 'WG_Offensive_Total_Last'
+        'WG_Offensive_Total': 'WG_Offensive_Total_Last_Home',
+        'OverScore_Home': 'OverScore_Home_Last',
+        'OverScore_Avg': 'OverScore_Avg_Home_Last'
     })
 
-    # Últimos valores ofensivos para times como away
+    # Últimos valores ofensivos para times como away (INCLUINDO OVERSCORE)
     last_offensive_away = history.groupby('Away').agg({
         'WG_Offensive_Away_Team': 'last',
-        'WG_Offensive_Total': 'last'
+        'WG_Offensive_Total': 'last',
+        'OverScore_Away': 'last',  # Trazer OverScore do histórico
+        'OverScore_Avg': 'last'    # Trazer OverScore_Avg do histórico
     }).reset_index().rename(columns={
         'Away': 'Team',
         'WG_Offensive_Away_Team': 'WG_Offensive_Away_Last',
-        'WG_Offensive_Total': 'WG_Offensive_Total_Last'
+        'WG_Offensive_Total': 'WG_Offensive_Total_Last_Away',
+        'OverScore_Away': 'OverScore_Away_Last',
+        'OverScore_Avg': 'OverScore_Avg_Away_Last'
     })
 
     # Merge com jogos de hoje
@@ -248,15 +256,25 @@ def enrich_games_today_with_offensive_features(games_today: pd.DataFrame, histor
         last_offensive_away, left_on='Away', right_on='Team', how='left'
     ).drop('Team', axis=1)
 
+    # Calcular médias finais dos valores do histórico
+    games_today['OverScore_Avg_Last'] = (
+        games_today['OverScore_Avg_Home_Last'].fillna(0) + 
+        games_today['OverScore_Avg_Away_Last'].fillna(0)
+    ) / 2
+    
+    games_today['OverScore_Home_Last'] = games_today['OverScore_Home_Last'].fillna(games_today['OverScore_Home'])
+    games_today['OverScore_Away_Last'] = games_today['OverScore_Away_Last'].fillna(games_today['OverScore_Away'])
+
     # Preencher valores faltantes
-    offensive_cols = ['WG_Offensive_Home_Last', 'WG_Offensive_Away_Last', 
-                     'WG_Offensive_Total_Last_x', 'WG_Offensive_Total_Last_y']
+    offensive_cols = [
+        'WG_Offensive_Home_Last', 'WG_Offensive_Away_Last', 
+        'WG_Offensive_Total_Last_Home', 'WG_Offensive_Total_Last_Away',
+        'OverScore_Home_Last', 'OverScore_Away_Last', 'OverScore_Avg_Last'
+    ]
     
     for col in offensive_cols:
         if col in games_today.columns:
             games_today[col] = games_today[col].fillna(0.0)
-        else:
-            games_today[col] = 0.0
 
     # Calcular diferenciais finais
     games_today['WG_Offensive_Diff_Last'] = (
@@ -560,7 +578,7 @@ def load_and_merge_livescore(games_today: pd.DataFrame, selected_date_str: str) 
 games_today = load_and_merge_livescore(games_today, selected_date_str)
 
 # ==========================================================
-# PROCESSAMENTO PARA OVER/UNDER
+# PROCESSAMENTO PARA OVER/UNDER (ATUALIZADO)
 # ==========================================================
 
 # 1. Calcular parâmetros por liga
@@ -579,9 +597,10 @@ if not history.empty:
     # Criar target Over/Under
     history_ou = create_over_under_target(history)
     
-    # Adicionar features ofensivas
+    # Adicionar features ofensivas (ISSO CRIA OverScore_Avg NO HISTÓRICO)
     history_ou = adicionar_weighted_goals_over_under(history_ou)
     history_ou = calcular_rolling_offensive_features(history_ou)
+    history_ou = create_over_under_features(history_ou)  # ISSO GARANTE OverScore_Avg NO HISTÓRICO
     
     # Treinar modelo se tivermos dados suficientes
     if len(history_ou) > 50:
@@ -594,6 +613,7 @@ if not history.empty:
         if not games_today.empty:
             # Adicionar features ofensivas aos jogos de hoje
             games_today = adicionar_weighted_goals_over_under(games_today)
+            games_today = create_over_under_features(games_today)  # GARANTE OverScore_Avg HOJE
             games_today = enrich_games_today_with_offensive_features(games_today, history_ou)
             
             # Criar features para predição
@@ -675,11 +695,12 @@ if not games_today.empty:
         st.info("Nenhum sinal Over/Under aprovado para hoje.")
 
 # ==========================================================
-# ANÁLISE DAS FEATURES OVERSCORE
+# ANÁLISE DAS FEATURES OVERSCORE (SIMPLIFICADO)
 # ==========================================================
 if not games_today.empty and 'OverScore_Home' in games_today.columns:
     st.markdown("## 📈 Análise das Features OverScore")
     
+    # AGORA OverScore_Avg DEVE EXISTIR (foi criado em create_over_under_features)
     col1, col2 = st.columns(2)
     
     with col1:
@@ -687,8 +708,8 @@ if not games_today.empty and 'OverScore_Home' in games_today.columns:
         st.metric("OverScore Away Médio", f"{games_today['OverScore_Away'].mean():.1f}")
     
     with col2:
-        st.metric("Maior OverScore Home", f"{games_today['OverScore_Home'].max():.1f}")
-        st.metric("Maior OverScore Away", f"{games_today['OverScore_Away'].max():.1f}")
+        st.metric("OverScore Avg Médio", f"{games_today['OverScore_Avg'].mean():.1f}")
+        st.metric("Maior OverScore", f"{games_today['OverScore_Avg'].max():.1f}")
     
     # Correlação com probabilidade Over
     if 'Prob_Over' in games_today.columns:
