@@ -1688,9 +1688,20 @@ if model_over25 is not None and not games_today.empty:
     )
 
     # Threshold simples de aprovação
-    MIN_CONF = 0.57
-    games_today['Min_Conf_Required'] = MIN_CONF
+    def min_conf_over25_by_odd(odd):
+        if pd.isna(odd):
+            return 0.60
+        if odd <= 1.80:
+            return 0.61
+        if odd <= 2.05:
+            return 0.57
+        if odd <= 2.30:
+            return 0.54
+        return 0.50
+    
+    games_today['Min_Conf_Required'] = games_today['Odd_Over25'].apply(min_conf_over25_by_odd)
     games_today['Bet_Approved'] = games_today['Bet_Confidence'] >= games_today['Min_Conf_Required']
+
 
 else:
     if not games_today.empty:
