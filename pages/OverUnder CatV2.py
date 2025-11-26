@@ -222,26 +222,40 @@ def adicionar_overscore_diff(df: pd.DataFrame) -> pd.DataFrame:
 def create_robust_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
-    # Linha decimal
     df = adicionar_ou_line_decimal(df)
 
-    # OverScore diferenciado
+    # OverScore diferencial
     df["OverScore_Diff"] = df["OverScore_Home"] - df["OverScore_Away"]
 
-    # Poder ofensivo baseado em HandScore
-    df["HandScore_Diff"] = df["HandScore_Home"] - df["HandScore_Away"]
+    # HandScore diferencial
+    if "HandScore_Home" in df.columns and "HandScore_Away" in df.columns:
+        df["HandScore_Diff"] = df["HandScore_Home"] - df["HandScore_Away"]
+    else:
+        df["HandScore_Diff"] = 0.0
 
-    # Momentum - já disponível
+    # Momentum derivado
     if "M_H" in df.columns and "M_A" in df.columns:
         df["Momentum_Advantage"] = df["M_H"] - df["M_A"]
         df["M_Total"] = df["M_H"] + df["M_A"]
+    else:
+        df["Momentum_Advantage"] = 0.0
+        df["M_Total"] = 0.0
 
-    # Rolagem simples para gols - sem risco de look-ahead aqui, pois histórico já é passado
-    df["Goals_Avg_H_Last"] = df.groupby("Home")["Goals_H_FT"].transform(lambda x: x.rolling(6, min_periods=1).mean())
-    df["Goals_Avg_A_Last"] = df.groupby("Away")["Goals_A_FT"].transform(lambda x: x.rolling(6, min_periods=1).mean())
+    # Somente histórico tem gols FT → jogos do dia NÃO
+    if "Goals_H_FT" in df.columns and "Goals_A_FT" in df.columns:
+        df["Goals_Avg_H_Last"] = df.groupby("Home")["Goals_H_FT"].transform(
+            lambda x: x.rolling(6, min_periods=1).mean()
+        )
+        df["Goals_Avg_A_Last"] = df.groupby("Away")["Goals_A_FT"].transform(
+            lambda x: x.rolling(6, min_periods=1).mean()
+        )
+    else:
+        # Jogos do dia → valores neutros até histórico preencher depois
+        df["Goals_Avg_H_Last"] = 1.35  # média global
+        df["Goals_Avg_A_Last"] = 1.35
+
     df["Total_Goals_Avg"] = df["Goals_Avg_H_Last"] + df["Goals_Avg_A_Last"]
 
-    # Odds útil para calibrar risco
     odds_features = ["Odd_Over25", "Odd_Under25"]
 
     feat_list = [
@@ -249,17 +263,18 @@ def create_robust_features(df: pd.DataFrame) -> pd.DataFrame:
         "HandScore_Diff",
         "Momentum_Advantage", "M_Total",
         "Goals_Avg_H_Last", "Goals_Avg_A_Last", "Total_Goals_Avg",
-        "OU_Line_Dec"
+        "OU_Line_Dec",
     ] + odds_features
 
     available = [f for f in feat_list if f in df.columns]
 
-    st.info(f"📋 Features utilizadas: {len(available)}/{len(feat_list)}")
+    st.info(f"📋 Features para ML: {len(available)}/{len(feat_list)}")
 
     X = df[available].copy()
     X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
 
     return X
+
 
 
 # ==========================================================
