@@ -370,6 +370,41 @@ def create_over25_target(df: pd.DataFrame) -> pd.DataFrame:
 
 
 
+# ==========================================================
+# NOVO: OVER 2.5 RATE POR LIGA (GLOBAL + POR TIME)
+# ==========================================================
+def adicionar_liga_over25_rate(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    if 'League' not in df.columns or 'Goals_H_FT' not in df.columns:
+        st.warning("⚠️ Faltam colunas para calcular Liga_Over25_Rate")
+        df['Liga_Over25_Rate'] = 0.5
+        df['Liga_Over25_Rate_Home'] = 0.5
+        df['Liga_Over25_Rate_Away'] = 0.5
+        return df
+
+    # Target Over 2.5 se ainda não existe
+    if 'Target_Over25' not in df.columns:
+        df = create_over25_target(df)
+
+    # Média OVER 2.5 global da liga
+    df['Liga_Over25_Rate'] = df.groupby('League')['Target_Over25'].transform('mean')
+
+    # Mandante: liga levando em conta somente os jogos como mandante
+    df['Liga_Over25_Rate_Home'] = df.groupby('League')['Target_Over25'].transform('mean')
+
+    # Visitante: liga levando em conta somente os jogos como visitante
+    df['Liga_Over25_Rate_Away'] = df.groupby('League')['Target_Over25'].transform('mean')
+
+    # Preenche valores faltantes
+    df[['Liga_Over25_Rate', 'Liga_Over25_Rate_Home', 'Liga_Over25_Rate_Away']] = df[
+        ['Liga_Over25_Rate', 'Liga_Over25_Rate_Home', 'Liga_Over25_Rate_Away']
+    ].fillna(0.5)
+
+    return df
+
+
+
 
 # ==========================================================
 # ODDs Over/Under 2.5 → Fair Odds (features para ML)
@@ -1144,6 +1179,13 @@ def create_robust_features(df: pd.DataFrame) -> pd.DataFrame:
         'GES_Total_Diff'
     ]
 
+    liga_features = [
+        'Liga_Over25_Rate', 
+        'Liga_Over25_Rate_Home', 
+        'Liga_Over25_Rate_Away'
+    ]
+
+
     # 🚀 NOVO: OverScore_Home / OverScore_Away + Diff
     if 'OverScore_Home' not in df.columns:
         df['OverScore_Home'] = 0.0
@@ -1156,7 +1198,7 @@ def create_robust_features(df: pd.DataFrame) -> pd.DataFrame:
         'OverScore_Home', 'OverScore_Away', 'OverScore_Diff'
     ]
 
-    all_features = basic_features + derived_features + vector_features + wg_features + ges_features + over_features
+    all_features = basic_features + derived_features + vector_features + wg_features + ges_features + over_features + liga_features
     available_features = [f for f in all_features if f in df.columns]
 
     st.info(f"📋 Features disponíveis para ML: {len(available_features)}/{len(all_features)}")
@@ -1569,6 +1611,8 @@ if not history.empty:
 
     # Odds O/U 2.5 no histórico
     history = adicionar_over25_odds_features(history)
+    history = adicionar_liga_over25_rate(history)
+
 
     # GES
     history = adicionar_goal_efficiency_score(history, liga_params)
@@ -1586,6 +1630,8 @@ if not history.empty:
     if not games_today.empty:
         # Odds O/U 2.5 nos jogos de hoje
         games_today = adicionar_over25_odds_features(games_today)
+        games_today = adicionar_liga_over25_rate(games_today)
+
 
         games_today = adicionar_goal_efficiency_score(games_today, liga_params)
         games_today = calcular_rolling_ges(games_today)
