@@ -33,10 +33,18 @@ os.makedirs(MODELS_FOLDER, exist_ok=True)
 # ==========================================================
 def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    if "Goals_H_FT_x" in df.columns:
-        df = df.rename(columns={"Goals_H_FT_x": "Goals_H_FT", "Goals_A_FT_x": "Goals_A_FT"})
-    elif "Goals_H_FT_y" in df.columns:
-        df = df.rename(columns={"Goals_H_FT_y": "Goals_H_FT", "Goals_A_FT_y": "Goals_A_FT"})
+    # Renomear colunas comuns para padronização
+    column_mapping = {
+        'Goals_H_FT_x': 'Goals_H_FT', 'Goals_A_FT_x': 'Goals_A_FT',
+        'Goals_H_FT_y': 'Goals_H_FT', 'Goals_A_FT_y': 'Goals_A_FT',
+        'HomeTeam': 'Home', 'AwayTeam': 'Away',
+        'home_team': 'Home', 'away_team': 'Away'
+    }
+    
+    for old_col, new_col in column_mapping.items():
+        if old_col in df.columns and new_col not in df.columns:
+            df[new_col] = df[old_col]
+    
     return df
 
 def load_all_games(folder: str) -> pd.DataFrame:
@@ -102,8 +110,16 @@ def create_over_under_targets(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
     
+    # Verificar se temos colunas de gols
+    goals_h_col = next((col for col in ['Goals_H_FT', 'home_goal', 'Goals_H'] if col in df.columns), None)
+    goals_a_col = next((col for col in ['Goals_A_FT', 'away_goal', 'Goals_A'] if col in df.columns), None)
+    
+    if not goals_h_col or not goals_a_col:
+        st.error("❌ Colunas de gols não encontradas no DataFrame")
+        return df
+    
     # Total de gols do jogo
-    df['Total_Goals'] = df['Goals_H_FT'] + df['Goals_A_FT']
+    df['Total_Goals'] = df[goals_h_col] + df[goals_a_col]
     
     # Converter OverLine para análise
     if 'OverLine' in df.columns:
@@ -116,7 +132,7 @@ def create_over_under_targets(df: pd.DataFrame) -> pd.DataFrame:
     # Targets adicionais para análise
     df['Over_1.5'] = (df['Total_Goals'] > 1.5).astype(int)
     df['Over_3.5'] = (df['Total_Goals'] > 3.5).astype(int)
-    df['BTTS_Yes'] = ((df['Goals_H_FT'] > 0) & (df['Goals_A_FT'] > 0)).astype(int)
+    df['BTTS_Yes'] = ((df[goals_h_col] > 0) & (df[goals_a_col] > 0)).astype(int)
     
     return df
 
@@ -133,18 +149,18 @@ def calcular_parametros_liga_avancado(history: pd.DataFrame) -> pd.DataFrame:
     
     df = history.copy()
     
-    # Garantir que temos as colunas necessárias
-    required_cols = ['League', 'Goals_H_FT', 'Goals_A_FT']
-    missing_cols = [col for col in required_cols if col not in df.columns]
+    # Encontrar colunas de gols
+    goals_h_col = next((col for col in ['Goals_H_FT', 'home_goal', 'Goals_H'] if col in df.columns), None)
+    goals_a_col = next((col for col in ['Goals_A_FT', 'away_goal', 'Goals_A'] if col in df.columns), None)
     
-    if missing_cols:
-        st.warning(f"⚠️ Colunas faltando para cálculo de parâmetros: {missing_cols}")
+    if not goals_h_col or not goals_a_col or 'League' not in df.columns:
+        st.warning("⚠️ Colunas necessárias não encontradas para cálculo de parâmetros")
         return pd.DataFrame()
     
     # Calcular estatísticas por liga
     liga_stats = df.groupby('League').agg({
-        'Goals_H_FT': ['count', 'mean'],
-        'Goals_A_FT': 'mean'
+        goals_h_col: ['count', 'mean'],
+        goals_a_col: 'mean'
     }).round(3)
     
     # Flatten column names
@@ -153,15 +169,15 @@ def calcular_parametros_liga_avancado(history: pd.DataFrame) -> pd.DataFrame:
     # Calcular métricas para Over/Under
     liga_stats['Base_Goals_Liga'] = (liga_stats['Gols_Media_Casa'] + liga_stats['Gols_Media_Fora']).round(2)
     liga_stats['Over_2.5_Rate'] = df.groupby('League').apply(
-        lambda x: (x['Goals_H_FT'] + x['Goals_A_FT'] > 2.5).mean()
+        lambda x: (x[goals_h_col] + x[goals_a_col] > 2.5).mean()
     ).round(3)
     
     liga_stats['BTTS_Rate'] = df.groupby('League').apply(
-        lambda x: ((x['Goals_H_FT'] > 0) & (x['Goals_A_FT'] > 0)).mean()
+        lambda x: ((x[goals_h_col] > 0) & (x[goals_a_col] > 0)).mean()
     ).round(3)
     
     # Filtrar ligas com poucos jogos
-    liga_stats = liga_stats[liga_stats['Jogos_Total'] >= 10].copy()
+    liga_stats = liga_stats[liga_stats['Jogos_Total'] >= 5].copy()
     
     st.success(f"✅ Parâmetros calculados para {len(liga_stats)} ligas")
     
@@ -176,9 +192,14 @@ def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
     """
     df_temp = df.copy()
 
-    for col in ['Goals_H_FT', 'Goals_A_FT']:
-        if col not in df_temp.columns:
-            df_temp[col] = np.nan
+    # Encontrar colunas de gols
+    goals_h_col = next((col for col in ['Goals_H_FT', 'home_goal', 'Goals_H'] if col in df_temp.columns), None)
+    goals_a_col = next((col for col in ['Goals_A_FT', 'away_goal', 'Goals_A'] if col in df_temp.columns), None)
+
+    if not goals_h_col or not goals_a_col:
+        df_temp['WG_Home'] = 0.0
+        df_temp['WG_Away'] = 0.0
+        return df_temp
 
     def odds_to_probs_1x2(row):
         try:
@@ -205,8 +226,8 @@ def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
         return p_h, p_d, p_a
 
     def wg_home(row):
-        gh = row.get('Goals_H_FT', np.nan)
-        ga = row.get('Goals_A_FT', np.nan)
+        gh = row.get(goals_h_col, np.nan)
+        ga = row.get(goals_a_col, np.nan)
         if pd.isna(gh) or pd.isna(ga):
             return np.nan
 
@@ -216,8 +237,8 @@ def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
         return gh * weight_for - ga * weight_against
 
     def wg_away(row):
-        gh = row.get('Goals_H_FT', np.nan)
-        ga = row.get('Goals_A_FT', np.nan)
+        gh = row.get(goals_h_col, np.nan)
+        ga = row.get(goals_a_col, np.nan)
         if pd.isna(gh) or pd.isna(ga):
             return np.nan
 
@@ -237,13 +258,17 @@ def adicionar_weighted_goals_defensivos(df: pd.DataFrame, liga_params: pd.DataFr
     """
     df_temp = df.copy()
     
-    # Garantir colunas básicas
-    df_temp['Goals_H_FT'] = df_temp.get('Goals_H_FT', df_temp.get('Goals_H_Today', 0))
-    df_temp['Goals_A_FT'] = df_temp.get('Goals_A_FT', df_temp.get('Goals_A_Today', 0))
+    # Encontrar colunas de gols
+    goals_h_col = next((col for col in ['Goals_H_FT', 'home_goal', 'Goals_H'] if col in df_temp.columns), None)
+    goals_a_col = next((col for col in ['Goals_A_FT', 'away_goal', 'Goals_A'] if col in df_temp.columns), None)
+
+    if not goals_h_col or not goals_a_col:
+        df_temp['WG_Def_Home'] = 0.0
+        df_temp['WG_Def_Away'] = 0.0
+        return df_temp
     
     # Inicializar parâmetros
     df_temp['Base_Goals_Liga'] = 2.5
-    df_temp['Asian_Weight_Liga'] = 0.6
     
     # Se temos parâmetros por liga
     if liga_params is not None and not liga_params.empty and 'League' in df_temp.columns:
@@ -258,8 +283,8 @@ def adicionar_weighted_goals_defensivos(df: pd.DataFrame, liga_params: pd.DataFr
             df_temp = df_temp.drop(['Base_Goals_Liga_y'], axis=1)
     
     # Cálculo defensivo simplificado
-    df_temp['WG_Def_Home'] = (df_temp['Base_Goals_Liga'] / 2) - df_temp['Goals_A_FT']
-    df_temp['WG_Def_Away'] = (df_temp['Base_Goals_Liga'] / 2) - df_temp['Goals_H_FT']
+    df_temp['WG_Def_Home'] = (df_temp['Base_Goals_Liga'] / 2) - df_temp[goals_a_col]
+    df_temp['WG_Def_Away'] = (df_temp['Base_Goals_Liga'] / 2) - df_temp[goals_h_col]
 
     return df_temp
 
@@ -269,41 +294,42 @@ def calcular_rolling_goal_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     df_temp = df.copy()
 
+    # Encontrar colunas de times
+    home_col = next((col for col in ['Home', 'HomeTeam', 'home_team'] if col in df_temp.columns), None)
+    away_col = next((col for col in ['Away', 'AwayTeam', 'away_team'] if col in df_temp.columns), None)
+    goals_h_col = next((col for col in ['Goals_H_FT', 'home_goal', 'Goals_H'] if col in df_temp.columns), None)
+    goals_a_col = next((col for col in ['Goals_A_FT', 'away_goal', 'Goals_A'] if col in df_temp.columns), None)
+
+    if not home_col or not away_col or not goals_h_col or not goals_a_col:
+        st.warning("⚠️ Colunas de times ou gols não encontradas para rolling features")
+        return df_temp
+
     if 'Date' in df_temp.columns:
         df_temp['Date'] = pd.to_datetime(df_temp['Date'], errors='coerce')
         df_temp = df_temp.sort_values('Date')
 
     # Rolling de gols marcados e sofridos
-    df_temp['Goals_Scored_Home_5G'] = df_temp.groupby('Home')['Goals_H_FT'].transform(
+    df_temp['Goals_Scored_Home_5G'] = df_temp.groupby(home_col)[goals_h_col].transform(
         lambda x: x.shift(1).rolling(5, min_periods=1).mean()
     )
-    df_temp['Goals_Conceded_Home_5G'] = df_temp.groupby('Home')['Goals_A_FT'].transform(
+    df_temp['Goals_Conceded_Home_5G'] = df_temp.groupby(home_col)[goals_a_col].transform(
         lambda x: x.shift(1).rolling(5, min_periods=1).mean()
     )
     
-    df_temp['Goals_Scored_Away_5G'] = df_temp.groupby('Away')['Goals_A_FT'].transform(
+    df_temp['Goals_Scored_Away_5G'] = df_temp.groupby(away_col)[goals_a_col].transform(
         lambda x: x.shift(1).rolling(5, min_periods=1).mean()
     )
-    df_temp['Goals_Conceded_Away_5G'] = df_temp.groupby('Away')['Goals_H_FT'].transform(
+    df_temp['Goals_Conceded_Away_5G'] = df_temp.groupby(away_col)[goals_h_col].transform(
         lambda x: x.shift(1).rolling(5, min_periods=1).mean()
     )
 
     # Rolling de Over/Under
-    df_temp['Home_Over_Rate_10G'] = df_temp.groupby('Home').apply(
-        lambda x: (x['Goals_H_FT'] + x['Goals_A_FT'] > 2.5).shift(1).rolling(10, min_periods=3).mean()
+    df_temp['Home_Over_Rate_10G'] = df_temp.groupby(home_col).apply(
+        lambda x: (x[goals_h_col] + x[goals_a_col] > 2.5).shift(1).rolling(10, min_periods=3).mean()
     ).reset_index(level=0, drop=True)
     
-    df_temp['Away_Over_Rate_10G'] = df_temp.groupby('Away').apply(
-        lambda x: (x['Goals_H_FT'] + x['Goals_A_FT'] > 2.5).shift(1).rolling(10, min_periods=3).mean()
-    ).reset_index(level=0, drop=True)
-
-    # Rolling de BTTS
-    df_temp['Home_BTTS_Rate_10G'] = df_temp.groupby('Home').apply(
-        lambda x: ((x['Goals_H_FT'] > 0) & (x['Goals_A_FT'] > 0)).shift(1).rolling(10, min_periods=3).mean()
-    ).reset_index(level=0, drop=True)
-    
-    df_temp['Away_BTTS_Rate_10G'] = df_temp.groupby('Away').apply(
-        lambda x: ((x['Goals_H_FT'] > 0) & (x['Goals_A_FT'] > 0)).shift(1).rolling(10, min_periods=3).mean()
+    df_temp['Away_Over_Rate_10G'] = df_temp.groupby(away_col).apply(
+        lambda x: (x[goals_h_col] + x[goals_a_col] > 2.5).shift(1).rolling(10, min_periods=3).mean()
     ).reset_index(level=0, drop=True)
 
     # Expected total goals
@@ -332,8 +358,7 @@ def create_over_under_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # Features de tendência
     trend_features = [
-        'Home_Over_Rate_10G', 'Away_Over_Rate_10G',
-        'Home_BTTS_Rate_10G', 'Away_BTTS_Rate_10G'
+        'Home_Over_Rate_10G', 'Away_Over_Rate_10G'
     ]
 
     # Features de WG
@@ -483,6 +508,13 @@ def plot_over_under_analysis(games_today: pd.DataFrame):
     if games_today.empty:
         return
     
+    # Encontrar colunas de identificação
+    home_col = next((col for col in ['Home', 'HomeTeam', 'home_team'] if col in games_today.columns), 'Team_Home')
+    away_col = next((col for col in ['Away', 'AwayTeam', 'away_team'] if col in games_today.columns), 'Team_Away')
+    
+    # Criar coluna de identificação do jogo
+    games_today['Match_Label'] = games_today[home_col].astype(str) + ' vs ' + games_today[away_col].astype(str)
+    
     # Gráfico 1: Probabilidades do Modelo vs Mercado
     if all(col in games_today.columns for col in ['Model_Over_Prob', 'Market_Over_Prob']):
         fig1 = go.Figure()
@@ -491,10 +523,10 @@ def plot_over_under_analysis(games_today: pd.DataFrame):
             x=games_today['Market_Over_Prob'],
             y=games_today['Model_Over_Prob'],
             mode='markers',
-            text=games_today['Home'] + ' vs ' + games_today['Away'],
+            text=games_today['Match_Label'],
             marker=dict(
                 size=10,
-                color=games_today['Recommendation_Strength'],
+                color=games_today.get('Recommendation_Strength', 0),
                 colorscale='RdYlGn',
                 showscale=True,
                 colorbar=dict(title="Valor")
@@ -529,7 +561,7 @@ def plot_over_under_analysis(games_today: pd.DataFrame):
             x=games_today['Expected_Total_Goals'],
             y=games_today['Model_Over_Prob'],
             mode='markers',
-            text=games_today['Home'] + ' vs ' + games_today['Away'],
+            text=games_today['Match_Label'],
             marker=dict(
                 size=8,
                 color=colors,
@@ -556,9 +588,14 @@ def display_over_under_recommendations(games_today: pd.DataFrame):
     """
     st.markdown("## 🎯 Recomendações Over/Under 2.5")
     
+    # Encontrar colunas de identificação
+    home_col = next((col for col in ['Home', 'HomeTeam', 'home_team'] if col in games_today.columns), 'Home')
+    away_col = next((col for col in ['Away', 'AwayTeam', 'away_team'] if col in games_today.columns), 'Away')
+    league_col = next((col for col in ['League', 'league'] if col in games_today.columns), 'League')
+    
     # Colunas para display
     recommendation_columns = [
-        'League', 'Home', 'Away', 
+        league_col, home_col, away_col, 
         'Model_Over_Prob', 'Model_Under_Prob',
         'Odd_Over25', 'Odd_Under25',
         'Over_Value', 'Under_Value',
@@ -645,18 +682,26 @@ def main():
         games_today, history, selected_date_str = load_cached_data(selected_file)
     
     st.success(f"📅 Análise para: {selected_date_str}")
-    st.info(f"📊 {len(games_today)} jogos hoje | {len(history)} jogos no histórico")
+    
+    # Mostrar estrutura dos dados
+    st.sidebar.subheader("📋 Estrutura dos Dados")
+    st.sidebar.write(f"Jogos hoje: {len(games_today)}")
+    st.sidebar.write(f"Histórico: {len(history)}")
+    st.sidebar.write("Colunas disponíveis:")
+    st.sidebar.write(list(games_today.columns) if not games_today.empty else "Nenhuma coluna")
     
     if history.empty or games_today.empty:
         st.error("❌ Dados insuficientes para análise")
         return
     
     # Verificar colunas necessárias
-    required_columns = ['Odd_Over25', 'OverLine', 'Odd_Under25', 'Goals_H_FT', 'Goals_A_FT']
+    required_columns = ['Odd_Over25', 'OverLine', 'Odd_Under25']
     missing_columns = [col for col in required_columns if col not in history.columns]
     
     if missing_columns:
-        st.error(f"❌ Colunas necessárias faltando: {missing_columns}")
+        st.error(f"❌ Colunas de Over/Under faltando: {missing_columns}")
+        st.info("Colunas disponíveis no histórico:")
+        st.write(list(history.columns))
         return
     
     # ==========================================================
@@ -696,6 +741,7 @@ def main():
         
         with st.spinner("Processando jogos de hoje..."):
             # Aplicar mesmo processamento aos jogos de hoje
+            games_today = create_over_under_targets(games_today)
             games_today = adicionar_weighted_goals(games_today)
             games_today = adicionar_weighted_goals_defensivos(games_today, liga_params)
             games_today = calcular_rolling_goal_features(games_today)
@@ -710,33 +756,6 @@ def main():
         plot_over_under_analysis(games_today)
         display_over_under_recommendations(games_today)
         
-        # ==========================================================
-        # DOWNLOAD DOS RESULTADOS
-        # ==========================================================
-        st.markdown("## 💾 Exportar Resultados")
-        
-        # Preparar dados para exportação
-        export_columns = [
-            'League', 'Home', 'Away', 'Date',
-            'Model_Over_Prob', 'Model_Under_Prob', 
-            'Odd_Over25', 'Odd_Under25',
-            'Over_Value', 'Under_Value',
-            'Over_Recommended', 'Under_Recommended',
-            'Model_Confidence', 'Expected_Total_Goals'
-        ]
-        
-        export_columns = [c for c in export_columns if c in games_today.columns]
-        
-        if export_columns:
-            export_df = games_today[export_columns].copy()
-            csv = export_df.to_csv(index=False)
-            
-            st.download_button(
-                label="📥 Download Previsões Over/Under",
-                data=csv,
-                file_name=f"over_under_predictions_{selected_date_str}.csv",
-                mime="text/csv"
-            )
     else:
         st.warning("⚠️ Histórico insuficiente para treinar o modelo (mínimo 50 jogos)")
 
