@@ -639,73 +639,71 @@ if not history.empty:
         ]].head(15)
         st.dataframe(display_params)
 
-# 2. Processar histórico
+# ==========================================================
+# 2️⃣ PROCESSAMENTO PARA OVER/UNDER (CORRIGIDO 100%)
+# ==========================================================
+
 if not history.empty:
-    # Criar target Over/Under (AGORA COM VERIFICAÇÃO)
+
+    # 🔹 Criar target Over/Under (HISTÓRICO ORIGINAL)
     history_ou = create_over_under_target(history)
-    # 🚨 Garantir que Target_Over já existe antes de continuar
+
+    # ❗ Garantir que Target_Over existe
     if 'Target_Over' not in history_ou.columns:
-        st.error("❌ Falha ao criar Target_Over no histórico. Verifique colunas de gols!")
+        st.error("❌ Target_Over não foi criado no histórico. Conferir colunas de gols!")
+        st.write("Colunas disponíveis no histórico:", list(history_ou.columns))
         st.stop()
 
-    
-    # VERIFICAÇÃO CRÍTICA: garantir que o target foi criado
-    if 'Target_Over' not in history_ou.columns:
-        st.error("❌ Target_Over não foi criado no histórico. Verificando colunas disponíveis...")
-        st.write("Colunas disponíveis no histórico:", list(history_ou.columns))
-        
-        # Tentar identificar colunas de gols alternativas
-        goal_columns = [col for col in history_ou.columns if 'goal' in col.lower() or 'Goal' in col or 'gol' in col.lower()]
-        if goal_columns:
-            st.write("Possíveis colunas de gols encontradas:", goal_columns)
-        
+    st.success("🎯 Target_Over criado com sucesso no histórico")
+
+    # 🔹 Adicionar features ofensivas (NOVA CÓPIA — NÃO sobrescrever history_ou)
+    history_enriched = adicionar_weighted_goals_over_under(history_ou)
+    history_enriched = calcular_rolling_offensive_features(history_enriched)
+
+    # 🔹 Gerar features SOMENTE para modelo
+    X_hist_ou = create_over_under_features(history_enriched)
+    y_ou = history_ou['Target_Over']
+
+    # ❗ Verificação final de validade
+    if X_hist_ou.empty or y_ou.empty:
+        st.error("❌ Dados insuficientes para treinar modelo Over/Under")
         st.stop()
-    
-    # Adicionar features ofensivas (ISSO CRIA OverScore_Avg NO HISTÓRICO)
-    history_ou = adicionar_weighted_goals_over_under(history_ou)
-    history_ou = calcular_rolling_offensive_features(history_ou)
-    history_ou = create_over_under_features(history_ou)  # ISSO GARANTE OverScore_Avg NO HISTÓRICO
-    
-    # Treinar modelo se tivermos dados suficientes
-    if len(history_ou) > 50:
-        X_hist_ou = create_over_under_features(history_ou)
-        y_ou = history_ou['Target_Over']
-        
-        # Verificar se temos dados válidos para treino
-        if len(X_hist_ou) > 0 and len(y_ou) > 0:
-            model_ou = train_over_under_model(X_hist_ou, y_ou, X_hist_ou.columns)
-            
-            # Aplicar modelo nos jogos de hoje
-            if not games_today.empty:
-                # Adicionar features ofensivas aos jogos de hoje
-                games_today = adicionar_weighted_goals_over_under(games_today)
-                games_today = create_over_under_features(games_today)  # GARANTE OverScore_Avg HOJE
-                games_today = enrich_games_today_with_offensive_features(games_today, history_ou)
-                
-                # Criar features para predição
-                X_today_ou = create_over_under_features(games_today)
-                
-                # Garantir mesmas features do treino
-                if hasattr(model_ou, 'feature_names_in_'):
-                    required_features = model_ou.feature_names_in_
-                    X_today_ou = X_today_ou.reindex(columns=required_features, fill_value=0)
-                
-                # Fazer predições
-                proba_over = model_ou.predict_proba(X_today_ou)[:, 1]
-                games_today['Prob_Over'] = proba_over
-                games_today['Pred_Over'] = (proba_over > 0.5).astype(int)
-                
-                # Calcular confiança
-                games_today['OU_Confidence'] = np.abs(proba_over - 0.5) * 2
-                
-                # Definir sinais
-                games_today['OU_Signal'] = np.where(
-                    games_today['Prob_Over'] > 0.5, 
-                    'OVER', 
-                    'UNDER'
-                )
-                
-                games_today['OU_Approved'] = games_today['OU_Confidence'] > 0.1
+
+    # 🔹 Treinar Modelo
+    model_ou = train_over_under_model(X_hist_ou, y_ou, X_hist_ou.columns)
+
+    # ==========================================================
+    # 3️⃣ PREVISÕES PARA OS JOGOS DE HOJE
+    # ==========================================================
+    if not games_today.empty:
+
+        # 🔹 Enriquecer cópia dos jogos de hoje
+        games_enriched = adicionar_weighted_goals_over_under(games_today.copy())
+        games_enriched = enrich_games_today_with_offensive_features(
+            games_enriched, history_enriched
+        )
+
+        # 🔹 Features apenas para predição
+        X_today_ou = create_over_under_features(games_enriched)
+
+        # ❗ Garantir compatibilidade de features
+        if hasattr(model_ou, 'feature_names_in_'):
+            required_features = model_ou.feature_names_in_
+            X_today_ou = X_today_ou.reindex(columns=required_features, fill_value=0)
+
+        # 🔹 Predição de probabilidade
+        proba_over = model_ou.predict_proba(X_today_ou)[:, 1]
+        games_today['Prob_Over'] = proba_over
+        games_today['Pred_Over'] = (proba_over > 0.5).astype(int)
+
+        # 🔹 Confiança (distância do limiar)
+        games_today['OU_Confidence'] = np.abs(proba_over - 0.5) * 2
+
+        # 🔹 Sinal final
+        games_today['OU_Signal'] = np.where(games_today['Prob_Over'] > 0.5, 'OVER', 'UNDER')
+
+        # 🔹 Sinal aprovado
+        games_today['OU_Approved'] = games_today['OU_Confidence'] > 0.1
         else:
             st.warning("⚠️ Dados insuficientes para treinar o modelo Over/Under")
 
