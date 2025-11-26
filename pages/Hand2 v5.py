@@ -1296,21 +1296,22 @@ if not history.empty:
     modelo_home, modelo_away, games_today = treinar_modelo_quadrantes_dual(history, games_today)
 
     if use_catboost:
-        # ❗ Pegando X e y do RandomForest (já preparado dentro da função anterior)
+        # Garantir distâncias do histórico antes do treino CatBoost
         history = calcular_distancias_quadrantes(history)
-        
+
+        # Preparar features iguais ao RF
         quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
         quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
         ligas_dummies = pd.get_dummies(history['League'], prefix='League')
-    
+
         extras = history[['Quadrant_Dist', 'Quadrant_Separation',
                           'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized',
                           'CoverRate_Home', 'CoverRate_Away', 'AH_Margin_Mean']].fillna(0)
-    
+
         X = pd.concat([ligas_dummies, extras, quadrantes_home, quadrantes_away], axis=1)
         y_home = history['Target_AH_Home']
         y_away = history['Target_AH_Away']
-    
+
         modelo_cat_home, modelo_cat_away, games_today = treinar_modelo_catboost(
             history, games_today,
             quadrantes_home, quadrantes_away,
@@ -1318,9 +1319,23 @@ if not history.empty:
             X, y_home, y_away
         )
 
+        # 🐾 CatBoost assume como modelo principal em TODO o pipeline
+        games_today['Quadrante_ML_Score_Home'] = games_today['Cat_Score_Home']
+        games_today['Quadrante_ML_Score_Away'] = games_today['Cat_Score_Away']
+        games_today['Quadrante_ML_Score_Main'] = games_today['Cat_Score_Main']
+
+        games_today['ML_Side'] = np.where(
+            games_today['Quadrante_ML_Score_Home'] > games_today['Quadrante_ML_Score_Away'],
+            'HOME',
+            'AWAY'
+        )
+
+        st.success("🐾 CatBoost ativado como modelo principal!")
+
     st.success("🤖 Modelos treinados com sucesso!")
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
+
 
 
 
