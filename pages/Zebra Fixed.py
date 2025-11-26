@@ -353,6 +353,13 @@ def calcular_parametros_liga_avancado(history: pd.DataFrame) -> pd.DataFrame:
         st.warning(f"⚠️ Colunas faltando para cálculo de parâmetros: {missing_cols}")
         return pd.DataFrame()
     
+    # Filtrar apenas linhas com dados válidos
+    df = df.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
+    
+    if df.empty:
+        st.warning("⚠️ Nenhum dado válido após remover NaNs")
+        return pd.DataFrame()
+    
     # Calcular estatísticas por liga
     liga_stats = df.groupby('League').agg({
         'Goals_H_FT': ['count', 'mean'],
@@ -372,7 +379,6 @@ def calcular_parametros_liga_avancado(history: pd.DataFrame) -> pd.DataFrame:
     ).round(2)
     
     # Calcular Asian_Weight_Liga baseado na variabilidade do handicap
-    # Ligas com handicaps mais variáveis → peso maior
     if not liga_stats['Asian_Line_Std'].isna().all():
         asi_std_min = liga_stats['Asian_Line_Std'].min()
         asi_std_max = liga_stats['Asian_Line_Std'].max()
@@ -391,7 +397,7 @@ def calcular_parametros_liga_avancado(history: pd.DataFrame) -> pd.DataFrame:
     liga_stats['Asian_Weight_Liga'] = liga_stats['Asian_Weight_Liga'].round(3)
     
     # Filtrar ligas com poucos jogos (menos confiáveis)
-    liga_stats = liga_stats[liga_stats['Jogos_Total'] >= 10].copy()
+    liga_stats = liga_stats[liga_stats['Jogos_Total'] >= 5].copy()  # Reduzido para 5 para mais flexibilidade
     
     st.success(f"✅ Parâmetros calculados para {len(liga_stats)} ligas")
     
@@ -497,28 +503,40 @@ def adicionar_weighted_goals_defensivos_corrigido(df: pd.DataFrame, liga_params:
     df_temp['Goals_H_FT'] = df_temp.get('Goals_H_FT', df_temp.get('Goals_H_Today', 0))
     df_temp['Goals_A_FT'] = df_temp.get('Goals_A_FT', df_temp.get('Goals_A_Today', 0))
     
-    # Se não temos parâmetros por liga, calcular defaults globais
-    if liga_params is None or liga_params.empty:
-        st.warning("⚠️ Sem parâmetros por liga - usando defaults globais")
-        global_base_goals = df_temp['Goals_H_FT'].mean() + df_temp['Goals_A_FT'].mean() if not df_temp.empty else 2.5
-        global_asian_weight = 0.6
-        
-        df_temp['Base_Goals_Liga'] = global_base_goals
-        df_temp['Asian_Weight_Liga'] = global_asian_weight
-    else:
-        # Merge com parâmetros por liga
+    # Inicializar as colunas primeiro
+    df_temp['Base_Goals_Liga'] = np.nan
+    df_temp['Asian_Weight_Liga'] = np.nan
+    
+    # Se temos parâmetros por liga, fazer o merge
+    if liga_params is not None and not liga_params.empty and 'League' in df_temp.columns:
         df_temp = df_temp.merge(
             liga_params[['League', 'Base_Goals_Liga', 'Asian_Weight_Liga']],
             on='League',
-            how='left'
+            how='left',
+            suffixes=('', '_y')
         )
         
-        # Preencher missing values com médias globais
-        global_base = liga_params['Base_Goals_Liga'].mean() if not liga_params.empty else 2.5
-        global_asian = liga_params['Asian_Weight_Liga'].mean() if not liga_params.empty else 0.6
-        
-        df_temp['Base_Goals_Liga'] = df_temp['Base_Goals_Liga'].fillna(global_base)
-        df_temp['Asian_Weight_Liga'] = df_temp['Asian_Weight_Liga'].fillna(global_asian)
+        # Se as colunas foram duplicadas no merge, consolidar
+        if 'Base_Goals_Liga_y' in df_temp.columns:
+            df_temp['Base_Goals_Liga'] = df_temp['Base_Goals_Liga_y']
+            df_temp['Asian_Weight_Liga'] = df_temp['Asian_Weight_Liga_y']
+            df_temp = df_temp.drop(['Base_Goals_Liga_y', 'Asian_Weight_Liga_y'], axis=1)
+    
+    # Calcular defaults globais para preencher missing values
+    global_base = 2.5
+    global_asian = 0.6
+    
+    # Se temos dados no DataFrame, calcular médias reais
+    if not df_temp.empty:
+        if 'Goals_H_FT' in df_temp.columns and 'Goals_A_FT' in df_temp.columns:
+            goals_h_mean = df_temp['Goals_H_FT'].mean()
+            goals_a_mean = df_temp['Goals_A_FT'].mean()
+            if not pd.isna(goals_h_mean) and not pd.isna(goals_a_mean):
+                global_base = goals_h_mean + goals_a_mean
+    
+    # Preencher valores faltantes
+    df_temp['Base_Goals_Liga'] = df_temp['Base_Goals_Liga'].fillna(global_base)
+    df_temp['Asian_Weight_Liga'] = df_temp['Asian_Weight_Liga'].fillna(global_asian)
     
     # Cálculo dos expected goals
     if 'Asian_Line_Decimal' in df_temp.columns:
@@ -537,7 +555,7 @@ def adicionar_weighted_goals_defensivos_corrigido(df: pd.DataFrame, liga_params:
     
     # Limpeza
     cols_to_drop = ['xGF_H', 'xGF_A', 'xGA_H', 'xGA_A']
-    df_temp.drop(columns=[c for c in cols_to_drop if c in df_temp.columns], inplace=True)
+    df_temp.drop(columns=[c for c in cols_to_drop if c in df_temp.columns], inplace=True, errors='ignore')
     
     return df_temp
 
@@ -849,40 +867,59 @@ def adicionar_goal_efficiency_score(df: pd.DataFrame, liga_params: pd.DataFrame)
     if 'Goals_A_FT' not in df.columns:
         df['Goals_A_FT'] = df.get('Goals_A_Today', np.nan)
 
-    if liga_params is None or liga_params.empty:
-        st.warning("⚠️ Liga params ausente para GES - usando defaults")
-        df['GES_H'] = df['Goals_H_FT'] - 1.25
-        df['GES_A'] = df['Goals_A_FT'] - 1.25
-        return df
+    # Inicializar colunas primeiro
+    df['Base_Goals_Liga'] = np.nan
+    df['Asian_Weight_Liga'] = np.nan
+    
+    if liga_params is not None and not liga_params.empty and 'League' in df.columns:
+        df = df.merge(
+            liga_params[['League', 'Base_Goals_Liga', 'Asian_Weight_Liga']],
+            on='League',
+            how='left',
+            suffixes=('', '_y')
+        )
+        
+        # Consolidar colunas se houve duplicação
+        if 'Base_Goals_Liga_y' in df.columns:
+            df['Base_Goals_Liga'] = df['Base_Goals_Liga_y'].fillna(df['Base_Goals_Liga'])
+            df['Asian_Weight_Liga'] = df['Asian_Weight_Liga_y'].fillna(df['Asian_Weight_Liga'])
+            df = df.drop(['Base_Goals_Liga_y', 'Asian_Weight_Liga_y'], axis=1, errors='ignore')
 
-    df = df.merge(
-        liga_params[['League', 'Base_Goals_Liga', 'Asian_Weight_Liga']],
-        on='League',
-        how='left'
-    )
-
+    # Preencher valores faltantes com defaults
     df['Base_Goals_Liga'] = df['Base_Goals_Liga'].fillna(2.5)
     df['Asian_Weight_Liga'] = df['Asian_Weight_Liga'].fillna(0.6)
 
-    df['xGF_H'] = (df['Base_Goals_Liga'] / 2) + df['Asian_Line_Decimal'] * df['Asian_Weight_Liga']
-    df['xGF_A'] = (df['Base_Goals_Liga'] / 2) - df['Asian_Line_Decimal'] * df['Asian_Weight_Liga']
+    if 'Asian_Line_Decimal' in df.columns:
+        df['xGF_H'] = (df['Base_Goals_Liga'] / 2) + df['Asian_Line_Decimal'] * df['Asian_Weight_Liga']
+        df['xGF_A'] = (df['Base_Goals_Liga'] / 2) - df['Asian_Line_Decimal'] * df['Asian_Weight_Liga']
+        
+        df['GES_Of_H'] = df['Goals_H_FT'] - df['xGF_H']
+        df['GES_Of_A'] = df['Goals_A_FT'] - df['xGF_A']
 
-    df['GES_Of_H'] = df['Goals_H_FT'] - df['xGF_H']
-    df['GES_Of_A'] = df['Goals_A_FT'] - df['xGF_A']
+        df['GES_Def_H'] = df['xGF_A'] - df['Goals_A_FT']
+        df['GES_Def_A'] = df['xGF_H'] - df['Goals_H_FT']
+    else:
+        df['GES_Of_H'] = df['Goals_H_FT'] - (df['Base_Goals_Liga'] / 2)
+        df['GES_Of_A'] = df['Goals_A_FT'] - (df['Base_Goals_Liga'] / 2)
+        df['GES_Def_H'] = (df['Base_Goals_Liga'] / 2) - df['Goals_A_FT']
+        df['GES_Def_A'] = (df['Base_Goals_Liga'] / 2) - df['Goals_H_FT']
 
-    df['GES_Def_H'] = df['xGF_A'] - df['Goals_A_FT']
-    df['GES_Def_A'] = df['xGF_H'] - df['Goals_H_FT']
-
+    # Normalização por liga
     for col in ['GES_Of_H', 'GES_Of_A', 'GES_Def_H', 'GES_Def_A']:
-        liga_mean = df.groupby('League')[col].transform('mean')
-        liga_std = df.groupby('League')[col].transform('std').replace(0, 1)
-        df[col + '_Norm'] = (df[col] - liga_mean) / liga_std
-        df[col + '_Norm'] = df[col + '_Norm'].clip(-5, 5)
+        if 'League' in df.columns:
+            liga_mean = df.groupby('League')[col].transform('mean')
+            liga_std = df.groupby('League')[col].transform('std').replace(0, 1)
+            df[col + '_Norm'] = (df[col] - liga_mean) / liga_std
+            df[col + '_Norm'] = df[col + '_Norm'].clip(-5, 5)
+        else:
+            df[col + '_Norm'] = df[col]
 
-    df['GES_Of_H_Norm'] = df['GES_Of_H_Norm'].fillna(0)
-    df['GES_Of_A_Norm'] = df['GES_Of_A_Norm'].fillna(0)
-    df['GES_Def_H_Norm'] = df['GES_Def_H_Norm'].fillna(0)
-    df['GES_Def_A_Norm'] = df['GES_Def_A_Norm'].fillna(0)
+    for col in ['GES_Of_H_Norm', 'GES_Of_A_Norm', 'GES_Def_H_Norm', 'GES_Def_A_Norm']:
+        df[col] = df[col].fillna(0)
+
+    # Limpar colunas temporárias
+    cols_to_drop = ['xGF_H', 'xGF_A', 'Base_Goals_Liga', 'Asian_Weight_Liga']
+    df.drop(columns=[c for c in cols_to_drop if c in df.columns], inplace=True, errors='ignore')
 
     return df
 
