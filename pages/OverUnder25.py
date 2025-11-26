@@ -16,8 +16,8 @@ import math
 # ==========================================================
 # CONFIGURAÇÕES BÁSICAS
 # ==========================================================
-st.set_page_config(page_title="Análise de Quadrantes 3D - Bet Indicator", layout="wide")
-st.title("🎯 Análise 3D de 16 Quadrantes - ML + WG GAP (Over/Under)")
+st.set_page_config(page_title="Análise 3D de 16 Quadrantes - Over/Under 2.5", layout="wide")
+st.title("🎯 Análise 3D de 16 Quadrantes - ML + WG GAP (Over/Under 2.5)")
 
 PAGE_PREFIX = "QuadrantesML_3D"
 GAMES_FOLDER = "GamesDay"
@@ -27,24 +27,6 @@ EXCLUDED_LEAGUE_KEYWORDS = ["cup", "coppa", "copas", "uefa", "afc", "sudamerican
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
 os.makedirs(MODELS_FOLDER, exist_ok=True)
-
-# ==========================================================
-# SELETOR DE MERCADO DE GOLS (1.5 / 2.5 / 3.5)
-# ==========================================================
-market_choice = st.selectbox(
-    "Selecione o mercado de gols para o modelo:",
-    ["Over 1.5", "Over 2.5", "Over 3.5"],
-    index=1
-)
-
-if "1.5" in market_choice:
-    GOAL_LINE = 1.5
-elif "3.5" in market_choice:
-    GOAL_LINE = 3.5
-else:
-    GOAL_LINE = 2.5
-
-st.markdown(f"### Mercado selecionado: **Over/Under {GOAL_LINE:.1f} gols**")
 
 # ==========================================================
 # LIVE SCORE – COLUNAS
@@ -148,7 +130,7 @@ def convert_asian_line_to_decimal_corrigido(line_str):
         return None
 
 # ==========================================================
-# AVALIAÇÃO DO RESULTADO DO HANDICAP (AINDA EXISTE, MAS NÃO USAREMOS NO OVER)
+# AVALIAÇÃO DO RESULTADO DO HANDICAP (MANTIDO, MAS NÃO USADO NO TARGET)
 # ==========================================================
 def _single_leg_home(margin, line):
     adj = margin + line
@@ -300,26 +282,65 @@ def load_and_filter_history(selected_date_str: str) -> pd.DataFrame:
     return history
 
 # ==========================================================
-# TARGET OVER/UNDER (LINHA GENÉRICA)
+# NOVO TARGET: OVER / UNDER 2.5 GOLS
 # ==========================================================
-def create_target_over(df: pd.DataFrame, goal_line: float) -> pd.DataFrame:
+def create_better_target_corrigido(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Cria Target_Over baseado na linha de gols (1.5, 2.5, 3.5, etc.)
-    Over = 1 se Total_Goals >= floor(goal_line + 1), ex:
-       1.5 → >=2
-       2.5 → >=3
-       3.5 → >=4
+    Cria target de Over 2.5 gols:
+      - Target_Over25 = 1 se gols totais >= 3
+      - Target_Under25 = 1 se gols totais <= 2
+    Usa também Odds Over/Under 2.5 para estatísticas de zebra (opcional).
     """
     df = df.copy()
 
-    df["Total_Goals"] = df.get("Goals_H_FT", df.get("Goals_H_Today", 0)) + \
-                        df.get("Goals_A_FT", df.get("Goals_A_Today", 0))
+    # Garantir gols FT
+    if 'Goals_H_FT' not in df.columns:
+        df['Goals_H_FT'] = df.get('Goals_H_Today', 0)
+    if 'Goals_A_FT' not in df.columns:
+        df['Goals_A_FT'] = df.get('Goals_A_Today', 0)
 
-    threshold_goals = int(goal_line + 0.5)
-    df["Target_Over"] = (df["Total_Goals"] >= threshold_goals).astype(int)
+    df["Total_Goals"] = df["Goals_H_FT"] + df["Goals_A_FT"]
 
-    st.info(f"⚽ Média FT Goals: {df['Total_Goals'].mean():.2f}")
-    st.info(f"🔥 Taxa Over {goal_line:.1f}: {df['Target_Over'].mean():.1%}")
+    # Target Over/Under 2.5
+    df["Target_Over25"] = (df["Total_Goals"] >= 3).astype(int)
+    df["Target_Under25"] = (df["Total_Goals"] <= 2).astype(int)
+
+    total = len(df)
+    win_rate_over = df["Target_Over25"].mean() if total > 0 else 0.0
+    win_rate_under = df["Target_Under25"].mean() if total > 0 else 0.0
+
+    # Opcional: Zebra baseada nas Odds Over/Under
+    if "Odd_Over25" in df.columns and "Odd_Under25" in df.columns:
+        odd_o = pd.to_numeric(df["Odd_Over25"], errors="coerce")
+        odd_u = pd.to_numeric(df["Odd_Under25"], errors="coerce")
+
+        inv_o = 1 / odd_o.replace(0, np.nan)
+        inv_u = 1 / odd_u.replace(0, np.nan)
+        total_inv = inv_o + inv_u
+        p_over = inv_o / total_inv
+        p_under = inv_u / total_inv
+
+        df["Expected_Over_Favorite"] = np.where(
+            p_over > p_under, "OVER", np.where(p_under > p_over, "UNDER", "NONE")
+        )
+
+        df["Zebra"] = np.where(
+            ((df["Expected_Over_Favorite"] == "OVER") & (df["Target_Over25"] == 0)) |
+            ((df["Expected_Over_Favorite"] == "UNDER") & (df["Target_Over25"] == 1)),
+            1,
+            0
+        )
+        zebra_rate = df["Zebra"].mean() if total > 0 else 0.0
+    else:
+        df["Expected_Over_Favorite"] = "NONE"
+        df["Zebra"] = 0
+        zebra_rate = 0.0
+
+    st.info(f"🎯 Total analisado: {total} jogos")
+    st.info(f"⚽ Over 2.5: {win_rate_over:.1%}")
+    st.info(f"🛡️ Under 2.5: {win_rate_under:.1%}")
+    st.info(f"🦓 Taxa de Zebra (mercado errou lado do total): {zebra_rate:.1%}")
+
     return df
 
 # ==========================================================
@@ -335,6 +356,7 @@ def calcular_parametros_liga_avancado(history: pd.DataFrame) -> pd.DataFrame:
     
     df = history.copy()
     
+    # Garantir que temos as colunas necessárias
     required_cols = ['League', 'Goals_H_FT', 'Goals_A_FT', 'Asian_Line_Decimal']
     missing_cols = [col for col in required_cols if col not in df.columns]
     
@@ -342,42 +364,50 @@ def calcular_parametros_liga_avancado(history: pd.DataFrame) -> pd.DataFrame:
         st.warning(f"⚠️ Colunas faltando para cálculo de parâmetros: {missing_cols}")
         return pd.DataFrame()
     
+    # Filtrar apenas linhas com dados válidos
     df = df.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
     
     if df.empty:
         st.warning("⚠️ Nenhum dado válido após remover NaNs")
         return pd.DataFrame()
     
+    # Calcular estatísticas por liga
     liga_stats = df.groupby('League').agg({
         'Goals_H_FT': ['count', 'mean'],
         'Goals_A_FT': 'mean',
         'Asian_Line_Decimal': ['mean', 'std']
     }).round(3)
     
+    # Flatten column names
     liga_stats.columns = [
         'Jogos_Total', 'Gols_Media_Casa', 
         'Gols_Media_Fora', 'Asian_Line_Media', 'Asian_Line_Std'
     ]
     
+    # Calcular Base_Goals_Liga (gols totais médios)
     liga_stats['Base_Goals_Liga'] = (
         liga_stats['Gols_Media_Casa'] + liga_stats['Gols_Media_Fora']
     ).round(2)
     
+    # Calcular Asian_Weight_Liga baseado na variabilidade do handicap
     if not liga_stats['Asian_Line_Std'].isna().all():
         asi_std_min = liga_stats['Asian_Line_Std'].min()
         asi_std_max = liga_stats['Asian_Line_Std'].max()
         
         if asi_std_max > asi_std_min:
+            # Normalizar entre 0.4 e 0.8 baseado na variabilidade
             liga_stats['Asian_Weight_Liga'] = 0.4 + 0.4 * (
                 (liga_stats['Asian_Line_Std'] - asi_std_min) / 
                 (asi_std_max - asi_std_min)
             )
         else:
-            liga_stats['Asian_Weight_Liga'] = 0.6
+            liga_stats['Asian_Weight_Liga'] = 0.6  # default se não há variação
     else:
         liga_stats['Asian_Weight_Liga'] = 0.6
     
     liga_stats['Asian_Weight_Liga'] = liga_stats['Asian_Weight_Liga'].round(3)
+    
+    # Filtrar ligas com poucos jogos (menos confiáveis)
     liga_stats = liga_stats[liga_stats['Jogos_Total'] >= 5].copy()
     
     st.success(f"✅ Parâmetros calculados para {len(liga_stats)} ligas")
@@ -391,13 +421,15 @@ def mostrar_parametros_ligas(liga_params: pd.DataFrame):
     
     st.markdown("### 📊 Parâmetros por Liga Calculados")
     
-    display_params = liga_params.sort_values('Jogos_Total', ascending=False)[[ 
+    # Ordenar por número de jogos para confiabilidade
+    display_params = liga_params.sort_values('Jogos_Total', ascending=False)[[
         'League', 'Jogos_Total', 'Base_Goals_Liga', 'Asian_Weight_Liga',
         'Gols_Media_Casa', 'Gols_Media_Fora', 'Asian_Line_Media'
     ]]
     
     st.dataframe(display_params.head(15))
     
+    # Estatísticas sumarizadas
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Ligas Analisadas", len(liga_params))
@@ -410,6 +442,11 @@ def mostrar_parametros_ligas(liga_params: pd.DataFrame):
 # WEIGHTED GOALS (OFENSIVO / DEFENSIVO / AH / ROLLING)
 # ==========================================================
 def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    WG_Home / WG_Away ofensivos baseado em:
+      - Gols marcados / sofridos (FULL TIME)
+      - Odds 1x2 (Odd_H, Odd_D, Odd_A)
+    """
     df_temp = df.copy()
 
     for col in ['Goals_H_FT', 'Goals_A_FT']:
@@ -468,14 +505,20 @@ def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
     return df_temp
 
 def adicionar_weighted_goals_defensivos_corrigido(df: pd.DataFrame, liga_params: pd.DataFrame) -> pd.DataFrame:
+    """
+    Versão corrigida usando parâmetros específicos por liga
+    """
     df_temp = df.copy()
     
+    # Garantir colunas básicas
     df_temp['Goals_H_FT'] = df_temp.get('Goals_H_FT', df_temp.get('Goals_H_Today', 0))
     df_temp['Goals_A_FT'] = df_temp.get('Goals_A_FT', df_temp.get('Goals_A_Today', 0))
     
+    # Inicializar as colunas primeiro
     df_temp['Base_Goals_Liga'] = np.nan
     df_temp['Asian_Weight_Liga'] = np.nan
     
+    # Se temos parâmetros por liga, fazer o merge
     if liga_params is not None and not liga_params.empty and 'League' in df_temp.columns:
         df_temp = df_temp.merge(
             liga_params[['League', 'Base_Goals_Liga', 'Asian_Weight_Liga']],
@@ -484,14 +527,17 @@ def adicionar_weighted_goals_defensivos_corrigido(df: pd.DataFrame, liga_params:
             suffixes=('', '_y')
         )
         
+        # Se as colunas foram duplicadas no merge, consolidar
         if 'Base_Goals_Liga_y' in df_temp.columns:
             df_temp['Base_Goals_Liga'] = df_temp['Base_Goals_Liga_y']
             df_temp['Asian_Weight_Liga'] = df_temp['Asian_Weight_Liga_y']
             df_temp = df_temp.drop(['Base_Goals_Liga_y', 'Asian_Weight_Liga_y'], axis=1)
     
+    # Calcular defaults globais para preencher missing values
     global_base = 2.5
     global_asian = 0.6
     
+    # Se temos dados no DataFrame, calcular médias reais
     if not df_temp.empty:
         if 'Goals_H_FT' in df_temp.columns and 'Goals_A_FT' in df_temp.columns:
             goals_h_mean = df_temp['Goals_H_FT'].mean()
@@ -499,22 +545,26 @@ def adicionar_weighted_goals_defensivos_corrigido(df: pd.DataFrame, liga_params:
             if not pd.isna(goals_h_mean) and not pd.isna(goals_a_mean):
                 global_base = goals_h_mean + goals_a_mean
     
+    # Preencher valores faltantes
     df_temp['Base_Goals_Liga'] = df_temp['Base_Goals_Liga'].fillna(global_base)
     df_temp['Asian_Weight_Liga'] = df_temp['Asian_Weight_Liga'].fillna(global_asian)
     
+    # Cálculo dos expected goals
     if 'Asian_Line_Decimal' in df_temp.columns:
         df_temp['xGF_H'] = (df_temp['Base_Goals_Liga'] / 2) + df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight_Liga']
         df_temp['xGF_A'] = (df_temp['Base_Goals_Liga'] / 2) - df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight_Liga']
         
-        df_temp['xGA_H'] = df_temp['xGF_A']
-        df_temp['xGA_A'] = df_temp['xGF_H']
+        df_temp['xGA_H'] = df_temp['xGF_A']  # Gols esperados sofridos pelo Home
+        df_temp['xGA_A'] = df_temp['xGF_H']  # Gols esperados sofridos pelo Away
         
-        df_temp['WG_Def_Home'] = df_temp['xGA_H'] - df_temp['Goals_A_FT']
-        df_temp['WG_Def_Away'] = df_temp['xGA_A'] - df_temp['Goals_H_FT']
+        # WG Defensivo = quanto a defesa performou MELHOR que o esperado
+        df_temp['WG_Def_Home'] = df_temp['xGA_H'] - df_temp['Goals_A_FT']  # Positive = boa defesa
+        df_temp['WG_Def_Away'] = df_temp['xGA_A'] - df_temp['Goals_H_FT']  # Positive = boa defesa
     else:
         df_temp['WG_Def_Home'] = 0.0
         df_temp['WG_Def_Away'] = 0.0
     
+    # Limpeza
     cols_to_drop = ['xGF_H', 'xGF_A', 'xGA_H', 'xGA_A']
     df_temp.drop(columns=[c for c in cols_to_drop if c in df_temp.columns], inplace=True, errors='ignore')
     
@@ -721,6 +771,7 @@ def adicionar_goal_efficiency_score(df: pd.DataFrame, liga_params: pd.DataFrame)
     if 'Goals_A_FT' not in df.columns:
         df['Goals_A_FT'] = df.get('Goals_A_Today', np.nan)
 
+    # Inicializar colunas primeiro
     df['Base_Goals_Liga'] = np.nan
     df['Asian_Weight_Liga'] = np.nan
     
@@ -732,11 +783,13 @@ def adicionar_goal_efficiency_score(df: pd.DataFrame, liga_params: pd.DataFrame)
             suffixes=('', '_y')
         )
         
+        # Consolidar colunas se houve duplicação
         if 'Base_Goals_Liga_y' in df.columns:
             df['Base_Goals_Liga'] = df['Base_Goals_Liga_y'].fillna(df['Base_Goals_Liga'])
             df['Asian_Weight_Liga'] = df['Asian_Weight_Liga_y'].fillna(df['Asian_Weight_Liga'])
             df = df.drop(['Base_Goals_Liga_y', 'Asian_Weight_Liga_y'], axis=1, errors='ignore')
 
+    # Preencher valores faltantes com defaults
     df['Base_Goals_Liga'] = df['Base_Goals_Liga'].fillna(2.5)
     df['Asian_Weight_Liga'] = df['Asian_Weight_Liga'].fillna(0.6)
 
@@ -755,6 +808,7 @@ def adicionar_goal_efficiency_score(df: pd.DataFrame, liga_params: pd.DataFrame)
         df['GES_Def_H'] = (df['Base_Goals_Liga'] / 2) - df['Goals_A_FT']
         df['GES_Def_A'] = (df['Base_Goals_Liga'] / 2) - df['Goals_H_FT']
 
+    # Normalização por liga
     for col in ['GES_Of_H', 'GES_Of_A', 'GES_Def_H', 'GES_Def_A']:
         if 'League' in df.columns:
             liga_mean = df.groupby('League')[col].transform('mean')
@@ -767,6 +821,7 @@ def adicionar_goal_efficiency_score(df: pd.DataFrame, liga_params: pd.DataFrame)
     for col in ['GES_Of_H_Norm', 'GES_Of_A_Norm', 'GES_Def_H_Norm', 'GES_Def_A_Norm']:
         df[col] = df[col].fillna(0)
 
+    # Limpar colunas temporárias
     cols_to_drop = ['xGF_H', 'xGF_A', 'Base_Goals_Liga', 'Asian_Weight_Liga']
     df.drop(columns=[c for c in cols_to_drop if c in df.columns], inplace=True, errors='ignore')
 
@@ -804,6 +859,253 @@ def calcular_rolling_ges(df: pd.DataFrame) -> pd.DataFrame:
     df['GES_Total_Diff'] = (df['GES_Of_Diff'] * 0.60) + (df['GES_Def_Diff'] * 0.40)
 
     return df
+
+# ==========================================================
+# QUADRANTES 16 (AGGRESSION X HANDSCORE)
+# ==========================================================
+QUADRANTES_16 = {
+    1: {"nome": "Fav Forte Muito Forte", "agg_min": 0.75, "agg_max": 1.0, "hs_min": 45, "hs_max": 60},
+    2: {"nome": "Fav Forte Forte",       "agg_min": 0.75, "agg_max": 1.0, "hs_min": 30, "hs_max": 45},
+    3: {"nome": "Fav Forte Moderado",    "agg_min": 0.75, "agg_max": 1.0, "hs_min": 15, "hs_max": 30},
+    4: {"nome": "Fav Forte Neutro",      "agg_min": 0.75, "agg_max": 1.0, "hs_min": -15, "hs_max": 15},
+    5: {"nome": "Fav Moderado Muito Forte", "agg_min": 0.25, "agg_max": 0.75, "hs_min": 45, "hs_max": 60},
+    6: {"nome": "Fav Moderado Forte",       "agg_min": 0.25, "agg_max": 0.75, "hs_min": 30, "hs_max": 45},
+    7: {"nome": "Fav Moderado Moderado",    "agg_min": 0.25, "agg_max": 0.75, "hs_min": 15, "hs_max": 30},
+    8: {"nome": "Fav Moderado Neutro",      "agg_min": 0.25, "agg_max": 0.75, "hs_min": -15, "hs_max": 15},
+    9: {"nome": "Under Moderado Neutro",    "agg_min": -0.75, "agg_max": -0.25, "hs_min": -15, "hs_max": 15},
+    10: {"nome": "Under Moderado Moderado", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -30, "hs_max": -15},
+    11: {"nome": "Under Moderado Forte",    "agg_min": -0.75, "agg_max": -0.25, "hs_min": -45, "hs_max": -30},
+    12: {"nome": "Under Moderado Muito Forte", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -60, "hs_max": -45},
+    13: {"nome": "Under Forte Neutro",    "agg_min": -1.0, "agg_max": -0.75, "hs_min": -15, "hs_max": 15},
+    14: {"nome": "Under Forte Moderado",  "agg_min": -1.0, "agg_max": -0.75, "hs_min": -30, "hs_max": -15},
+    15: {"nome": "Under Forte Forte",     "agg_min": -1.0, "agg_max": -0.75, "hs_min": -45, "hs_max": -30},
+    16: {"nome": "Under Forte Muito Forte", "agg_min": -1.0, "agg_max": -0.75, "hs_min": -60, "hs_max": -45}
+}
+
+def classificar_quadrante_16(agg, hs):
+    if pd.isna(agg) or pd.isna(hs):
+        return 0
+    for quadrante_id, config in QUADRANTES_16.items():
+        agg_ok = (config['agg_min'] <= agg <= config['agg_max'])
+        hs_ok = (config['hs_min'] <= hs <= config['hs_max'])
+        if agg_ok and hs_ok:
+            return quadrante_id
+    return 0
+
+# ==========================================================
+# DISTÂNCIA 3D ENTRE HOME E AWAY (AGG, M_H, MT_H)
+# ==========================================================
+def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        st.warning(f"⚠️ Colunas faltando para cálculo 3D: {missing_cols}")
+        for col in [
+            'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
+            'Quadrant_Angle_XY', 'Quadrant_Angle_XZ', 'Quadrant_Angle_YZ',
+            'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
+            'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
+            'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
+            'Momentum_Diff', 'Momentum_Diff_MT', 'Magnitude_3D'
+        ]:
+            df[col] = np.nan
+        return df
+
+    dx = df['Aggression_Home'] - df['Aggression_Away']
+    dy = df['M_H'] - df['M_A']
+    dz = df['MT_H'] - df['MT_A']
+
+    df['Quadrant_Dist_3D'] = np.sqrt(
+        (dx)**2 * 1.5 + (dy/3.5)**2 * 2.0 + (dz/3.5)**2 * 1.8
+    ) * 10
+
+    df['Quadrant_Angle_XY'] = np.degrees(np.arctan2(dy, dx))
+    df['Quadrant_Angle_XZ'] = np.degrees(np.arctan2(dz, dx))
+    df['Quadrant_Angle_YZ'] = np.degrees(np.arctan2(dz, dy))
+
+    angle_xy = np.arctan2(dy, dx)
+    angle_xz = np.arctan2(dz, dx)
+    angle_yz = np.arctan2(dz, dy)
+
+    df['Quadrant_Sin_XY'] = np.sin(angle_xy)
+    df['Quadrant_Cos_XY'] = np.cos(angle_xy)
+    df['Quadrant_Sin_XZ'] = np.sin(angle_xz)
+    df['Quadrant_Cos_XZ'] = np.cos(angle_xz)
+    df['Quadrant_Sin_YZ'] = np.sin(angle_yz)
+    df['Quadrant_Cos_YZ'] = np.cos(angle_yz)
+
+    df['Quadrant_Separation_3D'] = (
+        0.4 * (60 * dx) + 0.35 * (20 * dy) + 0.25 * (20 * dz)
+    )
+
+    df['Momentum_Diff'] = dy
+    df['Momentum_Diff_MT'] = dz
+    df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+
+    trig_cols = ['Quadrant_Sin_XY', 'Quadrant_Cos_XY', 'Quadrant_Sin_XZ',
+                 'Quadrant_Cos_XZ', 'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ']
+    created_trig = [col for col in trig_cols if col in df.columns]
+    st.success(f"✅ Features trigonométricas calculadas: {len(created_trig)}/6")
+
+    return df
+
+# ==========================================================
+# NOVO: DISTÂNCIA 2D NO PLANO WG (WG_Dist_2D)
+# ==========================================================
+def calcular_distancia_wg_2d(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    req_cols = [
+        'WG_Home_Team_Last', 'WG_Away_Team_Last',
+        'WG_Def_Home_Team_Last', 'WG_Def_Away_Team_Last'
+    ]
+    if any(c not in df.columns for c in req_cols):
+        df['WG_Dist_2D'] = np.nan
+        return df
+
+    dx = df['WG_Home_Team_Last'] - df['WG_Away_Team_Last']
+    dy = df['WG_Def_Home_Team_Last'] - df['WG_Def_Away_Team_Last']
+
+    df['WG_Dist_2D'] = np.sqrt(dx**2 + dy**2) * 10  # escala visual
+    return df
+
+def calcular_distancia_wg_2d_history(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Versão para o histórico: usa WG_Home_Team / WG_Away_Team e WG_Def_Home_Team / WG_Def_Away_Team.
+    """
+    df = df.copy()
+    req_cols = [
+        'WG_Home_Team', 'WG_Away_Team',
+        'WG_Def_Home_Team', 'WG_Def_Away_Team'
+    ]
+    if any(c not in df.columns for c in req_cols):
+        df['WG_Dist_2D'] = np.nan
+        return df
+
+    dx = df['WG_Home_Team'] - df['WG_Away_Team']
+    dy = df['WG_Def_Home_Team'] - df['WG_Def_Away_Team']
+
+    df['WG_Dist_2D'] = np.sqrt(dx**2 + dy**2) * 10
+    return df
+
+# ==========================================================
+# TREINO DO MODELO
+# ==========================================================
+def train_improved_model(X, y, feature_names):
+    st.info("🤖 Treinando modelo otimizado...")
+    X_clean = clean_features_for_training(X)
+    y_clean = y.copy()
+
+    if hasattr(y_clean, 'isna') and y_clean.isna().any():
+        st.warning(f"⚠️ Encontrados {y_clean.isna().sum()} NaNs no target - removendo")
+        valid_mask = ~y_clean.isna()
+        X_clean = X_clean[valid_mask]
+        y_clean = y_clean[valid_mask]
+
+    model = RandomForestClassifier(
+        n_estimators=200,
+        max_depth=10,
+        min_samples_split=20,
+        min_samples_leaf=10,
+        max_features='sqrt',
+        class_weight='balanced',
+        random_state=42,
+        n_jobs=-1
+    )
+
+    try:
+        scores = cross_val_score(model, X_clean, y_clean, cv=5, scoring='accuracy')
+        st.write(f"📊 Validação Cruzada: {scores.mean():.3f} (+/- {scores.std() * 2:.3f})")
+        if scores.mean() < 0.55:
+            st.warning("⚠️ Modelo abaixo do esperado - verificar qualidade dos dados")
+        elif scores.mean() > 0.65:
+            st.success("🎯 Modelo com boa performance!")
+    except Exception as e:
+        st.warning(f"⚠️ Validação cruzada falhou: {e}")
+
+    model.fit(X_clean, y_clean)
+
+    importances = pd.Series(model.feature_importances_, index=feature_names).sort_values(ascending=False)
+    st.write("🔍 **Top Features mais importantes:**")
+    st.dataframe(importances.head(10).to_frame("Importância"))
+
+    return model
+
+# ==========================================================
+# FEATURE SET FINAL (INCLUDING WG + GES + 3D + OverScore)
+# ==========================================================
+def create_robust_features(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    basic_features = [
+        'Aggression_Home', 'Aggression_Away',
+        'M_H', 'M_A', 'MT_H', 'MT_A'
+    ]
+
+    # Derivadas
+    if 'Aggression_Home' in df.columns and 'Aggression_Away' in df.columns:
+        df['Aggression_Diff'] = df['Aggression_Home'] - df['Aggression_Away']
+        df['Aggression_Total'] = df['Aggression_Home'] + df['Aggression_Away']
+    if 'M_H' in df.columns and 'M_A' in df.columns:
+        df['M_Total'] = df['M_H'] + df['M_A']
+        df['Momentum_Advantage'] = (df['M_H'] - df['M_A'])
+    if 'MT_H' in df.columns and 'MT_A' in df.columns:
+        df['MT_Total'] = df['MT_H'] + df['MT_A']
+        if 'Momentum_Advantage' in df.columns:
+            df['Momentum_Advantage'] = df['Momentum_Advantage'] + (df['MT_H'] - df['MT_A'])
+        else:
+            df['Momentum_Advantage'] = (df['MT_H'] - df['MT_A'])
+
+    derived_features = [
+        'Aggression_Diff', 'M_Total', 'MT_Total',
+        'Momentum_Advantage', 'Aggression_Total'
+    ]
+
+    vector_features = [
+        'Quadrant_Dist_3D', 'Momentum_Diff', 'Magnitude_3D',
+        'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
+        'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
+        'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ'
+    ]
+
+    wg_features = [
+        'WG_Home_Team_Last', 'WG_Away_Team_Last', 'WG_Diff',
+        'WG_AH_Home_Team_Last', 'WG_AH_Away_Team_Last', 'WG_AH_Diff',
+        'WG_Def_Home_Team_Last', 'WG_Def_Away_Team_Last', 'WG_Def_Diff',
+        'WG_Balance_Home_Team_Last', 'WG_Balance_Away_Team_Last', 'WG_Balance_Diff',
+        'WG_Net_Home_Team_Last', 'WG_Net_Away_Team_Last', 'WG_Net_Diff',
+        'WG_Confidence',
+        'WG_Dist_2D'
+    ]
+
+    ges_features = [
+        'GES_Of_H_Roll', 'GES_Of_A_Roll', 'GES_Of_Diff',
+        'GES_Def_H_Roll', 'GES_Def_A_Roll', 'GES_Def_Diff',
+        'GES_Total_Diff'
+    ]
+
+    # 🚀 NOVO: OverScore_Home / OverScore_Away + Diff
+    if 'OverScore_Home' not in df.columns:
+        df['OverScore_Home'] = 0.0
+    if 'OverScore_Away' not in df.columns:
+        df['OverScore_Away'] = 0.0
+
+    df['OverScore_Diff'] = df['OverScore_Home'] - df['OverScore_Away']
+
+    over_features = [
+        'OverScore_Home', 'OverScore_Away', 'OverScore_Diff'
+    ]
+
+    all_features = basic_features + derived_features + vector_features + wg_features + ges_features + over_features
+    available_features = [f for f in all_features if f in df.columns]
+
+    st.info(f"📋 Features disponíveis para ML: {len(available_features)}/{len(all_features)}")
+
+    trig_features = [f for f in available_features if 'Sin' in f or 'Cos' in f]
+    if trig_features:
+        st.success(f"✅ Features trigonométricas incluídas: {len(trig_features)}")
+
+    return df[available_features].fillna(0)
 
 # ==========================================================
 # GRÁFICO WG X WG_DEF (2D)
@@ -1037,283 +1339,111 @@ def load_and_merge_livescore(games_today: pd.DataFrame, selected_date_str: str) 
         return games_today
 
 # ==========================================================
-# QUADRANTES 16 (AGGRESSION X HANDSCORE)
+# EV OVER/UNDER 2.5 E SINAL DE VALUE
 # ==========================================================
-QUADRANTES_16 = {
-    1: {"nome": "Fav Forte Muito Forte", "agg_min": 0.75, "agg_max": 1.0, "hs_min": 45, "hs_max": 60},
-    2: {"nome": "Fav Forte Forte",       "agg_min": 0.75, "agg_max": 1.0, "hs_min": 30, "hs_max": 45},
-    3: {"nome": "Fav Forte Moderado",    "agg_min": 0.75, "agg_max": 1.0, "hs_min": 15, "hs_max": 30},
-    4: {"nome": "Fav Forte Neutro",      "agg_min": 0.75, "agg_max": 1.0, "hs_min": -15, "hs_max": 15},
-    5: {"nome": "Fav Moderado Muito Forte", "agg_min": 0.25, "agg_max": 0.75, "hs_min": 45, "hs_max": 60},
-    6: {"nome": "Fav Moderado Forte",       "agg_min": 0.25, "agg_max": 0.75, "hs_min": 30, "hs_max": 45},
-    7: {"nome": "Fav Moderado Moderado",    "agg_min": 0.25, "agg_max": 0.75, "hs_min": 15, "hs_max": 30},
-    8: {"nome": "Fav Moderado Neutro",      "agg_min": 0.25, "agg_max": 0.75, "hs_min": -15, "hs_max": 15},
-    9: {"nome": "Under Moderado Neutro",    "agg_min": -0.75, "agg_max": -0.25, "hs_min": -15, "hs_max": 15},
-    10: {"nome": "Under Moderado Moderado", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -30, "hs_max": -15},
-    11: {"nome": "Under Moderado Forte",    "agg_min": -0.75, "agg_max": -0.25, "hs_min": -45, "hs_max": -30},
-    12: {"nome": "Under Moderado Muito Forte", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -60, "hs_max": -45},
-    13: {"nome": "Under Forte Neutro",    "agg_min": -1.0, "agg_max": -0.75, "hs_min": -15, "hs_max": 15},
-    14: {"nome": "Under Forte Moderado",  "agg_min": -1.0, "agg_max": -0.75, "hs_min": -30, "hs_max": -15},
-    15: {"nome": "Under Forte Forte",     "agg_min": -1.0, "agg_max": -0.75, "hs_min": -45, "hs_max": -30},
-    16: {"nome": "Under Forte Muito Forte", "agg_min": -1.0, "agg_max": -0.75, "hs_min": -60, "hs_max": -45}
-}
-
-def classificar_quadrante_16(agg, hs):
-    if pd.isna(agg) or pd.isna(hs):
-        return 0
-    for quadrante_id, config in QUADRANTES_16.items():
-        agg_ok = (config['agg_min'] <= agg <= config['agg_max'])
-        hs_ok = (config['hs_min'] <= hs <= config['hs_max'])
-        if agg_ok and hs_ok:
-            return quadrante_id
-    return 0
-
-# ==========================================================
-# DISTÂNCIA 3D ENTRE HOME E AWAY (AGG, M_H, MT_H)
-# ==========================================================
-def calcular_distancias_3d(df: pd.DataFrame) -> pd.DataFrame:
+def calcular_ev_over25(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
-    missing_cols = [col for col in required_cols if col not in df.columns]
-    if missing_cols:
-        st.warning(f"⚠️ Colunas faltando para cálculo 3D: {missing_cols}")
-        for col in [
-            'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
-            'Quadrant_Angle_XY', 'Quadrant_Angle_XZ', 'Quadrant_Angle_YZ',
-            'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
-            'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
-            'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
-            'Momentum_Diff', 'Momentum_Diff_MT', 'Magnitude_3D'
-        ]:
+
+    # Garantir colunas
+    for col in ['Prob_Over25', 'Prob_Under25']:
+        if col not in df.columns:
             df[col] = np.nan
-        return df
 
-    dx = df['Aggression_Home'] - df['Aggression_Away']
-    dy = df['M_H'] - df['M_A']
-    dz = df['MT_H'] - df['MT_A']
+    for col in ['Odd_Over25', 'Odd_Under25']:
+        if col not in df.columns:
+            df[col] = np.nan
 
-    df['Quadrant_Dist_3D'] = np.sqrt(
-        (dx)**2 * 1.5 + (dy/3.5)**2 * 2.0 + (dz/3.5)**2 * 1.8
-    ) * 10
+    df['EV_Over25'] = 0.0
+    df['EV_Under25'] = 0.0
+    df['Fair_Prob_Over25'] = 0.0
+    df['Fair_Prob_Under25'] = 0.0
 
-    df['Quadrant_Angle_XY'] = np.degrees(np.arctan2(dy, dx))
-    df['Quadrant_Angle_XZ'] = np.degrees(np.arctan2(dz, dx))
-    df['Quadrant_Angle_YZ'] = np.degrees(np.arctan2(dz, dy))
-
-    angle_xy = np.arctan2(dy, dx)
-    angle_xz = np.arctan2(dz, dx)
-    angle_yz = np.arctan2(dz, dy)
-
-    df['Quadrant_Sin_XY'] = np.sin(angle_xy)
-    df['Quadrant_Cos_XY'] = np.cos(angle_xy)
-    df['Quadrant_Sin_XZ'] = np.sin(angle_xz)
-    df['Quadrant_Cos_XZ'] = np.cos(angle_xz)
-    df['Quadrant_Sin_YZ'] = np.sin(angle_yz)
-    df['Quadrant_Cos_YZ'] = np.cos(angle_yz)
-
-    df['Quadrant_Separation_3D'] = (
-        0.4 * (60 * dx) + 0.35 * (20 * dy) + 0.25 * (20 * dz)
+    valid = (
+        df['Odd_Over25'].astype(float).gt(1.01) &
+        df['Odd_Under25'].astype(float).gt(1.01) &
+        df['Prob_Over25'].notna()
     )
 
-    df['Momentum_Diff'] = dy
-    df['Momentum_Diff_MT'] = dz
-    df['Magnitude_3D'] = np.sqrt(dx**2 + dy**2 + dz**2)
+    if valid.any():
+        odd_o = df.loc[valid, 'Odd_Over25'].astype(float)
+        odd_u = df.loc[valid, 'Odd_Under25'].astype(float)
+        p_ml_over = df.loc[valid, 'Prob_Over25'].astype(float)
+        p_ml_under = df.loc[valid, 'Prob_Under25'].astype(float)
+
+        inv_o = 1.0 / odd_o
+        inv_u = 1.0 / odd_u
+        total_inv = inv_o + inv_u
+
+        fair_over = inv_o / total_inv
+        fair_under = inv_u / total_inv
+
+        df.loc[valid, 'Fair_Prob_Over25'] = fair_over
+        df.loc[valid, 'Fair_Prob_Under25'] = fair_under
+
+        # EV por unidade de stake
+        ev_over = p_ml_over * (odd_o - 1.0) - (1.0 - p_ml_over)
+        ev_under = p_ml_under * (odd_u - 1.0) - (1.0 - p_ml_under)
+
+        df.loc[valid, 'EV_Over25'] = ev_over
+        df.loc[valid, 'EV_Under25'] = ev_under
+
+    # Melhor lado
+    df['Bet_Side'] = np.where(df['EV_Over25'] >= df['EV_Under25'], 'OVER25', 'UNDER25')
+    df['Best_Bet_EV'] = np.where(df['EV_Over25'] >= df['EV_Under25'], df['EV_Over25'], df['EV_Under25'])
+
+    df['Bet_Confidence'] = np.where(
+        df['Bet_Side'] == 'OVER25',
+        df['Prob_Over25'].fillna(0.0),
+        df['Prob_Under25'].fillna(0.0)
+    )
+
+    # Threshold baseado na probabilidade fair do mercado + pequena margem
+    df['Benchmark_Prob'] = np.where(
+        df['Bet_Side'] == 'OVER25',
+        df['Fair_Prob_Over25'],
+        df['Fair_Prob_Under25']
+    )
+
+    df['Min_Conf_Required'] = (df['Benchmark_Prob'] + 0.03).clip(0.50, 0.85)
+
+    df['Bet_Approved'] = (df['Best_Bet_EV'] > 0) & (df['Bet_Confidence'] >= df['Min_Conf_Required'])
 
     return df
 
 # ==========================================================
-# THRESHOLD DINÂMICO (PODE SER AJUSTADO PARA GOALS SE QUISER)
-# ==========================================================
-def min_confidence_default():
-    return 0.55
-
-# ==========================================================
-# DISTÂNCIA 2D NO PLANO WG (WG_Dist_2D)
-# ==========================================================
-def calcular_distancia_wg_2d(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    req_cols = [
-        'WG_Home_Team_Last', 'WG_Away_Team_Last',
-        'WG_Def_Home_Team_Last', 'WG_Def_Away_Team_Last'
-    ]
-    if any(c not in df.columns for c in req_cols):
-        df['WG_Dist_2D'] = np.nan
-        return df
-
-    dx = df['WG_Home_Team_Last'] - df['WG_Away_Team_Last']
-    dy = df['WG_Def_Home_Team_Last'] - df['WG_Def_Away_Team_Last']
-
-    df['WG_Dist_2D'] = np.sqrt(dx**2 + dy**2) * 10
-    return df
-
-def calcular_distancia_wg_2d_history(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    req_cols = [
-        'WG_Home_Team', 'WG_Away_Team',
-        'WG_Def_Home_Team', 'WG_Def_Away_Team'
-    ]
-    if any(c not in df.columns for c in req_cols):
-        df['WG_Dist_2D'] = np.nan
-        return df
-
-    dx = df['WG_Home_Team'] - df['WG_Away_Team']
-    dy = df['WG_Def_Home_Team'] - df['WG_Def_Away_Team']
-
-    df['WG_Dist_2D'] = np.sqrt(dx**2 + dy**2) * 10
-    return df
-
-# ==========================================================
-# SINAL WG GAP + ML PARA OVER/UNDER
+# SINAL FINAL: WG GAP + ML (FILTRO)
 # ==========================================================
 def gerar_sinal_wg_gap(df: pd.DataFrame) -> pd.DataFrame:
     """
     Para Over/Under:
-    - WG_Gap_OK: se WG_Dist_2D >= min_gap
-    - WG_Side: OVER se WG_Total_H + WG_Total_A >= 0, UNDER caso contrário
-    - Final_Approved: precisa de Bet_Approved + WG_Gap_OK + alinhamento (WG_Side == Bet_Side)
+      - WG_Dist_2D atua como filtro de confiança (apenas reforça)
+      - Final_Side = Bet_Side
+      - Final_Approved = Bet_Approved & WG_Gap_OK
     """
     df = df.copy()
 
+    # Se não houver WG_Dist_2D, apenas retorna
+    if 'WG_Dist_2D' not in df.columns:
+        df['WG_Gap_OK'] = False
+        if 'Bet_Side' in df.columns:
+            df['Final_Side'] = df['Bet_Side']
+            df['Final_Approved'] = df.get('Bet_Approved', False)
+        else:
+            df['Final_Side'] = 'NONE'
+            df['Final_Approved'] = False
+        return df
+
     min_gap = 6.0
-    df['WG_Gap_OK'] = df.get('WG_Dist_2D', 0).fillna(0) >= min_gap
-
-    # Garantir colunas de WG_Total
-    df['WG_Total_Home_Team_Last'] = df.get('WG_Total_Home_Team_Last', 0.0).fillna(0.0)
-    df['WG_Total_Away_Team_Last'] = df.get('WG_Total_Away_Team_Last', 0.0).fillna(0.0)
-
-    total_wg = df['WG_Total_Home_Team_Last'] + df['WG_Total_Away_Team_Last']
-
-    df['WG_Side'] = np.where(
-        total_wg >= 0,
-        'OVER',
-        'UNDER'
-    )
+    df['WG_Gap_OK'] = df['WG_Dist_2D'] >= min_gap
 
     if 'Bet_Side' in df.columns and 'Bet_Approved' in df.columns:
         df['Final_Side'] = df['Bet_Side']
-        df['Final_Approved'] = (
-            df['Bet_Approved'].astype(bool)
-            & df['WG_Gap_OK'].astype(bool)
-            & (df['WG_Side'] == df['Bet_Side'])
-        )
+        df['Final_Approved'] = df['Bet_Approved'] & df['WG_Gap_OK']
     else:
-        df['Final_Side'] = df['WG_Side']
+        df['Final_Side'] = df.get('Bet_Side', 'NONE')
         df['Final_Approved'] = df['WG_Gap_OK']
 
     return df
-
-# ==========================================================
-# FEATURE SET FINAL (INCLUINDO OVERSCORE)
-# ==========================================================
-def create_robust_features(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-
-    # Garantir OverScore_* existem
-    for col in ["OverScore_Home", "OverScore_Away"]:
-        if col not in df.columns:
-            df[col] = 0.0
-
-    basic_features = [
-        'Aggression_Home', 'Aggression_Away',
-        'M_H', 'M_A', 'MT_H', 'MT_A',
-        'OverScore_Home', 'OverScore_Away'
-    ]
-
-    # Derivados básicos
-    if 'Aggression_Home' in df.columns and 'Aggression_Away' in df.columns:
-        df['Aggression_Diff'] = df['Aggression_Home'] - df['Aggression_Away']
-        df['Aggression_Total'] = df['Aggression_Home'] + df['Aggression_Away']
-    if 'M_H' in df.columns and 'M_A' in df.columns:
-        df['M_Total'] = df['M_H'] + df['M_A']
-        df['Momentum_Advantage'] = (df['M_H'] - df['M_A'])
-    if 'MT_H' in df.columns and 'MT_A' in df.columns:
-        df['MT_Total'] = df['MT_H'] + df['MT_A']
-        if 'Momentum_Advantage' in df.columns:
-            df['Momentum_Advantage'] = df['Momentum_Advantage'] + (df['MT_H'] - df['MT_A'])
-        else:
-            df['Momentum_Advantage'] = (df['MT_H'] - df['MT_A'])
-
-    # df['OverScore_Diff'] = df['OverScore_Home'] - df['OverScore_Away']
-    df['OverScore_Sum'] = df['OverScore_Home'] + df['OverScore_Away']
-
-    derived_features = [
-        'Aggression_Diff', 'M_Total', 'MT_Total',
-        'Momentum_Advantage', 'Aggression_Total',
-        'OverScore_Sum'
-    ]
-
-    vector_features = [
-        'Quadrant_Dist_3D', 'Momentum_Diff', 'Magnitude_3D',
-        'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
-        'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
-        'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ'
-    ]
-
-    wg_features = [
-        'WG_Home_Team_Last', 'WG_Away_Team_Last', 'WG_Diff',
-        'WG_AH_Home_Team_Last', 'WG_AH_Away_Team_Last', 'WG_AH_Diff',
-        'WG_Def_Home_Team_Last', 'WG_Def_Away_Team_Last', 'WG_Def_Diff',
-        'WG_Balance_Home_Team_Last', 'WG_Balance_Away_Team_Last', 'WG_Balance_Diff',
-        'WG_Total_Home_Team_Last', 'WG_Total_Away_Team_Last', 'WG_Net_Home_Team_Last',
-        'WG_Net_Away_Team_Last', 'WG_Net_Diff',
-        'WG_Confidence',
-        'WG_Dist_2D'
-    ]
-
-    ges_features = [
-        'GES_Of_H_Roll', 'GES_Of_A_Roll', 'GES_Of_Diff',
-        'GES_Def_H_Roll', 'GES_Def_A_Roll', 'GES_Def_Diff',
-        'GES_Total_Diff'
-    ]
-
-    all_features = basic_features + derived_features + vector_features 
-    available_features = [f for f in all_features if f in df.columns]
-
-    st.info(f"📋 Features disponíveis para ML: {len(available_features)}/{len(all_features)}")
-    return df[available_features].fillna(0)
-
-# ==========================================================
-# TREINO DO MODELO
-# ==========================================================
-def train_improved_model(X, y, feature_names):
-    st.info("🤖 Treinando modelo otimizado (Over/Under)...")
-    X_clean = clean_features_for_training(X)
-    y_clean = y.copy()
-
-    if hasattr(y_clean, 'isna') and y_clean.isna().any():
-        st.warning(f"⚠️ Encontrados {y_clean.isna().sum()} NaNs no target - removendo")
-        valid_mask = ~y_clean.isna()
-        X_clean = X_clean[valid_mask]
-        y_clean = y_clean[valid_mask]
-
-    model = RandomForestClassifier(
-        n_estimators=500,
-        max_depth=10,
-        min_samples_split=20,
-        min_samples_leaf=10,
-        max_features='sqrt',
-        class_weight='balanced',
-        random_state=42,
-        n_jobs=-1
-    )
-
-    try:
-        scores = cross_val_score(model, X_clean, y_clean, cv=5, scoring='accuracy')
-        st.write(f"📊 Validação Cruzada: {scores.mean():.3f} (+/- {scores.std() * 2:.3f})")
-        if scores.mean() < 0.55:
-            st.warning("⚠️ Modelo abaixo do esperado - verificar qualidade dos dados")
-        elif scores.mean() > 0.65:
-            st.success("🎯 Modelo com boa performance!")
-    except Exception as e:
-        st.warning(f"⚠️ Validação cruzada falhou: {e}")
-
-    model.fit(X_clean, y_clean)
-
-    importances = pd.Series(model.feature_importances_, index=feature_names).sort_values(ascending=False)
-    st.write("🔍 **Top Features mais importantes:**")
-    st.dataframe(importances.head(10).to_frame("Importância"))
-
-    return model
 
 # ==========================================================
 # CARREGAR DADOS (GAMESDAY + HISTORY + LIVESCORE)
@@ -1371,8 +1501,10 @@ if not history.empty:
 # GES + WG NO HISTÓRICO + ENRICH NOS JOGOS DE HOJE
 # ==========================================================
 if not history.empty:
+    # Parâmetros por liga
     liga_params = calcular_parametros_liga_avancado(history)
     
+    # Mostrar parâmetros calculados
     if not liga_params.empty:
         mostrar_parametros_ligas(liga_params)
 
@@ -1399,49 +1531,50 @@ if not history.empty:
         games_today = calcular_distancia_wg_2d(games_today)
 
 # ==========================================================
-# TREINO ML (OVER/UNDER) E PREDIÇÃO PARA OS JOGOS DE HOJE
+# TREINO ML (OVER 2.5) E PREDIÇÃO PARA OS JOGOS DE HOJE
 # ==========================================================
 model_over = None
 
 if not history.empty:
-    history_ml = create_target_over(history, GOAL_LINE)
-    if len(history_ml) > 200:
-        X_hist = create_robust_features(history_ml)
-        y_over = history_ml['Target_Over']
-        model_over = train_improved_model(X_hist, y_over, X_hist.columns)
+    history_ml = create_better_target_corrigido(history)
+
+    if 'Target_Over25' in history_ml.columns:
+        y_over = history_ml['Target_Over25']
+        valid = ~y_over.isna()
+        if valid.sum() > 50:
+            X_hist = create_robust_features(history_ml.loc[valid])
+            y_over_clean = y_over.loc[valid]
+            model_over = train_improved_model(X_hist, y_over_clean, X_hist.columns)
+        else:
+            st.warning("Histórico insuficiente para treinar o modelo de Over 2.5.")
     else:
-        st.warning("Histórico insuficiente para treinar o modelo.")
+        st.warning("Target_Over25 não encontrado no histórico após processamento.")
 
 if model_over is not None and not games_today.empty:
     X_today = create_robust_features(games_today)
 
+    # Garantir MESMAS FEATURES DO TREINO
     required_features = model_over.feature_names_in_
     X_today = X_today.reindex(columns=required_features, fill_value=0)
 
     proba_over = model_over.predict_proba(X_today)[:, 1]
+    games_today['Prob_Over25'] = proba_over
+    games_today['Prob_Under25'] = 1.0 - proba_over
 
-    games_today['Goal_Line'] = GOAL_LINE
-    games_today['Prob_Over'] = proba_over
-    games_today['Prob_Under'] = 1 - proba_over
-
-    games_today['Bet_Side'] = np.where(
-        games_today['Prob_Over'] >= games_today['Prob_Under'],
-        'OVER',
-        'UNDER'
-    )
-
-    games_today['Bet_Confidence'] = games_today[['Prob_Over', 'Prob_Under']].max(axis=1)
-
-    games_today['Min_Conf_Required'] = min_confidence_default()
-    games_today['Bet_Approved'] = games_today['Bet_Confidence'] >= games_today['Min_Conf_Required']
+    # EV e Value Bet
+    games_today = calcular_ev_over25(games_today)
 else:
     if not games_today.empty:
-        games_today['Goal_Line'] = GOAL_LINE
-        games_today['Prob_Over'] = np.nan
-        games_today['Prob_Under'] = np.nan
+        games_today['Prob_Over25'] = np.nan
+        games_today['Prob_Under25'] = np.nan
+        games_today['EV_Over25'] = 0.0
+        games_today['EV_Under25'] = 0.0
+        games_today['Fair_Prob_Over25'] = 0.0
+        games_today['Fair_Prob_Under25'] = 0.0
         games_today['Bet_Side'] = 'NONE'
+        games_today['Best_Bet_EV'] = 0.0
         games_today['Bet_Confidence'] = 0.0
-        games_today['Min_Conf_Required'] = min_confidence_default()
+        games_today['Min_Conf_Required'] = 0.55
         games_today['Bet_Approved'] = False
 
 # ==========================================================
@@ -1459,36 +1592,42 @@ if not games_today.empty:
     # Gráfico WG
     plot_wg_vs_wgdef_scatter_interactive(games_today)
 
-    st.markdown(f"## 🏆 Melhores Confrontos por GAP WG – Over/Under {GOAL_LINE:.1f}")
+    # Ranking pelos maiores GAPS WG
+    st.markdown("## 🏆 Melhores Confrontos por GAP WG (Ofensivo + Defensivo) + Over/Under 2.5")
 
     ranking = games_today.sort_values('WG_Dist_2D', ascending=False).copy()
 
     cols_rank = [
-        'League', 'Home', 'Away', 'Goal_Line',
+        'League', 'Home', 'Away',
+        'Odd_Over25', 'Odd_Under25',
         'WG_Dist_2D',
         'WG_Home_Team_Last', 'WG_Away_Team_Last',
         'WG_Def_Home_Team_Last', 'WG_Def_Away_Team_Last',
         'WG_Diff', 'WG_Def_Diff',
         'M_H', 'M_A',
-        'Prob_Over', 'Prob_Under',
+        'OverScore_Home', 'OverScore_Away', 'OverScore_Diff',
+        'Prob_Over25', 'Prob_Under25',
+        'EV_Over25', 'EV_Under25', 'Best_Bet_EV',
         'Bet_Side', 'Bet_Confidence', 'Bet_Approved',
-        'WG_Side', 'WG_Gap_OK',
+        'WG_Gap_OK',
         'Final_Side', 'Final_Approved'
     ]
     cols_rank = [c for c in cols_rank if c in ranking.columns]
 
     st.dataframe(ranking[cols_rank].head(25))
 
+    # Tabela só com sinais aprovados
     aprovados = ranking[ranking['Final_Approved']].copy()
     if not aprovados.empty:
-        st.markdown(f"### ✅ Sinais Aprovados (WG GAP + ML) – Over/Under {GOAL_LINE:.1f}")
+        st.markdown("### ✅ Sinais Aprovados (WG GAP + ML + EV) – Over/Under 2.5")
         cols_aprov = [
-            'League', 'Home', 'Away', 'Goal_Line',
+            'League', 'Home', 'Away',
+            'Odd_Over25', 'Odd_Under25',
             'WG_Dist_2D',
-            'Prob_Over', 'Prob_Under',
-            'Final_Side', 'Bet_Confidence'
+            'Final_Side', 'Bet_Confidence', 'Best_Bet_EV',
+            'Prob_Over25', 'Prob_Under25'
         ]
         cols_aprov = [c for c in cols_aprov if c in aprovados.columns]
         st.dataframe(aprovados[cols_aprov].head(30))
     else:
-        st.info("Nenhum sinal aprovado pelo filtro WG GAP + ML para hoje.")
+        st.info("Nenhum sinal aprovado pelo filtro WG GAP + ML + EV para hoje (Over/Under 2.5).")
