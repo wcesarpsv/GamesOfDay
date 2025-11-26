@@ -71,7 +71,7 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
     return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
 
 # ==========================================================
-# CRIAÇÃO DO TARGET OVER/UNDER 2.5 (CORRIGIDO)
+# CRIAÇÃO DO TARGET OVER/UNDER 2.5 (MAIS ROBUSTA)
 # ==========================================================
 def create_over_under_target(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -86,11 +86,46 @@ def create_over_under_target(df: pd.DataFrame) -> pd.DataFrame:
     
     if missing_cols:
         st.warning(f"⚠️ Colunas faltando para criar target Over/Under: {missing_cols}")
-        # Criar colunas vazias para evitar erro
-        for col in missing_cols:
-            df[col] = 0
+        st.info("🔍 Procurando colunas alternativas de gols...")
+        
+        # Procurar colunas alternativas que possam conter dados de gols
+        possible_goal_cols = []
+        for col in df.columns:
+            col_lower = col.lower()
+            if any(keyword in col_lower for keyword in ['goal', 'gol', 'score', 'ft']):
+                possible_goal_cols.append(col)
+        
+        if possible_goal_cols:
+            st.info(f"Colunas potenciais de gols encontradas: {possible_goal_cols}")
+            
+            # Tentar usar as primeiras colunas encontradas como alternativa
+            if len(possible_goal_cols) >= 2:
+                df['Goals_H_FT'] = df[possible_goal_cols[0]]
+                df['Goals_A_FT'] = df[possible_goal_cols[1]]
+                st.info(f"Usando colunas alternativas: {possible_goal_cols[0]} e {possible_goal_cols[1]}")
+            else:
+                # Criar colunas vazias como fallback
+                st.warning("Colunas alternativas insuficientes, criando target vazio")
+                df["Target_Over"] = 0
+                return df
+        else:
+            # Criar colunas vazias para evitar erro
+            st.warning("Nenhuma coluna alternativa encontrada, criando target vazio")
+            for col in missing_cols:
+                df[col] = 0
+            df["Target_Over"] = 0
+            return df
+    
+    # Verificar se temos dados válidos nas colunas de gols
+    valid_goals_mask = (~df['Goals_H_FT'].isna()) & (~df['Goals_A_FT'].isna())
+    valid_count = valid_goals_mask.sum()
+    
+    if valid_count == 0:
+        st.warning("⚠️ Nenhum dado válido encontrado nas colunas de gols")
         df["Target_Over"] = 0
         return df
+    
+    st.info(f"✅ Encontrados {valid_count} jogos com dados de gols válidos")
     
     # Calcular total de gols
     df["Total_Goals"] = df["Goals_H_FT"] + df["Goals_A_FT"]
@@ -108,7 +143,6 @@ def create_over_under_target(df: pd.DataFrame) -> pd.DataFrame:
     st.info(f"🔵 Jogos Under 2.5: {under_games} ({under_games/total_games:.1%})")
     
     return df
-
 # ==========================================================
 # FEATURES ESPECÍFICAS PARA OVER/UNDER
 # ==========================================================
