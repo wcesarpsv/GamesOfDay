@@ -366,7 +366,25 @@ def create_over_under_features(df: pd.DataFrame) -> pd.DataFrame:
 
     st.info(f"📋 Features Over/Under disponíveis: {len(available_features)}/{len(all_features)}")
 
-    return df[available_features].fillna(0)
+    # RETORNA O DATAFRAME COMPLETO, NÃO APENAS AS FEATURES
+    return df
+
+def get_feature_columns(df: pd.DataFrame) -> list:
+    """
+    Retorna apenas as colunas de features para treinamento
+    """
+    feature_columns = [
+        'Goals_Scored_Home_5G', 'Goals_Conceded_Home_5G',
+        'Goals_Scored_Away_5G', 'Goals_Conceded_Away_5G',
+        'Expected_Total_Goals',
+        'Home_Over_Rate_10G', 'Away_Over_Rate_10G',
+        'Home_BTTS_Rate_10G', 'Away_BTTS_Rate_10G',
+        'WG_Home', 'WG_Away', 'WG_Def_Home', 'WG_Def_Away',
+        'Market_Over_Prob', 'Market_Under_Prob', 'Market_Bias',
+        'Base_Goals_Liga'
+    ]
+    
+    return [f for f in feature_columns if f in df.columns]
 
 # ==========================================================
 # MODELO MACHINE LEARNING
@@ -678,8 +696,12 @@ def main():
         # Rolling features
         history = calcular_rolling_goal_features(history)
         
-        # Features finais
-        X_hist = create_over_under_features(history)
+        # Features finais (agora retorna dataframe completo)
+        history = create_over_under_features(history)
+        
+        # Separar features e target
+        feature_columns = get_feature_columns(history)
+        X_hist = history[feature_columns].fillna(0)
         y_hist = history['Over_2.5']
     
     # ==========================================================
@@ -687,7 +709,7 @@ def main():
     # ==========================================================
     if len(history) > 50:
         with st.spinner("Treinando modelo Over/Under..."):
-            model = train_over_under_model(X_hist, y_hist, X_hist.columns.tolist())
+            model = train_over_under_model(X_hist, y_hist, feature_columns)
         
         # ==========================================================
         # PREDIÇÃO PARA JOGOS DE HOJE
@@ -699,10 +721,10 @@ def main():
             games_today = adicionar_weighted_goals(games_today)
             games_today = adicionar_weighted_goals_defensivos(games_today, liga_params)
             games_today = calcular_rolling_goal_features(games_today)
-            games_today = create_over_under_features(games_today)
+            games_today = create_over_under_features(games_today)  # Agora mantém colunas originais
             
             # Fazer previsões
-            games_today = predict_over_under(games_today, model, X_hist.columns.tolist())
+            games_today = predict_over_under(games_today, model, feature_columns)
         
         # ==========================================================
         # RESULTADOS E VISUALIZAÇÕES
