@@ -672,35 +672,40 @@ if not history.empty:
     # ==========================================================
     # 3️⃣ PREVISÕES PARA OS JOGOS DE HOJE
     # ==========================================================
+    # 3️⃣ PREVISÕES PARA OS JOGOS DE HOJE
     if not games_today.empty:
-
-        # 🔹 Enriquecer cópia dos jogos de hoje
+    
+        # 🔹 Enriquecer dados dos jogos de hoje
         games_enriched = adicionar_weighted_goals_over_under(games_today.copy())
         games_enriched = enrich_games_today_with_offensive_features(
             games_enriched, history_enriched
         )
-
-        # 🔹 Features apenas para predição
-        X_today_ou = create_over_under_features(games_enriched)
-
-        # ❗ Garantir compatibilidade de features
-        if hasattr(model_ou, 'feature_names_in_'):
-            required_features = model_ou.feature_names_in_
-            X_today_ou = X_today_ou.reindex(columns=required_features, fill_value=0)
-
-        # 🔹 Predição de probabilidade
+    
+        # 🔹 Garantir que TODAS features do treino existem nos jogos de hoje
+        for col in feature_list:
+            if col not in games_enriched.columns:
+                games_enriched[col] = 0.0
+    
+        # 🔹 Garantir a ordem correta de features
+        X_today_ou = games_enriched[feature_list]
+    
+        # 🔹 Predição
         proba_over = model_ou.predict_proba(X_today_ou)[:, 1]
         games_today['Prob_Over'] = proba_over
         games_today['Pred_Over'] = (proba_over > 0.5).astype(int)
-
-        # 🔹 Confiança (distância do limiar)
+    
+        # 🔹 Confiança
         games_today['OU_Confidence'] = np.abs(proba_over - 0.5) * 2
-
+    
         # 🔹 Sinal final
-        games_today['OU_Signal'] = np.where(games_today['Prob_Over'] > 0.5, 'OVER', 'UNDER')
-
-        # 🔹 Sinal aprovado
+        games_today['OU_Signal'] = np.where(
+            games_today['Prob_Over'] > 0.5, 
+            'OVER', 
+            'UNDER'
+        )
+    
         games_today['OU_Approved'] = games_today['OU_Confidence'] > 0.1
+
 
 
 # ==========================================================
