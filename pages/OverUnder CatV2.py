@@ -199,11 +199,22 @@ def adicionar_liga_over_rate(df: pd.DataFrame) -> pd.DataFrame:
 # ==========================================================
 def adicionar_overscore_diff(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    if "OverScore_Home" in df.columns and "OverScore_Away" in df.columns:
+
+    cols_needed = ["OverScore_Home", "OverScore_Away"]
+    
+    if all(col in df.columns for col in cols_needed):
+        # Converte para float se não estiver numérico
+        df["OverScore_Home"] = pd.to_numeric(df["OverScore_Home"], errors="coerce")
+        df["OverScore_Away"] = pd.to_numeric(df["OverScore_Away"], errors="coerce")
+
         df["OverScore_Diff"] = df["OverScore_Home"] - df["OverScore_Away"]
+        df["OverScore_Sum"] = df["OverScore_Home"] + df["OverScore_Away"]
     else:
-        df["OverScore_Diff"] = 0.0
+        df["OverScore_Diff"] = np.nan
+        df["OverScore_Sum"] = np.nan
+
     return df
+
 
 # ==========================================================
 # FEATURE SET FINAL
@@ -222,6 +233,7 @@ def create_robust_features(df: pd.DataFrame) -> pd.DataFrame:
     basic_features = [
         "Liga_OverRate",
         "OverScore_Diff",
+        "OverScore_Sum"
     ]
 
     momentum_features = [
@@ -457,10 +469,6 @@ if not history.empty:
 else:
     st.warning("⚠️ Histórico vazio, não foi possível treinar o modelo O/U.")
 
-
-
-st.write(history.columns.tolist())
-st.write(history.head(3))
 
 
 # ==========================================================
