@@ -217,79 +217,50 @@ def adicionar_overscore_diff(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ==========================================================
-# FEATURE SET FINAL
+# FEATURE SET REFORÇADO - Versão O/U Inteligente
 # ==========================================================
 def create_robust_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
-    # OverScore
-    df = adicionar_overscore_diff(df)
+    # Linha decimal
+    df = adicionar_ou_line_decimal(df)
 
-    # Liga Rate (se já tiver Target_OU_Over)
-    if "Target_OU_Over" in df.columns:
-        df = adicionar_liga_over_rate(df)
+    # OverScore diferenciado
+    df["OverScore_Diff"] = df["OverScore_Home"] - df["OverScore_Away"]
 
-    # Lista de possíveis features (serão filtradas se não existirem)
-    basic_features = [
-        "Liga_OverRate",
-        "OverScore_Diff",
-        "OverScore_Sum"
-    ]
+    # Poder ofensivo baseado em HandScore
+    df["HandScore_Diff"] = df["HandScore_Home"] - df["HandScore_Away"]
 
-    momentum_features = [
-        "M_H", "M_A", "MT_H", "MT_A",
-        "M_Total", "Momentum_Advantage"
-    ]
-
-    # Se M_H / M_A existirem, gera derivados
+    # Momentum - já disponível
     if "M_H" in df.columns and "M_A" in df.columns:
-        df["M_Total"] = df["M_H"] + df["M_A"]
         df["Momentum_Advantage"] = df["M_H"] - df["M_A"]
+        df["M_Total"] = df["M_H"] + df["M_A"]
 
-    vector_features = [
-        "Quadrant_Dist_3D", "Magnitude_3D",
-        "Quadrant_Sin_XY", "Quadrant_Cos_XY",
-        "Quadrant_Sin_XZ", "Quadrant_Cos_XZ",
-        "Quadrant_Sin_YZ", "Quadrant_Cos_YZ",
-    ]
+    # Rolagem simples para gols - sem risco de look-ahead aqui, pois histórico já é passado
+    df["Goals_Avg_H_Last"] = df.groupby("Home")["Goals_H_FT"].transform(lambda x: x.rolling(6, min_periods=1).mean())
+    df["Goals_Avg_A_Last"] = df.groupby("Away")["Goals_A_FT"].transform(lambda x: x.rolling(6, min_periods=1).mean())
+    df["Total_Goals_Avg"] = df["Goals_Avg_H_Last"] + df["Goals_Avg_A_Last"]
 
-    wg_features = [
-        "WG_Home_Team_Last", "WG_Away_Team_Last", "WG_Diff",
-        "WG_Def_Home_Team_Last", "WG_Def_Away_Team_Last", "WG_Def_Diff",
-        "WG_Total_Home_Team_Last", "WG_Total_Away_Team_Last",
-        "WG_Net_Home_Team_Last", "WG_Net_Away_Team_Last",
-        "WG_Net_Diff",
-    ]
+    # Odds útil para calibrar risco
+    odds_features = ["Odd_Over25", "Odd_Under25"]
 
-    ges_features = [
-        "GES_Of_H_Roll", "GES_Of_A_Roll", "GES_Of_Diff",
-        "GES_Def_H_Roll", "GES_Def_A_Roll", "GES_Def_Diff",
-        "GES_Total_Diff",
-    ]
+    feat_list = [
+        "OverScore_Diff",
+        "HandScore_Diff",
+        "Momentum_Advantage", "M_Total",
+        "Goals_Avg_H_Last", "Goals_Avg_A_Last", "Total_Goals_Avg",
+        "OU_Line_Dec"
+    ] + odds_features
 
-    odds_features = [
-        "Odd_Over25", "Odd_Under25"
-    ]
+    available = [f for f in feat_list if f in df.columns]
 
-    all_features = (
-        basic_features
-        + momentum_features
-        + vector_features
-        + wg_features
-        + ges_features
-        + odds_features
-    )
+    st.info(f"📋 Features utilizadas: {len(available)}/{len(feat_list)}")
 
-    available_features = [f for f in all_features if f in df.columns]
+    X = df[available].copy()
+    X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
 
-    st.info(f"📋 Features disponíveis para ML: {len(available_features)}/{len(all_features)}")
-
-    if not available_features:
-        st.error("❌ Nenhuma feature disponível para ML.")
-        return pd.DataFrame()
-
-    X = df[available_features].copy().fillna(0)
     return X
+
 
 # ==========================================================
 # TREINO CATBOOST
