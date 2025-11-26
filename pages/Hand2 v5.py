@@ -1297,6 +1297,8 @@ if not history.empty:
 
     if use_catboost:
         # ❗ Pegando X e y do RandomForest (já preparado dentro da função anterior)
+        history = calcular_distancias_quadrantes(history)
+        
         quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
         quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
         ligas_dummies = pd.get_dummies(history['League'], prefix='League')
