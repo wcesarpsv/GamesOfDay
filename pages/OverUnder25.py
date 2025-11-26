@@ -1233,13 +1233,13 @@ def create_robust_features(df: pd.DataFrame) -> pd.DataFrame:
         else:
             df['Momentum_Advantage'] = (df['MT_H'] - df['MT_A'])
 
-    df['OverScore_Diff'] = df['OverScore_Home'] - df['OverScore_Away']
+    # df['OverScore_Diff'] = df['OverScore_Home'] - df['OverScore_Away']
     df['OverScore_Sum'] = df['OverScore_Home'] + df['OverScore_Away']
 
     derived_features = [
         'Aggression_Diff', 'M_Total', 'MT_Total',
         'Momentum_Advantage', 'Aggression_Total',
-        'OverScore_Diff','OverScore_Sum'
+        'OverScore_Sum'
     ]
 
     vector_features = [
