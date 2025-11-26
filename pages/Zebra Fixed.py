@@ -7,6 +7,7 @@ import os
 import joblib
 import re
 from sklearn.ensemble import RandomForestClassifier
+from catboost import CatBoostClassifier
 from sklearn.model_selection import cross_val_score
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
@@ -813,19 +814,61 @@ def create_robust_features(df: pd.DataFrame) -> pd.DataFrame:
 
     return df[available_features].fillna(0)
 
+
+use_catboost = st.checkbox("🚀 Usar CatBoost Classifier", value=False)
+
+
 # ==========================================================
 # TREINO DO MODELO
 # ==========================================================
-def train_improved_model(X, y, feature_names):
+def train_improved_model(X, y, feature_names, use_catboost=False):
     st.info("🤖 Treinando modelo otimizado...")
+
     X_clean = clean_features_for_training(X)
     y_clean = y.copy()
 
     if hasattr(y_clean, 'isna') and y_clean.isna().any():
-        st.warning(f"⚠️ Encontrados {y_clean.isna().sum()} NaNs no target - removendo")
+        st.warning(f"⚠️ {y_clean.isna().sum()} NaNs no target — removendo")
         valid_mask = ~y_clean.isna()
         X_clean = X_clean[valid_mask]
         y_clean = y_clean[valid_mask]
+
+    # ======================
+    # CATBOOST MODE
+    # ======================
+    if use_catboost:
+        st.success("🚀 CatBoost ativado!")
+
+        model = CatBoostClassifier(
+            iterations=400,
+            learning_rate=0.05,
+            depth=7,
+            loss_function='Logloss',
+            eval_metric='Accuracy',
+            random_seed=42,
+            verbose=False,
+            thread_count=-1
+        )
+
+        try:
+            model.fit(X_clean, y_clean, verbose=False)
+        except Exception as e:
+            st.error(f"❌ CatBoost falhou: {e}")
+            return None
+
+        try:
+            preds = model.predict(X_clean)
+            acc = (preds == y_clean).mean()
+            st.write(f"📌 Accuracy treino CatBoost: **{acc:.3f}**")
+        except:
+            pass
+
+        return model
+
+    # ======================
+    # RANDOM FOREST MODE
+    # ======================
+    st.info("🌳 Usando RandomForest")
 
     model = RandomForestClassifier(
         n_estimators=200,
@@ -841,17 +884,13 @@ def train_improved_model(X, y, feature_names):
     try:
         scores = cross_val_score(model, X_clean, y_clean, cv=5, scoring='accuracy')
         st.write(f"📊 Validação Cruzada: {scores.mean():.3f} (+/- {scores.std() * 2:.3f})")
-        if scores.mean() < 0.55:
-            st.warning("⚠️ Modelo abaixo do esperado - verificar qualidade dos dados")
-        elif scores.mean() > 0.65:
-            st.success("🎯 Modelo com boa performance!")
     except Exception as e:
-        st.warning(f"⚠️ Validação cruzada falhou: {e}")
+        st.warning(f"⚠️ Cross-val falhou: {e}")
 
     model.fit(X_clean, y_clean)
 
     importances = pd.Series(model.feature_importances_, index=feature_names).sort_values(ascending=False)
-    st.write("🔍 **Top Features mais importantes:**")
+    st.write("🔍 Top 10 Features:")
     st.dataframe(importances.head(10).to_frame("Importância"))
 
     return model
@@ -1466,11 +1505,13 @@ if not history.empty:
 
         # HOME
         y_home = history_ml['Target_AH_Home']
-        model_home = train_improved_model(X_hist, y_home, X_hist.columns)
+        model_home = train_improved_model(X_hist, y_home, X_hist.columns, use_catboost)
+
 
         # AWAY
         y_away = history_ml['Target_AH_Away']
-        model_away = train_improved_model(X_hist, y_away, X_hist.columns)
+        model_away = train_improved_model(X_hist, y_away, X_hist.columns, use_catboost)
+        
     else:
         st.warning("Histórico insuficiente para treinar o modelo.")
 
@@ -1478,7 +1519,7 @@ if model_home is not None and model_away is not None and not games_today.empty:
     X_today = create_robust_features(games_today)
 
     # 🔐 GARANTIR MESMAS FEATURES DO TREINO (CORRIGE ERRO DE FEATURE NAMES)
-    required_features = model_home.feature_names_in_
+    required_features = X_hist.columns
     X_today = X_today.reindex(columns=required_features, fill_value=0)
 
     proba_home = model_home.predict_proba(X_today)[:, 1]
