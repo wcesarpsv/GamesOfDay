@@ -260,74 +260,73 @@ def calcular_rolling_offensive_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def enrich_games_today_with_offensive_features(games_today: pd.DataFrame, history: pd.DataFrame) -> pd.DataFrame:
     """
-    Enriquecer jogos de hoje com features ofensivas e OverScore do histórico
+    Enriquecer jogos de hoje com WG + OverScore últimos valores do histórico
+    SEM ERROS mesmo quando colunas não existirem em algumas ligas
     """
     if history.empty or games_today.empty:
         return games_today
 
     hist = history.copy()
 
-    # Garantir colunas mínimas
-    for col in ['WG_Offensive_Home_Team', 'WG_Offensive_Away_Team',
-                'OverScore_Home', 'OverScore_Away']:
+    # Garantir colunas mínimas no histórico
+    base_cols = [
+        'WG_Offensive_Home_Team', 'WG_Offensive_Away_Team',
+        'OverScore_Home', 'OverScore_Away'
+    ]
+    for col in base_cols:
         if col not in hist.columns:
             hist[col] = 0.0
 
-    # Últimos valores ofensivos Home
-    last_home = hist.groupby('Home').agg({
-        'WG_Offensive_Home_Team': 'last',
-        'WG_Offensive_Away_Team': 'last',
-        'OverScore_Home': 'last',
-        'OverScore_Away': 'last'
-    }).reset_index().rename(columns={
+    # Agrupar últimos valores por time
+    last = hist.groupby('Home')[base_cols].last().reset_index()
+    last = last.rename(columns={
         'Home': 'Team',
-        'WG_Offensive_Home_Team': 'WG_Off_H_Last',
-        'WG_Offensive_Away_Team': 'WG_Off_A_Last',
-        'OverScore_Home': 'OverScore_H_Last',
-        'OverScore_Away': 'OverScore_A_Last'
+        'WG_Offensive_Home_Team': 'WG_H_Last',
+        'WG_Offensive_Away_Team': 'WG_A_Last',
+        'OverScore_Home': 'Over_H_Last',
+        'OverScore_Away': 'Over_A_Last'
     })
 
-    # Últimos valores ofensivos Away
-    last_away = last_home.copy()  # Mesmo agregado, apenas renomear após merge
-
-    # Merge Home
+    # Merge HOME
     games_today = games_today.merge(
-        last_home, left_on='Home', right_on='Team', how='left'
+        last, left_on='Home', right_on='Team', how='left'
     ).drop('Team', axis=1)
 
-    # Merge Away
+    # Merge AWAY
     games_today = games_today.merge(
-        last_away, left_on='Away', right_on='Team', how='left', suffixes=('_H', '_A')
+        last, left_on='Away', right_on='Team', how='left', suffixes=('_HOME', '_AWAY')
     ).drop('Team', axis=1)
 
-    # Criar OverScore_Avg AGORA (sem risco)
-    games_today['OverScore_H_Last'] = games_today['OverScore_H_Last'].fillna(0)
-    games_today['OverScore_A_Last'] = games_today['OverScore_A_Last'].fillna(0)
-    games_today['OverScore_Avg_Last'] = (
-        games_today['OverScore_H_Last'] + games_today['OverScore_A_Last']
-    ) / 2
-
-    # Preencher WG faltante
-    for col in [
-        'WG_Off_H_Last_H', 'WG_Off_A_Last_H',
-        'WG_Off_H_Last_A', 'WG_Off_A_Last_A'
-    ]:
-        if col in games_today.columns:
+    # Criar colunas faltantes com 0 para evitar KeyError
+    required_cols = [
+        'WG_H_Last_HOME', 'WG_A_Last_HOME', 'Over_H_Last_HOME', 'Over_A_Last_HOME',
+        'WG_H_Last_AWAY', 'WG_A_Last_AWAY', 'Over_H_Last_AWAY', 'Over_A_Last_AWAY'
+    ]
+    for col in required_cols:
+        if col not in games_today.columns:
+            games_today[col] = 0.0
+        else:
             games_today[col] = games_today[col].fillna(0.0)
 
-    # Consolidar variáveis finais
-    games_today['WG_Offensive_Home_Last'] = games_today['WG_Off_H_Last_H']
-    games_today['WG_Offensive_Away_Last'] = games_today['WG_Off_H_Last_A']
+    # Consolidar finais
+    games_today['WG_Offensive_Home_Last'] = games_today['WG_H_Last_HOME']
+    games_today['WG_Offensive_Away_Last'] = games_today['WG_H_Last_AWAY']
+
     games_today['WG_Offensive_Diff_Last'] = (
         games_today['WG_Offensive_Home_Last'] - games_today['WG_Offensive_Away_Last']
     )
 
     games_today['WG_Offensive_Total_Last'] = (
-        games_today['WG_Offensive_Home_Last'] +
-        games_today['WG_Offensive_Away_Last']
+        games_today['WG_Offensive_Home_Last'] + games_today['WG_Offensive_Away_Last']
     )
 
+    # OverScore média final para o modelo
+    games_today['OverScore_Avg_Last'] = (
+        games_today['Over_H_Last_HOME'] + games_today['Over_H_Last_AWAY']
+    ) / 2
+
     return games_today
+
 
 
 # ==========================================================
