@@ -704,8 +704,7 @@ if not history.empty:
 
         # 🔹 Sinal aprovado
         games_today['OU_Approved'] = games_today['OU_Confidence'] > 0.1
-        else:
-            st.warning("⚠️ Dados insuficientes para treinar o modelo Over/Under")
+
 
 # ==========================================================
 # DASHBOARD OVER/UNDER
