@@ -590,6 +590,7 @@ def load_and_merge_livescore(games_today: pd.DataFrame, selected_date_str: str) 
 games_today = load_and_merge_livescore(games_today, selected_date_str)
 
 # ==========================================================
+# ==========================================================
 # PROCESSAMENTO PARA OVER/UNDER (CORRIGIDO)
 # ==========================================================
 
@@ -609,9 +610,16 @@ if not history.empty:
     # Criar target Over/Under (AGORA COM VERIFICAÇÃO)
     history_ou = create_over_under_target(history)
     
-    # Verificar se o target foi criado corretamente
+    # VERIFICAÇÃO CRÍTICA: garantir que o target foi criado
     if 'Target_Over' not in history_ou.columns:
-        st.error("❌ Target_Over não foi criado no histórico. Verifique as colunas Goals_H_FT e Goals_A_FT.")
+        st.error("❌ Target_Over não foi criado no histórico. Verificando colunas disponíveis...")
+        st.write("Colunas disponíveis no histórico:", list(history_ou.columns))
+        
+        # Tentar identificar colunas de gols alternativas
+        goal_columns = [col for col in history_ou.columns if 'goal' in col.lower() or 'Goal' in col or 'gol' in col.lower()]
+        if goal_columns:
+            st.write("Possíveis colunas de gols encontradas:", goal_columns)
+        
         st.stop()
     
     # Adicionar features ofensivas (ISSO CRIA OverScore_Avg NO HISTÓRICO)
