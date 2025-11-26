@@ -333,7 +333,96 @@ def create_better_target_corrigido(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 # ==========================================================
-# WEIGHTED GOALS (OFENSIVO / DEFENSIVO / AH / ROLLING)
+# PARÂMETROS POR LIGA (BASE GOLS + PESO ASIAN) - ATUALIZADO!
+# ==========================================================
+@st.cache_data(ttl=7*24*3600)
+def calcular_parametros_liga_avancado(history: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula parâmetros específicos por liga de forma robusta
+    """
+    if history.empty:
+        return pd.DataFrame()
+    
+    df = history.copy()
+    
+    # Garantir que temos as colunas necessárias
+    required_cols = ['League', 'Goals_H_FT', 'Goals_A_FT', 'Asian_Line_Decimal']
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    
+    if missing_cols:
+        st.warning(f"⚠️ Colunas faltando para cálculo de parâmetros: {missing_cols}")
+        return pd.DataFrame()
+    
+    # Calcular estatísticas por liga
+    liga_stats = df.groupby('League').agg({
+        'Goals_H_FT': ['count', 'mean'],
+        'Goals_A_FT': 'mean',
+        'Asian_Line_Decimal': ['mean', 'std']
+    }).round(3)
+    
+    # Flatten column names
+    liga_stats.columns = [
+        'Jogos_Total', 'Gols_Media_Casa', 
+        'Gols_Media_Fora', 'Asian_Line_Media', 'Asian_Line_Std'
+    ]
+    
+    # Calcular Base_Goals_Liga (gols totais médios)
+    liga_stats['Base_Goals_Liga'] = (
+        liga_stats['Gols_Media_Casa'] + liga_stats['Gols_Media_Fora']
+    ).round(2)
+    
+    # Calcular Asian_Weight_Liga baseado na variabilidade do handicap
+    # Ligas com handicaps mais variáveis → peso maior
+    if not liga_stats['Asian_Line_Std'].isna().all():
+        asi_std_min = liga_stats['Asian_Line_Std'].min()
+        asi_std_max = liga_stats['Asian_Line_Std'].max()
+        
+        if asi_std_max > asi_std_min:
+            # Normalizar entre 0.4 e 0.8 baseado na variabilidade
+            liga_stats['Asian_Weight_Liga'] = 0.4 + 0.4 * (
+                (liga_stats['Asian_Line_Std'] - asi_std_min) / 
+                (asi_std_max - asi_std_min)
+            )
+        else:
+            liga_stats['Asian_Weight_Liga'] = 0.6  # default se não há variação
+    else:
+        liga_stats['Asian_Weight_Liga'] = 0.6
+    
+    liga_stats['Asian_Weight_Liga'] = liga_stats['Asian_Weight_Liga'].round(3)
+    
+    # Filtrar ligas com poucos jogos (menos confiáveis)
+    liga_stats = liga_stats[liga_stats['Jogos_Total'] >= 10].copy()
+    
+    st.success(f"✅ Parâmetros calculados para {len(liga_stats)} ligas")
+    
+    return liga_stats.reset_index()
+
+def mostrar_parametros_ligas(liga_params: pd.DataFrame):
+    """Mostra os parâmetros calculados por liga"""
+    if liga_params.empty:
+        return
+    
+    st.markdown("### 📊 Parâmetros por Liga Calculados")
+    
+    # Ordenar por número de jogos para confiabilidade
+    display_params = liga_params.sort_values('Jogos_Total', ascending=False)[[
+        'League', 'Jogos_Total', 'Base_Goals_Liga', 'Asian_Weight_Liga',
+        'Gols_Media_Casa', 'Gols_Media_Fora', 'Asian_Line_Media'
+    ]]
+    
+    st.dataframe(display_params.head(15))
+    
+    # Estatísticas sumarizadas
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Ligas Analisadas", len(liga_params))
+    with col2:
+        st.metric("Avg Base Goals", f"{liga_params['Base_Goals_Liga'].mean():.2f}")
+    with col3:
+        st.metric("Avg Asian Weight", f"{liga_params['Asian_Weight_Liga'].mean():.3f}")
+
+# ==========================================================
+# WEIGHTED GOALS (OFENSIVO / DEFENSIVO / AH / ROLLING) - ATUALIZADO!
 # ==========================================================
 def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -398,60 +487,58 @@ def adicionar_weighted_goals(df: pd.DataFrame) -> pd.DataFrame:
 
     return df_temp
 
-def adicionar_weighted_goals_defensivos(df: pd.DataFrame, liga_params: pd.DataFrame | None = None) -> pd.DataFrame:
+def adicionar_weighted_goals_defensivos_corrigido(df: pd.DataFrame, liga_params: pd.DataFrame) -> pd.DataFrame:
     """
-    WG_Def_Home / WG_Def_Away
-    Defesa boa = positivo (sofreu menos do que o esperado)
+    Versão corrigida usando parâmetros específicos por liga
     """
     df_temp = df.copy()
-
+    
+    # Garantir colunas básicas
     df_temp['Goals_H_FT'] = df_temp.get('Goals_H_FT', df_temp.get('Goals_H_Today', 0))
     df_temp['Goals_A_FT'] = df_temp.get('Goals_A_FT', df_temp.get('Goals_A_Today', 0))
-
-    default_base_goals = 2.5
-    default_asian_weight = 0.6
-
-    df_temp['Base_Goals_Liga'] = default_base_goals
-    df_temp['Asian_Weight_Liga'] = default_asian_weight
-
-    if liga_params is not None and not liga_params.empty and 'League' in df_temp.columns:
-        if 'League' in liga_params.columns:
-            df_temp = df_temp.merge(
-                liga_params[['League', 'Base_Goals_Liga', 'Asian_Weight_Liga']],
-                on='League',
-                how='left',
-                suffixes=('', '_m')
-            )
-            df_temp['Base_Goals_Liga'] = df_temp['Base_Goals_Liga'].fillna(df_temp['Base_Goals_Liga_m'])
-            df_temp['Asian_Weight_Liga'] = df_temp['Asian_Weight_Liga'].fillna(df_temp['Asian_Weight_Liga_m'])
-            df_temp.drop(columns=['Base_Goals_Liga_m', 'Asian_Weight_Liga_m'], errors='ignore')
-
-    df_temp['Base_Goals_Liga'] = df_temp['Base_Goals_Liga'].fillna(default_base_goals)
-    df_temp['Asian_Weight_Liga'] = df_temp['Asian_Weight_Liga'].fillna(default_asian_weight)
-
-    if 'Asian_Line_Decimal' not in df_temp.columns:
+    
+    # Se não temos parâmetros por liga, calcular defaults globais
+    if liga_params is None or liga_params.empty:
+        st.warning("⚠️ Sem parâmetros por liga - usando defaults globais")
+        global_base_goals = df_temp['Goals_H_FT'].mean() + df_temp['Goals_A_FT'].mean() if not df_temp.empty else 2.5
+        global_asian_weight = 0.6
+        
+        df_temp['Base_Goals_Liga'] = global_base_goals
+        df_temp['Asian_Weight_Liga'] = global_asian_weight
+    else:
+        # Merge com parâmetros por liga
+        df_temp = df_temp.merge(
+            liga_params[['League', 'Base_Goals_Liga', 'Asian_Weight_Liga']],
+            on='League',
+            how='left'
+        )
+        
+        # Preencher missing values com médias globais
+        global_base = liga_params['Base_Goals_Liga'].mean() if not liga_params.empty else 2.5
+        global_asian = liga_params['Asian_Weight_Liga'].mean() if not liga_params.empty else 0.6
+        
+        df_temp['Base_Goals_Liga'] = df_temp['Base_Goals_Liga'].fillna(global_base)
+        df_temp['Asian_Weight_Liga'] = df_temp['Asian_Weight_Liga'].fillna(global_asian)
+    
+    # Cálculo dos expected goals
+    if 'Asian_Line_Decimal' in df_temp.columns:
+        df_temp['xGF_H'] = (df_temp['Base_Goals_Liga'] / 2) + df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight_Liga']
+        df_temp['xGF_A'] = (df_temp['Base_Goals_Liga'] / 2) - df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight_Liga']
+        
+        df_temp['xGA_H'] = df_temp['xGF_A']  # Gols esperados sofridos pelo Home
+        df_temp['xGA_A'] = df_temp['xGF_H']  # Gols esperados sofridos pelo Away
+        
+        # WG Defensivo = quanto a defesa performou MELHOR que o esperado
+        df_temp['WG_Def_Home'] = df_temp['xGA_H'] - df_temp['Goals_A_FT']  # Positive = boa defesa
+        df_temp['WG_Def_Away'] = df_temp['xGA_A'] - df_temp['Goals_H_FT']  # Positive = boa defesa
+    else:
         df_temp['WG_Def_Home'] = 0.0
         df_temp['WG_Def_Away'] = 0.0
-        return df_temp
-
-    df_temp['xGF_H'] = (df_temp['Base_Goals_Liga'] / 2) + df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight_Liga']
-    df_temp['xGF_A'] = (df_temp['Base_Goals_Liga'] / 2) - df_temp['Asian_Line_Decimal'] * df_temp['Asian_Weight_Liga']
-
-    df_temp['xGA_H'] = df_temp['xGF_A']
-    df_temp['xGA_A'] = df_temp['xGF_H']
-
-    df_temp['GA_H'] = df_temp['Goals_A_FT'].fillna(0)
-    df_temp['GA_A'] = df_temp['Goals_H_FT'].fillna(0)
-
-    df_temp['WG_Def_Home'] = df_temp['xGA_H'] - df_temp['GA_H']
-    df_temp['WG_Def_Away'] = df_temp['xGA_A'] - df_temp['GA_A']
-
-    df_temp.drop(
-        columns=['xGF_H', 'xGF_A', 'xGA_H', 'xGA_A', 'GA_H', 'GA_A'],
-        inplace=True,
-        errors='ignore'
-    )
-
+    
+    # Limpeza
+    cols_to_drop = ['xGF_H', 'xGF_A', 'xGA_H', 'xGA_A']
+    df_temp.drop(columns=[c for c in cols_to_drop if c in df_temp.columns], inplace=True)
+    
     return df_temp
 
 def adicionar_weighted_goals_ah(df: pd.DataFrame) -> pd.DataFrame:
@@ -643,50 +730,6 @@ def enrich_games_today_with_wg_completo(games_today: pd.DataFrame, history: pd.D
     )
 
     return games_today
-
-# ==========================================================
-# PARÂMETROS POR LIGA (BASE GOLS + PESO ASIAN)
-# ==========================================================
-@st.cache_data(ttl=7*24*3600)
-def calcular_parametros_liga(history: pd.DataFrame) -> pd.DataFrame:
-    df = history.copy()
-    if 'Goals_H_FT' not in df.columns or 'Goals_A_FT' not in df.columns:
-        return pd.DataFrame()
-
-    df['Gols_Total'] = df['Goals_H_FT'].fillna(0) + df['Goals_A_FT'].fillna(0)
-
-    liga_stats = df.groupby('League').agg(
-        Jogos_Liga=('League', 'size'),
-        Gols_Medios_Liga=('Gols_Total', 'mean'),
-        Asi_Mean_Liga=('Asian_Line_Decimal', lambda x: x.abs().mean())
-    ).reset_index()
-
-    gols_global = df['Gols_Total'].mean() if not df.empty else 2.5
-    if 'Asian_Line_Decimal' in df.columns:
-        asi_global = df['Asian_Line_Decimal'].abs().mean()
-    else:
-        asi_global = 0.6
-
-    liga_stats['Gols_Medios_Liga'] = liga_stats['Gols_Medios_Liga'].fillna(gols_global)
-    liga_stats['Asi_Mean_Liga'] = liga_stats['Asi_Mean_Liga'].fillna(asi_global)
-
-    if not liga_stats['Asi_Mean_Liga'].isna().all():
-        asi_min = liga_stats['Asi_Mean_Liga'].min()
-        asi_max = liga_stats['Asi_Mean_Liga'].max()
-        if asi_max > asi_min:
-            liga_stats['Asian_Weight_Liga'] = 0.4 + 0.4 * (
-                (liga_stats['Asi_Mean_Liga'] - asi_min) / (asi_max - asi_min)
-            )
-        else:
-            liga_stats['Asian_Weight_Liga'] = 0.6
-    else:
-        liga_stats['Asian_Weight_Liga'] = 0.6
-
-    liga_stats.rename(columns={
-        'Gols_Medios_Liga': 'Base_Goals_Liga',
-    }, inplace=True)
-
-    return liga_stats
 
 # ==========================================================
 # FEATURE SET FINAL (INCLUDING WG + GES + 3D)
@@ -1339,16 +1382,22 @@ if not history.empty:
     history = calcular_distancias_3d(history)
 
 # ==========================================================
-# GES + WG NO HISTÓRICO + ENRICH NOS JOGOS DE HOJE
+# GES + WG NO HISTÓRICO + ENRICH NOS JOGOS DE HOJE - ATUALIZADO!
 # ==========================================================
 if not history.empty:
-    liga_params = calcular_parametros_liga(history)
+    # NOVO: Calcular parâmetros por liga de forma avançada
+    liga_params = calcular_parametros_liga_avancado(history)
+    
+    # Mostrar parâmetros calculados
+    if not liga_params.empty:
+        mostrar_parametros_ligas(liga_params)
 
     history = adicionar_goal_efficiency_score(history, liga_params)
     history = calcular_rolling_ges(history)
 
     history = adicionar_weighted_goals(history)
-    history = adicionar_weighted_goals_defensivos(history, liga_params)
+    # NOVO: Usar função corrigida com parâmetros por liga
+    history = adicionar_weighted_goals_defensivos_corrigido(history, liga_params)
     history = adicionar_weighted_goals_ah(history)
     history = adicionar_weighted_goals_ah_defensivos(history)
     history = calcular_metricas_completas(history)
@@ -1359,7 +1408,8 @@ if not history.empty:
         games_today = adicionar_goal_efficiency_score(games_today, liga_params)
         games_today = calcular_rolling_ges(games_today)
         games_today = adicionar_weighted_goals(games_today)
-        games_today = adicionar_weighted_goals_defensivos(games_today, liga_params)
+        # NOVO: Usar função corrigida com parâmetros por liga
+        games_today = adicionar_weighted_goals_defensivos_corrigido(games_today, liga_params)
         games_today = adicionar_weighted_goals_ah(games_today)
         games_today = adicionar_weighted_goals_ah_defensivos(games_today)
         games_today = calcular_metricas_completas(games_today)
