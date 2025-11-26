@@ -1266,7 +1266,7 @@ def create_robust_features(df: pd.DataFrame) -> pd.DataFrame:
         'GES_Total_Diff'
     ]
 
-    all_features = basic_features + derived_features + vector_features + wg_features + ges_features
+    all_features = basic_features + derived_features + vector_features 
     available_features = [f for f in all_features if f in df.columns]
 
     st.info(f"📋 Features disponíveis para ML: {len(available_features)}/{len(all_features)}")
