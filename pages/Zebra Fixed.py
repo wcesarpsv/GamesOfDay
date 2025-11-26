@@ -282,7 +282,7 @@ def load_and_filter_history(selected_date_str: str) -> pd.DataFrame:
     return history
 
 # ==========================================================
-# CRIAÇÃO DO TARGET (AH_HOME + ZEBRA)
+# CRIAÇÃO DO TARGET (AH_HOME + AH_AWAY + ZEBRA)
 # ==========================================================
 def create_better_target_corrigido(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -293,15 +293,22 @@ def create_better_target_corrigido(df: pd.DataFrame) -> pd.DataFrame:
         ),
         axis=1
     )
+
     total = len(df)
-    df = df[df["AH_Result"] != 0.5].copy()  # remove push
+    # remove push (0.5 = push)
+    df = df[df["AH_Result"] != 0.5].copy()
     clean = len(df)
+
+    # Targets
     df["Target_AH_Home"] = (df["AH_Result"] > 0.5).astype(int)
+    df["Target_AH_Away"] = (df["AH_Result"] < 0.5).astype(int)
+
     df["Expected_Favorite"] = np.where(
         df["Asian_Line_Decimal"] < 0,
         "HOME",
         np.where(df["Asian_Line_Decimal"] > 0, "AWAY", "NONE")
     )
+
     df["Zebra"] = np.where(
         (
             (df["Expected_Favorite"] == "HOME") & (df["Target_AH_Home"] == 0)
@@ -312,12 +319,16 @@ def create_better_target_corrigido(df: pd.DataFrame) -> pd.DataFrame:
         1,
         0
     )
-    win_rate = df["Target_AH_Home"].mean() if len(df) > 0 else 0.0
+
+    win_rate_home = df["Target_AH_Home"].mean() if len(df) > 0 else 0.0
+    win_rate_away = df["Target_AH_Away"].mean() if len(df) > 0 else 0.0
     zebra_rate = df["Zebra"].mean() if len(df) > 0 else 0.0
+
     st.info(f"🎯 Total analisado: {total} jogos")
     st.info(f"🗑️ Excluídos por Push puro: {total-clean} jogos ({(total-clean)/total:.1%})")
     st.info(f"📊 Treino com: {clean} jogos restantes")
-    st.info(f"🏠 Win rate HOME cobrindo: {win_rate:.1%}")
+    st.info(f"🏠 Win rate HOME cobrindo: {win_rate_home:.1%}")
+    st.info(f"🌍 Win rate AWAY cobrindo: {win_rate_away:.1%}")
     st.info(f"🦓 Taxa de Zebra (favorito falhou): {zebra_rate:.1%}")
     return df
 
@@ -719,7 +730,9 @@ def create_robust_features(df: pd.DataFrame) -> pd.DataFrame:
         'WG_Def_Home_Team_Last', 'WG_Def_Away_Team_Last', 'WG_Def_Diff',
         'WG_Balance_Home_Team_Last', 'WG_Balance_Away_Team_Last', 'WG_Balance_Diff',
         'WG_Net_Home_Team_Last', 'WG_Net_Away_Team_Last', 'WG_Net_Diff',
-        'WG_Confidence'
+        'WG_Confidence',
+        # 🚀 novo gap 2D
+        'WG_Dist_2D'
     ]
 
     ges_features = [
@@ -1226,8 +1239,27 @@ def calcular_distancia_wg_2d(df: pd.DataFrame) -> pd.DataFrame:
     df['WG_Dist_2D'] = np.sqrt(dx**2 + dy**2) * 10  # escala visual
     return df
 
+def calcular_distancia_wg_2d_history(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Versão para o histórico: usa WG_Home_Team / WG_Away_Team e WG_Def_Home_Team / WG_Def_Away_Team.
+    """
+    df = df.copy()
+    req_cols = [
+        'WG_Home_Team', 'WG_Away_Team',
+        'WG_Def_Home_Team', 'WG_Def_Away_Team'
+    ]
+    if any(c not in df.columns for c in req_cols):
+        df['WG_Dist_2D'] = np.nan
+        return df
+
+    dx = df['WG_Home_Team'] - df['WG_Away_Team']
+    dy = df['WG_Def_Home_Team'] - df['WG_Def_Away_Team']
+
+    df['WG_Dist_2D'] = np.sqrt(dx**2 + dy**2) * 10
+    return df
+
 # ==========================================================
-# NOVO: SINAL FINAL WG GAP + ML
+# NOVO: SINAL FINAL WG GAP + ML (OPÇÃO B)
 # ==========================================================
 def gerar_sinal_wg_gap(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -1242,12 +1274,12 @@ def gerar_sinal_wg_gap(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     if 'Bet_Side' in df.columns and 'Bet_Approved' in df.columns:
-        df['Final_Side'] = np.where(
-            df['WG_Gap_OK'] & (df['Bet_Side'] == df['WG_Side']),
-            df['WG_Side'],
-            df['Bet_Side']
-        )
-        df['Final_Approved'] = df['WG_Gap_OK'] & df['Bet_Approved']
+        # ML manda, WG pode ajustar o lado quando gap forte + aposta aprovada
+        df['Final_Side'] = df['Bet_Side']
+        df['Final_Approved'] = df['Bet_Approved']
+
+        mask = df['WG_Gap_OK'] & df['Bet_Approved']
+        df.loc[mask, 'Final_Side'] = df.loc[mask, 'WG_Side']
     else:
         df['Final_Side'] = df['WG_Side']
         df['Final_Approved'] = df['WG_Gap_OK']
@@ -1321,6 +1353,7 @@ if not history.empty:
     history = adicionar_weighted_goals_ah_defensivos(history)
     history = calcular_metricas_completas(history)
     history = calcular_rolling_wg_features_completo(history)
+    history = calcular_distancia_wg_2d_history(history)
 
     if not games_today.empty:
         games_today = adicionar_goal_efficiency_score(games_today, liga_params)
@@ -1331,29 +1364,55 @@ if not history.empty:
         games_today = adicionar_weighted_goals_ah_defensivos(games_today)
         games_today = calcular_metricas_completas(games_today)
         games_today = enrich_games_today_with_wg_completo(games_today, history)
+        games_today = calcular_distancia_wg_2d(games_today)
 
 # ==========================================================
-# TREINO ML E PREDIÇÃO PARA OS JOGOS DE HOJE
+# TREINO ML (DUAL) E PREDIÇÃO PARA OS JOGOS DE HOJE
 # ==========================================================
-model = None
+model_home = None
+model_away = None
+
 if not history.empty:
     history_ml = create_better_target_corrigido(history)
     if len(history_ml) > 50:
         X_hist = create_robust_features(history_ml)
-        y_hist = history_ml['Target_AH_Home']
-        model = train_improved_model(X_hist, y_hist, X_hist.columns)
+
+        # HOME
+        y_home = history_ml['Target_AH_Home']
+        model_home = train_improved_model(X_hist, y_home, X_hist.columns)
+
+        # AWAY
+        y_away = history_ml['Target_AH_Away']
+        model_away = train_improved_model(X_hist, y_away, X_hist.columns)
     else:
         st.warning("Histórico insuficiente para treinar o modelo.")
 
-if model is not None and not games_today.empty:
+if model_home is not None and model_away is not None and not games_today.empty:
     X_today = create_robust_features(games_today)
-    proba = model.predict_proba(X_today)[:, 1]  # prob de HOME cobrir AH
-    games_today['Prob_Home_Cover'] = proba
-    games_today['Prob_Away_Cover'] = 1 - proba
-    games_today['Bet_Side'] = np.where(games_today['Prob_Home_Cover'] >= 0.5, 'HOME', 'AWAY')
-    games_today['Bet_Confidence'] = np.maximum(games_today['Prob_Home_Cover'], games_today['Prob_Away_Cover'])
+
+    # 🔐 GARANTIR MESMAS FEATURES DO TREINO (CORRIGE ERRO DE FEATURE NAMES)
+    required_features = model_home.feature_names_in_
+    X_today = X_today.reindex(columns=required_features, fill_value=0)
+
+    proba_home = model_home.predict_proba(X_today)[:, 1]
+    proba_away = model_away.predict_proba(X_today)[:, 1]
+
+    games_today['Prob_Home_Cover'] = proba_home
+    games_today['Prob_Away_Cover'] = proba_away
+
+    games_today['Bet_Side'] = np.where(
+        games_today['Prob_Home_Cover'] >= games_today['Prob_Away_Cover'],
+        'HOME',
+        'AWAY'
+    )
+
+    games_today['Bet_Confidence'] = np.maximum(
+        games_today['Prob_Home_Cover'], games_today['Prob_Away_Cover']
+    )
+
     games_today['Min_Conf_Required'] = games_today['Asian_Line_Decimal'].apply(min_confidence_by_line)
     games_today['Bet_Approved'] = games_today['Bet_Confidence'] >= games_today['Min_Conf_Required']
+
 else:
     if not games_today.empty:
         games_today['Prob_Home_Cover'] = np.nan
@@ -1364,10 +1423,11 @@ else:
         games_today['Bet_Approved'] = False
 
 # ==========================================================
-# NOVO: WG_Dist_2D + SINAL WG GAP
+# WG_Dist_2D + SINAL WG GAP (FINAL SIDE)
 # ==========================================================
 if not games_today.empty:
-    games_today = calcular_distancia_wg_2d(games_today)
+    if 'WG_Dist_2D' not in games_today.columns:
+        games_today = calcular_distancia_wg_2d(games_today)
     games_today = gerar_sinal_wg_gap(games_today)
 
 # ==========================================================
