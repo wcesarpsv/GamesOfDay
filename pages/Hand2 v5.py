@@ -6,12 +6,20 @@ import os
 import joblib
 import re
 from sklearn.ensemble import RandomForestClassifier
+from catboost import CatBoostClassifier
 import matplotlib.pyplot as plt
 from datetime import datetime
 import math
 
 st.set_page_config(page_title="Análise de Quadrantes - Bet Indicator", layout="wide")
 st.title("🎯 Análise de Quadrantes - ML Avançado (Home & Away)")
+
+use_catboost = st.checkbox(
+    "📌 Ativar CatBoost como segunda opinião",
+    value=False,
+    help="Ao ativar, treina também um modelo CatBoost paralelo ao RandomForest"
+)
+
 
 # ---------------- Configurações ----------------
 PAGE_PREFIX = "QuadrantesML"
@@ -1061,6 +1069,55 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     return model_home, model_away, games_today
 
 
+
+def treinar_modelo_catboost(history, games_today, quadrantes_home, quadrantes_away, ligas_dummies, X, y_home, y_away):
+    st.info("🐾 Treinando CatBoost (pode levar alguns segundos)...")
+
+    # Modelo HOME
+    cat_home = CatBoostClassifier(
+        loss_function='Logloss',
+        iterations=500,
+        depth=8,
+        learning_rate=0.05,
+        random_seed=42,
+        verbose=False
+    )
+
+    # Modelo AWAY
+    cat_away = CatBoostClassifier(
+        loss_function='Logloss',
+        iterations=500,
+        depth=8,
+        learning_rate=0.05,
+        random_seed=42,
+        verbose=False
+    )
+
+    cat_home.fit(X, y_home)
+    cat_away.fit(X, y_away)
+
+    # Preparar dados para hoje
+    qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
+    qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
+    ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
+    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation',
+                                'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized',
+                                'CoverRate_Home', 'CoverRate_Away',
+                                'AH_Margin_Mean']].fillna(0)
+
+    X_today = pd.concat([ligas_today, extras_today, qh_today, qa_today], axis=1)
+
+    games_today['Cat_Score_Home'] = cat_home.predict_proba(X_today)[:, 1]
+    games_today['Cat_Score_Away'] = cat_away.predict_proba(X_today)[:, 1]
+    games_today['Cat_Score_Main'] = np.maximum(games_today['Cat_Score_Home'], games_today['Cat_Score_Away'])
+
+    st.success("🐾 CatBoost treinado com sucesso!")
+    return cat_home, cat_away, games_today
+
+
+
+
+
 # ---------------- SISTEMA DE INDICAÇÕES EXPLÍCITAS DUAL ----------------
 def adicionar_indicadores_explicativos_dual(df):
     """Adiciona classificações e recomendações explícitas para Home e Away"""
@@ -1237,9 +1294,32 @@ def analisar_padroes_quadrantes_dual(df):
 # Executar treinamento
 if not history.empty:
     modelo_home, modelo_away, games_today = treinar_modelo_quadrantes_dual(history, games_today)
-    st.success("✅ Modelo dual (Home/Away) treinado com sucesso!")
+
+    if use_catboost:
+        # ❗ Pegando X e y do RandomForest (já preparado dentro da função anterior)
+        quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
+        quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
+        ligas_dummies = pd.get_dummies(history['League'], prefix='League')
+    
+        extras = history[['Quadrant_Dist', 'Quadrant_Separation',
+                          'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized',
+                          'CoverRate_Home', 'CoverRate_Away', 'AH_Margin_Mean']].fillna(0)
+    
+        X = pd.concat([ligas_dummies, extras, quadrantes_home, quadrantes_away], axis=1)
+        y_home = history['Target_AH_Home']
+        y_away = history['Target_AH_Away']
+    
+        modelo_cat_home, modelo_cat_away, games_today = treinar_modelo_catboost(
+            history, games_today,
+            quadrantes_home, quadrantes_away,
+            ligas_dummies,
+            X, y_home, y_away
+        )
+
+    st.success("🤖 Modelos treinados com sucesso!")
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
+
 
 
 
