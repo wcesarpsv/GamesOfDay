@@ -1443,7 +1443,7 @@ if not games_today.empty:
     ranking = games_today.sort_values('WG_Dist_2D', ascending=False).copy()
 
     cols_rank = [
-        'League', 'Home', 'Away',
+        'League', 'Home', 'Away', "Asian_Line_Decimal",
         'WG_Dist_2D',
         'WG_Home_Team_Last', 'WG_Away_Team_Last',
         'WG_Def_Home_Team_Last', 'WG_Def_Away_Team_Last',
