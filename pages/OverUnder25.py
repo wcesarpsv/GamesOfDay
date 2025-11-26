@@ -1234,11 +1234,12 @@ def create_robust_features(df: pd.DataFrame) -> pd.DataFrame:
             df['Momentum_Advantage'] = (df['MT_H'] - df['MT_A'])
 
     df['OverScore_Diff'] = df['OverScore_Home'] - df['OverScore_Away']
+    df['OverScore_Sum'] = df['OverScore_Home'] + df['OverScore_Away']
 
     derived_features = [
         'Aggression_Diff', 'M_Total', 'MT_Total',
         'Momentum_Advantage', 'Aggression_Total',
-        'OverScore_Diff'
+        'OverScore_Diff','OverScore_Sum'
     ]
 
     vector_features = [
@@ -1286,7 +1287,7 @@ def train_improved_model(X, y, feature_names):
         y_clean = y_clean[valid_mask]
 
     model = RandomForestClassifier(
-        n_estimators=200,
+        n_estimators=500,
         max_depth=10,
         min_samples_split=20,
         min_samples_leaf=10,
