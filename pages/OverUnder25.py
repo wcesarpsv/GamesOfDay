@@ -343,6 +343,66 @@ def create_better_target_corrigido(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+
+# ==========================================================
+# TARGET OVER 2.5 GOLS
+# ==========================================================
+def create_over25_target(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    if 'Goals_H_FT' not in df.columns or 'Goals_A_FT' not in df.columns:
+        st.error("❌ Faltam colunas Goals_H_FT / Goals_A_FT para criar o target Over 2.5")
+        return df
+
+    df = df.dropna(subset=['Goals_H_FT', 'Goals_A_FT']).copy()
+
+    df['Total_Goals'] = df['Goals_H_FT'] + df['Goals_A_FT']
+    df['Target_Over25'] = (df['Total_Goals'] > 2.5).astype(int)
+
+    total = len(df)
+    over_rate = df['Target_Over25'].mean() if total > 0 else 0.0
+
+    st.info(f"🎯 Total analisado: {total} jogos")
+    st.info(f"⚽ Over 2.5: {over_rate:.1%}")
+    st.info(f"🛡️ Under 2.5: {1 - over_rate:.1%}")
+
+    return df
+
+
+
+
+# ==========================================================
+# ODDs Over/Under 2.5 → Fair Odds (features para ML)
+# ==========================================================
+def adicionar_over25_odds_features(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    # Garante colunas
+    if 'Odd_Over25' not in df.columns:
+        df['Odd_Over25'] = np.nan
+    if 'Odd_Under25' not in df.columns:
+        df['Odd_Under25'] = np.nan
+
+    # Implied probabilities
+    df['Imp_Over25'] = 0.0
+    df['Imp_Under25'] = 0.0
+
+    mask_valid = (df['Odd_Over25'] > 1.01) & (df['Odd_Under25'] > 1.01)
+
+    df.loc[mask_valid, 'Imp_Over25'] = 1.0 / df.loc[mask_valid, 'Odd_Over25']
+    df.loc[mask_valid, 'Imp_Under25'] = 1.0 / df.loc[mask_valid, 'Odd_Under25']
+
+    total_imp = df['Imp_Over25'] + df['Imp_Under25']
+    total_imp = total_imp.replace(0, np.nan)
+
+    df['Fair_Over25'] = (df['Imp_Over25'] / total_imp).fillna(0.5)
+    df['Fair_Under25'] = (df['Imp_Under25'] / total_imp).fillna(0.5)
+
+    df['Fair_OverDiff25'] = df['Fair_Over25'] - df['Fair_Under25']
+
+    return df
+
+
 # ==========================================================
 # PARÂMETROS POR LIGA (BASE GOLS + PESO ASIAN)
 # ==========================================================
@@ -1498,19 +1558,23 @@ if not history.empty:
     history = calcular_distancias_3d(history)
 
 # ==========================================================
-# GES + WG NO HISTÓRICO + ENRICH NOS JOGOS DE HOJE
+# GES + WG + ODDS O/U 2.5 NO HISTÓRICO + ENRICH NOS JOGOS DE HOJE
 # ==========================================================
 if not history.empty:
     # Parâmetros por liga
     liga_params = calcular_parametros_liga_avancado(history)
     
-    # Mostrar parâmetros calculados
     if not liga_params.empty:
         mostrar_parametros_ligas(liga_params)
 
+    # Odds O/U 2.5 no histórico
+    history = adicionar_over25_odds_features(history)
+
+    # GES
     history = adicionar_goal_efficiency_score(history, liga_params)
     history = calcular_rolling_ges(history)
 
+    # WG ofensivo/defensivo
     history = adicionar_weighted_goals(history)
     history = adicionar_weighted_goals_defensivos_corrigido(history, liga_params)
     history = adicionar_weighted_goals_ah(history)
@@ -1520,6 +1584,9 @@ if not history.empty:
     history = calcular_distancia_wg_2d_history(history)
 
     if not games_today.empty:
+        # Odds O/U 2.5 nos jogos de hoje
+        games_today = adicionar_over25_odds_features(games_today)
+
         games_today = adicionar_goal_efficiency_score(games_today, liga_params)
         games_today = calcular_rolling_ges(games_today)
         games_today = adicionar_weighted_goals(games_today)
@@ -1533,57 +1600,68 @@ if not history.empty:
 # ==========================================================
 # TREINO ML (OVER 2.5) E PREDIÇÃO PARA OS JOGOS DE HOJE
 # ==========================================================
-model_over = None
+model_over25 = None
 
 if not history.empty:
-    history_ml = create_better_target_corrigido(history)
-
-    if 'Target_Over25' in history_ml.columns:
+    history_ml = create_over25_target(history)
+    if 'Target_Over25' in history_ml.columns and len(history_ml) > 50:
+        X_hist = create_robust_features(history_ml)
         y_over = history_ml['Target_Over25']
-        valid = ~y_over.isna()
-        if valid.sum() > 50:
-            X_hist = create_robust_features(history_ml.loc[valid])
-            y_over_clean = y_over.loc[valid]
-            model_over = train_improved_model(X_hist, y_over_clean, X_hist.columns)
-        else:
-            st.warning("Histórico insuficiente para treinar o modelo de Over 2.5.")
-    else:
-        st.warning("Target_Over25 não encontrado no histórico após processamento.")
 
-if model_over is not None and not games_today.empty:
+        model_over25 = train_improved_model(X_hist, y_over, X_hist.columns)
+    else:
+        st.warning("Histórico insuficiente para treinar o modelo Over 2.5.")
+else:
+    st.warning("Histórico vazio, não foi possível treinar o modelo Over 2.5.")
+
+if model_over25 is not None and not games_today.empty:
     X_today = create_robust_features(games_today)
 
-    # Garantir MESMAS FEATURES DO TREINO
-    required_features = model_over.feature_names_in_
+    # Garante mesmas features do treino
+    required_features = model_over25.feature_names_in_
     X_today = X_today.reindex(columns=required_features, fill_value=0)
 
-    proba_over = model_over.predict_proba(X_today)[:, 1]
-    games_today['Prob_Over25'] = proba_over
-    games_today['Prob_Under25'] = 1.0 - proba_over
+    proba_over = model_over25.predict_proba(X_today)[:, 1]
+    proba_under = 1 - proba_over
 
-    # EV e Value Bet
-    games_today = calcular_ev_over25(games_today)
+    games_today['Prob_Over25'] = proba_over
+    games_today['Prob_Under25'] = proba_under
+
+    # Lado da aposta (Over/Under)
+    games_today['Bet_Side'] = np.where(
+        games_today['Prob_Over25'] >= 0.5,
+        'OVER 2.5',
+        'UNDER 2.5'
+    )
+
+    # Confiança = prob do lado escolhido
+    games_today['Bet_Confidence'] = np.where(
+        games_today['Bet_Side'] == 'OVER 2.5',
+        games_today['Prob_Over25'],
+        games_today['Prob_Under25']
+    )
+
+    # Threshold simples de aprovação
+    MIN_CONF = 0.57
+    games_today['Min_Conf_Required'] = MIN_CONF
+    games_today['Bet_Approved'] = games_today['Bet_Confidence'] >= games_today['Min_Conf_Required']
+
 else:
     if not games_today.empty:
         games_today['Prob_Over25'] = np.nan
         games_today['Prob_Under25'] = np.nan
-        games_today['EV_Over25'] = 0.0
-        games_today['EV_Under25'] = 0.0
-        games_today['Fair_Prob_Over25'] = 0.0
-        games_today['Fair_Prob_Under25'] = 0.0
         games_today['Bet_Side'] = 'NONE'
-        games_today['Best_Bet_EV'] = 0.0
         games_today['Bet_Confidence'] = 0.0
-        games_today['Min_Conf_Required'] = 0.55
+        games_today['Min_Conf_Required'] = 0.57
         games_today['Bet_Approved'] = False
 
+
 # ==========================================================
-# WG_Dist_2D + SINAL WG GAP (FINAL SIDE)
+# WG_Dist_2D (apenas métrica de contexto)
 # ==========================================================
 if not games_today.empty:
     if 'WG_Dist_2D' not in games_today.columns:
         games_today = calcular_distancia_wg_2d(games_today)
-    games_today = gerar_sinal_wg_gap(games_today)
 
 # ==========================================================
 # DASHBOARD VISUAL
@@ -1595,7 +1673,7 @@ if not games_today.empty:
     # Ranking pelos maiores GAPS WG
     st.markdown("## 🏆 Melhores Confrontos por GAP WG (Ofensivo + Defensivo) + Over/Under 2.5")
 
-    ranking = games_today.sort_values('WG_Dist_2D', ascending=False).copy()
+    ranking = games_today.sort_values('Bet_Confidence', ascending=False).copy()
 
     cols_rank = [
         'League', 'Home', 'Away',
@@ -1617,17 +1695,20 @@ if not games_today.empty:
     st.dataframe(ranking[cols_rank].head(25))
 
     # Tabela só com sinais aprovados
-    aprovados = ranking[ranking['Final_Approved']].copy()
+    aprovados = ranking[ranking['Bet_Approved']].copy()
     if not aprovados.empty:
-        st.markdown("### ✅ Sinais Aprovados (WG GAP + ML + EV) – Over/Under 2.5")
+        st.markdown("### ✅ Sinais Aprovados (Over 2.5)")
+
+        aprovados = aprovados.sort_values('Bet_Confidence', ascending=False)
+
         cols_aprov = [
             'League', 'Home', 'Away',
             'Odd_Over25', 'Odd_Under25',
-            'WG_Dist_2D',
-            'Final_Side', 'Bet_Confidence', 'Best_Bet_EV',
-            'Prob_Over25', 'Prob_Under25'
+            'Prob_Over25', 'Prob_Under25',
+            'Bet_Side', 'Bet_Confidence'
         ]
         cols_aprov = [c for c in cols_aprov if c in aprovados.columns]
-        st.dataframe(aprovados[cols_aprov].head(30))
+        st.dataframe(aprovados[cols_aprov].head(50))
     else:
-        st.info("Nenhum sinal aprovado pelo filtro WG GAP + ML + EV para hoje (Over/Under 2.5).")
+        st.info("Nenhum sinal aprovado pelo filtro de confiança para Over 2.5 hoje.")
+
