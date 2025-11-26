@@ -643,6 +643,11 @@ if not history.empty:
 if not history.empty:
     # Criar target Over/Under (AGORA COM VERIFICAÇÃO)
     history_ou = create_over_under_target(history)
+    # 🚨 Garantir que Target_Over já existe antes de continuar
+    if 'Target_Over' not in history_ou.columns:
+        st.error("❌ Falha ao criar Target_Over no histórico. Verifique colunas de gols!")
+        st.stop()
+
     
     # VERIFICAÇÃO CRÍTICA: garantir que o target foi criado
     if 'Target_Over' not in history_ou.columns:
