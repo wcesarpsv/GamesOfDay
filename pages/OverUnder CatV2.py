@@ -457,6 +457,12 @@ if not history.empty:
 else:
     st.warning("⚠️ Histórico vazio, não foi possível treinar o modelo O/U.")
 
+
+
+st.write(history.columns.tolist())
+st.write(history.head(3))
+
+
 # ==========================================================
 # PREDIÇÃO NOS JOGOS DE HOJE
 # ==========================================================
