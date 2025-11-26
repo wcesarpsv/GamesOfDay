@@ -667,6 +667,11 @@ if not history.empty:
 
     # 🔹 Treinar Modelo
     model_ou = train_over_under_model(X_hist_ou, y_ou, X_hist_ou.columns)
+    # 🔹 Save feature names used in training (VERY IMPORTANT!)
+    feature_list = list(X_hist_ou.columns)
+    
+    st.info(f"📌 Feature list loaded para games_today: {len(feature_list)} features")
+
 
     # ==========================================================
     # 3️⃣ PREVISÕES PARA OS JOGOS DE HOJE
