@@ -1003,12 +1003,16 @@ games_today['Handicap_Edge'] = (
 def classificar_edge(edge):
     if edge >= 0.50:
         return "🟢 EDGE FORTE"
-    elif -0.25 <= edge < 0.50:
-        return "🟡 JUSTO"
-    elif -0.50 <= edge < -0.25:
-        return "🟠 LINHA CARA"
+    elif 0.25 <= edge < 0.50:
+        return "🟡 BOM"
+    elif -0.25 < edge < 0.25:
+        return "🔵 EQUILIBRADO"
+    elif -0.50 <= edge <= -0.25:
+        return "🟠 CARO"
     else:
-        return "🔴 LINHA ESMAGADA"
+        return "🔴 ESMAGADA"
+
+
 
 games_today['Edge_Label'] = games_today['Handicap_Edge'].apply(classificar_edge)
 
@@ -1377,6 +1381,18 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             styler = styler.background_gradient(subset=['Quadrante_ML_Score_Away'], cmap='RdYlGn')
         if 'Score_Final' in df.columns:
             styler = styler.background_gradient(subset=['Score_Final'], cmap='RdYlGn')
+        if 'Edge_Label' in df.columns:
+            styler = styler.applymap(
+                lambda v: (
+                    'font-weight: bold' if '🟢' in str(v) else
+                    'font-weight: bold' if '🟡' in str(v) else
+                    'font-weight: bold' if '🔵' in str(v) else
+                    'font-weight: bold' if '🟠' in str(v) else
+                    'font-weight: bold' if '🔴' in str(v) else ''
+                ),
+                subset=['Edge_Label']
+            )
+
         
         return styler
 
