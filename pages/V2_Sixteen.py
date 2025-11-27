@@ -1091,7 +1091,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     )
 
     colunas_possiveis = [
-        'League', 'Home', 'Away',
+        'League', 'Time', 'Home', 'Away','Goals_H_Today', 'Goals_A_Today',
         # Odds e Handicap
         'Asian_Line_Decimal', 'Pred_Handicap', 'Handicap_Edge', 'Edge_Label',
         # Probabilidades ML
@@ -1105,7 +1105,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         'Score_Final', 'Classificacao_Potencial',
         'Classificacao_Valor_Home', 'Classificacao_Valor_Away',
         # Live score / validation
-        'Goals_H_Today', 'Goals_A_Today',
+        
         'Outcome_Final', 'Handicap_Result_Final', 'Profit_Final',
         'Quadrante_Correct', 'Home_Red', 'Away_Red'
     ]
