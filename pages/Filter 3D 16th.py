@@ -6,6 +6,7 @@ import os
 import joblib
 import re
 from sklearn.ensemble import RandomForestClassifier
+from catboost import CatBoostClassifier
 import matplotlib.pyplot as plt
 from datetime import datetime
 import math
@@ -913,7 +914,7 @@ def aplicar_clusterizacao_3d_por_liga(df, n_clusters=4, random_state=42):
 
 
 
-def treinar_modelo_3d_clusters_single(history, games_today):
+def treinar_modelo_3d_clusters_single(history, games_today, use_catboost=False):
     """
     🔧 Versão otimizada com análise de clusters 3D integrada:
     - Clusters numéricos (int) + sin/cos/zscore
@@ -972,14 +973,29 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     # ----------------------------
     y_home = history['Target_AH_Home'].astype(int)
 
-    model_home = RandomForestClassifier(
-        n_estimators=500,
-        max_depth=12,
-        random_state=42,
-        class_weight='balanced_subsample',
-        max_features='log2',
-        n_jobs=-1
-    )
+    if use_catboost:
+        st.info("🤖 Treinando com CatBoostClassifier...")
+        model_home = CatBoostClassifier(
+            iterations=700,
+            depth=8,
+            learning_rate=0.03,
+            loss_function='Logloss',
+            eval_metric='AUC',
+            random_state=42,
+            verbose=False,
+            task_type='CPU'
+        )
+    else:
+        st.info("🌲 Treinando com RandomForestClassifier...")
+        model_home = RandomForestClassifier(
+            n_estimators=500,
+            max_depth=12,
+            random_state=42,
+            class_weight='balanced_subsample',
+            max_features='log2',
+            n_jobs=-1
+        )
+    
     model_home.fit(X, y_home)
 
     # ----------------------------
@@ -1130,11 +1146,20 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
 
 # ---------------- EXECUÇÃO PRINCIPAL 3D ----------------
 # Executar treinamento 3D
+# -----------------------------------------------------
+# Escolha do Modelo
+# -----------------------------------------------------
+use_catboost = st.checkbox(
+    "⚙️ Usar CatBoost no lugar do RandomForest?",
+    value=False
+)
+
 if not history.empty:
-    modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today)
+    modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today, use_catboost=use_catboost)
     st.success("✅ Modelo 3D dual com 16 quadrantes treinado com sucesso!")
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D")
+
 
 # ---------------- ANÁLISE DE PADRÕES 3D PARA 16 QUADRANTES ----------------
 def analisar_padroes_3d_quadrantes_16_dual(df):
