@@ -2346,11 +2346,12 @@ import plotly.express as px
 # ⚙️ 1️⃣ Cria Score_Model_Chosen com base no lado previsto pela ML1
 # -------------------------------------------------
 if {"Quadrante_ML_Score_Home", "Quadrante_ML_Score_Away", "ML_Side"}.issubset(games_today.columns):
-    games_today["Score_Model_Chosen"] = np.where(
-        games_today["ML_Side"].str.upper() == "HOME",
-        games_today["Quadrante_ML_Score_Home"],
-        games_today["Quadrante_ML_Score_Away"]
+    games_today['Score_Model_Chosen'] = np.where(
+        games_today['ML_Side'] == 'HOME',
+        games_today['ML_Score_Home'],
+        games_today['ML_Score_Away']
     )
+
 else:
     st.warning("⚠️ Colunas de score 3D não encontradas para gerar Score_Model_Chosen.")
     games_today["Score_Model_Chosen"] = np.nan
