@@ -970,6 +970,51 @@ if not history.empty:
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
 
+
+
+##### BLOCO 9B — REGRESSÃO PARA PREVER HANDICAP IDEAL #####
+
+st.markdown("### 🎯 Regressão: Handicap Ideal do Modelo")
+
+from catboost import CatBoostRegressor
+
+# Treinar com histórico — mesma feature set X do classificador
+modelo_handicap = CatBoostRegressor(
+    depth=7,
+    learning_rate=0.06,
+    iterations=800,
+    loss_function='RMSE',
+    random_seed=42,
+    verbose=False
+)
+
+st.info("⚙️ Treinando regressor de Handicap Ideal…")
+modelo_handicap.fit(X, history['Asian_Line_Decimal'])
+
+# Predição hoje
+games_today['Pred_Handicap'] = modelo_handicap.predict(X_today)
+
+# EDGE = handicap ideal - handicap do mercado
+games_today['Handicap_Edge'] = (
+    games_today['Pred_Handicap'] - games_today['Asian_Line_Decimal']
+)
+
+# Rótulo de risco e valor
+def classificar_edge(edge):
+    if edge >= 0.50:
+        return "🟢 EDGE FORTE"
+    elif -0.25 <= edge < 0.50:
+        return "🟡 JUSTO"
+    elif -0.50 <= edge < -0.25:
+        return "🟠 LINHA CARA"
+    else:
+        return "🔴 LINHA ESMAGADA"
+
+games_today['Edge_Label'] = games_today['Handicap_Edge'].apply(classificar_edge)
+
+st.success("📍 Regresão de Handicap pronta e aplicada!")
+
+
 ##### BLOCO 10: SISTEMA DE INDICAÇÕES E RECOMENDAÇÕES #####
 
 def adicionar_indicadores_explicativos_16_dual(df):
@@ -1282,7 +1327,10 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     st.json(live_summary)
     
     # Ordenar por score final
-    ranking_quadrantes = ranking_quadrantes.sort_values('Score_Final', ascending=False)
+    ranking_quadrantes = ranking_quadrantes.sort_values(
+        ['Edge_Label', 'Score_Final', 'Quadrante_ML_Score_Main'],
+        ascending=[True, False, False]
+    )
     
     # Colunas para exibir
     colunas_possiveis = [
