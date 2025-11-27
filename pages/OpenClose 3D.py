@@ -2589,6 +2589,37 @@ else:
 
 
 
+
+# ==========================================================
+# 📊 EXIBIÇÃO — Ranking Final das Previsões
+# ==========================================================
+if 'Score_Final' not in games_today.columns:
+    st.error("❌ Score_Final não foi encontrado. Certifique-se que o bloco de compatibilidade foi aplicado.")
+else:
+    ranking = games_today.copy()
+
+    # Ordena pelo Score_Final do ML + 3D
+    ranking = ranking.sort_values(by='Score_Final', ascending=False)
+
+    # Seleciona colunas importantes para exibir no UI
+    colunas_ui = [
+        'League','Home','Away',
+        'Prob_Home','Prob_Away','ML_Side','ML_Confidence',
+        'Score_Model_Chosen','Score_Final'
+    ]
+    colunas_existentes = [c for c in colunas_ui if c in ranking.columns]
+
+    st.markdown("### 🏆 Ranking 3D + ML — Indicações de Aposta")
+    st.dataframe(ranking[colunas_existentes].style.format({
+        'Prob_Home': '{:.2%}', 
+        'Prob_Away': '{:.2%}', 
+        'ML_Confidence': '{:.2%}',
+        'Score_Model_Chosen': '{:.3f}', 
+        'Score_Final': '{:.3f}'
+    }))
+
+
+
 st.markdown("---")
 st.success("🎯 **Sistema 3D de 16 Quadrantes ML** implementado com sucesso!")
 st.info("""
