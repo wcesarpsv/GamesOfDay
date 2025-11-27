@@ -9,6 +9,14 @@ from sklearn.ensemble import RandomForestClassifier
 import matplotlib.pyplot as plt
 from datetime import datetime
 import math
+# RNN / Deep Learning
+try:
+    from tensorflow.keras.models import Model
+    from tensorflow.keras.layers import GRU, Dense, Dropout, Input, Concatenate
+    TF_AVAILABLE = True
+except Exception as e:
+    TF_AVAILABLE = False
+
 
 st.set_page_config(page_title="Análise de Quadrantes 3D - Bet Indicator", layout="wide")
 st.title("🎯 Análise 3D de 16 Quadrantes - ML Avançado (Home & Away)")
@@ -861,17 +869,242 @@ history, games_today = aplicar_clusterizacao_3d_segura(history, games_today, n_c
 
 
 
+# ==========================================================
+# 🔁 HELPERS PARA RNN (GRU) – SEQUÊNCIAS POR TIME (HOME)
+# ==========================================================
 
-def treinar_modelo_3d_clusters_single(history, games_today):
+def preparar_sequencias_rnn_home(
+    history,
+    ligas_dummies,
+    clusters_dummies,
+    extras_3d,
+    odds_features,
+    y_home,
+    window=6,
+    min_games=2,
+    use_opening_odds=True
+):
     """
-    Treina o modelo 3D (Home) com possibilidade de incluir odds de abertura implícitas normalizadas
-    e gera análise de viés de mercado (Market Bias Opening) com segurança de dados.
+    Cria X_temporal, X_static e y para RNN a partir do histórico.
+    Janela = até 6 jogos, com mínimo de 2 jogos por time.
+    Somente jogos em casa (Home perspective) para evitar confusão.
+    """
+    # Colunas temporais (sequenciais)
+    temporal_cols = list(extras_3d.columns)
+    if use_opening_odds and odds_features is not None and not odds_features.empty:
+        temporal_cols = temporal_cols + list(odds_features.columns)
+
+    # Colunas estáticas (por jogo)
+    static_cols = list(ligas_dummies.columns) + list(clusters_dummies.columns)
+
+    X_temp = []
+    X_static = []
+    y_seq = []
+
+    # Garante que temos Date para ordenar
+    if "Date" not in history.columns:
+        st.warning("⚠️ RNN: coluna 'Date' não encontrada no histórico. RNN desativada.")
+        return None, None, None
+
+    # Percorrer times pela perspectiva de HOME
+    for team, df_team in history.groupby("Home"):
+        df_team = df_team.sort_values("Date")
+        idxs = df_team.index.to_list()
+
+        # Precisamos pelo menos de (min_games + 1) jogos para começar
+        if len(idxs) < (min_games + 1):
+            continue
+
+        for i in range(1, len(idxs)):
+            idx_cur = idxs[i]
+            prev_idxs = idxs[max(0, i - window):i]  # últimos até 6 jogos
+
+            if len(prev_idxs) < min_games:
+                continue
+
+            # Bloco temporal: extras + odds
+            temp_block = extras_3d.loc[prev_idxs]
+            if use_opening_odds and odds_features is not None and not odds_features.empty:
+                temp_block = pd.concat(
+                    [temp_block, odds_features.loc[prev_idxs]],
+                    axis=1
+                )
+
+            # Padding se tiver < window jogos (pad no topo com zeros)
+            if len(prev_idxs) < window:
+                pad_rows = window - len(prev_idxs)
+                pad_array = np.zeros((pad_rows, temp_block.shape[1]), dtype=float)
+                temp_array = np.vstack([pad_array, temp_block.values])
+            else:
+                temp_array = temp_block.values
+
+            # Vetor estático do jogo atual
+            if idx_cur not in ligas_dummies.index or idx_cur not in clusters_dummies.index:
+                continue
+
+            static_vec = np.concatenate([
+                ligas_dummies.loc[idx_cur].values,
+                clusters_dummies.loc[idx_cur].values
+            ])
+
+            if idx_cur not in y_home.index:
+                continue
+
+            target = y_home.loc[idx_cur]
+            if pd.isna(target):
+                continue
+
+            X_temp.append(temp_array)
+            X_static.append(static_vec)
+            y_seq.append(int(target))
+
+    if not X_temp:
+        st.warning("⚠️ RNN: nenhuma sequência válida gerada (poucos jogos por time?).")
+        return None, None, None
+
+    X_temp = np.array(X_temp, dtype=float)    # (N, window, n_temporal)
+    X_static = np.array(X_static, dtype=float)  # (N, n_static)
+    y_seq = np.array(y_seq, dtype=int)
+
+    return X_temp, X_static, y_seq
+
+
+def criar_rnn_value_detector(window, n_temporal, n_static):
+    """
+    RNN simplificada (GRU) com:
+    - input temporal: (window, n_temporal)
+    - input estático: (n_static,)
+    Saída: probabilidade de HOME cobrir AH (0–1).
+    """
+    temporal_input = Input(shape=(window, n_temporal), name="temporal_input")
+    static_input = Input(shape=(n_static,), name="static_input")
+
+    x = GRU(32, return_sequences=False)(temporal_input)
+    x = Dropout(0.3)(x)
+
+    combined = Concatenate()([x, static_input])
+
+    h = Dense(64, activation="relu")(combined)
+    h = Dropout(0.3)(h)
+    h = Dense(32, activation="relu")(h)
+
+    output = Dense(1, activation="sigmoid", name="home_prob_output")(h)
+
+    model = Model(inputs=[temporal_input, static_input], outputs=output)
+    model.compile(
+        optimizer="adam",
+        loss="binary_crossentropy",
+        metrics=["accuracy"]
+    )
+    return model
+
+
+def preparar_inputs_rnn_para_today(
+    history,
+    games_today,
+    ligas_dummies,
+    clusters_dummies,
+    extras_3d,
+    odds_features,
+    ligas_today,
+    clusters_today,
+    extras_today,
+    odds_today,
+    window=6,
+    min_games=2,
+    use_opening_odds=True
+):
+    """
+    Monta X_temporal_today e X_static_today para cada jogo de hoje (HOME),
+    usando histórico do time em casa (apenas jogos em casa).
+    """
+    if "Date" not in history.columns:
+        st.warning("⚠️ RNN: coluna 'Date' não encontrada no histórico. RNN desativada para jogos do dia.")
+        return None, None, None
+
+    temporal_cols = list(extras_3d.columns)
+    if use_opening_odds and odds_features is not None and not odds_features.empty:
+        temporal_cols = temporal_cols + list(odds_features.columns)
+
+    static_cols = list(ligas_dummies.columns) + list(clusters_dummies.columns)
+
+    n_games = len(games_today)
+    if n_games == 0:
+        return None, None, None
+
+    n_temporal = len(temporal_cols)
+    n_static = len(static_cols)
+
+    X_temp_today = np.zeros((n_games, window, n_temporal), dtype=float)
+    X_static_today = np.zeros((n_games, n_static), dtype=float)
+    mask_valid = np.zeros(n_games, dtype=bool)
+
+    # history já está filtrado por Date < selected_date
+    history_sorted = history.sort_values("Date")
+
+    for i, (idx_today, row_today) in enumerate(games_today.iterrows()):
+        team_home = row_today.get("Home", None)
+        if not team_home or pd.isna(team_home):
+            continue
+
+        df_team_hist = history_sorted[history_sorted["Home"] == team_home]
+        if df_team_hist.empty:
+            continue
+
+        idxs_hist = df_team_hist.index.to_list()
+        if len(idxs_hist) < min_games:
+            continue
+
+        # últimos até 'window' jogos
+        prev_idxs = idxs_hist[-window:]
+
+        # bloco temporal
+        temp_block = extras_3d.loc[prev_idxs]
+        if use_opening_odds and odds_features is not None and not odds_features.empty:
+            temp_block = pd.concat(
+                [temp_block, odds_features.loc[prev_idxs]],
+                axis=1
+            )
+
+        if len(prev_idxs) < window:
+            pad_rows = window - len(prev_idxs)
+            pad_array = np.zeros((pad_rows, temp_block.shape[1]), dtype=float)
+            temp_array = np.vstack([pad_array, temp_block.values])
+        else:
+            temp_array = temp_block.values
+
+        # estático do jogo de hoje
+        static_vec = np.concatenate([
+            ligas_today.iloc[i].values,
+            clusters_today.iloc[i].values
+        ])
+
+        X_temp_today[i] = temp_array
+        X_static_today[i] = static_vec
+        mask_valid[i] = True
+
+    if not mask_valid.any():
+        st.warning("⚠️ RNN: nenhum jogo de hoje possui histórico suficiente para previsão.")
+        return None, None, None
+
+    return X_temp_today, X_static_today, mask_valid
+
+
+
+def treinar_modelo_3d_clusters_single(history, games_today, selected_date):
+    """
+    Treina o modelo 3D (Home) com RF + (opcional) RNN GRU
+    e gera análise de viés de mercado.
     """
 
     st.markdown("### ⚙️ Configuração do Treino 3D com Odds de Abertura")
 
-    # Toggle no Streamlit
     use_opening_odds = st.checkbox("📊 Incluir Odds de Abertura no Treino", value=True)
+    use_rnn = st.checkbox("🧠 Treinar RNN (GRU 3D + Odds) em paralelo", value=False)
+
+    if use_rnn and not TF_AVAILABLE:
+        st.warning("⚠️ TensorFlow/Keras não disponível no ambiente – RNN desativada.")
+        use_rnn = False
 
     # ----------------------------
     # 🧩 Garantir features 3D e clusters
@@ -881,7 +1114,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     history, games_today = aplicar_clusterizacao_3d_segura(history, games_today, n_clusters=5)
 
     # ----------------------------
-    # 🧠 Feature Engineering
+    # 🧠 Feature Engineering (iguais ao RF)
     # ----------------------------
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
     clusters_dummies = pd.get_dummies(history['Cluster3D_Label'], prefix='C3D')
@@ -894,15 +1127,11 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',
         'Vector_Sign', 'Magnitude_3D'
     ]
-
     extras_3d = history[features_3d].fillna(0)
 
-    # ----------------------------
-    # 🎯 Features de Odds Implícitas Normalizadas
-    # ----------------------------
     odds_features = pd.DataFrame()
     if use_opening_odds:
-        for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP','Odd_H','Odd_D','Odd_A']:
+        for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP', 'Odd_H', 'Odd_D', 'Odd_A']:
             if col not in history.columns:
                 history[col] = np.nan
 
@@ -919,11 +1148,10 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         history['Diff_Odd_D'] = history['Odd_D_OP'] - history['Odd_D']
         history['Diff_Odd_A'] = history['Odd_A_OP'] - history['Odd_A']
 
-        odds_features = history[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm','Diff_Odd_H','Diff_Odd_D','Diff_Odd_A']].fillna(0)
+        odds_features = history[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm',
+                                 'Diff_Odd_H', 'Diff_Odd_D', 'Diff_Odd_A']].fillna(0)
 
-    # ----------------------------
-    # 🧩 Montagem final do dataset
-    # ----------------------------
+    # Dataset final RF
     if use_opening_odds:
         X = pd.concat([ligas_dummies, clusters_dummies, extras_3d, odds_features], axis=1)
     else:
@@ -932,7 +1160,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     y_home = history['Target_AH_Home'].astype(int)
 
     # ----------------------------
-    # 🏗️ Modelo
+    # 🏗️ RandomForest (como já estava)
     # ----------------------------
     model_home = RandomForestClassifier(
         n_estimators=500,
@@ -941,18 +1169,17 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         class_weight='balanced_subsample',
         n_jobs=-1
     )
-
     model_home.fit(X, y_home)
 
     # ----------------------------
-    # 🔮 Previsões no dataset do dia
+    # 🔮 Previsões RF no dataset do dia
     # ----------------------------
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
     clusters_today = pd.get_dummies(games_today['Cluster3D_Label'], prefix='C3D').reindex(columns=clusters_dummies.columns, fill_value=0)
     extras_today = games_today[features_3d].fillna(0)
 
     if use_opening_odds:
-        for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP','Odd_H','Odd_D','Odd_A']:
+        for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP', 'Odd_H', 'Odd_D', 'Odd_A']:
             if col not in games_today.columns:
                 games_today[col] = np.nan
 
@@ -969,52 +1196,135 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         games_today['Diff_Odd_D'] = games_today['Odd_D_OP'] - games_today['Odd_D']
         games_today['Diff_Odd_A'] = games_today['Odd_A_OP'] - games_today['Odd_A']
 
-        odds_today = games_today[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm','Diff_Odd_H','Diff_Odd_D','Diff_Odd_A']].fillna(0)
+        odds_today = games_today[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm',
+                                  'Diff_Odd_H', 'Diff_Odd_D', 'Diff_Odd_A']].fillna(0)
         X_today = pd.concat([ligas_today, clusters_today, extras_today, odds_today], axis=1)
     else:
         X_today = pd.concat([ligas_today, clusters_today, extras_today], axis=1)
 
-    # ----------------------------
-    # 📈 Previsões
-    # ----------------------------
-    proba_home = model_home.predict_proba(X_today)[:, 1]
-    proba_away = 1 - proba_home
+    proba_home_rf = model_home.predict_proba(X_today)[:, 1]
+    proba_away_rf = 1 - proba_home_rf
 
-    games_today['Prob_Home'] = proba_home
-    games_today['Prob_Away'] = proba_away
-    games_today['ML_Side'] = np.where(proba_home > proba_away, 'HOME', 'AWAY')
-    games_today['ML_Confidence'] = np.maximum(proba_home, proba_away)
+    games_today['Prob_Home'] = proba_home_rf          # RF (mantido)
+    games_today['Prob_Away'] = proba_away_rf
+    games_today['ML_Side'] = np.where(proba_home_rf > proba_away_rf, 'HOME', 'AWAY')
+    games_today['ML_Confidence'] = np.maximum(proba_home_rf, proba_away_rf)
     games_today['Quadrante_ML_Score_Home'] = games_today['Prob_Home']
     games_today['Quadrante_ML_Score_Away'] = games_today['Prob_Away']
     games_today['Quadrante_ML_Score_Main'] = games_today['ML_Confidence']
 
     # ----------------------------
-    # 📊 Avaliação rápida (cross-check)
+    # 📈 Avaliação RF
     # ----------------------------
-    accuracy = model_home.score(X, y_home)
-    st.metric("Accuracy (Treino)", f"{accuracy:.2%}")
-    st.write("📘 Features usadas:", len(X.columns))
+    accuracy_rf = model_home.score(X, y_home)
+    st.metric("Accuracy RF (Treino)", f"{accuracy_rf:.2%}")
+    st.write("📘 Features usadas (RF):", len(X.columns))
 
-    # ----------------------------
-    # 🔍 Importância de Features
-    # ----------------------------
     importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
     top_feats = importances.head(25).to_frame("Importância")
 
-    st.markdown("### 🔍 Top Features (Modelo Único – Home)")
+    st.markdown("### 🔍 Top Features (RandomForest – Home)")
     st.dataframe(top_feats, use_container_width=True)
 
-    if use_opening_odds:
-        odds_influentes = [f for f in top_feats.index if "Imp_" in f]
-        if odds_influentes:
-            st.success(f"💡 Variáveis de abertura influentes: {', '.join(odds_influentes)}")
-        else:
-            st.info("📊 As odds de abertura ainda não mostraram forte impacto.")
+    # ============================================================
+    # 🧠 RNN (opcional) – F3 (3D + Momentum + Odds + Diff_Power)
+    # ============================================================
+    if use_rnn:
+        from sklearn.model_selection import train_test_split
+        st.markdown("### 🧠 Treino da RNN (GRU 3D + Odds)")
 
-    
+        X_temp, X_static, y_seq = preparar_sequencias_rnn_home(
+            history=history,
+            ligas_dummies=ligas_dummies,
+            clusters_dummies=clusters_dummies,
+            extras_3d=extras_3d,
+            odds_features=odds_features if use_opening_odds else None,
+            y_home=y_home,
+            window=6,
+            min_games=2,
+            use_opening_odds=use_opening_odds
+        )
+
+        if X_temp is not None:
+            n_temporal = X_temp.shape[2]
+            n_static = X_static.shape[1]
+
+            X_temp_train, X_temp_val, X_static_train, X_static_val, y_train, y_val = train_test_split(
+                X_temp, X_static, y_seq,
+                test_size=0.2,
+                random_state=42,
+                stratify=y_seq
+            )
+
+            rnn_model = criar_rnn_value_detector(window=6, n_temporal=n_temporal, n_static=n_static)
+
+            rnn_model.fit(
+                [X_temp_train, X_static_train],
+                y_train,
+                validation_data=([X_temp_val, X_static_val], y_val),
+                epochs=8,
+                batch_size=64,
+                verbose=0
+            )
+
+            # Acurácia na validação
+            y_val_pred_proba = rnn_model.predict([X_temp_val, X_static_val], verbose=0).ravel()
+            y_val_pred = (y_val_pred_proba >= 0.5).astype(int)
+            acc_rnn = (y_val_pred == y_val).mean()
+            st.metric("Accuracy RNN (Val)", f"{acc_rnn:.2%}")
+
+            # ----------------------------
+            # 🔮 Previsões da RNN nos jogos do dia
+            # ----------------------------
+            X_temp_today, X_static_today, mask_valid = preparar_inputs_rnn_para_today(
+                history=history,
+                games_today=games_today,
+                ligas_dummies=ligas_dummies,
+                clusters_dummies=clusters_dummies,
+                extras_3d=extras_3d,
+                odds_features=odds_features if use_opening_odds else None,
+                ligas_today=ligas_today,
+                clusters_today=clusters_today,
+                extras_today=extras_today,
+                odds_today=odds_today if use_opening_odds else None,
+                window=6,
+                min_games=2,
+                use_opening_odds=use_opening_odds
+            )
+
+            games_today['Prob_Home_RNN'] = np.nan
+            games_today['Prob_Away_RNN'] = np.nan
+            games_today['ML_Side_RNN'] = "N/A"
+            games_today['ML_Confidence_RNN'] = np.nan
+
+            if X_temp_today is not None:
+                proba_home_rnn_all = np.zeros(len(games_today), dtype=float)
+
+                proba_valid = rnn_model.predict(
+                    [X_temp_today[mask_valid], X_static_today[mask_valid]],
+                    verbose=0
+                ).ravel()
+
+                proba_home_rnn_all[mask_valid] = proba_valid
+
+                games_today['Prob_Home_RNN'] = proba_home_rnn_all
+                games_today['Prob_Away_RNN'] = 1 - proba_home_rnn_all
+
+                games_today['ML_Side_RNN'] = np.where(
+                    games_today['Prob_Home_RNN'] > games_today['Prob_Away_RNN'],
+                    'HOME', 'AWAY'
+                )
+                games_today['ML_Confidence_RNN'] = np.maximum(
+                    games_today['Prob_Home_RNN'],
+                    games_today['Prob_Away_RNN']
+                )
+
+                st.success("✅ RNN treinada e aplicada nos jogos do dia.")
+        else:
+            st.info("⚠️ RNN não foi treinada (poucos dados válidos).")
 
     # ============================================================
-    # 🧩 Segurança final
+    # Segurança final (mesmo bloco que você já tinha)
     # ============================================================
     if "Quadrante_ML_Score_Home" not in games_today.columns:
         games_today["Quadrante_ML_Score_Home"] = np.nan
@@ -1032,8 +1342,9 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     else:
         st.success(f"✅ {len(games_today)} jogos processados e prontos para análise 3D.")
 
-    st.success("✅ Modelo 3D treinado (HOME) – com análise de viés integrada.")
+    st.success("✅ Modelo 3D treinado (HOME) – RF (e RNN se marcada) com análise de viés integrada.")
     return model_home, games_today
+
 
 
 
@@ -1121,7 +1432,7 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
 # ---------------- EXECUÇÃO PRINCIPAL 3D ----------------
 # Executar treinamento 3D
 if not history.empty:
-    modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today)
+    modelo_home, games_today = treinar_modelo_3d_clusters_single(history, games_today, selected_date)
     st.success("✅ Modelo 3D dual com 16 quadrantes treinado com sucesso!")
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D")
