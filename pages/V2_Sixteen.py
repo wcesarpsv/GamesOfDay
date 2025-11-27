@@ -1256,10 +1256,6 @@ def gerar_score_combinado_16(df):
 st.info("⚙️ Treinando modelo... Aguarde 🧠")
 modelo_home, modelo_away, modelo_handicap, games_today = treinar_modelo_quadrantes_16_dual(history, games_today)
 
-# --- Correção de indexação e colunas duplicadas ---
-ranking_quadrantes = ranking_quadrantes.loc[:, ~ranking_quadrantes.columns.duplicated()]
-ranking_quadrantes = ranking_quadrantes.reset_index(drop=True)
-ranking_quadrantes.index.name = None
 
 # Agora exibe a tabela com estilização
 st.dataframe(estilo_tabela_16_quadrantes(ranking_quadrantes))
@@ -1292,6 +1288,11 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         ['Handicap_Edge', 'Quadrante_ML_Score_Main', 'Score_Final'],
         ascending=[False, False, False]
     )
+    # --- Correção de indexação e colunas duplicadas ---
+    ranking_quadrantes = ranking_quadrantes.loc[:, ~ranking_quadrantes.columns.duplicated()]
+    ranking_quadrantes = ranking_quadrantes.reset_index(drop=True)
+    ranking_quadrantes.index.name = None
+
     
     # Colunas para exibir
     colunas_possiveis = [
