@@ -77,57 +77,41 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def convert_asian_line_to_decimal_corrigido(line_str):
-    """
-    Converte handicaps asiáticos (Away) no formato string para decimal (Home).
-    Regra:
-      - Sempre interpretamos a linha como sendo do AWAY.
-      - Retornamos o handicap equivalente para o HOME (invertendo o sinal).
-      - Suporta inteiros, meios, quartos e splits (0/0.5, -1/-1.5, etc).
-
-    Exemplos:
-      '0'         ->  0.0
-      '-1.5'      -> +1.5
-      '1.5'       -> -1.5
-      '-1/-1.5'   -> +1.25
-      '0/0.5'     -> -0.25
-      '0/-0.5'    -> +0.25
-    """
-    if pd.isna(line_str):
+    if pd.isna(line_str) or line_str == "":
         return np.nan
 
-    s = str(line_str).strip()
-    if s == "":
-        return np.nan
+    s = str(line_str).strip().replace(" ", "").replace(",", ".")
 
-    # Normalizar formato
-    s = s.replace(" ", "")
-    s = s.replace(",", ".")  # caso venha com vírgula
-    if s.startswith("+"):
-        s = s[1:]
-
-    # Zero é caso especial
+    # Tratamento de ZERO
     if s in ("0", "0.0", "-0", "+0"):
         return 0.0
 
     try:
-        # SPLIT (ex: "-1/-1.5", "0/0.5", "0/-0.5")
+        # Se for SPLIT, tratar os 2 valores
         if "/" in s:
             parts = [float(p) for p in s.split("/")]
-            if len(parts) == 0:
-                return np.nan
-            away_avg = sum(parts) / len(parts)
-            home_line = -away_avg
-        else:
-            # Linha simples (ex: "-1.5", "0.25", "-0.75")
-            away_line = float(s)
-            home_line = -away_line
 
-        # Garantir que fique sempre em múltiplos de 0.25
-        home_line_q = round(home_line * 4) / 4.0
-        return home_line_q
+            if len(parts) == 2:
+                a, b = parts
+
+                # 🚑 Correção automática da base errada
+                # Se 1º < 0 e 2º > 0 → troca o sinal do 2º
+                if a < 0 < b:
+                    b = -abs(b)
+                if b < 0 < a:
+                    a = -abs(a)
+
+                parts = [a, b]
+
+            away_avg = sum(parts) / len(parts)
+        else:
+            away_avg = float(s)
+
+        home_line = -away_avg
+        return round(home_line * 4) / 4.0  # múltiplos de 0.25
 
     except Exception:
-        st.warning(f"⚠️ Asian Line inválido ou não reconhecido: {line_str}")
+        st.warning(f"⚠️ Linha de handicap inválida: {line_str}")
         return np.nan
 
 
