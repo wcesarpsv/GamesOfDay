@@ -1288,11 +1288,6 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         ['Handicap_Edge', 'Quadrante_ML_Score_Main', 'Score_Final'],
         ascending=[False, False, False]
     )
-    # --- Correção de indexação e colunas duplicadas ---
-    ranking_quadrantes = ranking_quadrantes.loc[:, ~ranking_quadrantes.columns.duplicated()]
-    ranking_quadrantes = ranking_quadrantes.reset_index(drop=True)
-    ranking_quadrantes.index.name = None
-
     
     # Colunas para exibir
     colunas_possiveis = [
@@ -1324,6 +1319,11 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
     # Filtrar colunas existentes
     cols_finais = [c for c in colunas_possiveis if c in ranking_quadrantes.columns]
+    # --- Correção de indexação e colunas duplicadas ---
+    ranking_quadrantes = ranking_quadrantes.loc[:, ~ranking_quadrantes.columns.duplicated()]
+    ranking_quadrantes = ranking_quadrantes.reset_index(drop=True)
+    ranking_quadrantes.index.name = None
+
     
     # Função de estilo atualizada
     def estilo_tabela_16_quadrantes(df):
