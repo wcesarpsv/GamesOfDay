@@ -9,6 +9,7 @@ import os
 import joblib
 import re
 from catboost import CatBoostClassifier
+import shap
 from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
@@ -18,6 +19,8 @@ import math
 
 st.set_page_config(page_title="Bet Indicator – Forecast V2 + Quadrantes", layout="wide")
 st.title("🎯 Forecast V2 + Sistema de 16 Quadrantes")
+shap.initjs()
+
 
 # Paths
 GAMES_FOLDER = "GamesDay"
@@ -209,6 +212,30 @@ def aplicar_sistema_quadrantes(history: pd.DataFrame, games_today: pd.DataFrame)
     games_today = calcular_distancias_quadrantes(games_today)
     
     return history, games_today
+
+
+def show_shap_analysis(model, X, title: str):
+    st.markdown(f"### 🔍 SHAP Explainability – {title}")
+
+    # SHAP Explainer para CatBoost
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X)
+
+    # Sumário geral (todas classes)
+    st.markdown("📌 **Feature Importance Global**")
+    fig1 = shap.summary_plot(shap_values, X, show=False)
+    st.pyplot(fig1)
+
+    # Se classificação multi-classe (1X2)
+    if isinstance(shap_values, list) and len(shap_values) == 3:
+        st.markdown("📌 **Impacto nas Classes (Home, Draw, Away)**")
+        class_labels = ["Home", "Draw", "Away"]
+        
+        for idx, lbl in enumerate(class_labels):
+            st.write(f"#### 🎯 Classe: {lbl}")
+            fig_class = shap.summary_plot(shap_values[idx], X, show=False)
+            st.pyplot(fig_class)
+
 
 # ########################################################
 # BLOCO 5 – CONSTRUÇÃO DO DATASET DE FEATURES
@@ -581,6 +608,10 @@ def main():
     metrics_1x2, model_1x2 = train_and_evaluate(X_1x2, history["Target"], "1X2", 3, config)
     stats.append(metrics_1x2)
     models["1X2"] = model_1x2
+
+    with st.expander("🧠 SHAP Analysis – Modelo 1X2", expanded=False):
+    show_shap_analysis(model_1x2, X_1x2.sample(min(1000, len(X_1x2))), "1X2")
+
     
     # Modelo Over/Under
     metrics_ou, model_ou = train_and_evaluate(X_ou, history["Target_OU25"], "OverUnder25", 2, config)
