@@ -940,73 +940,68 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     clusters_today = pd.get_dummies(games_today['Cluster3D_Label'], prefix='C3D').reindex(columns=clusters_dummies.columns, fill_value=0)
     extras_today = games_today[features_3d].fillna(0)
     odds_today = pd.DataFrame()
-
+    
     if use_opening_odds:
         for col in ['Odd_H_OP','Odd_D_OP','Odd_A_OP','Odd_H','Odd_D','Odd_A']:
-            if col not in games_today.columns: games_today[col] = np.nan
+            if col not in games_today.columns:
+                games_today[col] = np.nan
+    
         games_today['Imp_H_OP'] = 1/games_today['Odd_H_OP']
         games_today['Imp_D_OP'] = 1/games_today['Odd_D_OP']
         games_today['Imp_A_OP'] = 1/games_today['Odd_A_OP']
+    
         games_today[['Imp_H_OP','Imp_D_OP','Imp_A_OP']] = games_today[['Imp_H_OP','Imp_D_OP','Imp_A_OP']].replace([np.inf,-np.inf],np.nan)
         sum_today = games_today[['Imp_H_OP','Imp_D_OP','Imp_A_OP']].sum(axis=1).replace(0,np.nan)
+    
         games_today['Imp_H_OP_Norm'] = games_today['Imp_H_OP']/sum_today
         games_today['Imp_D_OP_Norm'] = games_today['Imp_D_OP']/sum_today
         games_today['Imp_A_OP_Norm'] = games_today['Imp_A_OP']/sum_today
+    
         odds_today = games_today[['Imp_H_OP_Norm','Imp_D_OP_Norm','Imp_A_OP_Norm']].fillna(0)
-
+    
     if use_opening_odds:
         X_today = pd.concat([ligas_today, clusters_today, extras_today, odds_today], axis=1)
     else:
         X_today = pd.concat([ligas_today, clusters_today, extras_today], axis=1)
-
+    
     proba_home = model_home.predict_proba(X_today)[:,1]
     proba_away = 1 - proba_home
-
+    
     games_today['Prob_Home'] = proba_home
     games_today['Prob_Away'] = proba_away
     games_today['ML_Side'] = np.where(proba_home > proba_away, 'HOME','AWAY')
     games_today['ML_Confidence'] = np.maximum(proba_home, proba_away)
-
+    
     # ==========================================================
     # 🔄 Compatibilidade das colunas de score com versão antiga
     # ==========================================================
-    if 'Prob_Home' in games_today.columns and 'Prob_Away' in games_today.columns:
-        games_today['ML_Score_Home'] = games_today['Prob_Home']
-        games_today['ML_Score_Away'] = games_today['Prob_Away']
-    else:
-        st.error("❌ Prob_Home e Prob_Away não foram encontradas! Treino pode ter falhado.")
-        st.stop()
+    games_today['ML_Score_Home'] = games_today['Prob_Home']
+    games_today['ML_Score_Away'] = games_today['Prob_Away']
     
-        # ==========================================================
-        # 🎯 Score Model Chosen — baseada na escolha do modelo
-        # ==========================================================
-        if 'ML_Side' not in games_today.columns:
-        games_today['ML_Side'] = np.where(
-            games_today['Prob_Home'] > games_today['Prob_Away'],
-            'HOME', 'AWAY'
-        )
-        
-        games_today['Score_Model_Chosen'] = np.where(
+    # ==========================================================
+    # 🎯 Score Model Chosen — baseada na escolha do modelo
+    # ==========================================================
+    games_today['Score_Model_Chosen'] = np.where(
         games_today['ML_Side'] == 'HOME',
         games_today['ML_Score_Home'],
         games_today['ML_Score_Away']
-        )
-        
-        # ==========================================================
-        # 📌 Score Final — fallback seguro (futuro: peso no UI)
-        # ==========================================================
-        if 'Quadrant3D_Score_Home' in games_today.columns:
+    )
+    
+    # ==========================================================
+    # 📌 Score Final — fallback seguro (futuro: peso no UI)
+    # ==========================================================
+    if 'Quadrant3D_Score_Home' in games_today.columns:
         games_today['Score_Final'] = (
             0.6 * games_today['Score_Model_Chosen'] +
             0.4 * games_today['Quadrant3D_Score_Home']
         )
-        else:
+    else:
         games_today['Score_Final'] = games_today['Score_Model_Chosen']
-        
-        # ==========================================================
-        # 🧪 Diagnóstico Automático — evita erros silenciosos
-        # ==========================================================
-        def diagnostico_campos(df):
+    
+    # ==========================================================
+    # 🧪 Diagnóstico Automático — evita erros silenciosos
+    # ==========================================================
+    def diagnostico_campos(df):
         campos_criticos = [
             'Prob_Home','Prob_Away',
             'ML_Score_Home','ML_Score_Away',
@@ -1019,17 +1014,18 @@ def treinar_modelo_3d_clusters_single(history, games_today):
             st.warning("⚠️ Colunas ausentes no ranking: " + ", ".join(faltando))
         else:
             st.success("✅ Todas colunas essenciais para o Ranking 3D OK!")
-        
-        diagnostico_campos(games_today)
-
-
+    
+    diagnostico_campos(games_today)
+    
     # 🎯 Métricas
     acc = model_home.score(X, y_home)
     st.metric("Accuracy (Treino)", f"{acc:.2%}")
     st.success("Modelo treinado com sucesso 🚀")
-
+    
     return model_home, games_today
 
+
+    
 
 
 
