@@ -779,18 +779,51 @@ def treinar_modelo_quadrantes_16_dual(history: pd.DataFrame, games_today: pd.Dat
     history_local = history.copy()
     games_today_local = games_today.copy()
 
-    # Features categóricas / extras
+    # =============================
+    # 🔹 One-Hot Encoding Categorias
+    # =============================
     qh = pd.get_dummies(history_local['Quadrante_Home'], prefix='QH')
     qa = pd.get_dummies(history_local['Quadrante_Away'], prefix='QA')
     ligas = pd.get_dummies(history_local['League'], prefix='League')
+
+    # =============================
+    # 🔹 Extras iniciais (sem Pred_Handicap)
+    # =============================
     extras = history_local[['Quadrant_Dist', 'Quadrant_Separation',
                             'Quadrant_Sin', 'Quadrant_Cos', 'Quadrant_Angle']].fillna(0)
 
-    X = pd.concat([qh, qa, ligas, extras], axis=1)
+    # =============================
+    # 🔹 Features iniciais sem leakage
+    # =============================
+    X_base = pd.concat([qh, qa, ligas, extras], axis=1)
     y_home = history_local['Target_AH_Home']
     y_away = history_local['Target_AH_Away']
 
-    # CLASSIFICAÇÃO – Home/Away
+    # =============================
+    # 🔮 REGRESSÃO PRIMEIRO
+    # =============================
+    modelo_handicap = CatBoostRegressor(
+        depth=7, learning_rate=0.06,
+        iterations=800, loss_function='RMSE',
+        random_seed=42, verbose=False
+    )
+    modelo_handicap.fit(X_base, history_local['Asian_Line_Decimal'])
+
+    # Predições históricas → Feature nova
+    history_local['Pred_Handicap'] = modelo_handicap.predict(X_base)
+
+    # =============================
+    # 🔁 Recriar features com Pred_Handicap incluída
+    # =============================
+    extras = history_local[['Quadrant_Dist', 'Quadrant_Separation',
+                            'Quadrant_Sin', 'Quadrant_Cos', 'Quadrant_Angle',
+                            'Pred_Handicap']].fillna(0)
+
+    X = pd.concat([qh, qa, ligas, extras], axis=1)
+
+    # =============================
+    # 🎯 CLASSIFICAÇÃO HOME & AWAY
+    # =============================
     if usar_catboost:
         modelo_home = CatBoostClassifier(
             depth=7, learning_rate=0.08,
@@ -809,60 +842,64 @@ def treinar_modelo_quadrantes_16_dual(history: pd.DataFrame, games_today: pd.Dat
     modelo_home.fit(X, y_home)
     modelo_away.fit(X, y_away)
 
-    # PREDIÇÃO HOJE
+    # =============================
+    # 🔮 Predições para games_today
+    # =============================
     qh_today = pd.get_dummies(games_today_local['Quadrante_Home'], prefix='QH') \
         .reindex(columns=qh.columns, fill_value=0)
     qa_today = pd.get_dummies(games_today_local['Quadrante_Away'], prefix='QA') \
         .reindex(columns=qa.columns, fill_value=0)
     ligas_today = pd.get_dummies(games_today_local['League'], prefix='League') \
         .reindex(columns=ligas.columns, fill_value=0)
+
+    # Pred_Handicap para hoje
+    extras_today_base = games_today_local[['Quadrant_Dist', 'Quadrant_Separation',
+                                           'Quadrant_Sin', 'Quadrant_Cos', 'Quadrant_Angle']].fillna(0)
+    X_today_base = pd.concat([qh_today, qa_today, ligas_today, extras_today_base], axis=1)
+    games_today_local['Pred_Handicap'] = modelo_handicap.predict(X_today_base)
+
+    # Recriar final com Pred_Handicap
     extras_today = games_today_local[['Quadrant_Dist', 'Quadrant_Separation',
-                                      'Quadrant_Sin', 'Quadrant_Cos', 'Quadrant_Angle']].fillna(0)
+                                      'Quadrant_Sin', 'Quadrant_Cos', 'Quadrant_Angle',
+                                      'Pred_Handicap']].fillna(0)
 
     X_today = pd.concat([qh_today, qa_today, ligas_today, extras_today], axis=1)
 
+    # Classificação com feature ajustada
     games_today_local['Quadrante_ML_Score_Home'] = modelo_home.predict_proba(X_today)[:, 1]
     games_today_local['Quadrante_ML_Score_Away'] = modelo_away.predict_proba(X_today)[:, 1]
+
+    # =============================
+    # 🧠 Lado mais provável
+    # =============================
     games_today_local['ML_Side'] = np.where(
         games_today_local['Quadrante_ML_Score_Home'] >= games_today_local['Quadrante_ML_Score_Away'],
         'HOME', 'AWAY'
     )
-    # Probabilidade principal, lado do modelo
     games_today_local['Quadrante_ML_Score_Main'] = np.where(
         games_today_local['ML_Side'] == 'HOME',
         games_today_local['Quadrante_ML_Score_Home'],
         games_today_local['Quadrante_ML_Score_Away']
     )
 
-    # REGRESSOR – Handicap Ideal
-    modelo_handicap = CatBoostRegressor(
-        depth=7, learning_rate=0.06,
-        iterations=800, loss_function='RMSE',
-        random_seed=42, verbose=False
-    )
-    modelo_handicap.fit(X, history_local['Asian_Line_Decimal'])
-
-    games_today_local['Pred_Handicap'] = modelo_handicap.predict(X_today)
+    # =============================
+    # 📏 Cálculo Handicap Edge
+    # =============================
     games_today_local['Handicap_Edge'] = games_today_local['Pred_Handicap'] - games_today_local['Asian_Line_Decimal']
 
     def classificar_edge(edge):
-        # Threshold default: 0.50 forte, 0.25-0.5 bom, etc
-        if edge >= 0.50:
-            return "🟢 EDGE FORTE"
-        elif 0.25 <= edge < 0.50:
-            return "🟡 EDGE BOM"
-        elif -0.25 < edge < 0.25:
-            return "🔵 EQUILIBRADO"
-        elif -0.50 <= edge <= -0.25:
-            return "🟠 CARO"
-        else:
-            return "🔴 ESMAGADA"
+        if edge >= 0.50: return "🟢 EDGE FORTE"
+        elif 0.25 <= edge < 0.50: return "🟡 EDGE BOM"
+        elif -0.25 < edge < 0.25: return "🔵 EQUILIBRADO"
+        elif -0.50 <= edge <= -0.25: return "🟠 CARO"
+        else: return "🔴 ESMAGADA"
 
     games_today_local['Edge_Label'] = games_today_local['Handicap_Edge'].apply(classificar_edge)
 
-    st.success("✔️ Classificação (Home/Away) + Regressão de Handicap Ideal executadas com sucesso!")
+    st.success("✔️ Classificação + Regressão com Pred_Handicap como feature: OK!")
 
     return modelo_home, modelo_away, modelo_handicap, games_today_local
+
 
 modelo_home, modelo_away, modelo_handicap, games_today = treinar_modelo_quadrantes_16_dual(history, games_today)
 
