@@ -869,7 +869,7 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-##### BLOCO 9: MODELO ML PARA 16 QUADRANTES – RF ou CATBOOST #####
+##### BLOCO 9: MODELO ML PARA 16 QUADRANTES + REGRESSÃO #####
 
 usar_catboost = st.checkbox("🚀 Usar CatBoost ao invés de RandomForest", value=True)
 
@@ -887,49 +887,29 @@ def treinar_modelo_quadrantes_16_dual(history, games_today):
     X = pd.concat([quadrantes_home, quadrantes_away,
                    ligas_dummies, extras], axis=1)
 
-    y_home = history['Target_AH_Home'] 
-    y_away = history["Target_AH_Away"]
+    y_home = history['Target_AH_Home']
+    y_away = history['Target_AH_Away']
 
-
+    # ========= CLASSIFICAÇÃO =========
     if usar_catboost:
-        st.info("⚙️ Treinando CatBoost… aguarde…")
-
-        model_home = CatBoostClassifier(
-            depth=7,
-            learning_rate=0.08,
-            loss_function='Logloss',
-            iterations=600,
-            verbose=False,
-            random_seed=42
+        modelo_home = CatBoostClassifier(
+            depth=7, learning_rate=0.08,
+            iterations=600, loss_function='Logloss',
+            random_seed=42, verbose=False
         )
-
-        model_away = CatBoostClassifier(
-            depth=7,
-            learning_rate=0.08,
-            loss_function='Logloss',
-            iterations=600,
-            verbose=False,
-            random_seed=42
+        modelo_away = CatBoostClassifier(
+            depth=7, learning_rate=0.08,
+            iterations=600, loss_function='Logloss',
+            random_seed=42, verbose=False
         )
-
     else:
-        st.info("🌲 Treinando RandomForest…")
+        modelo_home = RandomForestClassifier(n_estimators=500, max_depth=12)
+        modelo_away = RandomForestClassifier(n_estimators=500, max_depth=12)
 
-        model_home = RandomForestClassifier(
-            n_estimators=500, max_depth=12,
-            class_weight='balanced_subsample',
-            random_state=42, n_jobs=-1
-        )
-        model_away = RandomForestClassifier(
-            n_estimators=500, max_depth=12,
-            class_weight='balanced_subsample',
-            random_state=42, n_jobs=-1
-        )
+    modelo_home.fit(X, y_home)
+    modelo_away.fit(X, y_away)
 
-    model_home.fit(X, y_home)
-    model_away.fit(X, y_away)
-
-    # === PREDIÇÃO HOJE ===
+    # ========= PREDIÇÃO HOJE =========
     qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH') \
         .reindex(columns=quadrantes_home.columns, fill_value=0)
     qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA') \
@@ -941,82 +921,39 @@ def treinar_modelo_quadrantes_16_dual(history, games_today):
 
     X_today = pd.concat([qh_today, qa_today, ligas_today, extras_today], axis=1)
 
-    probas_home = model_home.predict_proba(X_today)[:, 1]
-    probas_away = model_away.predict_proba(X_today)[:, 1]
+    games_today['Quadrante_ML_Score_Home'] = modelo_home.predict_proba(X_today)[:, 1]
+    games_today['Quadrante_ML_Score_Away'] = modelo_away.predict_proba(X_today)[:, 1]
+    games_today['ML_Side'] = np.where(
+        games_today['Quadrante_ML_Score_Home'] > games_today['Quadrante_ML_Score_Away'],
+        'HOME','AWAY'
+    )
 
-    games_today['Quadrante_ML_Score_Home'] = probas_home
-    games_today['Quadrante_ML_Score_Away'] = probas_away
-    games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
-    games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
+    # ========= REGRESSÃO AH IDEAL =========
+    modelo_handicap = CatBoostRegressor(
+        depth=7, learning_rate=0.06,
+        iterations=800, loss_function='RMSE',
+        random_seed=42, verbose=False
+    )
 
-    # Importância de features (apenas se RF)
-    if not usar_catboost:
-        try:
-            importances = pd.Series(model_home.feature_importances_, index=X.columns)
-            st.markdown("### 🔍 Feature Importances (RandomForest)")
-            st.dataframe(importances.sort_values(ascending=False).head(20))
-        except:
-            pass
+    modelo_handicap.fit(X, history['Asian_Line_Decimal'])
+    games_today['Pred_Handicap'] = modelo_handicap.predict(X_today)
+    games_today['Handicap_Edge'] = (
+        games_today['Pred_Handicap'] - games_today['Asian_Line_Decimal']
+    )
 
-    st.success(f"✔️ Modelo treinado com sucesso! ({'CatBoost' if usar_catboost else 'RF'})")
+    def classificar_edge(edge):
+        if edge >= 0.50: return "🟢 EDGE FORTE"
+        elif 0.25 <= edge < 0.50: return "🟡 BOM"
+        elif -0.25 < edge < 0.25: return "🔵 EQUILIBRADO"
+        elif -0.50 <= edge <= -0.25: return "🟠 CARO"
+        else: return "🔴 ESMAGADA"
 
-    return model_home, model_away, games_today
+    games_today['Edge_Label'] = games_today['Handicap_Edge'].apply(classificar_edge)
 
+    st.success("✔️ Classificação + Regressão executadas com sucesso!")
 
-# Executar treinamento
-if not history.empty:
-    modelo_home, modelo_away, games_today = treinar_modelo_quadrantes_16_dual(history, games_today)
-    st.success("✅ Modelo dual com 16 quadrantes treinado com sucesso!")
-else:
-    st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo")
+    return modelo_home, modelo_away, modelo_handicap, games_today
 
-
-
-##### BLOCO 9B — REGRESSÃO PARA PREVER HANDICAP IDEAL #####
-
-st.markdown("### 🎯 Regressão: Handicap Ideal do Modelo")
-
-from catboost import CatBoostRegressor
-
-# Treinar com histórico — mesma feature set X do classificador
-modelo_handicap = CatBoostRegressor(
-    depth=7,
-    learning_rate=0.06,
-    iterations=800,
-    loss_function='RMSE',
-    random_seed=42,
-    verbose=False
-)
-
-st.info("⚙️ Treinando regressor de Handicap Ideal…")
-modelo_handicap.fit(X, history['Asian_Line_Decimal'])
-
-# Predição hoje
-games_today['Pred_Handicap'] = modelo_handicap.predict(X_today)
-
-# EDGE = handicap ideal - handicap do mercado
-games_today['Handicap_Edge'] = (
-    games_today['Pred_Handicap'] - games_today['Asian_Line_Decimal']
-)
-
-# Rótulo de risco e valor
-def classificar_edge(edge):
-    if edge >= 0.50:
-        return "🟢 EDGE FORTE"
-    elif 0.25 <= edge < 0.50:
-        return "🟡 BOM"
-    elif -0.25 < edge < 0.25:
-        return "🔵 EQUILIBRADO"
-    elif -0.50 <= edge <= -0.25:
-        return "🟠 CARO"
-    else:
-        return "🔴 ESMAGADA"
-
-
-
-games_today['Edge_Label'] = games_today['Handicap_Edge'].apply(classificar_edge)
-
-st.success("📍 Regresão de Handicap pronta e aplicada!")
 
 
 ##### BLOCO 10: SISTEMA DE INDICAÇÕES E RECOMENDAÇÕES #####
