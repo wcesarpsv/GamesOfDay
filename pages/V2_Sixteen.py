@@ -8,6 +8,7 @@ import os
 import joblib
 import re
 from sklearn.ensemble import RandomForestClassifier
+from catboost import CatBoostClassifier
 import matplotlib.pyplot as plt
 from datetime import datetime
 import math
@@ -861,51 +862,77 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-##### BLOCO 9: MODELO ML PARA 16 QUADRANTES #####
+##### BLOCO 9: MODELO ML PARA 16 QUADRANTES – RF ou CATBOOST #####
+
+usar_catboost = st.checkbox("🚀 Usar CatBoost ao invés de RandomForest", value=True)
 
 def treinar_modelo_quadrantes_16_dual(history, games_today):
-    """
-    Treina modelo ML para Home e Away com base nos 16 quadrantes
-    """
-    # Garantir cálculo das distâncias
     history = calcular_distancias_quadrantes(history)
     games_today = calcular_distancias_quadrantes(games_today)
 
-    # Preparar features básicas
+    # Features
     quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
     quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
+    extras = history[['Quadrant_Dist', 'Quadrant_Separation',
+                      'Quadrant_Sin', 'Quadrant_Cos','Quadrant_Angle']].fillna(0)
 
-    # Features contínuas
-    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 'Quadrant_Cos','Quadrant_Angle']].fillna(0)
+    X = pd.concat([quadrantes_home, quadrantes_away,
+                   ligas_dummies, extras], axis=1)
 
-    # Combinar todas as features
-    X = pd.concat([quadrantes_home, quadrantes_away, ligas_dummies, extras], axis=1)
-
-    # Targets
     y_home = history['Target_AH_Home']
-    y_away = 1 - y_home  # inverso lógico
+    y_away = 1 - y_home
 
-    # Treinar modelos
-    model_home = RandomForestClassifier(
-        n_estimators=500, max_depth=12, random_state=42, class_weight='balanced_subsample', n_jobs=-1
-    )
-    model_away = RandomForestClassifier(
-        n_estimators=500, max_depth=12, random_state=42, class_weight='balanced_subsample', n_jobs=-1
-    )
+    if usar_catboost:
+        st.info("⚙️ Treinando CatBoost… aguarde…")
+
+        model_home = CatBoostClassifier(
+            depth=7,
+            learning_rate=0.08,
+            loss_function='Logloss',
+            iterations=600,
+            verbose=False,
+            random_seed=42
+        )
+
+        model_away = CatBoostClassifier(
+            depth=7,
+            learning_rate=0.08,
+            loss_function='Logloss',
+            iterations=600,
+            verbose=False,
+            random_seed=42
+        )
+
+    else:
+        st.info("🌲 Treinando RandomForest…")
+
+        model_home = RandomForestClassifier(
+            n_estimators=500, max_depth=12,
+            class_weight='balanced_subsample',
+            random_state=42, n_jobs=-1
+        )
+        model_away = RandomForestClassifier(
+            n_estimators=500, max_depth=12,
+            class_weight='balanced_subsample',
+            random_state=42, n_jobs=-1
+        )
 
     model_home.fit(X, y_home)
     model_away.fit(X, y_away)
 
-    # Preparar dados para hoje
-    qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
-    qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
-    ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Sin', 'Quadrant_Cos','Quadrant_Angle']].fillna(0)
+    # === PREDIÇÃO HOJE ===
+    qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH') \
+        .reindex(columns=quadrantes_home.columns, fill_value=0)
+    qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA') \
+        .reindex(columns=quadrantes_away.columns, fill_value=0)
+    ligas_today = pd.get_dummies(games_today['League'], prefix='League') \
+        .reindex(columns=ligas_dummies.columns, fill_value=0)
+    extras_today = games_today[['Quadrant_Dist', 'Quadrant_Separation',
+                                'Quadrant_Sin', 'Quadrant_Cos', 'Quadrant_Angle']].fillna(0)
 
     X_today = pd.concat([qh_today, qa_today, ligas_today, extras_today], axis=1)
 
-    # Fazer previsões
     probas_home = model_home.predict_proba(X_today)[:, 1]
     probas_away = model_away.predict_proba(X_today)[:, 1]
 
@@ -914,17 +941,19 @@ def treinar_modelo_quadrantes_16_dual(history, games_today):
     games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
     games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
 
-    # Mostrar importância das features
-    try:
-        importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
-        top_feats = importances.head(15)
-        st.markdown("### 🔍 Top Features mais importantes (Modelo HOME - 16 Quadrantes)")
-        st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
-    except Exception as e:
-        st.warning(f"Não foi possível calcular importâncias: {e}")
+    # Importância de features (apenas se RF)
+    if not usar_catboost:
+        try:
+            importances = pd.Series(model_home.feature_importances_, index=X.columns)
+            st.markdown("### 🔍 Feature Importances (RandomForest)")
+            st.dataframe(importances.sort_values(ascending=False).head(20))
+        except:
+            pass
 
-    st.success("✅ Modelo dual (Home/Away) com 16 quadrantes treinado com sucesso!")
+    st.success(f"✔️ Modelo treinado com sucesso! ({'CatBoost' if usar_catboost else 'RF'})")
+
     return model_home, model_away, games_today
+
 
 # Executar treinamento
 if not history.empty:
