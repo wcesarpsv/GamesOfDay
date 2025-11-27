@@ -1257,9 +1257,6 @@ st.info("⚙️ Treinando modelo... Aguarde 🧠")
 modelo_home, modelo_away, modelo_handicap, games_today = treinar_modelo_quadrantes_16_dual(history, games_today)
 
 
-# Agora exibe a tabela com estilização
-st.dataframe(estilo_tabela_16_quadrantes(ranking_quadrantes))
-
 
 ##### BLOCO 13: EXIBIÇÃO DOS RESULTADOS E LIVE MONITOR #####
 
