@@ -1282,23 +1282,37 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
     # Ordenar por score final
     ranking_quadrantes = ranking_quadrantes.sort_values(
-        ['Edge_Label', 'Score_Final', 'Quadrante_ML_Score_Main'],
-        ascending=[True, False, False]
+        ['Handicap_Edge', 'Quadrante_ML_Score_Main', 'Score_Final'],
+        ascending=[False, False, False]
     )
     
     # Colunas para exibir
     colunas_possiveis = [
-        'League', 'Time', 'Home', 'Away', 
-        'Goals_H_Today', 'Goals_A_Today', 'Recomendacao',
-        'ML_Side', 'Side_Bet',
+        'League', 'Home', 'Away','Goals_H_Today','Goals_A_Today',
+        
+        # Odds e Handicap
+        'Asian_Line_Decimal', 'Pred_Handicap', 'Handicap_Edge', 'Edge_Label',
+        
+        # Probabilidades ML
+        'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 'Quadrante_ML_Score_Main',
+        
+        # Recomendação final
+        'ML_Side', 'Recomendacao',
+        
+        # Indicadores táticos
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
-        'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
+        'Quadrant_Dist', 'Quadrant_Angle',
+        
+        # Scoring
         'Score_Final', 'Classificacao_Potencial',
         'Classificacao_Valor_Home', 'Classificacao_Valor_Away',
-        # Colunas Live Score V9
-        'Asian_Line_Decimal', 'Handicap_Result_Final', 'Outcome_Final',
-        'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Final'
+        
+        # Live score / validation
+        'Goals_H_Today', 'Goals_A_Today',
+        'Outcome_Final', 'Handicap_Result_Final', 'Profit_Final',
+        'Quadrante_Correct', 'Home_Red', 'Away_Red'
     ]
+
     
     # Filtrar colunas existentes
     cols_finais = [c for c in colunas_possiveis if c in ranking_quadrantes.columns]
