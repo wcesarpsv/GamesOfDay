@@ -967,6 +967,62 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     games_today['ML_Side'] = np.where(proba_home > proba_away, 'HOME','AWAY')
     games_today['ML_Confidence'] = np.maximum(proba_home, proba_away)
 
+    # ==========================================================
+# 🔄 Compatibilidade das colunas de score com versão antiga
+# ==========================================================
+if 'Prob_Home' in games_today.columns and 'Prob_Away' in games_today.columns:
+    games_today['ML_Score_Home'] = games_today['Prob_Home']
+    games_today['ML_Score_Away'] = games_today['Prob_Away']
+else:
+    st.error("❌ Prob_Home e Prob_Away não foram encontradas! Treino pode ter falhado.")
+    st.stop()
+
+    # ==========================================================
+    # 🎯 Score Model Chosen — baseada na escolha do modelo
+    # ==========================================================
+    if 'ML_Side' not in games_today.columns:
+    games_today['ML_Side'] = np.where(
+        games_today['Prob_Home'] > games_today['Prob_Away'],
+        'HOME', 'AWAY'
+    )
+    
+    games_today['Score_Model_Chosen'] = np.where(
+    games_today['ML_Side'] == 'HOME',
+    games_today['ML_Score_Home'],
+    games_today['ML_Score_Away']
+    )
+    
+    # ==========================================================
+    # 📌 Score Final — fallback seguro (futuro: peso no UI)
+    # ==========================================================
+    if 'Quadrant3D_Score_Home' in games_today.columns:
+    games_today['Score_Final'] = (
+        0.6 * games_today['Score_Model_Chosen'] +
+        0.4 * games_today['Quadrant3D_Score_Home']
+    )
+    else:
+    games_today['Score_Final'] = games_today['Score_Model_Chosen']
+    
+    # ==========================================================
+    # 🧪 Diagnóstico Automático — evita erros silenciosos
+    # ==========================================================
+    def diagnostico_campos(df):
+    campos_criticos = [
+        'Prob_Home','Prob_Away',
+        'ML_Score_Home','ML_Score_Away',
+        'Score_Model_Chosen','Score_Final',
+        'Quadrant_Dist_3D','Quadrant_Separation_3D',
+        'Cluster3D_Label'
+    ]
+    faltando = [c for c in campos_criticos if c not in df.columns]
+    if faltando:
+        st.warning("⚠️ Colunas ausentes no ranking: " + ", ".join(faltando))
+    else:
+        st.success("✅ Todas colunas essenciais para o Ranking 3D OK!")
+    
+    diagnostico_campos(games_today)
+
+
     # 🎯 Métricas
     acc = model_home.score(X, y_home)
     st.metric("Accuracy (Treino)", f"{acc:.2%}")
