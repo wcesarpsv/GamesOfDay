@@ -9,6 +9,7 @@ import joblib
 import re
 from sklearn.ensemble import RandomForestClassifier
 from catboost import CatBoostClassifier
+from catboost import CatBoostRegressor
 import matplotlib.pyplot as plt
 from datetime import datetime
 import math
