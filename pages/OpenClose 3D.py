@@ -862,170 +862,179 @@ history, games_today = aplicar_clusterizacao_3d_segura(history, games_today, n_c
 
 
 
-from catboost import CatBoostClassifier
-
 def treinar_modelo_3d_clusters_single(history, games_today):
+    """
+    Treina o modelo 3D (Home) com possibilidade de incluir odds de abertura implícitas normalizadas
+    e gera análise de viés de mercado (Market Bias Opening) com segurança de dados.
+    """
+
     st.markdown("### ⚙️ Configuração do Treino 3D com Odds de Abertura")
 
-    # Checkbox modelo
-    use_catboost = st.checkbox("🚀 Usar CatBoost (ao invés do RandomForest)", value=True)
-
-    # Toggle odds abertura
+    # Toggle no Streamlit
     use_opening_odds = st.checkbox("📊 Incluir Odds de Abertura no Treino", value=True)
 
-    # Garantir features
+    # ----------------------------
+    # 🧩 Garantir features 3D e clusters
+    # ----------------------------
     history = calcular_distancias_3d(history)
     games_today = calcular_distancias_3d(games_today)
     history, games_today = aplicar_clusterizacao_3d_segura(history, games_today, n_clusters=5)
 
+    # ----------------------------
+    # 🧠 Feature Engineering
+    # ----------------------------
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
     clusters_dummies = pd.get_dummies(history['Cluster3D_Label'], prefix='C3D')
 
     features_3d = [
-        'Quadrant_Dist_3D','Quadrant_Separation_3D',
-        'Quadrant_Sin_XY','Quadrant_Cos_XY',
-        'Quadrant_Sin_XZ','Quadrant_Cos_XZ',
-        'Quadrant_Sin_YZ','Quadrant_Cos_YZ',
-        'Quadrant_Sin_Combo','Quadrant_Cos_Combo',
-        'Vector_Sign','Magnitude_3D'
+        'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
+        'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
+        'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
+        'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
+        'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',
+        'Vector_Sign', 'Magnitude_3D'
     ]
 
     extras_3d = history[features_3d].fillna(0)
 
+    # ----------------------------
+    # 🎯 Features de Odds Implícitas Normalizadas
+    # ----------------------------
     odds_features = pd.DataFrame()
     if use_opening_odds:
-        for col in ['Odd_H_OP','Odd_D_OP','Odd_A_OP','Odd_H','Odd_D','Odd_A']:
-            if col not in history.columns: history[col] = np.nan
-        history['Imp_H_OP'] = 1/history['Odd_H_OP']
-        history['Imp_D_OP'] = 1/history['Odd_D_OP']
-        history['Imp_A_OP'] = 1/history['Odd_A_OP']
-        history[['Imp_H_OP','Imp_D_OP','Imp_A_OP']] = history[['Imp_H_OP','Imp_D_OP','Imp_A_OP']].replace([np.inf,-np.inf],np.nan)
-        sum_probs = history[['Imp_H_OP','Imp_D_OP','Imp_A_OP']].sum(axis=1).replace(0,np.nan)
-        history['Imp_H_OP_Norm'] = history['Imp_H_OP']/sum_probs
-        history['Imp_D_OP_Norm'] = history['Imp_D_OP']/sum_probs
-        history['Imp_A_OP_Norm'] = history['Imp_A_OP']/sum_probs
-        odds_features = history[['Imp_H_OP_Norm','Imp_D_OP_Norm','Imp_A_OP_Norm']].fillna(0)
+        for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP','Odd_H','Odd_D','Odd_A']:
+            if col not in history.columns:
+                history[col] = np.nan
 
-    X = pd.concat([ligas_dummies, clusters_dummies, extras_3d, odds_features], axis=1)
+        history['Imp_H_OP'] = 1 / history['Odd_H_OP']
+        history['Imp_D_OP'] = 1 / history['Odd_D_OP']
+        history['Imp_A_OP'] = 1 / history['Odd_A_OP']
+        history[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']] = history[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']].replace([np.inf, -np.inf], np.nan)
+
+        sum_probs = history[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']].sum(axis=1).replace(0, np.nan)
+        history['Imp_H_OP_Norm'] = history['Imp_H_OP'] / sum_probs
+        history['Imp_D_OP_Norm'] = history['Imp_D_OP'] / sum_probs
+        history['Imp_A_OP_Norm'] = history['Imp_A_OP'] / sum_probs
+        history['Diff_Odd_H'] = history['Odd_H_OP'] - history['Odd_H']
+        history['Diff_Odd_D'] = history['Odd_D_OP'] - history['Odd_D']
+        history['Diff_Odd_A'] = history['Odd_A_OP'] - history['Odd_A']
+
+        odds_features = history[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm','Diff_Odd_H','Diff_Odd_D','Diff_Odd_A']].fillna(0)
+
+    # ----------------------------
+    # 🧩 Montagem final do dataset
+    # ----------------------------
+    if use_opening_odds:
+        X = pd.concat([ligas_dummies, clusters_dummies, extras_3d, odds_features], axis=1)
+    else:
+        X = pd.concat([ligas_dummies, clusters_dummies, extras_3d], axis=1)
+
     y_home = history['Target_AH_Home'].astype(int)
 
-    # =====================================
-    # 🔥 Escolha do Modelo
-    # =====================================
-    if use_catboost:
-        model_home = CatBoostClassifier(
-            iterations=600,
-            depth=7,
-            learning_rate=0.05,
-            loss_function='Logloss',
-            eval_metric='AUC',
-            verbose=False,
-            random_seed=42
-        )
-    else:
-        model_home = RandomForestClassifier(
-            n_estimators=500,
-            max_depth=12,
-            random_state=42,
-            class_weight='balanced_subsample',
-            n_jobs=-1
-        )
+    # ----------------------------
+    # 🏗️ Modelo
+    # ----------------------------
+    model_home = RandomForestClassifier(
+        n_estimators=500,
+        max_depth=12,
+        random_state=42,
+        class_weight='balanced_subsample',
+        n_jobs=-1
+    )
 
     model_home.fit(X, y_home)
 
-    # =====================================
-    # 🔮 Previsões — SEM MEXER EM NADA
-    # =====================================
+    # ----------------------------
+    # 🔮 Previsões no dataset do dia
+    # ----------------------------
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
     clusters_today = pd.get_dummies(games_today['Cluster3D_Label'], prefix='C3D').reindex(columns=clusters_dummies.columns, fill_value=0)
     extras_today = games_today[features_3d].fillna(0)
-    odds_today = pd.DataFrame()
-    
+
     if use_opening_odds:
-        for col in ['Odd_H_OP','Odd_D_OP','Odd_A_OP','Odd_H','Odd_D','Odd_A']:
+        for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP','Odd_H','Odd_D','Odd_A']:
             if col not in games_today.columns:
                 games_today[col] = np.nan
-    
-        games_today['Imp_H_OP'] = 1/games_today['Odd_H_OP']
-        games_today['Imp_D_OP'] = 1/games_today['Odd_D_OP']
-        games_today['Imp_A_OP'] = 1/games_today['Odd_A_OP']
-    
-        games_today[['Imp_H_OP','Imp_D_OP','Imp_A_OP']] = games_today[['Imp_H_OP','Imp_D_OP','Imp_A_OP']].replace([np.inf,-np.inf],np.nan)
-        sum_today = games_today[['Imp_H_OP','Imp_D_OP','Imp_A_OP']].sum(axis=1).replace(0,np.nan)
-    
-        games_today['Imp_H_OP_Norm'] = games_today['Imp_H_OP']/sum_today
-        games_today['Imp_D_OP_Norm'] = games_today['Imp_D_OP']/sum_today
-        games_today['Imp_A_OP_Norm'] = games_today['Imp_A_OP']/sum_today
-    
-        odds_today = games_today[['Imp_H_OP_Norm','Imp_D_OP_Norm','Imp_A_OP_Norm']].fillna(0)
-    
-    if use_opening_odds:
+
+        games_today['Imp_H_OP'] = 1 / games_today['Odd_H_OP']
+        games_today['Imp_D_OP'] = 1 / games_today['Odd_D_OP']
+        games_today['Imp_A_OP'] = 1 / games_today['Odd_A_OP']
+        games_today[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']] = games_today[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']].replace([np.inf, -np.inf], np.nan)
+
+        sum_today = games_today[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']].sum(axis=1).replace(0, np.nan)
+        games_today['Imp_H_OP_Norm'] = games_today['Imp_H_OP'] / sum_today
+        games_today['Imp_D_OP_Norm'] = games_today['Imp_D_OP'] / sum_today
+        games_today['Imp_A_OP_Norm'] = games_today['Imp_A_OP'] / sum_today
+        games_today['Diff_Odd_H'] = games_today['Odd_H_OP'] - games_today['Odd_H']
+        games_today['Diff_Odd_D'] = games_today['Odd_D_OP'] - games_today['Odd_D']
+        games_today['Diff_Odd_A'] = games_today['Odd_A_OP'] - games_today['Odd_A']
+
+        odds_today = games_today[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm','Diff_Odd_H','Diff_Odd_D','Diff_Odd_A']].fillna(0)
         X_today = pd.concat([ligas_today, clusters_today, extras_today, odds_today], axis=1)
     else:
         X_today = pd.concat([ligas_today, clusters_today, extras_today], axis=1)
-    
-    proba_home = model_home.predict_proba(X_today)[:,1]
+
+    # ----------------------------
+    # 📈 Previsões
+    # ----------------------------
+    proba_home = model_home.predict_proba(X_today)[:, 1]
     proba_away = 1 - proba_home
-    
+
     games_today['Prob_Home'] = proba_home
     games_today['Prob_Away'] = proba_away
-    games_today['ML_Side'] = np.where(proba_home > proba_away, 'HOME','AWAY')
+    games_today['ML_Side'] = np.where(proba_home > proba_away, 'HOME', 'AWAY')
     games_today['ML_Confidence'] = np.maximum(proba_home, proba_away)
-    
-    # ==========================================================
-    # 🔄 Compatibilidade das colunas de score com versão antiga
-    # ==========================================================
-    games_today['ML_Score_Home'] = games_today['Prob_Home']
-    games_today['ML_Score_Away'] = games_today['Prob_Away']
-    
-    # ==========================================================
-    # 🎯 Score Model Chosen — baseada na escolha do modelo
-    # ==========================================================
-    games_today['Score_Model_Chosen'] = np.where(
-        games_today['ML_Side'] == 'HOME',
-        games_today['ML_Score_Home'],
-        games_today['ML_Score_Away']
-    )
-    
-    # ==========================================================
-    # 📌 Score Final — fallback seguro (futuro: peso no UI)
-    # ==========================================================
-    if 'Quadrant3D_Score_Home' in games_today.columns:
-        games_today['Score_Final'] = (
-            0.6 * games_today['Score_Model_Chosen'] +
-            0.4 * games_today['Quadrant3D_Score_Home']
-        )
-    else:
-        games_today['Score_Final'] = games_today['Score_Model_Chosen']
-    
-    # ==========================================================
-    # 🧪 Diagnóstico Automático — evita erros silenciosos
-    # ==========================================================
-    def diagnostico_campos(df):
-        campos_criticos = [
-            'Prob_Home','Prob_Away',
-            'ML_Score_Home','ML_Score_Away',
-            'Score_Model_Chosen','Score_Final',
-            'Quadrant_Dist_3D','Quadrant_Separation_3D',
-            'Cluster3D_Label'
-        ]
-        faltando = [c for c in campos_criticos if c not in df.columns]
-        if faltando:
-            st.warning("⚠️ Colunas ausentes no ranking: " + ", ".join(faltando))
+    games_today['Quadrante_ML_Score_Home'] = games_today['Prob_Home']
+    games_today['Quadrante_ML_Score_Away'] = games_today['Prob_Away']
+    games_today['Quadrante_ML_Score_Main'] = games_today['ML_Confidence']
+
+    # ----------------------------
+    # 📊 Avaliação rápida (cross-check)
+    # ----------------------------
+    accuracy = model_home.score(X, y_home)
+    st.metric("Accuracy (Treino)", f"{accuracy:.2%}")
+    st.write("📘 Features usadas:", len(X.columns))
+
+    # ----------------------------
+    # 🔍 Importância de Features
+    # ----------------------------
+    importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
+    top_feats = importances.head(25).to_frame("Importância")
+
+    st.markdown("### 🔍 Top Features (Modelo Único – Home)")
+    st.dataframe(top_feats, use_container_width=True)
+
+    if use_opening_odds:
+        odds_influentes = [f for f in top_feats.index if "Imp_" in f]
+        if odds_influentes:
+            st.success(f"💡 Variáveis de abertura influentes: {', '.join(odds_influentes)}")
         else:
-            st.success("✅ Todas colunas essenciais para o Ranking 3D OK!")
+            st.info("📊 As odds de abertura ainda não mostraram forte impacto.")
+
     
-    diagnostico_campos(games_today)
-    
-    # 🎯 Métricas
-    acc = model_home.score(X, y_home)
-    st.metric("Accuracy (Treino)", f"{acc:.2%}")
-    st.success("Modelo treinado com sucesso 🚀")
-    
+
+    # ============================================================
+    # 🧩 Segurança final
+    # ============================================================
+    if "Quadrante_ML_Score_Home" not in games_today.columns:
+        games_today["Quadrante_ML_Score_Home"] = np.nan
+        games_today["Quadrante_ML_Score_Away"] = np.nan
+        games_today["Quadrante_ML_Score_Main"] = np.nan
+        games_today["ML_Side"] = "N/A"
+        games_today["ML_Confidence"] = 0.0
+
+    for col in ["League", "Home", "Away"]:
+        if col not in games_today.columns:
+            games_today[col] = "N/A"
+
+    if games_today.empty:
+        st.warning("⚠️ Nenhum jogo válido encontrado após o treino. Verifique o CSV e as odds.")
+    else:
+        st.success(f"✅ {len(games_today)} jogos processados e prontos para análise 3D.")
+
+    st.success("✅ Modelo 3D treinado (HOME) – com análise de viés integrada.")
     return model_home, games_today
 
-
-    
 
 
 
@@ -2398,12 +2407,11 @@ import plotly.express as px
 # ⚙️ 1️⃣ Cria Score_Model_Chosen com base no lado previsto pela ML1
 # -------------------------------------------------
 if {"Quadrante_ML_Score_Home", "Quadrante_ML_Score_Away", "ML_Side"}.issubset(games_today.columns):
-    games_today['Score_Model_Chosen'] = np.where(
-        games_today['ML_Side'] == 'HOME',
-        games_today['ML_Score_Home'],
-        games_today['ML_Score_Away']
+    games_today["Score_Model_Chosen"] = np.where(
+        games_today["ML_Side"].str.upper() == "HOME",
+        games_today["Quadrante_ML_Score_Home"],
+        games_today["Quadrante_ML_Score_Away"]
     )
-
 else:
     st.warning("⚠️ Colunas de score 3D não encontradas para gerar Score_Model_Chosen.")
     games_today["Score_Model_Chosen"] = np.nan
@@ -2586,37 +2594,6 @@ if {"Odd_H", "Odd_D", "Odd_A", "Odd_H_OP", "Odd_D_OP", "Odd_A_OP"}.issubset(game
     )
 else:
     st.warning("⚠️ Colunas de odds de abertura/fecho não encontradas para análise de movimento.")
-
-
-
-
-# ==========================================================
-# 📊 EXIBIÇÃO — Ranking Final das Previsões
-# ==========================================================
-if 'Score_Final' not in games_today.columns:
-    st.error("❌ Score_Final não foi encontrado. Certifique-se que o bloco de compatibilidade foi aplicado.")
-else:
-    ranking = games_today.copy()
-
-    # Ordena pelo Score_Final do ML + 3D
-    ranking = ranking.sort_values(by='Score_Final', ascending=False)
-
-    # Seleciona colunas importantes para exibir no UI
-    colunas_ui = [
-        'League','Home','Away',
-        'Prob_Home','Prob_Away','ML_Side','ML_Confidence',
-        'Score_Model_Chosen','Score_Final'
-    ]
-    colunas_existentes = [c for c in colunas_ui if c in ranking.columns]
-
-    st.markdown("### 🏆 Ranking 3D + ML — Indicações de Aposta")
-    st.dataframe(ranking[colunas_existentes].style.format({
-        'Prob_Home': '{:.2%}', 
-        'Prob_Away': '{:.2%}', 
-        'ML_Confidence': '{:.2%}',
-        'Score_Model_Chosen': '{:.3f}', 
-        'Score_Final': '{:.3f}'
-    }))
 
 
 
