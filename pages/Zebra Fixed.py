@@ -1591,7 +1591,7 @@ if not games_today.empty:
     if not aprovados.empty:
         st.markdown("### ✅ Sinais Aprovados (WG GAP + ML)")
         cols_aprov = [
-            'League', 'Home', 'Away',
+            'League', 'Home', 'Away','Goals_H_Today','Goals_A_Today',
             'Asian_Line', 'Asian_Line_Decimal',
             'WG_Dist_2D',
             'Final_Side', 'Bet_Confidence'
