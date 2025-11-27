@@ -63,51 +63,59 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
     pattern = "|".join(EXCLUDED_LEAGUE_KEYWORDS)
     return df[~df["League"].str.lower().str.contains(pattern, na=False)].copy()
 
-def convert_asian_line(line_str):
-    """Converte string de linha asiática em média numérica"""
-    try:
-        if pd.isna(line_str) or line_str == "":
-            return None
-        line_str = str(line_str).strip()
-        if "/" not in line_str:
-            val = float(line_str)
-            return 0.0 if abs(val) < 1e-10 else val
-        parts = [float(x) for x in line_str.split("/")]
-        avg = sum(parts) / len(parts)
-        return 0.0 if abs(avg) < 1e-10 else avg
-    except:
-        return None
+# def convert_asian_line(line_str):
+#     """Converte string de linha asiática em média numérica"""
+#     try:
+#         if pd.isna(line_str) or line_str == "":
+#             return None
+#         line_str = str(line_str).strip()
+#         if "/" not in line_str:
+#             val = float(line_str)
+#             return 0.0 if abs(val) < 1e-10 else val
+#         parts = [float(x) for x in line_str.split("/")]
+#         avg = sum(parts) / len(parts)
+#         return 0.0 if abs(avg) < 1e-10 else avg
+#     except:
+#         return None
 
-def convert_asian_line_to_home(value):
-    """
-    Converte handicaps asiáticos (Away) no formato string para decimal invertido (Home).
-    """
-    if pd.isna(value):
+def convert_asian_line_to_home(line_str):
+    if pd.isna(line_str) or line_str == "":
         return np.nan
 
-    value = str(value).strip()
+    s = str(line_str).strip().replace(" ", "").replace(",", ".")
 
-    # Caso simples — número único
-    if "/" not in value:
-        try:
-            num = float(value)
-            return -num  # Inverte sinal (Away → Home)
-        except ValueError:
-            return np.nan
+    # Tratamento de ZERO
+    if s in ("0", "0.0", "-0", "+0"):
+        return 0.0
 
-    # Caso duplo — média dos dois lados
     try:
-        parts = [float(p) for p in value.split("/")]
-        avg = np.mean(parts)
-        # Mantém o sinal do primeiro número
-        if str(value).startswith("-"):
-            result = -abs(avg)
+        # Se for SPLIT, tratar os 2 valores
+        if "/" in s:
+            parts = [float(p) for p in s.split("/")]
+
+            if len(parts) == 2:
+                a, b = parts
+
+                # 🚑 Correção automática da base errada
+                # Se 1º < 0 e 2º > 0 → troca o sinal do 2º
+                if a < 0 < b:
+                    b = -abs(b)
+                if b < 0 < a:
+                    a = -abs(a)
+
+                parts = [a, b]
+
+            away_avg = sum(parts) / len(parts)
         else:
-            result = abs(avg)
-        # Inverte o sinal no final (Away → Home)
-        return -result
-    except ValueError:
+            away_avg = float(s)
+
+        home_line = -away_avg
+        return round(home_line * 4) / 4.0  # múltiplos de 0.25
+
+    except Exception:
+        st.warning(f"⚠️ Linha de handicap inválida: {line_str}")
         return np.nan
+
 
 
 ##### BLOCO 3: FUNÇÕES HANDICAP ASIÁTICO V9 CORRIGIDAS (TABELAS OFICIAIS) #####
