@@ -1256,6 +1256,13 @@ def gerar_score_combinado_16(df):
 st.info("⚙️ Treinando modelo... Aguarde 🧠")
 modelo_home, modelo_away, modelo_handicap, games_today = treinar_modelo_quadrantes_16_dual(history, games_today)
 
+# --- Correção de indexação e colunas duplicadas ---
+ranking_quadrantes = ranking_quadrantes.loc[:, ~ranking_quadrantes.columns.duplicated()]
+ranking_quadrantes = ranking_quadrantes.reset_index(drop=True)
+ranking_quadrantes.index.name = None
+
+# Agora exibe a tabela com estilização
+st.dataframe(estilo_tabela_16_quadrantes(ranking_quadrantes))
 
 
 ##### BLOCO 13: EXIBIÇÃO DOS RESULTADOS E LIVE MONITOR #####
