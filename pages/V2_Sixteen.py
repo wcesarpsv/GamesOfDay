@@ -391,6 +391,48 @@ def generate_live_summary_v9(df: pd.DataFrame) -> dict:
         "Losses": int(losses)
     }
 
+
+
+
+
+def decidir_aposta_final(df: pd.DataFrame, prob_min=0.57):
+    df = df.copy()
+
+    def escolher(row):
+        prob_home = row['Quadrante_ML_Score_Home']
+        prob_away = row['Quadrante_ML_Score_Away']
+        side_ml = row['ML_Side']
+        label = row['Edge_Label']
+
+        # Regras de aposta baseadas no preço
+        if label == "🟢 FAVORITO BARATO (valor no HOME)":
+            side = "HOME"
+        elif label == "🟢 UNDERDOG BARATO (valor no AWAY)":
+            side = "AWAY"
+        elif label == "🔴 FAVORITO CARO (valor no AWAY)":
+            side = "AWAY"
+        elif label == "🔴 UNDERDOG CARO (valor no AWAY)":
+            side = "HOME"
+        else:
+            return "SKIP"
+
+        # Validação mínima de confiança
+        prob_side = prob_home if side == "HOME" else prob_away
+        if prob_side < prob_min:
+            return "SKIP"
+
+        # Se preço e probabilidade discordam → SKIP
+        if side != side_ml:
+            return "SKIP"
+
+        return side
+
+    df['BET_SIDE_FINAL'] = df.apply(escolher, axis=1)
+    return df
+
+
+
+
 # ==========================================================
 # BLOCO 4 – FUNÇÃO genérica calc_handicap_result (TREINO)
 # ==========================================================
@@ -1149,6 +1191,12 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
 else:
     st.info("⚠️ Aguardando dados para gerar ranking de 16 quadrantes")
+
+
+
+
+games_today = decidir_aposta_final(games_today, prob_min=0.57)
+
 
 # ==========================================================
 # BLOCO 13 – RESUMO EXECUTIVO (OPCIONAL)
