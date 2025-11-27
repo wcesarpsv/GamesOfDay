@@ -1324,43 +1324,27 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
     # Função de estilo atualizada
     def estilo_tabela_16_quadrantes(df):
-        def cor_classificacao(valor):
-            if '🌟 ALTO POTENCIAL' in str(valor): return 'font-weight: bold'
-            elif '💼 VALOR SOLIDO' in str(valor): return 'font-weight: bold'
-            elif '🔴 BAIXO POTENCIAL' in str(valor): return 'font-weight: bold'
-            elif '🏆 ALTO VALOR' in str(valor): return 'font-weight: bold'
-            elif '🔴 ALTO RISCO' in str(valor): return 'font-weight: bold'
-            elif 'VALUE' in str(valor): return 'background-color: #98FB98'
-            elif 'EVITAR' in str(valor): return 'background-color: #FFCCCB'
-            else: return ''
-        
-        colunas_para_estilo = []
-        for col in ['Classificacao_Potencial', 'Classificacao_Valor_Home', 'Classificacao_Valor_Away', 'Recomendacao']:
-            if col in df.columns:
-                colunas_para_estilo.append(col)
-        
+        df = df.copy()
+        df = df.loc[:, ~df.columns.duplicated()]
+        df = df.reset_index(drop=True)
+        df.index.name = None
+    
         styler = df.style
-        if colunas_para_estilo:
-            styler = styler.applymap(cor_classificacao, subset=colunas_para_estilo)
-        
-        # Aplicar gradientes
-        if 'Quadrante_ML_Score_Home' in df.columns:
-            styler = styler.background_gradient(subset=['Quadrante_ML_Score_Home'], cmap='RdYlGn')
-        if 'Quadrante_ML_Score_Away' in df.columns:
-            styler = styler.background_gradient(subset=['Quadrante_ML_Score_Away'], cmap='RdYlGn')
-        if 'Score_Final' in df.columns:
-            styler = styler.background_gradient(subset=['Score_Final'], cmap='RdYlGn')
+    
+        # 🔥 Background gradient seguro
+        for col in ['Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 'Score_Final']:
+            if col in df.columns:
+                styler = styler.background_gradient(subset=[col], cmap='RdYlGn')
+    
+        # 🔥 Edge Label destaque seguro
         if 'Edge_Label' in df.columns:
-            styler = styler.applymap(
-                lambda v: (
-                    'font-weight: bold' if '🟢' in str(v) else
-                    'font-weight: bold' if '🟡' in str(v) else
-                    'font-weight: bold' if '🔵' in str(v) else
-                    'font-weight: bold' if '🟠' in str(v) else
-                    'font-weight: bold' if '🔴' in str(v) else ''
-                ),
+            styler = styler.apply(
+                lambda x: ['font-weight: bold'] * len(x),
                 subset=['Edge_Label']
             )
+    
+        return styler
+
 
         
         return styler
