@@ -878,12 +878,12 @@ def treinar_modelo_quadrantes_16_dual(history, games_today):
     history = calcular_distancias_quadrantes(history)
     games_today = calcular_distancias_quadrantes(games_today)
 
-    # Features
+    # Features Treino
     quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
     quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
     extras = history[['Quadrant_Dist', 'Quadrant_Separation',
-                      'Quadrant_Sin', 'Quadrant_Cos','Quadrant_Angle']].fillna(0)
+                      'Quadrant_Sin', 'Quadrant_Cos', 'Quadrant_Angle']].fillna(0)
 
     X = pd.concat([quadrantes_home, quadrantes_away,
                    ligas_dummies, extras], axis=1)
@@ -894,27 +894,30 @@ def treinar_modelo_quadrantes_16_dual(history, games_today):
     # ========= CLASSIFICAÇÃO =========
     if usar_catboost:
         modelo_home = CatBoostClassifier(
-        depth=7,
-        learning_rate=0.08,
-        iterations=600,
-        loss_function='Logloss',
-        class_weights=[1, 1.2],  # força prever positivos
-        random_seed=42,
-        verbose=False
-    )
-    modelo_away = CatBoostClassifier(
-        depth=7,
-        learning_rate=0.08,
-        iterations=600,
-        loss_function='Logloss',
-        class_weights=[1, 1.2],
-        random_seed=42,
-        verbose=False
-    )
-
+            depth=6,
+            learning_rate=0.08,
+            iterations=600,
+            loss_function='Logloss',
+            auto_class_weights="Balanced",  # ✔️ evita viés para AWAY
+            random_seed=42,
+            verbose=False
+        )
+        modelo_away = CatBoostClassifier(
+            depth=6,
+            learning_rate=0.08,
+            iterations=600,
+            loss_function='Logloss',
+            auto_class_weights="Balanced",
+            random_seed=42,
+            verbose=False
+        )
     else:
-        modelo_home = RandomForestClassifier(n_estimators=500, max_depth=12)
-        modelo_away = RandomForestClassifier(n_estimators=500, max_depth=12)
+        modelo_home = RandomForestClassifier(
+            n_estimators=500, max_depth=12, class_weight="balanced"
+        )
+        modelo_away = RandomForestClassifier(
+            n_estimators=500, max_depth=12, class_weight="balanced"
+        )
 
     modelo_home.fit(X, y_home)
     modelo_away.fit(X, y_away)
@@ -933,15 +936,15 @@ def treinar_modelo_quadrantes_16_dual(history, games_today):
 
     games_today['Quadrante_ML_Score_Home'] = modelo_home.predict_proba(X_today)[:, 1]
     games_today['Quadrante_ML_Score_Away'] = modelo_away.predict_proba(X_today)[:, 1]
+
     games_today['ML_Side'] = np.where(
         games_today['Quadrante_ML_Score_Home'] > games_today['Quadrante_ML_Score_Away'],
-        'HOME','AWAY'
+        'HOME', 'AWAY'
     )
     games_today['Quadrante_ML_Score_Main'] = games_today.apply(
-        lambda r: r['Quadrante_ML_Score_Home'] if r['ML_Side'] == 'HOME' else r['Quadrante_ML_Score_Away'],
-        axis=1
+        lambda r: r['Quadrante_ML_Score_Home'] if r['ML_Side'] == 'HOME' 
+                  else r['Quadrante_ML_Score_Away'], axis=1
     )
-    
 
     # ========= REGRESSÃO AH IDEAL =========
     modelo_handicap = CatBoostRegressor(
@@ -952,9 +955,7 @@ def treinar_modelo_quadrantes_16_dual(history, games_today):
 
     modelo_handicap.fit(X, history['Asian_Line_Decimal'])
     games_today['Pred_Handicap'] = modelo_handicap.predict(X_today)
-    games_today['Handicap_Edge'] = (
-        games_today['Pred_Handicap'] - games_today['Asian_Line_Decimal']
-    )
+    games_today['Handicap_Edge'] = games_today['Pred_Handicap'] - games_today['Asian_Line_Decimal']
 
     def classificar_edge(edge):
         if edge >= 0.50: return "🟢 EDGE FORTE"
@@ -968,6 +969,7 @@ def treinar_modelo_quadrantes_16_dual(history, games_today):
     st.success("✔️ Classificação + Regressão executadas com sucesso!")
 
     return modelo_home, modelo_away, modelo_handicap, games_today
+
 
 
 
