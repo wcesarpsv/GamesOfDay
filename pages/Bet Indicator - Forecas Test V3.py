@@ -16,7 +16,7 @@ from sklearn.preprocessing import OneHotEncoder
 import matplotlib.pyplot as plt
 from datetime import datetime
 import math
-
+plt.switch_backend('Agg')
 st.set_page_config(page_title="Bet Indicator – Forecast V2 + Quadrantes", layout="wide")
 st.title("🎯 Forecast V2 + Sistema de 16 Quadrantes")
 
