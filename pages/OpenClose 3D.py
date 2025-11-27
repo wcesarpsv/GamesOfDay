@@ -2908,6 +2908,27 @@ else:
 
 
 
+if 'Prob_Home_RNN' in games_today.columns:
+    st.markdown("### 🤖 Comparação RF x RNN (Home)")
+
+    comp_cols = ['League', 'Home', 'Away',
+                 'Prob_Home', 'Prob_Home_RNN',
+                 'ML_Side', 'ML_Side_RNN']
+    comp_cols = [c for c in comp_cols if c in games_today.columns]
+
+    st.dataframe(
+        games_today[comp_cols]
+        .assign(Diff_RF_RNN=lambda df: df['Prob_Home_RNN'] - df['Prob_Home'])
+        .sort_values('Diff_RF_RNN', ascending=False)
+        .style.format({
+            'Prob_Home': '{:.1%}',
+            'Prob_Home_RNN': '{:.1%}',
+            'Diff_RF_RNN': '{:+.1%}'
+        }),
+        use_container_width=True
+    )
+
+
 st.markdown("---")
 st.success("🎯 **Sistema 3D de 16 Quadrantes ML** implementado com sucesso!")
 st.info("""
