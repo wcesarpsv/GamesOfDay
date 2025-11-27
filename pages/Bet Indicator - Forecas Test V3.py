@@ -8,8 +8,7 @@ import numpy as np
 import os
 import joblib
 import re
-from sklearn.ensemble import RandomForestClassifier
-from xgboost import XGBClassifier
+from catboost import CatBoostClassifier
 from sklearn.metrics import accuracy_score, log_loss, brier_score_loss
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
@@ -363,79 +362,50 @@ def build_feature_matrix(df: pd.DataFrame, leagues_df: pd.DataFrame, feature_blo
 # BLOCO 6 – CONFIGURAÇÕES DO MODELO (SIDEBAR)
 # ########################################################
 def setup_sidebar_config() -> dict:
-    """Configura sidebar e retorna configurações do modelo"""
     st.sidebar.header("⚙️ Configurações do Modelo")
-    
+
     config = {
-        "ml_model": st.sidebar.selectbox(
-            "Escolha o Modelo ML", 
-            ["Random Forest", "Random Forest Tuned", "XGBoost Tuned"]
-        ),
+        "ml_model": "CatBoost",
         "use_odds": st.sidebar.checkbox("Usar Odds como Features", value=True),
         "retrain": st.sidebar.checkbox("Retreinar Modelos", value=False)
     }
-    
-    st.sidebar.markdown("""
-    **ℹ️ Recomendações de Uso:**
-    - 🔹 *Random Forest*: baseline simples e rápido
-    - 🔹 *Random Forest Tuned*: ideal para mercado **1X2**
-    - 🔹 *XGBoost Tuned*: ideal para **Over/Under 2.5** e **BTTS**
-    - 🔹 *Sem Odds*: Testa poder preditivo das features puras
-    """)
-    
+
     return config
+
 
 # ########################################################
 # BLOCO 7 – TREINAMENTO E AVALIAÇÃO
 # ########################################################
 def train_and_evaluate(X: pd.DataFrame, y: pd.Series, name: str, num_classes: int, config: dict) -> tuple[dict, any]:
-    """Treina e avalia modelo baseado na configuração"""
-    model_name = config["ml_model"].replace(' ', '')
+    """Treina e avalia modelo com CatBoost"""
+    model_name = "CatBoost"
     filename = f"{model_name}_{name}_fc_v2_quadrantes.pkl"
     model = None
 
     # Tentar carregar modelo salvo
-    if not config["retrain"]:
+    if not config.get("retrain", False):
         model = load_model(filename)
 
-    # Treinar novo modelo se necessário
+    # Treinar modelo caso não exista salvo
     if model is None:
-        if config["ml_model"] == "Random Forest":
-            model = RandomForestClassifier(
-                n_estimators=300, 
-                random_state=42, 
-                class_weight="balanced_subsample"
-            )
-        elif config["ml_model"] == "Random Forest Tuned":
-            rf_params = {
-                "1X2": {'n_estimators': 600, 'max_depth': 14, 'min_samples_split': 10,
-                        'min_samples_leaf': 1, 'max_features': 'sqrt'},
-                "OverUnder25": {'n_estimators': 600, 'max_depth': 5, 'min_samples_split': 9,
-                                'min_samples_leaf': 3, 'max_features': 'sqrt'},
-                "BTTS": {'n_estimators': 400, 'max_depth': 18, 'min_samples_split': 4,
-                         'min_samples_leaf': 5, 'max_features': 'sqrt'},
-            }
-            model = RandomForestClassifier(random_state=42, class_weight="balanced_subsample", **rf_params[name])
-        elif config["ml_model"] == "XGBoost Tuned":
-            xgb_params = {
-                "1X2": {'n_estimators': 219, 'max_depth': 9, 'learning_rate': 0.05,
-                        'subsample': 0.9, 'colsample_bytree': 0.8,
-                        'eval_metric': 'mlogloss', 'use_label_encoder': False},
-                "OverUnder25": {'n_estimators': 488, 'max_depth': 10, 'learning_rate': 0.03,
-                                'subsample': 0.9, 'colsample_bytree': 0.7,
-                                'eval_metric': 'logloss', 'use_label_encoder': False},
-                "BTTS": {'n_estimators': 695, 'max_depth': 6, 'learning_rate': 0.04,
-                         'subsample': 0.8, 'colsample_bytree': 0.8,
-                         'eval_metric': 'logloss', 'use_label_encoder': False},
-            }
-            model = XGBClassifier(random_state=42, **xgb_params[name])
-
-        # Split para validação
+        # Split
         X_train, X_val, y_train, y_val = train_test_split(
             X, y, test_size=0.2, random_state=42, stratify=y
         )
+
+        model = CatBoostClassifier(
+            iterations=500,
+            depth=8,
+            learning_rate=0.05,
+            loss_function='MultiClass' if num_classes > 2 else 'Logloss',
+            eval_metric='MultiClass' if num_classes > 2 else 'Logloss',
+            random_seed=42,
+            verbose=False
+        )
+
         model.fit(X_train, y_train)
         save_model(model, filename)
+
     else:
         X_train, X_val, y_train, y_val = train_test_split(
             X, y, test_size=0.2, random_state=42, stratify=y
@@ -457,7 +427,7 @@ def train_and_evaluate(X: pd.DataFrame, y: pd.Series, name: str, num_classes: in
         bs = f"{bs_raw:.3f} (multi)"
 
     metrics = {
-        "Modelo": f"{config['ml_model']} - {name}",
+        "Modelo": f"{model_name} - {name}",
         "Odds": "Sim" if config["use_odds"] else "Não",
         "Acurácia": f"{acc:.3f}",
         "LogLoss": f"{ll:.3f}",
