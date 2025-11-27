@@ -1120,27 +1120,27 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             if '🔴 BAIXO POTENCIAL' in s:
                 return 'color: #b30000; font-weight: bold'
             if '🏆 ALTO VALOR' in s:
-                return 'background-color: #c6efce; font-weight: bold'
+                return 'font-weight: bold; font-weight: bold'
             if '🔴 ALTO RISCO' in s:
-                return 'background-color: #f4cccc; font-weight: bold'
+                return 'font-weight: bold; font-weight: bold'
             if 'VALUE' in s:
-                return 'background-color: #d9ead3'
+                return 'font-weight: bold'
             if 'EVITAR' in s:
-                return 'background-color: #f4cccc'
+                return 'font-weight: bold'
             return ''
 
         def cor_edge(val):
             s = str(val)
             if '🟢' in s:
-                return 'background-color: #c6efce; font-weight: bold'
+                return 'font-weight: bold'
             if '🟡' in s:
-                return 'background-color: #fff2cc; font-weight: bold'
+                return 'font-weight: bold'
             if '🔵' in s:
-                return 'background-color: #ddebf7; font-weight: bold'
+                return 'font-weight: bold'
             if '🟠' in s:
-                return 'background-color: #fce4d6; font-weight: bold'
+                return 'font-weight: bold'
             if '🔴' in s:
-                return 'background-color: #f4cccc; font-weight: bold'
+                return 'font-weight: bold'
             return ''
 
         col_style = [c for c in ['Classificacao_Potencial',
