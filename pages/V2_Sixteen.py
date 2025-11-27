@@ -554,6 +554,13 @@ history["Target_AH_Home"] = history.apply(
     lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"], invert=False) > 0.5 else 0, axis=1
 )
 
+# Cálculo explícito baseado no handicap invertido
+history["Margin_Away"] = history["Goals_A_FT"] - history["Goals_H_FT"]    
+history["Target_AH_Away"] = history.apply(    
+    lambda r: 1 if calc_handicap_result(r["Margin_Away"], r["Asian_Line_Decimal"], invert=True) > 0.5 else 0,
+    axis=1
+)
+
 ##### BLOCO 5: SISTEMA DE 16 QUADRANTES - DEFINIÇÕES #####
 
 st.markdown("## 🎯 Sistema de 16 Quadrantes")
@@ -880,8 +887,9 @@ def treinar_modelo_quadrantes_16_dual(history, games_today):
     X = pd.concat([quadrantes_home, quadrantes_away,
                    ligas_dummies, extras], axis=1)
 
-    y_home = history['Target_AH_Home']
-    y_away = 1 - y_home
+    y_home = history['Target_AH_Home'] 
+    y_away = history["Target_AH_Away"]
+
 
     if usar_catboost:
         st.info("⚙️ Treinando CatBoost… aguarde…")
