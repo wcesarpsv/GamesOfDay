@@ -76,7 +76,7 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
 # ==========================================================
 
 
-def convert_asian_line_to_decimal(line_str):
+def convert_asian_line_to_decimal_corrigido(line_str):
     """
     Converte handicap asiático do time AWAY para decimal invertido (Home).
     Exemplo:
