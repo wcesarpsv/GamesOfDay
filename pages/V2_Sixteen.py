@@ -928,6 +928,11 @@ def treinar_modelo_quadrantes_16_dual(history, games_today):
         games_today['Quadrante_ML_Score_Home'] > games_today['Quadrante_ML_Score_Away'],
         'HOME','AWAY'
     )
+    games_today['Quadrante_ML_Score_Main'] = games_today.apply(
+        lambda r: r['Quadrante_ML_Score_Home'] if r['ML_Side'] == 'HOME' else r['Quadrante_ML_Score_Away'],
+        axis=1
+    )
+    
 
     # ========= REGRESSÃO AH IDEAL =========
     modelo_handicap = CatBoostRegressor(
