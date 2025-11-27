@@ -894,15 +894,24 @@ def treinar_modelo_quadrantes_16_dual(history, games_today):
     # ========= CLASSIFICAÇÃO =========
     if usar_catboost:
         modelo_home = CatBoostClassifier(
-            depth=7, learning_rate=0.08,
-            iterations=600, loss_function='Logloss',
-            random_seed=42, verbose=False
-        )
-        modelo_away = CatBoostClassifier(
-            depth=7, learning_rate=0.08,
-            iterations=600, loss_function='Logloss',
-            random_seed=42, verbose=False
-        )
+        depth=7,
+        learning_rate=0.08,
+        iterations=600,
+        loss_function='Logloss',
+        class_weights=[1, 1.2],  # força prever positivos
+        random_seed=42,
+        verbose=False
+    )
+    modelo_away = CatBoostClassifier(
+        depth=7,
+        learning_rate=0.08,
+        iterations=600,
+        loss_function='Logloss',
+        class_weights=[1, 1.2],
+        random_seed=42,
+        verbose=False
+    )
+
     else:
         modelo_home = RandomForestClassifier(n_estimators=500, max_depth=12)
         modelo_away = RandomForestClassifier(n_estimators=500, max_depth=12)
