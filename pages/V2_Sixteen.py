@@ -887,12 +887,25 @@ def treinar_modelo_quadrantes_16_dual(history: pd.DataFrame, games_today: pd.Dat
     # =============================
     games_today_local['Handicap_Edge'] = games_today_local['Pred_Handicap'] - games_today_local['Asian_Line_Decimal']
 
-    def classificar_edge(edge):
-        if edge >= 0.50: return "🟢 EDGE FORTE"
-        elif 0.25 <= edge < 0.50: return "🟡 EDGE BOM"
-        elif -0.25 < edge < 0.25: return "🔵 EQUILIBRADO"
-        elif -0.50 <= edge <= -0.25: return "🟠 CARO"
-        else: return "🔴 ESMAGADA"
+    def classificar_edge(row):
+        line = row['Asian_Line_Decimal']
+        edge = row['Handicap_Edge']  # P - L
+    
+        if line < 0:  # HOME favorito
+            if edge > 0.5:
+                return "🔴 FAVORITO CARO (valor no AWAY)"
+            elif edge < -0.5:
+                return "🟢 FAVORITO BARATO (valor no HOME)"
+            else:
+                return "🔵 EQUILIBRADO"
+        else:  # HOME underdog
+            if edge < -0.5:
+                return "🟢 UNDERDOG BARATO (valor no HOME)"
+            elif edge > 0.5:
+                return "🔴 UNDERDOG CARO (valor no AWAY)"
+            else:
+                return "🔵 EQUIILIBRADO"
+
 
     games_today_local['Edge_Label'] = games_today_local['Handicap_Edge'].apply(classificar_edge)
 
