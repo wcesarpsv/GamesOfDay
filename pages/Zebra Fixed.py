@@ -74,64 +74,98 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
 # ==========================================================
 # ASIAN LINE → DECIMAL (HOME)
 # ==========================================================
-def convert_asian_line_to_decimal_corrigido(line_str):
+
+
+def convert_asian_line_to_decimal(line_str):
     """
-    Converte handicaps asiáticos (Away) no formato string para decimal invertido (Home).
+    Converte handicap asiático do time AWAY para decimal invertido (Home).
+    Exemplo:
+      Away: -1/-1.5 → Home: +1.25
     """
     if pd.isna(line_str) or line_str == "":
-        return None
+        return np.nan
 
-    line_str = str(line_str).strip()
+    s = str(line_str).strip().replace(" ", "")
 
-    if line_str in ("0", "0.0"):
+    # Caso ZERO
+    if s in ("0", "0.0"):
         return 0.0
 
-    common_splits = {
-        '0/0.5': -0.25,
-        '0.5/1': -0.75,
-        '1/1.5': -1.25,
-        '1.5/2': -1.75,
-        '2/2.5': -2.25,
-        '2.5/3': -2.75,
-        '3/3.5': -3.25,
-    
-        '0/-0.5': 0.25,
-        '-0.5/-1': 0.75,
-        '-1/-1.5': 1.25,   
-        '-1.5/-2': 1.75,
-        '-2/-2.5': 2.25,
-        '-2.5/-3': 2.75,
-        '-3/-3.5': 3.25,
-    
-        '0.75': -0.75,
-        '-0.75': 0.75,
-        '0.25': -0.25,
-        '-0.25': 0.25,
-    }
-
-
-    if line_str in common_splits:
-        return common_splits[line_str]
-
-    if "/" not in line_str:
+    # SPLIT (ex: "-1/-1.5")
+    if "/" in s:
         try:
-            num = float(line_str)
-            return -num
-        except ValueError:
-            return None
+            parts = [float(p) for p in s.split("/")]
+            avg = sum(parts) / len(parts)
+            return -avg  # invertendo para home
+        except:
+            return np.nan
 
+    # SIMPLES
     try:
-        parts = [float(p) for p in line_str.split("/")]
-        avg = sum(parts) / len(parts)
-        first_part = parts[0]
-        if first_part < 0:
-            result = -abs(avg)
-        else:
-            result = abs(avg)
-        return -result
-    except (ValueError, TypeError):
-        st.warning(f"⚠️ Split handicap não reconhecido: {line_str}")
-        return None
+        return -float(s)
+    except:
+        return np.nan
+
+
+
+# def convert_asian_line_to_decimal_corrigido(line_str):
+#     """
+#     Converte handicaps asiáticos (Away) no formato string para decimal invertido (Home).
+#     """
+#     if pd.isna(line_str) or line_str == "":
+#         return None
+
+#     line_str = str(line_str).strip()
+
+#     if line_str in ("0", "0.0"):
+#         return 0.0
+
+#     common_splits = {
+#         '0/0.5': -0.25,
+#         '0.5/1': -0.75,
+#         '1/1.5': -1.25,
+#         '1.5/2': -1.75,
+#         '2/2.5': -2.25,
+#         '2.5/3': -2.75,
+#         '3/3.5': -3.25,
+    
+#         '0/-0.5': 0.25,
+#         '-0.5/-1': 0.75,
+#         '-1/-1.5': 1.25,   
+#         '-1.5/-2': 1.75,
+#         '-2/-2.5': 2.25,
+#         '-2.5/-3': 2.75,
+#         '-3/-3.5': 3.25,
+    
+#         '0.75': -0.75,
+#         '-0.75': 0.75,
+#         '0.25': -0.25,
+#         '-0.25': 0.25,
+#     }
+
+
+#     if line_str in common_splits:
+#         return common_splits[line_str]
+
+#     if "/" not in line_str:
+#         try:
+#             num = float(line_str)
+#             return -num
+#         except ValueError:
+#             return None
+
+#     try:
+#         parts = [float(p) for p in line_str.split("/")]
+#         avg = sum(parts) / len(parts)
+#         first_part = parts[0]
+#         if first_part < 0:
+#             result = -abs(avg)
+#         else:
+#             result = abs(avg)
+#         return -result
+#     except (ValueError, TypeError):
+#         st.warning(f"⚠️ Split handicap não reconhecido: {line_str}")
+#         return None
 
 # ==========================================================
 # AVALIAÇÃO DO RESULTADO DO HANDICAP
