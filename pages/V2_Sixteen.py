@@ -1245,6 +1245,13 @@ def gerar_score_combinado_16(df):
     
     return df
 
+
+
+st.info("⚙️ Treinando modelo... Aguarde 🧠")
+modelo_home, modelo_away, modelo_handicap, games_today = treinar_modelo_quadrantes_16_dual(history, games_today)
+
+
+
 ##### BLOCO 13: EXIBIÇÃO DOS RESULTADOS E LIVE MONITOR #####
 
 st.markdown("## 🏆 Melhores Confrontos por 16 Quadrantes ML")
