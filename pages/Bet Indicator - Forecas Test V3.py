@@ -608,8 +608,8 @@ def main():
     stats.append(metrics_1x2)
     models["1X2"] = model_1x2
 
-    with st.expander("🧠 SHAP Analysis – Modelo 1X2", expanded=False):
-        show_shap_analysis(model_1x2, X_1x2.sample(min(1000, len(X_1x2))), "1X2")
+    # with st.expander("🧠 SHAP Analysis – Modelo 1X2", expanded=False):
+    #     show_shap_analysis(model_1x2, X_1x2.sample(min(1000, len(X_1x2))), "1X2")
 
     
     # Modelo Over/Under
