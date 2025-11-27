@@ -6,6 +6,7 @@ import os
 import joblib
 import re
 from sklearn.ensemble import RandomForestClassifier
+from catboost import CatBoostClassifier
 import matplotlib.pyplot as plt
 from datetime import datetime
 import math
@@ -848,34 +849,28 @@ def calculate_handicap_profit(rec, handicap_result, odds_row, asian_line_decimal
         return single_profit(handicap_result)
 
 
-    
 
+from catboost import CatBoostClassifier
 
-########################################
-#### 🤖 BLOCO – Treinamento ML Dual (com Quadrant Distance Features)
-########################################
-from sklearn.ensemble import RandomForestClassifier
+# ===============================
+# 🔁 Escolha do Modelo no Streamlit
+# ===============================
+usar_catboost = st.checkbox("🚀 Ativar CatBoost ML", value=False,
+                            help="Se desmarcado usa RandomForest")
 
 def treinar_modelo_quadrantes_dual(history, games_today):
-    """
-    Treina modelo ML para Home e Away com base nos quadrantes,
-    ligas e métricas de distância entre times.
-    """
+    st.subheader("🤖 Treinando Modelo Dual (Home & Away)")
 
-    # -------------------------------
+    # --------------------------------
     # 🔹 Garantir cálculo das distâncias
-    # -------------------------------
+    # --------------------------------
     history = calcular_distancias_quadrantes(history)
     games_today = calcular_distancias_quadrantes(games_today)
 
-    # -------------------------------
-    # 🔹 Preparar features básicas
-    # -------------------------------
     quadrantes_home = pd.get_dummies(history['Quadrante_Home'], prefix='QH')
     quadrantes_away = pd.get_dummies(history['Quadrante_Away'], prefix='QA')
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
 
-    # 🔹 Novas features contínuas (Distância, Separação e Ângulo)
     extras = history[[
         'Quadrant_Dist',
         'Quadrant_Separation',
@@ -887,87 +882,88 @@ def treinar_modelo_quadrantes_dual(history, games_today):
         'MEI_Home'
     ]].fillna(0)
 
-    # Combinar todas as features
-    X = pd.concat([ligas_dummies, extras,quadrantes_home, quadrantes_away], axis=1)
-    # quadrantes_home, quadrantes_away, 
-
-    # Targets
+    X = pd.concat([ligas_dummies, extras, quadrantes_home, quadrantes_away], axis=1)
+    
     y_home = history['Target_AH_Home']
-    y_away = 1 - y_home  # inverso lógico
+    y_away = 1 - y_home
 
-    # -------------------------------
-    # 🔹 Treinar modelos
-    # -------------------------------
-    model_home = RandomForestClassifier(
-        n_estimators=500, max_depth=10, random_state=42, class_weight='balanced_subsample', n_jobs=-1
-    )
-    model_away = RandomForestClassifier(
-        n_estimators=500, max_depth=10, random_state=42, class_weight='balanced_subsample', n_jobs=-1
-    )
+    # ==================================
+    # 🔥 Escolha automática do Modelo ML
+    # ==================================
+    if usar_catboost:
+        st.success("CATBOOST selecionado! 🚀")
+        model_home = CatBoostClassifier(
+            depth=7,
+            learning_rate=0.09,
+            iterations=500,
+            eval_metric="Logloss",
+            random_state=42,
+            verbose=False,
+            loss_function="Logloss"
+        )
+        model_away = CatBoostClassifier(
+            depth=7,
+            learning_rate=0.09,
+            iterations=500,
+            eval_metric="Logloss",
+            random_state=42,
+            verbose=False,
+            loss_function="Logloss"
+        )
+    else:
+        st.info("RandomForest usando configuração padrão 🌲")
+        model_home = RandomForestClassifier(
+            n_estimators=600, max_depth=12,
+            random_state=42, class_weight='balanced_subsample', n_jobs=-1
+        )
+        model_away = RandomForestClassifier(
+            n_estimators=600, max_depth=12,
+            random_state=42, class_weight='balanced_subsample', n_jobs=-1
+        )
 
+    # Treinar
     model_home.fit(X, y_home)
     model_away.fit(X, y_away)
 
-    # # ============================================================
-    # # 🔍 Feature Importance – Modelo HOME com novas features
-    # # ============================================================
-    # try:
-    #     importances = pd.Series(model_home.feature_importances_, index=X.columns)
-    #     top_feats = importances.sort_values(ascending=False).head(20)
-    
-    #     st.markdown("### 🔍 Top 20 Features mais importantes (Modelo HOME)")
-    #     st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
-    
-    #     st.bar_chart(top_feats)
-    
-    # except Exception as e:
-    #     st.warning(f"Não foi possível calcular importâncias: {e}")
-
-
-    # -------------------------------
-    # 🔹 Preparar dados para hoje
-    # -------------------------------
+    # ==============================
+    # 🔮 Previsões — SEM MEXER EM NADA
+    # ==============================
     qh_today = pd.get_dummies(games_today['Quadrante_Home'], prefix='QH').reindex(columns=quadrantes_home.columns, fill_value=0)
     qa_today = pd.get_dummies(games_today['Quadrante_Away'], prefix='QA').reindex(columns=quadrantes_away.columns, fill_value=0)
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    extras_today = games_today[[
-        'Quadrant_Dist',
-        'Quadrant_Separation',
-        'Quadrant_Angle_Geometric',
-        'Quadrant_Angle_Normalized',
-        'WG_Rolling_Home',
-        'WG_Rolling_Away',
-        'WG_Rolling_Diff',
-        'MEI_Home'
-    ]].fillna(0)
+    extras_today = games_today[extras.columns].fillna(0)
 
-    X_today = pd.concat([ligas_today, extras_today,qh_today, qa_today], axis=1)
-    # qh_today, qa_today,
+    X_today = pd.concat([ligas_today, extras_today, qh_today, qa_today], axis=1)
 
-    # -------------------------------
-    # 🔹 Fazer previsões
-    # -------------------------------
-    probas_home = model_home.predict_proba(X_today)[:, 1]
-    probas_away = model_away.predict_proba(X_today)[:, 1]
+    games_today['Quadrante_ML_Score_Home'] = model_home.predict_proba(X_today)[:, 1]
+    games_today['Quadrante_ML_Score_Away'] = model_away.predict_proba(X_today)[:, 1]
+    games_today['Quadrante_ML_Score_Main'] = np.maximum(
+        games_today['Quadrante_ML_Score_Home'],
+        games_today['Quadrante_ML_Score_Away']
+    )
+    games_today['ML_Side'] = np.where(
+        games_today['Quadrante_ML_Score_Home'] > games_today['Quadrante_ML_Score_Away'],
+        'HOME', 'AWAY'
+    )
 
-    games_today['Quadrante_ML_Score_Home'] = probas_home
-    games_today['Quadrante_ML_Score_Away'] = probas_away
-    games_today['Quadrante_ML_Score_Main'] = np.maximum(probas_home, probas_away)
-    games_today['ML_Side'] = np.where(probas_home > probas_away, 'HOME', 'AWAY')
+    # ==============================
+    # 📊 Show Feature Importance
+    # ==============================
+    if usar_catboost:
+        # Feature importance do CATBOOST
+        importances = model_home.get_feature_importance()
+    else:
+        importances = model_home.feature_importances_
 
-    # -------------------------------
-    # 🔹 Mostrar insights de importância
-    # -------------------------------
-    try:
-        importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
-        top_feats = importances.head(15)
-        st.markdown("### 🔍 Top Features mais importantes (Modelo HOME)")
-        st.dataframe(top_feats.to_frame("Importância"), use_container_width=True)
-    except Exception as e:
-        st.warning(f"Não foi possível calcular importâncias: {e}")
+    top_feats = pd.Series(importances, index=X.columns).sort_values(ascending=False).head(20)
+    st.markdown("### 📊 TOP 20 Features mais importantes")
+    st.dataframe(top_feats.to_frame("Importância"))
 
-    st.success("✅ Modelo dual (Home/Away) treinado com sucesso com novas features!")
     return model_home, model_away, games_today
+
+
+
+
 
 
 # ---------------- SISTEMA DE INDICAÇÕES EXPLÍCITAS DUAL ----------------
