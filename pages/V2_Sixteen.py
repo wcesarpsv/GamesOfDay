@@ -526,16 +526,17 @@ if "Date" in history.columns:
 
 # Targets Home/Away (sempre binário, push=0)
 history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
+
 history["Target_AH_Home"] = history.apply(
-    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"], invert=False) > 0.5 else 0,
+    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]) > 0.5 else 0,
     axis=1
 )
 
-history["Margin_Away"] = history["Goals_A_FT"] - history["Goals_H_FT"]
 history["Target_AH_Away"] = history.apply(
-    lambda r: 1 if calc_handicap_result(r["Margin_Away"], r["Asian_Line_Decimal"], invert=True) > 0.5 else 0,
+    lambda r: 1 if calc_handicap_result(-r["Margin"], -r["Asian_Line_Decimal"]) > 0.5 else 0,
     axis=1
 )
+
 
 # ==========================================================
 # BLOCO 6 – SISTEMA DE 16 QUADRANTES
