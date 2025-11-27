@@ -78,32 +78,56 @@ def filter_leagues(df: pd.DataFrame) -> pd.DataFrame:
 
 def convert_asian_line_to_decimal_corrigido(line_str):
     """
-    Converte handicap asiático do time AWAY para decimal invertido (Home).
-    Exemplo:
-      Away: -1/-1.5 → Home: +1.25
+    Converte handicaps asiáticos (Away) no formato string para decimal (Home).
+    Regra:
+      - Sempre interpretamos a linha como sendo do AWAY.
+      - Retornamos o handicap equivalente para o HOME (invertendo o sinal).
+      - Suporta inteiros, meios, quartos e splits (0/0.5, -1/-1.5, etc).
+
+    Exemplos:
+      '0'         ->  0.0
+      '-1.5'      -> +1.5
+      '1.5'       -> -1.5
+      '-1/-1.5'   -> +1.25
+      '0/0.5'     -> -0.25
+      '0/-0.5'    -> +0.25
     """
-    if pd.isna(line_str) or line_str == "":
+    if pd.isna(line_str):
         return np.nan
 
-    s = str(line_str).strip().replace(" ", "")
+    s = str(line_str).strip()
+    if s == "":
+        return np.nan
 
-    # Caso ZERO
-    if s in ("0", "0.0"):
+    # Normalizar formato
+    s = s.replace(" ", "")
+    s = s.replace(",", ".")  # caso venha com vírgula
+    if s.startswith("+"):
+        s = s[1:]
+
+    # Zero é caso especial
+    if s in ("0", "0.0", "-0", "+0"):
         return 0.0
 
-    # SPLIT (ex: "-1/-1.5")
-    if "/" in s:
-        try:
-            parts = [float(p) for p in s.split("/")]
-            avg = sum(parts) / len(parts)
-            return -avg  # invertendo para home
-        except:
-            return np.nan
-
-    # SIMPLES
     try:
-        return -float(s)
-    except:
+        # SPLIT (ex: "-1/-1.5", "0/0.5", "0/-0.5")
+        if "/" in s:
+            parts = [float(p) for p in s.split("/")]
+            if len(parts) == 0:
+                return np.nan
+            away_avg = sum(parts) / len(parts)
+            home_line = -away_avg
+        else:
+            # Linha simples (ex: "-1.5", "0.25", "-0.75")
+            away_line = float(s)
+            home_line = -away_line
+
+        # Garantir que fique sempre em múltiplos de 0.25
+        home_line_q = round(home_line * 4) / 4.0
+        return home_line_q
+
+    except Exception:
+        st.warning(f"⚠️ Asian Line inválido ou não reconhecido: {line_str}")
         return np.nan
 
 
