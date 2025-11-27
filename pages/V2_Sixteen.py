@@ -892,22 +892,22 @@ def treinar_modelo_quadrantes_16_dual(history: pd.DataFrame, games_today: pd.Dat
         edge = row['Handicap_Edge']  # P - L
     
         if line < 0:  # HOME favorito
-            if edge > 0.5:
+            if edge > 0.50:
                 return "🔴 FAVORITO CARO (valor no AWAY)"
-            elif edge < -0.5:
+            elif edge < -0.50:
                 return "🟢 FAVORITO BARATO (valor no HOME)"
             else:
                 return "🔵 EQUILIBRADO"
         else:  # HOME underdog
-            if edge < -0.5:
+            if edge < -0.50:
                 return "🟢 UNDERDOG BARATO (valor no HOME)"
-            elif edge > 0.5:
+            elif edge > 0.50:
                 return "🔴 UNDERDOG CARO (valor no AWAY)"
             else:
-                return "🔵 EQUIILIBRADO"
+                return "🔵 EQUILIBRADO"
+    
+    games_today_local['Edge_Label'] = games_today_local.apply(classificar_edge, axis=1)
 
-
-    games_today_local['Edge_Label'] = games_today_local['Handicap_Edge'].apply(classificar_edge)
 
     st.success("✔️ Classificação + Regressão com Pred_Handicap como feature: OK!")
 
