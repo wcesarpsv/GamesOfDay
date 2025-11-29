@@ -112,17 +112,40 @@ def convert_asian_line_to_decimal(line_str):
     except (ValueError, TypeError):
         return None
 
-def calc_handicap_result(margin, asian_line_decimal, invert=False):
-    if pd.isna(asian_line_decimal) or pd.isna(margin):
-        return np.nan
-    if invert:
-        margin = -margin
-    if margin > asian_line_decimal:
-        return 1.0
-    elif margin == asian_line_decimal:
-        return 0.5
-    else:
-        return 0.0
+# ========================================
+# 🎯 Criar Target_AH_Away (matematicamente correto)
+# ========================================
+
+def calc_handicap_result(margin, handicap_home_line):
+    """
+    Retorna:
+      +1 → Home cobriu o HC
+       0 → Push
+      -1 → Home NÃO cobriu o HC
+    Função que você já tem, então não alteramos.
+    """
+    # Já existe no seu código
+    return 1 if margin > handicap_home_line else (0 if margin == handicap_home_line else -1)
+
+# Home Margin já existe: Goals_H_FT - Goals_A_FT
+history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
+
+# Target para HOME (já estava correto)
+history["Target_AH_Home"] = history.apply(
+    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]) > 0 else 0,
+    axis=1
+)
+
+# ============================
+# ⚽ Agora criamos o AWAY
+# ============================
+# Away cobre quando Home NÃO cobre
+# Portanto invertendo o resultado:
+history["Target_AH_Away"] = history.apply(
+    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]) < 0 else 0,
+    axis=1
+)
+
 
 
 # =======================
