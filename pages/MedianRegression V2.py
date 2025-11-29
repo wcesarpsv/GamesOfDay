@@ -2086,23 +2086,97 @@ else:
 
 
 
+# # ==========================================================
+# # 🔥 MÓDULO — CatBoost + Consenso ML
+# # ==========================================================
+# from catboost import CatBoostClassifier
+
+# st.subheader("🤖 Consenso Inteligente – Regressão × CatBoost")
+
+# usar_catboost = st.checkbox("Ativar CatBoost como Segunda Opinião", value=False)
+
+# if usar_catboost:
+
+#     # =========================
+#     # 🧠 Treinar CatBoost
+#     # =========================
+#     st.write("📚 Treinando CatBoost no histórico...")
+
+#     # Seleção de features já existentes no history
+#     feature_cols = [
+#         'Media_Score_Home','Media_Score_Away',
+#         'Quadrant_Dist','Quadrant_Separation',
+#         'Aggression_Home','Aggression_Away',
+#         'Regressao_Force_Home','Regressao_Force_Away'
+#     ]
+#     feature_cols = [c for c in feature_cols if c in history.columns]
+
+#     X_train = history[feature_cols].fillna(0)
+#     y_train = history['Target_AH_Home']  # Prevendo vitória do Home cobrir AH
+
+#     modelo_cb = CatBoostClassifier(
+#         iterations=600,
+#         learning_rate=0.08,
+#         depth=7,
+#         loss_function='Logloss',
+#         verbose=False
+#     )
+#     modelo_cb.fit(X_train, y_train)
+
+#     # =========================
+#     # 🔮 Previsões CatBoost
+#     # =========================
+#     X_today = games_today[feature_cols].fillna(0)
+#     prob_cb = modelo_cb.predict_proba(X_today)[:, 1]
+#     games_today['Prob_Cat'] = prob_cb
+
+#     # =========================
+#     # 🧠 Consenso Inteligente
+#     # =========================
+#     def calcular_consenso(row):
+#         # 2 fontes: Regressão + CatBoost
+#         r = row.get('Media_Score_Home', 0.0)
+#         c = row.get('Prob_Cat', 0.0)
+
+#         if r >= 0.60 and c >= 0.60:
+#             return "🟩 Forte (Alinhados)"
+#         elif abs(r - c) <= 0.10:
+#             return "🟨 Regular (Atenção)"
+#         else:
+#             return "🟥 Divergente (Evitar)"
+
+#     games_today['Consenso'] = games_today.apply(calcular_consenso, axis=1)
+
+#     # =========================
+#     # 📊 Tabela no Streamlit
+#     # =========================
+#     st.write("📌 Análise de Consenso – TOP Sinais")
+#     st.dataframe(
+#         games_today[['League','Time','Home','Away','Goals_H_Today','Goals_A_Today','Media_Score_Home','Prob_Cat','Consenso']]
+#         .sort_values(by='Prob_Cat', ascending=False)
+#         .reset_index(drop=True)
+#     )
+
+# else:
+#     st.warning("⚠️ Ative o CatBoost para ver o Consenso.")
+
+
+
+
 # ==========================================================
-# 🔥 MÓDULO — CatBoost + Consenso ML
+# 🤖 CatBoost – Home & Away (Probabilidade de Cobrir o AH)
 # ==========================================================
 from catboost import CatBoostClassifier
 
-st.subheader("🤖 Consenso Inteligente – Regressão × CatBoost")
+st.subheader("🤖 CatBoost – Probabilidades Asiáticas (Home & Away)")
 
-usar_catboost = st.checkbox("Ativar CatBoost como Segunda Opinião", value=False)
+usar_catboost = st.checkbox("Ativar CatBoost para Handicap", value=False)
 
 if usar_catboost:
 
     # =========================
-    # 🧠 Treinar CatBoost
+    # 📌 Features já existentes
     # =========================
-    st.write("📚 Treinando CatBoost no histórico...")
-
-    # Seleção de features já existentes no history
     feature_cols = [
         'Media_Score_Home','Media_Score_Away',
         'Quadrant_Dist','Quadrant_Separation',
@@ -2111,54 +2185,57 @@ if usar_catboost:
     ]
     feature_cols = [c for c in feature_cols if c in history.columns]
 
-    X_train = history[feature_cols].fillna(0)
-    y_train = history['Target_AH_Home']  # Prevendo vitória do Home cobrir AH
+    X_train_home = history[feature_cols].fillna(0)
+    y_train_home = history['Target_AH_Home']
 
-    modelo_cb = CatBoostClassifier(
+    X_train_away = history[feature_cols].fillna(0)
+    y_train_away = history['Target_AH_Away']
+
+    # =========================
+    # 🔹 Treinar CatBoost – Home
+    # =========================
+    modelo_cb_home = CatBoostClassifier(
         iterations=600,
         learning_rate=0.08,
         depth=7,
         loss_function='Logloss',
         verbose=False
     )
-    modelo_cb.fit(X_train, y_train)
+    modelo_cb_home.fit(X_train_home, y_train_home)
 
     # =========================
-    # 🔮 Previsões CatBoost
+    # 🔹 Treinar CatBoost – Away
+    # =========================
+    modelo_cb_away = CatBoostClassifier(
+        iterations=600,
+        learning_rate=0.08,
+        depth=7,
+        loss_function='Logloss',
+        verbose=False
+    )
+    modelo_cb_away.fit(X_train_away, y_train_away)
+
+    # =========================
+    # 🔮 Previsões
     # =========================
     X_today = games_today[feature_cols].fillna(0)
-    prob_cb = modelo_cb.predict_proba(X_today)[:, 1]
-    games_today['Prob_Cat'] = prob_cb
+
+    games_today['Prob_Cat_Home'] = modelo_cb_home.predict_proba(X_today)[:, 1]
+    games_today['Prob_Cat_Away'] = modelo_cb_away.predict_proba(X_today)[:, 1]
 
     # =========================
-    # 🧠 Consenso Inteligente
+    # 📊 Mostrar tabela final
     # =========================
-    def calcular_consenso(row):
-        # 2 fontes: Regressão + CatBoost
-        r = row.get('Media_Score_Home', 0.0)
-        c = row.get('Prob_Cat', 0.0)
-
-        if r >= 0.60 and c >= 0.60:
-            return "🟩 Forte (Alinhados)"
-        elif abs(r - c) <= 0.10:
-            return "🟨 Regular (Atenção)"
-        else:
-            return "🟥 Divergente (Evitar)"
-
-    games_today['Consenso'] = games_today.apply(calcular_consenso, axis=1)
-
-    # =========================
-    # 📊 Tabela no Streamlit
-    # =========================
-    st.write("📌 Análise de Consenso – TOP Sinais")
+    st.write("📌 CatBoost – Probabilidades Independentes por Handicap")
     st.dataframe(
-        games_today[['League','Time','Home','Away','Goals_H_Today','Goals_A_Today','Media_Score_Home','Prob_Cat','Consenso']]
-        .sort_values(by='Prob_Cat', ascending=False)
+        games_today[['League','Time','Home','Away','Goals_H_Today','Goals_A_Today','Prob_Cat_Home','Prob_Cat_Away','Asian_Line_Decimal']]
+        .sort_values(by='Prob_Cat_Home', ascending=False)
         .reset_index(drop=True)
     )
 
 else:
-    st.warning("⚠️ Ative o CatBoost para ver o Consenso.")
+    st.info("Ative o CatBoost para ver resultados de Home & Away.")
+
 
 
 
