@@ -2157,7 +2157,7 @@ if usar_catboost:
     # =========================
     st.write("📌 CatBoost – Probabilidades Independentes por Handicap")
     st.dataframe(
-        games_today[['League','Home','Away','Prob_Cat_Home','Prob_Cat_Away','Asian_Line_Decimal']]
+        games_today[['League','Time','Home','Away','Goals_H_Today','Goals_A_Today','Prob_Cat_Home','Prob_Cat_Away','Asian_Line_Decimal']]
         .sort_values(by='Prob_Cat_Home', ascending=False)
         .reset_index(drop=True)
     )
