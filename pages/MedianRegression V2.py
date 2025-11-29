@@ -2152,7 +2152,7 @@ if usar_catboost:
     # =========================
     st.write("📌 Análise de Consenso – TOP Sinais")
     st.dataframe(
-        games_today[['League','Home','Away','Media_Score_Home','Prob_Cat','Consenso']]
+        games_today[['League','Time','Home','Away','Goals_H_Today','Goals_A_Today','Media_Score_Home','Prob_Cat','Consenso']]
         .sort_values(by='Prob_Cat', ascending=False)
         .reset_index(drop=True)
     )
