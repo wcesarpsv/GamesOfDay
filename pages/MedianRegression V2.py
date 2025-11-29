@@ -124,6 +124,42 @@ def calc_handicap_result(margin, asian_line_decimal, invert=False):
     else:
         return 0.0
 
+
+# =======================
+# 🔢 FAIXAS DE HANDICAP
+# =======================
+def criar_faixa_handicap(line):
+    """
+    Cria faixas globais de handicap já na perspectiva do Home (Asian_Line_Decimal):
+      line <= -0.75  -> Home super favorito
+      -0.75 < line <= -0.25 -> Home favorito leve
+      -0.25 < line < 0.25 -> Jogo equilibrado
+      0.25 <= line < 0.75 -> Home underdog leve
+      line >= 0.75 -> Home underdog pesado
+    """
+    if pd.isna(line):
+        return "GLOBAL"
+
+    try:
+        x = float(line)
+    except (TypeError, ValueError):
+        return "GLOBAL"
+
+    if x <= -0.75:
+        return "FAV_PESADO"
+    elif x <= -0.25:
+        return "FAV_LEVE"
+    elif x < 0.25:
+        return "EQUILIBRADO"
+    elif x < 0.75:
+        return "DOG_LEVE"
+    else:
+        return "DOG_PESADO"
+
+
+
+
+
 from sklearn.cluster import KMeans
 
 # ==============================================================
@@ -402,6 +438,120 @@ history['Quadrante_Away'] = history.apply(
     lambda x: classificar_quadrante_16(x.get('Aggression_Away'), x.get('HandScore_Away')), axis=1
 )
 
+
+
+
+# ===================================
+# 🔧 CALIBRAÇÃO DINÂMICA DE THRESHOLDS
+# ===================================
+def calibrar_thresholds_regressao_por_handicap(history):
+    """
+    Usa o histórico para calibrar thresholds de Regressao_Force_Home/Away
+    por faixa de handicap (FAV_PESADO, EQUILIBRADO, DOG_PESADO, etc.).
+
+    A lógica é:
+      - Para cada faixa de handicap, calcula quantis (20/40/60/80)
+      - Usa esses quantis como fronteiras para:
+        📈 FORTE MELHORA / 📈 MELHORA / ⚖️ ESTÁVEL / 📉 QUEDA / 📉 FORTE QUEDA
+    """
+    hist = history.copy()
+
+    required_cols = ['Asian_Line_Decimal', 'Regressao_Force_Home', 'Regressao_Force_Away']
+    missing = [c for c in required_cols if c not in hist.columns]
+    if missing:
+        st.warning(f"⚠️ Não foi possível calibrar thresholds dinâmicos. Colunas faltando: {missing}")
+        return {}
+
+    hist['Faixa_Handicap'] = hist['Asian_Line_Decimal'].apply(criar_faixa_handicap)
+
+    thresholds = {}
+
+    for faixa, grupo in hist.groupby('Faixa_Handicap'):
+        # Precisa de um mínimo de jogos na faixa para não ficar mal calibrado
+        if len(grupo) < 50:
+            continue
+
+        qs_home = grupo['Regressao_Force_Home'].quantile([0.2, 0.4, 0.6, 0.8]).to_dict()
+        qs_away = grupo['Regressao_Force_Away'].quantile([0.2, 0.4, 0.6, 0.8]).to_dict()
+
+        thresholds[faixa] = {
+            'home': {
+                'q20': qs_home[0.2], 'q40': qs_home[0.4],
+                'q60': qs_home[0.6], 'q80': qs_home[0.8],
+            },
+            'away': {
+                'q20': qs_away[0.2], 'q40': qs_away[0.4],
+                'q60': qs_away[0.6], 'q80': qs_away[0.8],
+            }
+        }
+
+    # Fallback GLOBAL se alguma faixa não tiver dados
+    if 'GLOBAL' not in thresholds and len(hist) >= 50:
+        qs_home = hist['Regressao_Force_Home'].quantile([0.2, 0.4, 0.6, 0.8]).to_dict()
+        qs_away = hist['Regressao_Force_Away'].quantile([0.2, 0.4, 0.6, 0.8]).to_dict()
+        thresholds['GLOBAL'] = {
+            'home': {
+                'q20': qs_home[0.2], 'q40': qs_home[0.4],
+                'q60': qs_home[0.6], 'q80': qs_home[0.8],
+            },
+            'away': {
+                'q20': qs_away[0.2], 'q40': qs_away[0.4],
+                'q60': qs_away[0.6], 'q80': qs_away[0.8],
+            }
+        }
+
+    st.info(f"✅ Thresholds dinâmicos calibrados para {len(thresholds)} faixas de handicap")
+    return thresholds
+
+def aplicar_thresholds_regressao_por_handicap(df, thresholds):
+    """
+    Aplica os thresholds dinâmicos para gerar:
+      - Tendencia_Home
+      - Tendencia_Away
+    em função de:
+      - Faixa_Handicap (por Asian_Line_Decimal)
+      - Regressao_Force_Home / Regressao_Force_Away
+    """
+    if not thresholds:
+        st.warning("⚠️ Nenhum threshold dinâmico disponível. Mantendo tendências padrão (se existirem).")
+        return df
+
+    df = df.copy()
+    df['Faixa_Handicap'] = df['Asian_Line_Decimal'].apply(criar_faixa_handicap)
+
+    def classificar(row, side):
+        faixa = row.get('Faixa_Handicap', 'GLOBAL')
+        thr_faixa = thresholds.get(faixa, thresholds.get('GLOBAL', None))
+        if thr_faixa is None:
+            return '⚖️ ESTÁVEL'
+
+        if side == 'home':
+            val = row.get('Regressao_Force_Home', np.nan)
+            qs = thr_faixa['home']
+        else:
+            val = row.get('Regressao_Force_Away', np.nan)
+            qs = thr_faixa['away']
+
+        if pd.isna(val):
+            return '⚖️ ESTÁVEL'
+
+        if val > qs['q80']:
+            return '📈 FORTE MELHORA'
+        elif val > qs['q60']:
+            return '📈 MELHORA'
+        elif val > qs['q40']:
+            return '⚖️ ESTÁVEL'
+        elif val > qs['q20']:
+            return '📉 QUEDA'
+        else:
+            return '📉 FORTE QUEDA'
+
+    df['Tendencia_Home'] = df.apply(lambda r: classificar(r, 'home'), axis=1)
+    df['Tendencia_Away'] = df.apply(lambda r: classificar(r, 'away'), axis=1)
+
+    return df
+
+
 # ########################################
 # #### 🧠 BLOCO – Cálculo de MT_H e MT_A (Momentum do Time)
 # ########################################
@@ -450,234 +600,6 @@ history['Quadrante_Away'] = history.apply(
 # history = calcular_momentum_time(history)
 # games_today = calcular_momentum_time(games_today)
 
-
-
-
-# ======================
-# 🔧 Resultado AH (histórico, usando FT)
-# ======================
-def determine_handicap_result_ft(row):
-    """
-    Determina se o HOME cobriu o handicap asiático (perspectiva do Home)
-    usando gols de FT (histórico).
-    """
-    try:
-        gh = float(row['Goals_H_FT'])
-        ga = float(row['Goals_A_FT'])
-        line = float(row['Asian_Line_Decimal'])
-    except (ValueError, TypeError, KeyError):
-        return None
-
-    margin = gh - ga
-    diff = margin + line  # linha já está na perspectiva do Home
-
-    if abs(diff) < 1e-6:
-        return "PUSH"
-    elif diff > 0.5:
-        return "HOME_COVERED"
-    elif 0 < diff <= 0.5:
-        return "HALF_HOME_COVERED"
-    elif -0.5 < diff < 0:
-        return "HALF_HOME_NOT_COVERED"
-    elif diff <= -0.5:
-        return "HOME_NOT_COVERED"
-    else:
-        return None
-
-
-def categorize_handicap_bucket(line):
-    """
-    Cria buckets de handicap para calibrar thresholds por tipo de linha.
-    line = Asian_Line_Decimal (perspectiva do Home; negativo = favorito)
-    """
-    if pd.isna(line):
-        return "Sem_Linha"
-    try:
-        x = float(line)
-    except ValueError:
-        return "Sem_Linha"
-
-    # Home favorito forte (linhas negativas)
-    if x <= -1.25:
-        return "Fav_Muito_Forte"
-    elif x <= -0.75:
-        return "Fav_Forte"
-    elif x <= -0.25:
-        return "Fav_Moderado"
-    # Linhas equilibradas
-    elif -0.25 < x < 0.25:
-        return "Equilibrado"
-    # Home dog (linha positiva)
-    elif x < 0.75:
-        return "Dog_Moderado"
-    else:
-        return "Dog_Forte"
-
-
-def gerar_sinal_regressao_ml(row, t_strong, min_score):
-    """
-    Gera sinal de aposta baseado em:
-    - Regressao_Force_Home (quão longe e sentido da regressão)
-    - Quadrante_ML_Score_Home / Away (probabilidade ML)
-    
-    Regras base (ajustadas pelo backtest):
-      - Se regressão a favor do HOME for muito positiva e score ML alto → aposta HOME
-      - Se regressão contra HOME for muito negativa e score ML alto para AWAY → aposta AWAY (contra o time em queda)
-    """
-    r = row.get('Regressao_Force_Home', 0)
-    p_home = row.get('Quadrante_ML_Score_Home', 0.5)
-    p_away = row.get('Quadrante_ML_Score_Away', 0.5)
-
-    # HOME subvalorizado (melhora forte + ML gosta do Home)
-    if (r >= t_strong) and (p_home >= min_score) and (p_home >= p_away):
-        return "HOME_REG"
-
-    # HOME sobrevalorizado (queda forte + ML gosta do Away)
-    if (r <= -t_strong) and (p_away >= min_score) and (p_away >= p_home):
-        return "AWAY_REG"
-
-    return None  # sem bet
-
-
-def backtest_regressao_thresholds(
-    df_history,
-    group_cols=None,
-    t_grid=None,
-    min_score_grid=None,
-    min_bets=40
-):
-    """
-    Roda um grid de thresholds de regressão + prob ML e mede:
-    - Nº de apostas
-    - Winrate
-    - Profit
-    - ROI
-
-    group_cols:
-      []      -> global
-      ['League'] -> por liga
-      ['League','Handicap_Bucket'] -> por liga + tipo de linha
-    """
-    df = df_history.copy()
-
-    # Garantir colunas essenciais
-    required_cols = [
-        'Goals_H_FT', 'Goals_A_FT', 'Asian_Line_Decimal',
-        'Regressao_Force_Home', 'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away'
-    ]
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        st.error(f"❌ Faltam colunas para o backtest de regressão: {missing}")
-        return pd.DataFrame()
-
-    # Resultado AH histórico (Home perspective)
-    df['Handicap_Result_BT'] = df.apply(determine_handicap_result_ft, axis=1)
-
-    # Odds asiáticas ou fallback para 1X2
-    if 'Odd_H_Asi' in df.columns and 'Odd_A_Asi' in df.columns:
-        odd_home_col, odd_away_col = 'Odd_H_Asi', 'Odd_A_Asi'
-    elif 'Odd_H' in df.columns and 'Odd_A' in df.columns:
-        odd_home_col, odd_away_col = 'Odd_H', 'Odd_A'
-    else:
-        st.warning("⚠️ Colunas de odds não encontradas (Odd_H_Asi/Odd_A_Asi ou Odd_H/Odd_A). Profit será 0.")
-        odd_home_col = odd_away_col = None
-
-    # Grids padrão
-    if t_grid is None:
-        t_grid = [0.6, 0.8, 1.0, 1.2, 1.5]  # força da regressão
-    if min_score_grid is None:
-        min_score_grid = [0.55, 0.58, 0.60, 0.62, 0.65]  # prob ML mínima
-
-    if group_cols is None:
-        group_cols = []
-
-    results = []
-
-    # Definir grupos
-    if len(group_cols) == 0:
-        grupos = [("GLOBAL", df)]
-    else:
-        grupos = df.groupby(group_cols)
-
-    for group_key, g in grupos:
-        g = g.copy()
-
-        # Padronizar key
-        if isinstance(group_key, tuple):
-            group_name = " | ".join(str(x) for x in group_key)
-        else:
-            group_name = str(group_key)
-
-        for t_strong in t_grid:
-            for min_score in min_score_grid:
-                # Gerar sinal
-                g['Rec_BT'] = g.apply(
-                    lambda r: gerar_sinal_regressao_ml(r, t_strong=t_strong, min_score=min_score),
-                    axis=1
-                )
-
-                bets = g[g['Rec_BT'].notna()].copy()
-                n_bets = len(bets)
-
-                if n_bets < min_bets:
-                    continue  # ignora combinações pouco significativas
-
-                # Acerto (True/False/None)
-                bets['Quadrante_Correct_BT'] = bets.apply(
-                    lambda r: check_handicap_recommendation_correct(
-                        r['Rec_BT'],
-                        r['Handicap_Result_BT']
-                    ),
-                    axis=1
-                )
-
-                # Winrate = % de True
-                acertos_validos = bets['Quadrante_Correct_BT'].dropna()
-                if len(acertos_validos) == 0:
-                    continue
-
-                winrate = acertos_validos.mean()
-
-                # Profit / ROI (se tivermos odds)
-                if odd_home_col and odd_away_col:
-                    bets['Profit_BT'] = bets.apply(
-                        lambda r: calculate_handicap_profit(
-                            r['Rec_BT'],
-                            r['Handicap_Result_BT'],
-                            r.get(odd_home_col, np.nan),
-                            r.get(odd_away_col, np.nan),
-                            r.get('Asian_Line_Decimal', np.nan)
-                        ),
-                        axis=1
-                    )
-                    total_profit = bets['Profit_BT'].sum()
-                    roi = total_profit / n_bets if n_bets > 0 else 0.0
-                else:
-                    total_profit = 0.0
-                    roi = 0.0
-
-                results.append({
-                    'Grupo': group_name,
-                    't_strong': t_strong,
-                    'min_score': min_score,
-                    'N_Apostas': n_bets,
-                    'Winrate': winrate,
-                    'Profit': total_profit,
-                    'ROI': roi
-                })
-
-    if not results:
-        st.warning("⚠️ Nenhuma combinação de thresholds gerou apostas suficientes no backtest.")
-        return pd.DataFrame()
-
-    res_df = pd.DataFrame(results)
-    # Ordenar por ROI e Profit
-    res_df['Winrate_%'] = res_df['Winrate'] * 100
-    res_df['ROI_%'] = res_df['ROI'] * 100
-
-    return res_df
-
-
 # ---------------- CÁLCULO DE REGRESSÃO À MÉDIA ----------------
 def calcular_regressao_media(df):
     """
@@ -685,6 +607,9 @@ def calcular_regressao_media(df):
     - M_H, M_A: Z-score do momentum na liga  
     - MT_H, MT_A: Z-score do momentum do time
     - Distância da média e volatilidade histórica
+
+    ⚠️ Aqui NÃO classificamos mais em '📈 MELHORA', etc.
+    Isso será feito depois com thresholds DINÂMICOS por faixa de handicap.
     """
     df = df.copy()
 
@@ -693,8 +618,6 @@ def calcular_regressao_media(df):
     df['Extremidade_Away'] = np.abs(df['M_A']) + np.abs(df['MT_A'])
 
     # 2. FORÇA DE REGRESSÃO (quanto tende a voltar à média)
-    # Times com momentum muito alto tendem a regredir (valores negativos)
-    # Times com momentum muito baixo tendem a melhorar (valores positivos)
     df['Regressao_Force_Home'] = -np.sign(df['M_H']) * (df['Extremidade_Home'] ** 0.7)
     df['Regressao_Force_Away'] = -np.sign(df['M_A']) * (df['Extremidade_Away'] ** 0.7)
 
@@ -704,37 +627,33 @@ def calcular_regressao_media(df):
 
     # 4. MEDIA SCORE FINAL (combina regressão com aggression atual)
     df['Media_Score_Home'] = (0.6 * df['Prob_Regressao_Home'] + 
-                             0.4 * (1 - df['Aggression_Home']))  # Inverte aggression
-
+                             0.4 * (1 - df['Aggression_Home']))
     df['Media_Score_Away'] = (0.6 * df['Prob_Regressao_Away'] + 
                              0.4 * (1 - df['Aggression_Away']))
 
-    # 5. CLASSIFICAÇÃO DE REGRESSÃO
-    conditions_home = [
-        df['Regressao_Force_Home'] > 1.0,
-        df['Regressao_Force_Home'] > 0.3,
-        df['Regressao_Force_Home'] > -0.3,
-        df['Regressao_Force_Home'] > -1.0,
-        df['Regressao_Force_Home'] <= -1.0
-    ]
-    choices_home = ['📈 FORTE MELHORA', '📈 MELHORA', '⚖️ ESTÁVEL', '📉 QUEDA', '📉 FORTE QUEDA']
-    df['Tendencia_Home'] = np.select(conditions_home, choices_home, default='⚖️ ESTÁVEL')
-
-    conditions_away = [
-        df['Regressao_Force_Away'] > 1.0,
-        df['Regressao_Force_Away'] > 0.3,
-        df['Regressao_Force_Away'] > -0.3,
-        df['Regressao_Force_Away'] > -1.0,
-        df['Regressao_Force_Away'] <= -1.0
-    ]
-    choices_away = ['📈 FORTE MELHORA', '📈 MELHORA', '⚖️ ESTÁVEL', '📉 QUEDA', '📉 FORTE QUEDA']
-    df['Tendencia_Away'] = np.select(conditions_away, choices_away, default='⚖️ ESTÁVEL')
-
+    # ⚠️ NÃO cria mais Tendencia_Home / Tendencia_Away aqui
     return df
+
 
 # Aplicar regressão à média ao histórico e dados de hoje
 history = calcular_regressao_media(history)
 games_today = calcular_regressao_media(games_today)
+
+
+
+
+
+# ============================================
+# 🔥 CALIBRAÇÃO E APLICAÇÃO DOS THRESHOLDS 3D
+# ============================================
+thresholds_reg = calibrar_thresholds_regressao_por_handicap(history)
+
+# Aplica as tendências DINÂMICAS no histórico (para treino de features)
+history = aplicar_thresholds_regressao_por_handicap(history, thresholds_reg)
+
+# Aplica as tendências DINÂMICAS nos jogos de hoje (para previsões)
+games_today = aplicar_thresholds_regressao_por_handicap(games_today, thresholds_reg)
+
 
 # ---------------- CÁLCULO DE DISTÂNCIAS 3D (Aggression × M × MT) ----------------
 def calcular_distancias_3d(df):
@@ -1464,18 +1383,8 @@ def treinar_modelo_inteligente(history, games_today):
     st.info(f"🧠 Features Inteligentes no Top 15: {inteligentes_no_top}")
 
     st.success("✅ Modelo Inteligente treinado com sucesso!")
-    model_feature_info = {
-        "ligas_cols": list(ligas_dummies.columns),
-        "clusters_cols": list(clusters_dummies.columns),
-        "features_3d": features_3d,
-        "features_regressao": features_regressao,
-        "features_inteligentes": features_inteligentes
-    }
-    return modelo_home, games_today, model_feature_info
-
+    return model_home, games_today
 # ---------------- FIM DO BLOCO DO MODELO INTELIGENTE ----------------
-
-
 
 # ---------------- SISTEMA DE INDICAÇÕES 3D PARA 16 QUADRANTES ----------------
 def adicionar_indicadores_explicativos_3d_16_dual(df):
@@ -2064,43 +1973,7 @@ def generate_live_summary_3d(df):
 # ---------------- EXECUÇÃO PRINCIPAL 3D CORRIGIDA ----------------
 # Executar treinamento 3D INTELIGENTE
 if not history.empty:
-    modelo_home, games_today, model_feature_info = treinar_modelo_inteligente(history, games_today)
-
-
-    # =========================================================
-    # 🔁 Previsões ML para Histórico com MESMAS FEATURES
-    # =========================================================
-    st.info("🔮 Gerando probabilidades ML para histórico...")
-    
-    # Garantir que todas as colunas existam no histórico
-    ligas_hist = pd.get_dummies(history['League'], prefix='League').reindex(
-        columns=model_feature_info["ligas_cols"], fill_value=0
-    )
-    
-    clusters_hist = pd.get_dummies(history['Cluster3D_Label'], prefix='C3D').reindex(
-        columns=model_feature_info["clusters_cols"], fill_value=0
-    )
-    
-    extras_hist = history[model_feature_info["features_3d"]].fillna(0)
-    extras_reg_hist = history[model_feature_info["features_regressao"]].fillna(0)
-    extras_int_hist = history[model_feature_info["features_inteligentes"]].fillna(0)
-    
-    X_hist = pd.concat([
-        ligas_hist, clusters_hist, extras_hist,
-        extras_reg_hist, extras_int_hist
-    ], axis=1)
-    
-    # Probabilidades ML
-    prob_home_hist = modelo_home.predict_proba(X_hist)[:, 1]
-    history['Quadrante_ML_Score_Home'] = prob_home_hist
-    history['Quadrante_ML_Score_Away'] = 1 - prob_home_hist
-    
-    # Bucket AH
-    history['Handicap_Bucket'] = history['Asian_Line_Decimal'].apply(categorize_handicap_bucket)
-    
-    st.success("📈 Histórico atualizado com probabilidades ML e Handicap Bucket!")
-
-
+    modelo_home, games_today = treinar_modelo_inteligente(history, games_today)
     st.success("✅ Modelo 3D Inteligente treinado com sucesso!")
 else:
     st.warning("⚠️ Histórico vazio - não foi possível treinar o modelo 3D")
@@ -2207,89 +2080,6 @@ else:
     else:
         st.info(f"📊 games_today tem {len(games_today)} linhas")
         st.info(f"🔍 Colunas: {list(games_today.columns)}")
-
-
-# =========================================================
-# 🔁 Previsões ML também para o histórico (necessário para backtest)
-# =========================================================
-
-with st.spinner("Gerando probabilidades ML para histórico..."):
-    # Mesmo pipeline do treino
-    ligas_hist = pd.get_dummies(history['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    extras_hist = history[features_3d].fillna(0)
-
-    X_hist = pd.concat([ligas_hist, extras_hist], axis=1)
-
-    # Probabilidades Home (vitória do Home no AH)
-    if usar_catboost:
-        prob_home_hist = modelo_home.predict_proba(X_hist)[:,1]
-        prob_away_hist = modelo_away.predict_proba(X_hist)[:,1]
-    else:
-        prob_home_hist = modelo_home.predict_proba(X_hist)[:,1]
-        prob_away_hist = modelo_away.predict_proba(X_hist)[:,1]
-
-    history['Quadrante_ML_Score_Home'] = prob_home_hist
-    history['Quadrante_ML_Score_Away'] = prob_away_hist
-
-    st.success("Histórico atualizado com probabilidades ML!")
-
-
-
-
-st.markdown("## 🔧 Calibração de Thresholds de Regressão à Média (Backtest)")
-
-if st.checkbox("Rodar calibração de regressão à média (lento, mas poderoso)", value=False):
-    with st.spinner("Rodando backtest de thresholds..."):
-        # 🌍 Global
-        calib_global = backtest_regressao_thresholds(history, group_cols=[])
-        if not calib_global.empty:
-            st.markdown("### 🌍 Global")
-            st.dataframe(
-                calib_global.sort_values(['ROI', 'Profit'], ascending=False)
-                            .head(20)
-                            .style.format({
-                                'Winrate_%': '{:.1f}%',
-                                'ROI_%': '{:.1f}%',
-                                'Profit': '{:.2f}',
-                                'N_Apostas': '{:.0f}'
-                            }),
-                use_container_width=True
-            )
-
-        # 🌐 Por Liga
-        calib_league = backtest_regressao_thresholds(history, group_cols=['League'])
-        if not calib_league.empty:
-            st.markdown("### 🌐 Por Liga")
-            st.dataframe(
-                calib_league.sort_values(['ROI', 'Profit'], ascending=False)
-                            .head(50)
-                            .style.format({
-                                'Winrate_%': '{:.1f}%',
-                                'ROI_%': '{:.1f}%',
-                                'Profit': '{:.2f}',
-                                'N_Apostas': '{:.0f}'
-                            }),
-                use_container_width=True
-            )
-
-        # 🎯 Por Liga + Bucket de Handicap
-        if 'Handicap_Bucket' in history.columns:
-            calib_league_hcap = backtest_regressao_thresholds(history, group_cols=['League', 'Handicap_Bucket'])
-            if not calib_league_hcap.empty:
-                st.markdown("### 🎯 Por Liga + Bucket de Handicap")
-                st.dataframe(
-                    calib_league_hcap.sort_values(['ROI', 'Profit'], ascending=False)
-                                     .head(50)
-                                     .style.format({
-                                         'Winrate_%': '{:.1f}%',
-                                         'ROI_%': '{:.1f}%',
-                                         'Profit': '{:.2f}',
-                                         'N_Apostas': '{:.0f}'
-                                     }),
-                    use_container_width=True
-                )
-
-
 
 # ---------------- RESUMO EXECUTIVO 3D ----------------
 def resumo_3d_16_quadrantes_hoje(df):
