@@ -2052,7 +2052,8 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
             'Regressao_Force_Away': '{:.2f}',
             'score_confianca_composto': '{:.2f}'
         }, na_rep="-"),
-        use_container_width=True
+        use_container_width=True,
+        height=800
     )
 
     # ---------------- ANÁLISES ESPECÍFICAS 3D ----------------
