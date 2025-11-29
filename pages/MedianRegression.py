@@ -1464,7 +1464,15 @@ def treinar_modelo_inteligente(history, games_today):
     st.info(f"🧠 Features Inteligentes no Top 15: {inteligentes_no_top}")
 
     st.success("✅ Modelo Inteligente treinado com sucesso!")
-    return model_home, games_today
+    model_feature_info = {
+        "ligas_cols": list(ligas_dummies.columns),
+        "clusters_cols": list(clusters_dummies.columns),
+        "features_3d": features_3d,
+        "features_regressao": features_regressao,
+        "features_inteligentes": features_inteligentes
+    }
+    return modelo_home, games_today, model_feature_info
+
 # ---------------- FIM DO BLOCO DO MODELO INTELIGENTE ----------------
 
 
@@ -2056,7 +2064,8 @@ def generate_live_summary_3d(df):
 # ---------------- EXECUÇÃO PRINCIPAL 3D CORRIGIDA ----------------
 # Executar treinamento 3D INTELIGENTE
 if not history.empty:
-    modelo_home, games_today = treinar_modelo_inteligente(history, games_today)
+    modelo_home, games_today, model_feature_info = treinar_modelo_inteligente(history, games_today)
+
 
     # =========================================================
     # 🔁 Previsões ML para Histórico com MESMAS FEATURES
