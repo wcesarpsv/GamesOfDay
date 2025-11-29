@@ -2059,28 +2059,38 @@ if not history.empty:
     modelo_home, games_today = treinar_modelo_inteligente(history, games_today)
 
     # =========================================================
-    # 🔁 Previsões ML também para o HISTÓRICO (para backtest)
+    # 🔁 Previsões ML para Histórico com MESMAS FEATURES
     # =========================================================
     st.info("🔮 Gerando probabilidades ML para histórico...")
     
-    # Garantir mismas features
-    ligas_hist = pd.get_dummies(history['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    clusters_hist = pd.get_dummies(history['Cluster3D_Label'], prefix='C3D').reindex(columns=clusters_dummies.columns, fill_value=0)
+    # Garantir que todas as colunas existam no histórico
+    ligas_hist = pd.get_dummies(history['League'], prefix='League').reindex(
+        columns=model_feature_info["ligas_cols"], fill_value=0
+    )
     
-    extras_hist = history[available_3d].fillna(0)
-    extras_regressao_hist = history[available_regressao].fillna(0)
-    extras_inteligentes_hist = history[available_inteligentes].fillna(0)
+    clusters_hist = pd.get_dummies(history['Cluster3D_Label'], prefix='C3D').reindex(
+        columns=model_feature_info["clusters_cols"], fill_value=0
+    )
     
-    X_hist = pd.concat([ligas_hist, clusters_hist, extras_hist, extras_regressao_hist, extras_inteligentes_hist], axis=1)
+    extras_hist = history[model_feature_info["features_3d"]].fillna(0)
+    extras_reg_hist = history[model_feature_info["features_regressao"]].fillna(0)
+    extras_int_hist = history[model_feature_info["features_inteligentes"]].fillna(0)
     
-    prob_home_hist = modelo_home.predict_proba(X_hist)[:,1]
+    X_hist = pd.concat([
+        ligas_hist, clusters_hist, extras_hist,
+        extras_reg_hist, extras_int_hist
+    ], axis=1)
+    
+    # Probabilidades ML
+    prob_home_hist = modelo_home.predict_proba(X_hist)[:, 1]
     history['Quadrante_ML_Score_Home'] = prob_home_hist
     history['Quadrante_ML_Score_Away'] = 1 - prob_home_hist
     
-    # Definir bucket AH
+    # Bucket AH
     history['Handicap_Bucket'] = history['Asian_Line_Decimal'].apply(categorize_handicap_bucket)
     
     st.success("📈 Histórico atualizado com probabilidades ML e Handicap Bucket!")
+
 
     st.success("✅ Modelo 3D Inteligente treinado com sucesso!")
 else:
