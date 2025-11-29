@@ -112,40 +112,17 @@ def convert_asian_line_to_decimal(line_str):
     except (ValueError, TypeError):
         return None
 
-# ========================================
-# 🎯 Criar Target_AH_Away (matematicamente correto)
-# ========================================
-
-def calc_handicap_result(margin, handicap_home_line):
-    """
-    Retorna:
-      +1 → Home cobriu o HC
-       0 → Push
-      -1 → Home NÃO cobriu o HC
-    Função que você já tem, então não alteramos.
-    """
-    # Já existe no seu código
-    return 1 if margin > handicap_home_line else (0 if margin == handicap_home_line else -1)
-
-# Home Margin já existe: Goals_H_FT - Goals_A_FT
-history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
-
-# Target para HOME (já estava correto)
-history["Target_AH_Home"] = history.apply(
-    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]) > 0 else 0,
-    axis=1
-)
-
-# ============================
-# ⚽ Agora criamos o AWAY
-# ============================
-# Away cobre quando Home NÃO cobre
-# Portanto invertendo o resultado:
-history["Target_AH_Away"] = history.apply(
-    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]) < 0 else 0,
-    axis=1
-)
-
+def calc_handicap_result(margin, asian_line_decimal, invert=False):
+    if pd.isna(asian_line_decimal) or pd.isna(margin):
+        return np.nan
+    if invert:
+        margin = -margin
+    if margin > asian_line_decimal:
+        return 1.0
+    elif margin == asian_line_decimal:
+        return 0.5
+    else:
+        return 0.0
 
 
 # =======================
@@ -401,6 +378,13 @@ if "Date" in history.columns:
 history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
 history["Target_AH_Home"] = history.apply(
     lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"], invert=False) > 0.5 else 0, axis=1
+)
+
+
+# Targets AH históricos CORRIGIDOS
+history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
+history["Target_AH_Away"] = history.apply(
+    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"], invert=True) > 0.5 else 0, axis=1
 )
 
 # ---------------- SISTEMA 3D DE 16 QUADRANTES ----------------
@@ -2108,84 +2092,6 @@ else:
 
 
 
-
-# # ==========================================================
-# # 🔥 MÓDULO — CatBoost + Consenso ML
-# # ==========================================================
-# from catboost import CatBoostClassifier
-
-# st.subheader("🤖 Consenso Inteligente – Regressão × CatBoost")
-
-# usar_catboost = st.checkbox("Ativar CatBoost como Segunda Opinião", value=False)
-
-# if usar_catboost:
-
-#     # =========================
-#     # 🧠 Treinar CatBoost
-#     # =========================
-#     st.write("📚 Treinando CatBoost no histórico...")
-
-#     # Seleção de features já existentes no history
-#     feature_cols = [
-#         'Media_Score_Home','Media_Score_Away',
-#         'Quadrant_Dist','Quadrant_Separation',
-#         'Aggression_Home','Aggression_Away',
-#         'Regressao_Force_Home','Regressao_Force_Away'
-#     ]
-#     feature_cols = [c for c in feature_cols if c in history.columns]
-
-#     X_train = history[feature_cols].fillna(0)
-#     y_train = history['Target_AH_Home']  # Prevendo vitória do Home cobrir AH
-
-#     modelo_cb = CatBoostClassifier(
-#         iterations=600,
-#         learning_rate=0.08,
-#         depth=7,
-#         loss_function='Logloss',
-#         verbose=False
-#     )
-#     modelo_cb.fit(X_train, y_train)
-
-#     # =========================
-#     # 🔮 Previsões CatBoost
-#     # =========================
-#     X_today = games_today[feature_cols].fillna(0)
-#     prob_cb = modelo_cb.predict_proba(X_today)[:, 1]
-#     games_today['Prob_Cat'] = prob_cb
-
-#     # =========================
-#     # 🧠 Consenso Inteligente
-#     # =========================
-#     def calcular_consenso(row):
-#         # 2 fontes: Regressão + CatBoost
-#         r = row.get('Media_Score_Home', 0.0)
-#         c = row.get('Prob_Cat', 0.0)
-
-#         if r >= 0.60 and c >= 0.60:
-#             return "🟩 Forte (Alinhados)"
-#         elif abs(r - c) <= 0.10:
-#             return "🟨 Regular (Atenção)"
-#         else:
-#             return "🟥 Divergente (Evitar)"
-
-#     games_today['Consenso'] = games_today.apply(calcular_consenso, axis=1)
-
-#     # =========================
-#     # 📊 Tabela no Streamlit
-#     # =========================
-#     st.write("📌 Análise de Consenso – TOP Sinais")
-#     st.dataframe(
-#         games_today[['League','Time','Home','Away','Goals_H_Today','Goals_A_Today','Media_Score_Home','Prob_Cat','Consenso']]
-#         .sort_values(by='Prob_Cat', ascending=False)
-#         .reset_index(drop=True)
-#     )
-
-# else:
-#     st.warning("⚠️ Ative o CatBoost para ver o Consenso.")
-
-
-
-
 # ==========================================================
 # 🤖 CatBoost – Home & Away (Probabilidade de Cobrir o AH)
 # ==========================================================
@@ -2251,15 +2157,13 @@ if usar_catboost:
     # =========================
     st.write("📌 CatBoost – Probabilidades Independentes por Handicap")
     st.dataframe(
-        games_today[['League','Time','Home','Away','Goals_H_Today','Goals_A_Today','Prob_Cat_Home','Prob_Cat_Away','Asian_Line_Decimal']]
+        games_today[['League','Home','Away','Prob_Cat_Home','Prob_Cat_Away','Asian_Line_Decimal']]
         .sort_values(by='Prob_Cat_Home', ascending=False)
         .reset_index(drop=True)
     )
 
 else:
     st.info("Ative o CatBoost para ver resultados de Home & Away.")
-
-
 
 
 
