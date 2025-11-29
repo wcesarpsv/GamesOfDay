@@ -711,7 +711,7 @@ def main_calibrado():
         def aplicar_filtro_tier(df: pd.DataFrame, max_tier=2) -> pd.DataFrame:
             if 'League' not in df.columns:
                 st.warning("⚠️ Coluna 'League' ausente — filtro de tier não aplicado.")
-                df['League_Tier'] = 3
+                df['League_Tier'] = 2
                 return df
             df = df.copy()
             df['League_Tier'] = df['League'].apply(classificar_league_tier)
