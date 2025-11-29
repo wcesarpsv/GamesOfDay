@@ -604,6 +604,7 @@ def analisar_value_bets_dual_modelos(games_today: pd.DataFrame, league_threshold
 
         results.append({
             'League': league,
+            'Time': row.get('Time'),
             'Home': row.get('Home'),
             'Away': row.get('Away'),
             'Asian_Line': row.get('Asian_Line'),
