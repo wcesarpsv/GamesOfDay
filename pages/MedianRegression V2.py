@@ -2005,7 +2005,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     # Colunas para exibição 3D
     colunas_3d = [
         'League', 'Time',
-        'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Recomendacao','ML_Side','Cluster3D_Desc',
+        'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Recomendacao','ML_Side','Asian_Line_Decimal','Cluster3D_Desc',
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
         'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
         'Score_Final_3D', 'Classificacao_Potencial_3D',
@@ -2020,7 +2020,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         'eh_forte_melhora_home', 'eh_forte_melhora_away',
         'score_confianca_composto',
         # Colunas Live Score
-        'Asian_Line_Decimal', 'Handicap_Result',
+         'Handicap_Result',
         'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
     ]
 
