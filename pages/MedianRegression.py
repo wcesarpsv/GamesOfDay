@@ -1467,29 +1467,6 @@ def treinar_modelo_inteligente(history, games_today):
     return model_home, games_today
 # ---------------- FIM DO BLOCO DO MODELO INTELIGENTE ----------------
 
-# =========================================================
-# 🔁 Previsões ML também para o histórico (necessário para backtest)
-# =========================================================
-
-with st.spinner("Gerando probabilidades ML para histórico..."):
-    # Mesmo pipeline do treino
-    ligas_hist = pd.get_dummies(history['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
-    extras_hist = history[features_3d].fillna(0)
-
-    X_hist = pd.concat([ligas_hist, extras_hist], axis=1)
-
-    # Probabilidades Home (vitória do Home no AH)
-    if usar_catboost:
-        prob_home_hist = modelo_home.predict_proba(X_hist)[:,1]
-        prob_away_hist = modelo_away.predict_proba(X_hist)[:,1]
-    else:
-        prob_home_hist = modelo_home.predict_proba(X_hist)[:,1]
-        prob_away_hist = modelo_away.predict_proba(X_hist)[:,1]
-
-    history['Quadrante_ML_Score_Home'] = prob_home_hist
-    history['Quadrante_ML_Score_Away'] = prob_away_hist
-
-    st.success("Histórico atualizado com probabilidades ML!")
 
 
 # ---------------- SISTEMA DE INDICAÇÕES 3D PARA 16 QUADRANTES ----------------
@@ -2186,6 +2163,32 @@ else:
     else:
         st.info(f"📊 games_today tem {len(games_today)} linhas")
         st.info(f"🔍 Colunas: {list(games_today.columns)}")
+
+
+# =========================================================
+# 🔁 Previsões ML também para o histórico (necessário para backtest)
+# =========================================================
+
+with st.spinner("Gerando probabilidades ML para histórico..."):
+    # Mesmo pipeline do treino
+    ligas_hist = pd.get_dummies(history['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
+    extras_hist = history[features_3d].fillna(0)
+
+    X_hist = pd.concat([ligas_hist, extras_hist], axis=1)
+
+    # Probabilidades Home (vitória do Home no AH)
+    if usar_catboost:
+        prob_home_hist = modelo_home.predict_proba(X_hist)[:,1]
+        prob_away_hist = modelo_away.predict_proba(X_hist)[:,1]
+    else:
+        prob_home_hist = modelo_home.predict_proba(X_hist)[:,1]
+        prob_away_hist = modelo_away.predict_proba(X_hist)[:,1]
+
+    history['Quadrante_ML_Score_Home'] = prob_home_hist
+    history['Quadrante_ML_Score_Away'] = prob_away_hist
+
+    st.success("Histórico atualizado com probabilidades ML!")
+
 
 
 
