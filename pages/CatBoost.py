@@ -88,7 +88,8 @@ def convert_asian_line_to_decimal(line_str):
     if "/" not in line_str:
         try:
             num = float(line_str)
-            return -num  # ✅ CORREÇÃO: Inverte sinal (Away → Home)
+            # linha vem na perspectiva do AWAY → invertendo vira HOME
+            return -num
         except ValueError:
             return None
 
@@ -96,17 +97,15 @@ def convert_asian_line_to_decimal(line_str):
     try:
         parts = [float(p) for p in line_str.split("/")]
         
-        # Calcula média mantendo a lógica de sinal
         avg = sum(parts) / len(parts)
-        
-        # Determina o sinal base baseado no primeiro elemento
         first_part = parts[0]
+
         if first_part < 0:
             result = -abs(avg)
         else:
             result = abs(avg)
-            
-        # ✅ CORREÇÃO CRÍTICA: Inverte o sinal no final (Away → Home)
+
+        # Inverte o sinal (Away → Home)
         return -result
         
     except (ValueError, TypeError):
@@ -167,7 +166,6 @@ def aplicar_clusterizacao_3d(df, max_clusters=5, random_state=42):
     """
     df = df.copy()
 
-    # Garante as colunas necessárias
     required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
     missing = [c for c in required_cols if c not in df.columns]
     
@@ -177,39 +175,33 @@ def aplicar_clusterizacao_3d(df, max_clusters=5, random_state=42):
         df['Cluster3D_Desc'] = 'Dados Insuficientes'
         return df
 
-    # Calcula diferenças espaciais
     df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
     df['dy'] = df['M_H'] - df['M_A']
     df['dz'] = df['MT_H'] - df['MT_A']
 
     X_cluster = df[['dx', 'dy', 'dz']].fillna(0).to_numpy()
     
-    # 🎯 DECISÃO INTELIGENTE: Ajusta número de clusters baseado nos dados
     n_samples = len(X_cluster)
     
     if n_samples < 2:
-        # Menos de 2 amostras - não faz sentido clusterizar
         df['Cluster3D_Label'] = 0
         df['Cluster3D_Desc'] = 'Amostra Única'
         st.info("ℹ️ Apenas 1 jogo encontrado - cluster único criado")
         return df
     
-    # Calcula número ideal de clusters (máximo 30% dos dados ou max_clusters)
-    n_clusters = min(max_clusters, max(2, n_samples // 3))  # Pelo menos 2 clusters
+    n_clusters = min(max_clusters, max(2, n_samples // 3))
     
     st.info(f"🎯 Clusterização: {n_samples} amostras → {n_clusters} clusters")
     
-    # KMeans com número dinâmico de clusters
     kmeans = KMeans(
         n_clusters=n_clusters,
         random_state=random_state,
         init='k-means++',
-        n_init=min(10, n_samples)  # Ajusta n_init também
+        n_init=min(10, n_samples)
     )
     
     df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
 
-    # 🧠 Calcular e mostrar centroides
     centroids = pd.DataFrame(kmeans.cluster_centers_, columns=['dx', 'dy', 'dz'])
     centroids['Cluster'] = range(n_clusters)
     centroids['Tamanho'] = [sum(df['Cluster3D_Label'] == i) for i in range(n_clusters)]
@@ -220,7 +212,6 @@ def aplicar_clusterizacao_3d(df, max_clusters=5, random_state=42):
         'Tamanho': '{:.0f}'
     }))
 
-    # 🎨 Descrição inteligente dos clusters baseado nos centroides
     def classificar_cluster(dx, dy, dz):
         if abs(dx) > 0.5 and abs(dy) > 1.0 and abs(dz) > 1.0:
             return '🔥 Alta Variância 3D'
@@ -237,7 +228,6 @@ def aplicar_clusterizacao_3d(df, max_clusters=5, random_state=42):
         else:
             return '🌀 Padrão Misto'
 
-    # Aplica descrição
     cluster_descriptions = {}
     for i in range(n_clusters):
         centroid = centroids.iloc[i]
@@ -245,7 +235,6 @@ def aplicar_clusterizacao_3d(df, max_clusters=5, random_state=42):
     
     df['Cluster3D_Desc'] = df['Cluster3D_Label'].map(cluster_descriptions)
 
-    # 📊 Estatísticas dos clusters
     cluster_stats = df.groupby('Cluster3D_Label').agg({
         'dx': 'mean', 'dy': 'mean', 'dz': 'mean',
         'Cluster3D_Desc': 'first'
@@ -259,7 +248,6 @@ def aplicar_clusterizacao_3d(df, max_clusters=5, random_state=42):
 # ---------------- Carregar Dados ----------------
 st.info("📂 Carregando dados para análise 3D de 16 quadrantes...")
 
-# Seleção de arquivo do dia
 files = sorted([f for f in os.listdir(GAMES_FOLDER) if f.endswith(".csv")])
 if not files:
     st.warning("No CSV files found in GamesDay folder.")
@@ -271,14 +259,12 @@ selected_file = st.selectbox("Select Matchday File:", options, index=len(options
 date_match = re.search(r"\d{4}-\d{2}-\d{2}", selected_file)
 selected_date_str = date_match.group(0) if date_match else datetime.now().strftime("%Y-%m-%d")
 
-# Jogos do dia
 games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
 games_today = filter_leagues(games_today)
 
 # ---------------- CACHE INTELIGENTE ----------------
-@st.cache_data(ttl=3600)  # Cache de 1 hora
+@st.cache_data(ttl=3600)
 def load_cached_data(selected_file):
-    """Cache apenas dos dados pesados"""
     games_today = pd.read_csv(os.path.join(GAMES_FOLDER, selected_file))
     games_today = filter_leagues(games_today)
 
@@ -287,7 +273,6 @@ def load_cached_data(selected_file):
 
     return games_today, history
 
-# No lugar do carregamento atual, use:
 games_today, history = load_cached_data(selected_file)
 
 # ---------------- LIVE SCORE INTEGRATION ----------------
@@ -296,14 +281,12 @@ def load_and_merge_livescore(games_today, selected_date_str):
 
     livescore_file = os.path.join(LIVESCORE_FOLDER, f"Resultados_RAW_{selected_date_str}.csv")
 
-    # Setup das colunas
     games_today = setup_livescore_columns(games_today)
 
     if os.path.exists(livescore_file):
         st.info(f"📡 LiveScore file found: {livescore_file}")
         results_df = pd.read_csv(livescore_file)
 
-        # Filtrar jogos cancelados/adiados
         results_df = results_df[~results_df['status'].isin(['Cancel', 'Postp.'])]
 
         required_cols = [
@@ -320,7 +303,6 @@ def load_and_merge_livescore(games_today, selected_date_str):
             st.error(f"❌ LiveScore file missing columns: {missing_cols}")
             return games_today
         else:
-            # Fazer merge com os jogos do dia
             games_today = games_today.merge(
                 results_df,
                 left_on='Id',
@@ -329,12 +311,10 @@ def load_and_merge_livescore(games_today, selected_date_str):
                 suffixes=('', '_RAW')
             )
 
-            # Atualizar gols apenas para jogos finalizados
             games_today['Goals_H_Today'] = games_today['home_goal']
             games_today['Goals_A_Today'] = games_today['away_goal']
             games_today.loc[games_today['status'] != 'FT', ['Goals_H_Today', 'Goals_A_Today']] = np.nan
 
-            # Atualizar cartões vermelhos
             games_today['Home_Red'] = games_today['home_red']
             games_today['Away_Red'] = games_today['away_red']
 
@@ -344,23 +324,18 @@ def load_and_merge_livescore(games_today, selected_date_str):
         st.warning(f"⚠️ No LiveScore file found for: {selected_date_str}")
         return games_today
 
-# Aplicar Live Score
 games_today = load_and_merge_livescore(games_today, selected_date_str)
 
-# Histórico consolidado
 history = filter_leagues(load_all_games(GAMES_FOLDER))
 history = history.dropna(subset=["Goals_H_FT", "Goals_A_FT", "Asian_Line"]).copy()
 
 # ---------------- CONVERSÃO ASIAN LINE CORRIGIDA ----------------
-# ✅ AGORA aplica a conversão CORRETA no histórico e jogos de hoje
 history['Asian_Line_Decimal'] = history['Asian_Line'].apply(convert_asian_line_to_decimal)
 games_today['Asian_Line_Decimal'] = games_today['Asian_Line'].apply(convert_asian_line_to_decimal)
 
-# Filtrar apenas jogos com linha válida no histórico
 history = history.dropna(subset=['Asian_Line_Decimal'])
 st.info(f"📊 Histórico com Asian Line válida: {len(history)} jogos")
 
-# Filtro anti-leakage temporal
 if "Date" in history.columns:
     try:
         selected_date = pd.to_datetime(selected_date_str)
@@ -370,7 +345,6 @@ if "Date" in history.columns:
     except Exception as e:
         st.error(f"Erro ao aplicar filtro temporal: {e}")
 
-# Targets AH históricos CORRIGIDOS
 history["Margin"] = history["Goals_H_FT"] - history["Goals_A_FT"]
 history["Target_AH_Home"] = history.apply(
     lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"], invert=False) > 0.5 else 0, axis=1
@@ -384,25 +358,21 @@ history["Target_AH_Away"] = history.apply(
 st.markdown("## 🎯 Sistema 3D de 16 Quadrantes")
 
 QUADRANTES_16 = {
-    # 🔵 QUADRANTE 1-4: FORTE FAVORITO (+0.75 a +1.0)
     1: {"nome": "Fav Forte Muito Forte", "agg_min": 0.75, "agg_max": 1.0, "hs_min": 45, "hs_max": 60},
     2: {"nome": "Fav Forte Forte",       "agg_min": 0.75, "agg_max": 1.0, "hs_min": 30, "hs_max": 45},
     3: {"nome": "Fav Forte Moderado",    "agg_min": 0.75, "agg_max": 1.0, "hs_min": 15, "hs_max": 30},
     4: {"nome": "Fav Forte Neutro",      "agg_min": 0.75, "agg_max": 1.0, "hs_min": -15, "hs_max": 15},
 
-    # 🟢 QUADRANTE 5-8: FAVORITO MODERADO (+0.25 a +0.75)
     5: {"nome": "Fav Moderado Muito Forte", "agg_min": 0.25, "agg_max": 0.75, "hs_min": 45, "hs_max": 60},
     6: {"nome": "Fav Moderado Forte",       "agg_min": 0.25, "agg_max": 0.75, "hs_min": 30, "hs_max": 45},
     7: {"nome": "Fav Moderado Moderado",    "agg_min": 0.25, "agg_max": 0.75, "hs_min": 15, "hs_max": 30},
     8: {"nome": "Fav Moderado Neutro",      "agg_min": 0.25, "agg_max": 0.75, "hs_min": -15, "hs_max": 15},
 
-    # 🟡 QUADRANTE 9-12: UNDERDOG MODERADO (-0.75 a -0.25)
     9: {"nome": "Under Moderado Neutro",    "agg_min": -0.75, "agg_max": -0.25, "hs_min": -15, "hs_max": 15},
     10: {"nome": "Under Moderado Moderado", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -30, "hs_max": -15},
     11: {"nome": "Under Moderado Forte",    "agg_min": -0.75, "agg_max": -0.25, "hs_min": -45, "hs_max": -30},
     12: {"nome": "Under Moderado Muito Forte", "agg_min": -0.75, "agg_max": -0.25, "hs_min": -60, "hs_max": -45},
 
-    # 🔴 QUADRANTE 13-16: FORTE UNDERDOG (-1.0 a -0.75)
     13: {"nome": "Under Forte Neutro",    "agg_min": -1.0, "agg_max": -0.75, "hs_min": -15, "hs_max": 15},
     14: {"nome": "Under Forte Moderado",  "agg_min": -1.0, "agg_max": -0.75, "hs_min": -30, "hs_max": -15},
     15: {"nome": "Under Forte Forte",     "agg_min": -1.0, "agg_max": -0.75, "hs_min": -45, "hs_max": -30},
@@ -410,20 +380,15 @@ QUADRANTES_16 = {
 }
 
 def classificar_quadrante_16(agg, hs):
-    """Classifica Aggression e HandScore em um dos 16 quadrantes"""
     if pd.isna(agg) or pd.isna(hs):
-        return 0  # Neutro/Indefinido
-
+        return 0
     for quadrante_id, config in QUADRANTES_16.items():
         agg_ok = (config['agg_min'] <= agg <= config['agg_max'])
         hs_ok = (config['hs_min'] <= hs <= config['hs_max'])
-
         if agg_ok and hs_ok:
             return quadrante_id
+    return 0
 
-    return 0  # Caso não se enquadre em nenhum quadrante
-
-# Aplicar classificação aos dados
 games_today['Quadrante_Home'] = games_today.apply(
     lambda x: classificar_quadrante_16(x.get('Aggression_Home'), x.get('HandScore_Home')), axis=1
 )
@@ -442,10 +407,6 @@ history['Quadrante_Away'] = history.apply(
 # 🔧 CALIBRAÇÃO DINÂMICA DE THRESHOLDS (REGRESSÃO)
 # ===================================
 def calibrar_thresholds_regressao_por_handicap(history):
-    """
-    Usa o histórico para calibrar thresholds de Regressao_Force_Home/Away
-    por faixa de handicap (FAV_PESADO, EQUILIBRADO, DOG_PESADO, etc.).
-    """
     hist = history.copy()
 
     required_cols = ['Asian_Line_Decimal', 'Regressao_Force_Home', 'Regressao_Force_Away']
@@ -494,11 +455,6 @@ def calibrar_thresholds_regressao_por_handicap(history):
     return thresholds
 
 def aplicar_thresholds_regressao_por_handicap(df, thresholds):
-    """
-    Aplica os thresholds dinâmicos para gerar:
-      - Tendencia_Home
-      - Tendencia_Away
-    """
     if not thresholds:
         st.warning("⚠️ Nenhum threshold dinâmico disponível. Mantendo tendências padrão (se existirem).")
         return df
@@ -540,25 +496,16 @@ def aplicar_thresholds_regressao_por_handicap(df, thresholds):
 
 # ---------------- CÁLCULO DE REGRESSÃO À MÉDIA ----------------
 def calcular_regressao_media(df):
-    """
-    Calcula tendência de regressão à média baseada em M_H/M_A e MT_H/MT_A.
-    """
     df = df.copy()
 
     df['Extremidade_Home'] = np.abs(df['M_H']) + np.abs(df['MT_H'])
     df['Extremidade_Away'] = np.abs(df['M_A']) + np.abs(df['MT_A'])
-    
-    alpha = 0.65
-    beta = 0.35
-    
-    sign_home = alpha * np.sign(df['M_H']) + beta * np.sign(df['MT_H'])
-    sign_away = alpha * np.sign(df['M_A']) + beta * np.sign(df['MT_A'])
-    
-    df['Regressao_Force_Home'] = -sign_home * (df['Extremidade_Home'] ** 0.70)
-    df['Regressao_Force_Away'] = -sign_away * (df['Extremidade_Away'] ** 0.70)
-    
-    df['Regressao_Force_Home'] = df['Regressao_Force_Home'].replace([np.inf, -np.inf], 0).fillna(0)
-    df['Regressao_Force_Away'] = df['Regressao_Force_Away'].replace([np.inf, -np.inf], 0).fillna(0)
+
+    df['Regressao_Force_Home'] = -np.sign(df['M_H']) * (df['Extremidade_Home'] ** 0.7)
+    df['Regressao_Force_Away'] = -np.sign(df['M_A']) * (df['Extremidade_Away'] ** 0.7)
+
+    df['Prob_Regressao_Home'] = 1 / (1 + np.exp(-0.8 * df['Regressao_Force_Home']))
+    df['Prob_Regressao_Away'] = 1 / (1 + np.exp(-0.8 * df['Regressao_Force_Away']))
 
     df['Media_Score_Home'] = (0.6 * df['Prob_Regressao_Home'] + 
                              0.4 * (1 - df['Aggression_Home']))
@@ -567,43 +514,15 @@ def calcular_regressao_media(df):
 
     return df
 
+history = calcular_regressao_media(history)
+games_today = calcular_regressao_media(games_today)
 
-def adicionar_regressao_media(df, alpha=0.65, beta=0.35, power=0.70):
-    df = df.copy()
-    
-    df["Extremidade_Home"] = np.abs(df["M_H"]) + np.abs(df["MT_H"])
-    df["Extremidade_Away"] = np.abs(df["M_A"]) + np.abs(df["MT_A"])
-
-    sign_home = alpha * np.sign(df["M_H"]) + beta * np.sign(df["MT_H"])
-    sign_away = alpha * np.sign(df["M_A"]) + beta * np.sign(df["MT_A"])
-
-    df["Regressao_Force_Home"] = -sign_home * (df["Extremidade_Home"] ** power)
-    df["Regressao_Force_Away"] = -sign_away * (df["Extremidade_Away"] ** power)
-
-    df["Regressao_Force_Home"] = df["Regressao_Force_Home"].replace([np.inf, -np.inf], 0).fillna(0)
-    df["Regressao_Force_Away"] = df["Regressao_Force_Away"].replace([np.inf, -np.inf], 0).fillna(0)
-
-    return df
-
-
-
-# Aplicar regressão à média
-history = adicionar_regressao_media(history)
-games_today = adicionar_regressao_media(games_today)
-
-
-# ============================================
-# 🔥 CALIBRAÇÃO E APLICAÇÃO DOS THRESHOLDS 3D
-# ============================================
 thresholds_reg = calibrar_thresholds_regressao_por_handicap(history)
 history = aplicar_thresholds_regressao_por_handicap(history, thresholds_reg)
 games_today = aplicar_thresholds_regressao_por_handicap(games_today, thresholds_reg)
 
 # ---------------- CÁLCULO DE DISTÂNCIAS 3D ----------------
 def calcular_distancias_3d(df):
-    """
-    Calcula distância 3D e ângulos usando Aggression, Momentum (liga) e Momentum (time)
-    """
     df = df.copy()
 
     required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
@@ -662,7 +581,6 @@ games_today = calcular_distancias_3d(games_today)
 
 # ---------------- VISUALIZAÇÃO 16 QUADRANTES 2D ----------------
 def plot_quadrantes_16(df, side="Home"):
-    """Plot dos 16 quadrantes com cores e anotações"""
     fig, ax = plt.subplots(figsize=(14, 10))
 
     cores_categorias = {
@@ -1049,7 +967,7 @@ st.markdown("""
 ### 🎯 Legenda do Espaço 3D Fixo
 
 **Eixos com Ranges Fixos:**
-- **X (Vermelho)**: Aggression → `-1.2` (Zebra Extrema) ↔ `+1.2` (Favorito Extremo)
+- **X (Vermelho)**: Aggression → `-1.2` (Zebra Extrema) ↔ `+1.2` (Favorito Extremo)  
 - **Y (Verde)**: Momentum Liga → `-4.0` (Muito Negativo) ↔ `+4.0` (Muito Positivo)  
 - **Z (Azul)**: Momentum Time → `-4.0` (Muito Negativo) ↔ `+4.0` (Muito Positivo)
 
@@ -1142,19 +1060,16 @@ def adicionar_features_inteligentes_ml(df):
     aggression_proxy_away = (1 - (df['Aggression_Away'] + 1) / 2)
     
     df['score_confianca_composto'] = (
-        (aggression_proxy_home * 0.5) +
-        (aggression_proxy_away * 0.5)
+        (aggression_proxy_home * 0.3) +
+        (aggression_proxy_away * 0.3) +
+        (df['Media_Score_Home'] * 0.2) +
+        (df['Media_Score_Away'] * 0.2)
     )
-
     
     return df
 
 # ---------------- CALIBRAÇÃO DA MARGEM MÍNIMA (ProbDiffThreshold) ----------------
 def calibrar_prob_diff_threshold(history, X_features, modelo_cb_home, modelo_cb_away):
-    """
-    Calibra a melhor margem mínima |Prob_Home - Prob_Away| (ProbDiffThreshold)
-    maximizando ROI histórico. Odds: prioriza Asian (Odd_H_Asi/Odd_A_Asi) depois 1X2.
-    """
     df = history.copy().reset_index(drop=True)
 
     proba_home_hist = modelo_cb_home.predict_proba(X_features)[:, 1]
@@ -1231,10 +1146,6 @@ def calibrar_prob_diff_threshold(history, X_features, modelo_cb_home, modelo_cb_
 
 # ---------------- 🧠 TREINO DO MODELO INTELIGENTE COM CATBOOST (HOME & AWAY) ----------------
 def treinar_modelo_inteligente(history, games_today):
-    """
-    Treina modelos CatBoost Home & Away com features 3D + Regressão + Features Inteligentes
-    e aplica ProbDiffThreshold calibrado para definir BetSignal_CB.
-    """
     history = adicionar_features_inteligentes_ml(history)
     games_today = adicionar_features_inteligentes_ml(games_today)
     
@@ -1312,10 +1223,8 @@ def treinar_modelo_inteligente(history, games_today):
     st.info("🤖 Treinando CatBoost (Away)...")
     modelo_cb_away.fit(X, y_away)
 
-    # 🔧 Calibrar ProbDiffThreshold usando o histórico
     probdiff_threshold, _ = calibrar_prob_diff_threshold(history, X, modelo_cb_home, modelo_cb_away)
 
-    # Preparar dados de hoje
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
     clusters_today = pd.get_dummies(games_today['Cluster3D_Label'], prefix='C3D').reindex(columns=clusters_dummies.columns, fill_value=0)
     extras_today = games_today[available_3d].fillna(0)
@@ -1397,38 +1306,43 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
         away_q = row['Quadrante_Away_Label']
         score_home = row['Quadrante_ML_Score_Home']
         score_away = row['Quadrante_ML_Score_Away']
-        ml_side = row['ML_Side']
+        ml_side = row.get('ML_Side', 'NEUTRO')
         momentum_h = row.get('M_H', 0)
         momentum_a = row.get('M_A', 0)
         tendencia_h = row.get('Tendencia_Home', '⚖️ ESTÁVEL')
         tendencia_a = row.get('Tendencia_Away', '⚖️ ESTÁVEL')
 
+        # Todas as saídas agora seguem padrão:
+        # 1 - ...  (aposta Home)
+        # 2 - ...  (aposta Away)
+        # 0 - ...  (analisar / neutro)
+
         if 'Fav Forte' in home_q and 'Under Forte' in away_q and momentum_h > 1.0 and '📈' in tendencia_h:
-            return f'💪 FAVORITO HOME SUPER FORTE (+Momentum +Regressão) ({score_home:.1%})'
+            return f'1 - 💪 FAVORITO HOME SUPER FORTE (+Momentum +Regressão) ({score_home:.1%})'
         elif 'Under Forte' in home_q and 'Fav Forte' in away_q and momentum_a > 1.0 and '📈' in tendencia_a:
-            return f'💪 FAVORITO AWAY SUPER FORTE (+Momentum +Regressão) ({score_away:.1%})'
+            return f'2 - 💪 FAVORITO AWAY SUPER FORTE (+Momentum +Regressão) ({score_away:.1%})'
         elif '📈 FORTE MELHORA' in tendencia_h and score_home >= 0.58:
-            return f'🎯 HOME EM FORTE MELHORA (Regressão) ({score_home:.1%})'
+            return f'1 - 🎯 HOME EM FORTE MELHORA (Regressão) ({score_home:.1%})'
         elif '📈 FORTE MELHORA' in tendencia_a and score_away >= 0.58:
-            return f'🎯 AWAY EM FORTE MELHORA (Regressão) ({score_away:.1%})'
+            return f'2 - 🎯 AWAY EM FORTE MELHORA (Regressão) ({score_away:.1%})'
         elif '📉 FORTE QUEDA' in tendencia_h and score_away >= 0.55:
-            return f'🔻 HOME EM FORTE QUEDA → AWAY (Regressão) ({score_away:.1%})'
+            return f'2 - 🔻 HOME EM FORTE QUEDA → AWAY (Regressão) ({score_away:.1%})'
         elif '📉 FORTE QUEDA' in tendencia_a and score_home >= 0.55:
-            return f'🔻 AWAY EM FORTE QUEDA → HOME (Regressão) ({score_home:.1%})'
+            return f'1 - 🔻 AWAY EM FORTE QUEDA → HOME (Regressão) ({score_home:.1%})'
         elif 'Fav Moderado' in home_q and 'Under Moderado' in away_q and momentum_h > 0.5:
-            return f'🎯 VALUE NO HOME (+Momentum) ({score_home:.1%})'
+            return f'1 - 🎯 VALUE NO HOME (+Momentum) ({score_home:.1%})'
         elif 'Under Moderado' in home_q and 'Fav Moderado' in away_q and momentum_a > 0.5:
-            return f'🎯 VALUE NO AWAY (+Momentum) ({score_away:.1%})'
+            return f'2 - 🎯 VALUE NO AWAY (+Momentum) ({score_away:.1%})'
         elif ml_side == 'HOME' and score_home >= 0.60 and momentum_h > 0:
-            return f'📈 MODELO CONFIA HOME (+Momentum) ({score_home:.1%})'
+            return f'1 - 📈 MODELO CONFIA HOME (+Momentum) ({score_home:.1%})'
         elif ml_side == 'AWAY' and score_away >= 0.60 and momentum_a > 0:
-            return f'📈 MODELO CONFIA AWAY (+Momentum) ({score_away:.1%})'
+            return f'2 - 📈 MODELO CONFIA AWAY (+Momentum) ({score_away:.1%})'
         elif momentum_h < -1.0 and score_away >= 0.55:
-            return f'🔻 HOME EM MOMENTUM NEGATIVO → AWAY ({score_away:.1%})'
+            return f'2 - 🔻 HOME EM MOMENTUM NEGATIVO → AWAY ({score_away:.1%})'
         elif momentum_a < -1.0 and score_home >= 0.55:
-            return f'🔻 AWAY EM MOMENTUM NEGATIVO → HOME ({score_home:.1%})'
+            return f'1 - 🔻 AWAY EM MOMENTUM NEGATIVO → HOME ({score_home:.1%})'
         else:
-            return f'⚖️ ANALISAR (H:{score_home:.1%} A:{score_away:.1%})'
+            return f'0 - ⚖️ ANALISAR (H:{score_home:.1%} A:{score_away:.1%})'
 
     df['Recomendacao'] = df.apply(gerar_recomendacao_3d_16_dual, axis=1)
 
@@ -1666,7 +1580,18 @@ def gerar_estrategias_3d_16_quadrantes(df):
         st.write("---")
 
 # ---------------- FUNÇÕES LIVE / PROFIT ----------------
+
 def determine_handicap_result(row):
+    """
+    Usa Goals_H_Today, Goals_A_Today e Asian_Line_Decimal (Home) para
+    classificar o resultado do handicap:
+
+    - HOME_COVERED
+    - HALF_HOME_COVERED
+    - PUSH
+    - HALF_HOME_NOT_COVERED
+    - HOME_NOT_COVERED
+    """
     try:
         gh = float(row['Goals_H_Today'])
         ga = float(row['Goals_A_Today'])
@@ -1690,48 +1615,89 @@ def determine_handicap_result(row):
     else:
         return None
 
+def parse_recommendation_side(rec: str) -> str:
+    """
+    Decodifica o lado da recomendação a partir do prefixo:
+      1 - ...  → HOME
+      2 - ...  → AWAY
+      0 - ...  → NEUTRO
+
+    Se não tiver prefixo (compatibilidade com versões antigas),
+    cai no fallback por texto.
+    """
+    if pd.isna(rec):
+        return "NEUTRO"
+
+    s = str(rec).strip()
+    upper = s.upper()
+
+    # Prefixos numéricos (novo padrão)
+    if s.startswith("1 -"):
+        return "HOME"
+    if s.startswith("2 -"):
+        return "AWAY"
+    if s.startswith("0 -"):
+        return "NEUTRO"
+
+    # Fallback: heurística por texto (retrocompatível)
+    if any(k in upper for k in ['HOME', 'VALUE NO HOME', 'FAVORITO HOME', 'MODELO CONFIA HOME']):
+        return "HOME"
+    if any(k in upper for k in ['AWAY', 'VALUE NO AWAY', 'FAVORITO AWAY', 'MODELO CONFIA AWAY']):
+        return "AWAY"
+
+    return "NEUTRO"
+
 def check_handicap_recommendation_correct(rec, handicap_result):
     if pd.isna(rec) or handicap_result is None:
         return None
 
-    rec = str(rec).upper()
+    side = parse_recommendation_side(rec)
 
-    if any(k in rec for k in ['HOME', 'VALUE NO HOME', 'FAVORITO HOME', 'MODELO CONFIA HOME']):
+    if side == "HOME":
         return handicap_result in ["HOME_COVERED", "HALF_HOME_COVERED"]
-
-    if any(k in rec for k in ['AWAY', 'VALUE NO AWAY', 'FAVORITO AWAY', 'MODELO CONFIA AWAY']):
+    if side == "AWAY":
         return handicap_result in ["HOME_NOT_COVERED", "HALF_HOME_NOT_COVERED"]
 
-    return None
+    return None  # NEUTRO / analisar
 
 def calculate_handicap_profit(rec, handicap_result, odd_home, odd_away, asian_line_decimal):
+    """
+    Calcula lucro por aposta (stake = 1u) com padrão:
+      - Win cheio: odd - 1
+      - Half win: (odd - 1) / 2
+      - Loss cheio: -1
+      - Half loss: -0.5
+      - Push: 0
+    """
     if pd.isna(rec) or handicap_result is None:
-        return 0
+        return 0.0
 
-    rec = str(rec).upper()
-    is_home_bet = any(k in rec for k in ['HOME', 'FAVORITO HOME', 'VALUE NO HOME', 'MODELO CONFIA HOME'])
-    is_away_bet = any(k in rec for k in ['AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY', 'MODELO CONFIA AWAY'])
+    side = parse_recommendation_side(rec)
+    if side not in ("HOME", "AWAY"):
+        return 0.0
 
-    if not (is_home_bet or is_away_bet):
-        return 0
+    odd = odd_home if side == "HOME" else odd_away
+    if pd.isna(odd) or odd <= 1.0:
+        return 0.0
 
-    odd = odd_home if is_home_bet else odd_away
     result = str(handicap_result).upper()
 
     if result == "PUSH":
-        return 0
+        return 0.0
+
+    ganho_unitario = odd - 1.0
 
     if result == "HALF_HOME_COVERED":
-        return odd / 2 if is_home_bet else -0.5
+        return ganho_unitario / 2 if side == "HOME" else -0.5
     if result == "HALF_HOME_NOT_COVERED":
-        return -0.5 if is_home_bet else odd / 2
+        return -0.5 if side == "HOME" else ganho_unitario / 2
 
     if result == "HOME_COVERED":
-        return odd if is_home_bet else -1
+        return ganho_unitario if side == "HOME" else -1.0
     if result == "HOME_NOT_COVERED":
-        return -1 if is_home_bet else odd
+        return -1.0 if side == "HOME" else ganho_unitario
 
-    return 0
+    return 0.0
 
 def update_real_time_data_3d(df):
     df = df.copy()
