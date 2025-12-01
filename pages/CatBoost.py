@@ -567,9 +567,30 @@ def calcular_regressao_media(df):
 
     return df
 
+
+def adicionar_regressao_media(df, alpha=0.65, beta=0.35, power=0.70):
+    df = df.copy()
+    
+    df["Extremidade_Home"] = np.abs(df["M_H"]) + np.abs(df["MT_H"])
+    df["Extremidade_Away"] = np.abs(df["M_A"]) + np.abs(df["MT_A"])
+
+    sign_home = alpha * np.sign(df["M_H"]) + beta * np.sign(df["MT_H"])
+    sign_away = alpha * np.sign(df["M_A"]) + beta * np.sign(df["MT_A"])
+
+    df["Regressao_Force_Home"] = -sign_home * (df["Extremidade_Home"] ** power)
+    df["Regressao_Force_Away"] = -sign_away * (df["Extremidade_Away"] ** power)
+
+    df["Regressao_Force_Home"] = df["Regressao_Force_Home"].replace([np.inf, -np.inf], 0).fillna(0)
+    df["Regressao_Force_Away"] = df["Regressao_Force_Away"].replace([np.inf, -np.inf], 0).fillna(0)
+
+    return df
+
+
+
 # Aplicar regressão à média
-history = calcular_regressao_media(history)
-games_today = calcular_regressao_media(games_today)
+history = adicionar_regressao_media(history)
+games_today = adicionar_regressao_media(games_today)
+
 
 # ============================================
 # 🔥 CALIBRAÇÃO E APLICAÇÃO DOS THRESHOLDS 3D
