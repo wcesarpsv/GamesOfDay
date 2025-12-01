@@ -1142,11 +1142,10 @@ def adicionar_features_inteligentes_ml(df):
     aggression_proxy_away = (1 - (df['Aggression_Away'] + 1) / 2)
     
     df['score_confianca_composto'] = (
-        (aggression_proxy_home * 0.3) +
-        (aggression_proxy_away * 0.3) +
-        (df['Media_Score_Home'] * 0.2) +
-        (df['Media_Score_Away'] * 0.2)
+        (aggression_proxy_home * 0.5) +
+        (aggression_proxy_away * 0.5)
     )
+
     
     return df
 
