@@ -538,38 +538,28 @@ def aplicar_thresholds_regressao_por_handicap(df, thresholds):
 
     return df
 
-
-def calcular_regressao_media(df, alpha=0.65, beta=0.35, power=0.70):
+# ---------------- CÁLCULO DE REGRESSÃO À MÉDIA ----------------
+def calcular_regressao_media(df):
     """
-    Aplica regressão à média usando M_ e MT_ com pesos equilibrados.
-    
-    df   : DataFrame já contendo M_H, M_A, MT_H, MT_A
-    alpha: Peso do histórico (M_)
-    beta : Peso do momentum (MT_)
-    power: Força aplicada na regressão da extremidade (exponencial)
+    Calcula tendência de regressão à média baseada em M_H/M_A e MT_H/MT_A.
     """
-
-    # Garante que DataFrame não seja modificado fora da função
     df = df.copy()
 
-    # Quão longe da média o time está (histórico + forma)
-    df["Extremidade_Home"] = np.abs(df["M_H"]) + np.abs(df["MT_H"])
-    df["Extremidade_Away"] = np.abs(df["M_A"]) + np.abs(df["MT_A"])
+    df['Extremidade_Home'] = np.abs(df['M_H']) + np.abs(df['MT_H'])
+    df['Extremidade_Away'] = np.abs(df['M_A']) + np.abs(df['MT_A'])
 
-    # Direção combinada entre histórico e momento recente
-    sign_home = alpha * np.sign(df["M_H"]) + beta * np.sign(df["MT_H"])
-    sign_away = alpha * np.sign(df["M_A"]) + beta * np.sign(df["MT_A"])
+    df['Regressao_Force_Home'] = -np.sign(df['M_H']) * (df['Extremidade_Home'] ** 0.7)
+    df['Regressao_Force_Away'] = -np.sign(df['M_A']) * (df['Extremidade_Away'] ** 0.7)
 
-    # Regressão à média (corrigida)
-    df["Regressao_Force_Home"] = -sign_home * (df["Extremidade_Home"] ** power)
-    df["Regressao_Force_Away"] = -sign_away * (df["Extremidade_Away"] ** power)
+    df['Prob_Regressao_Home'] = 1 / (1 + np.exp(-0.8 * df['Regressao_Force_Home']))
+    df['Prob_Regressao_Away'] = 1 / (1 + np.exp(-0.8 * df['Regressao_Force_Away']))
 
-    # Segurança matemática
-    df["Regressao_Force_Home"] = df["Regressao_Force_Home"].replace([np.inf, -np.inf], 0).fillna(0)
-    df["Regressao_Force_Away"] = df["Regressao_Force_Away"].replace([np.inf, -np.inf], 0).fillna(0)
+    df['Media_Score_Home'] = (0.6 * df['Prob_Regressao_Home'] + 
+                             0.4 * (1 - df['Aggression_Home']))
+    df['Media_Score_Away'] = (0.6 * df['Prob_Regressao_Away'] + 
+                             0.4 * (1 - df['Aggression_Away']))
 
     return df
-
 
 # Aplicar regressão à média
 history = calcular_regressao_media(history)
