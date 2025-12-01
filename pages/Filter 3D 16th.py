@@ -1115,25 +1115,25 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
 
         # Padrões 3D específicos incorporando momentum
         if 'Fav Forte' in home_q and 'Under Forte' in away_q and momentum_h > 1.0:
-            return f'💪 FAVORITO HOME SUPER FORTE (+Momentum) ({score_home:.1%})'
+            return f'1 - 💪 FAVORITO HOME SUPER FORTE (+Momentum) ({score_home:.1%})'
         elif 'Under Forte' in home_q and 'Fav Forte' in away_q and momentum_a > 1.0:
-            return f'💪 FAVORITO AWAY SUPER FORTE (+Momentum) ({score_away:.1%})'
+            return f'2 - 💪 FAVORITO AWAY SUPER FORTE (+Momentum) ({score_away:.1%})'
         elif 'Fav Moderado' in home_q and 'Under Moderado' in away_q and momentum_h > 0.5:
-            return f'🎯 VALUE NO HOME (+Momentum) ({score_home:.1%})'
+            return f'1 - 🎯 VALUE NO HOME (+Momentum) ({score_home:.1%})'
         elif 'Under Moderado' in home_q and 'Fav Moderado' in away_q and momentum_a > 0.5:
-            return f'🎯 VALUE NO AWAY (+Momentum) ({score_away:.1%})'
+            return f'2 - 🎯 VALUE NO AWAY (+Momentum) ({score_away:.1%})'
         elif ml_side == 'HOME' and score_home >= 0.60 and momentum_h > 0:
-            return f'📈 MODELO CONFIA HOME (+Momentum) ({score_home:.1%})'
+            return f'1 - 📈 MODELO CONFIA HOME (+Momentum) ({score_home:.1%})'
         elif ml_side == 'AWAY' and score_away >= 0.60 and momentum_a > 0:
-            return f'📈 MODELO CONFIA AWAY (+Momentum) ({score_away:.1%})'
+            return f'2 - 📈 MODELO CONFIA AWAY (+Momentum) ({score_away:.1%})'
         elif momentum_h < -1.0 and score_away >= 0.55:
-            return f'🔻 HOME EM MOMENTUM NEGATIVO → AWAY ({score_away:.1%})'
+            return f'2 - 🔻 HOME EM MOMENTUM NEGATIVO → AWAY ({score_away:.1%})'
         elif momentum_a < -1.0 and score_home >= 0.55:
-            return f'🔻 AWAY EM MOMENTUM NEGATIVO → HOME ({score_home:.1%})'
+            return f'1 - 🔻 AWAY EM MOMENTUM NEGATIVO → HOME ({score_home:.1%})'
         elif 'Neutro' in home_q and score_away >= 0.58 and momentum_a > 0:
-            return f'🔄 AWAY EM NEUTRO (+Momentum) ({score_away:.1%})'
+            return f'2 - 🔄 AWAY EM NEUTRO (+Momentum) ({score_away:.1%})'
         elif 'Neutro' in away_q and score_home >= 0.58 and momentum_h > 0:
-            return f'🔄 HOME EM NEUTRO (+Momentum) ({score_home:.1%})'
+            return f'1 - 🔄 HOME EM NEUTRO (+Momentum) ({score_home:.1%})'
         else:
             return f'⚖️ ANALISAR (H:{score_home:.1%} A:{score_away:.1%})'
 
@@ -1523,11 +1523,11 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         recomendacao_str = str(recomendacao).upper()
     
         is_home_bet = any(k in recomendacao_str for k in [
-            'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+            '1 - ', 'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
             'MODELO CONFIA HOME', 'H:', 'HOME)'
         ])
         is_away_bet = any(k in recomendacao_str for k in [
-            'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+            '2 - ', 'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
             'MODELO CONFIA AWAY', 'A:', 'AWAY)'
         ])
     
@@ -1615,11 +1615,11 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
     
         # Detectar lado da aposta
         is_home_bet = any(k in recomendacao for k in [
-            'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+            '1 - ', 'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
             'MODELO CONFIA HOME', 'H:', 'HOME)'
         ])
         is_away_bet = any(k in recomendacao for k in [
-            'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+            '2 - ', 'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
             'MODELO CONFIA AWAY', 'A:', 'AWAY)'
         ])
     
@@ -1697,11 +1697,11 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         recomendacao_str = str(recomendacao).upper()
     
         is_home_bet = any(k in recomendacao_str for k in [
-            'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+            '1 - ', 'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
             'MODELO CONFIA HOME', 'H:', 'HOME)'
         ])
         is_away_bet = any(k in recomendacao_str for k in [
-            'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+            '2 - ', 'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
             'MODELO CONFIA AWAY', 'A:', 'AWAY)'
         ])
     
@@ -1725,11 +1725,11 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         recomendacao_str = str(recomendacao).upper()
     
         is_home_bet = any(k in recomendacao_str for k in [
-            'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+            '1 - ','HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
             'MODELO CONFIA HOME', 'H:', 'HOME)'
         ])
         is_away_bet = any(k in recomendacao_str for k in [
-            'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
+            '2 - ', 'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
             'MODELO CONFIA AWAY', 'A:', 'AWAY)'
         ])
     
