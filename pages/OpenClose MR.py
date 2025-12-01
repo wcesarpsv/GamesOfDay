@@ -17,7 +17,7 @@ st.title("🎯 Análise 3D de 16 Quadrantes - ML Avançado (Home & Away)")
 PAGE_PREFIX = "QuadrantesML_3D"
 GAMES_FOLDER = "GamesDay"
 LIVESCORE_FOLDER = "LiveScore"
-EXCLUDED_LEAGUE_KEYWORDS = ["cup", "copas", "uefa", "afc", "sudamericana", "copa", "trophy"]
+EXCLUDED_LEAGUE_KEYWORDS = ["cup","coppa", "copas", "uefa", "afc", "sudamericana", "copa", "trophy"]
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_FOLDER = os.path.join(BASE_DIR, "Models")
@@ -112,61 +112,6 @@ def calculate_ah_home_target(margin, asian_line_str):
 
 
 from sklearn.cluster import KMeans
-
-# ==============================================================
-# 🧩 BLOCO – CLUSTERIZAÇÃO 3D (KMEANS)
-# ==============================================================
-
-# def aplicar_clusterizacao_3d(df, n_clusters=2, random_state=42):
-#     """
-#     Cria clusters espaciais com base em Aggression, Momentum Liga e Momentum Time.
-#     Retorna o DataFrame com a nova coluna 'Cluster3D_Label'.
-#     """
-
-#     df = df.copy()
-
-#     # Garante as colunas necessárias
-#     required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
-#     missing = [c for c in required_cols if c not in df.columns]
-#     if missing:
-#         st.warning(f"⚠️ Colunas ausentes para clusterização 3D: {missing}")
-#         df['Cluster3D_Label'] = -1
-#         return df
-
-#     # Diferenças espaciais (vetor 3D)
-#     df['dx'] = df['Aggression_Home'] - df['Aggression_Away']
-#     df['dy'] = df['M_H'] - df['M_A']
-#     df['dz'] = df['MT_H'] - df['MT_A']
-
-#     X_cluster = df[['dx', 'dy', 'dz']].fillna(0).to_numpy()
-
-#     # KMeans 3D
-#     kmeans = KMeans(
-#         n_clusters=n_clusters,
-#         random_state=random_state,
-#         init='k-means++',   # garante convergência estável
-#         n_init=10           # mais robusto
-#     )
-#     df['Cluster3D_Label'] = kmeans.fit_predict(X_cluster)
-
-#     # 🧠 Calcular centroide de cada cluster para diagnóstico
-#     centroids = pd.DataFrame(kmeans.cluster_centers_, columns=['dx', 'dy', 'dz'])
-#     centroids['Cluster'] = range(n_clusters)
-
-#     st.markdown("### 🧭 Clusters 3D Criados (KMeans)")
-#     st.dataframe(centroids.style.format({'dx': '{:.2f}', 'dy': '{:.2f}', 'dz': '{:.2f}'}))
-
-#     # Adicionar também uma descrição textual leve (para visualização)
-#     df['Cluster3D_Desc'] = df['Cluster3D_Label'].map({
-#         0: '⚡ Agressivos + Momentum Positivo',
-#         1: '💤 Reativos + Momentum Negativo',
-#         2: '⚖️ Equilibrados',
-#         3: '🔥 Alta Variância',
-#         4: '🌪️ Caóticos / Transição'
-#     }).fillna('🌀 Outro')
-
-#     return df
-
 
 def aplicar_clusterizacao_3d_segura(history, games_today, n_clusters=5):
     """
@@ -408,57 +353,6 @@ history['Quadrante_Away'] = history.apply(
 )
 
 
-########################################
-#### 🧠 BLOCO – Cálculo de MT_H e MT_A (Momentum do Time)
-########################################
-def calcular_momentum_time(df, window=6):
-    """
-    Calcula o Momentum do Time (MT_H / MT_A) com base no HandScore,
-    usando média móvel e normalização z-score por time.
-    
-    - MT_H: momentum do time em casa (últimos jogos como mandante)
-    - MT_A: momentum do time fora (últimos jogos como visitante)
-    - Valores típicos: [-3.5, +3.5]
-    """
-    df = df.copy()
-
-    # Garante existência das colunas
-    if 'MT_H' not in df.columns:
-        df['MT_H'] = np.nan
-    if 'MT_A' not in df.columns:
-        df['MT_A'] = np.nan
-
-    # Lista de todos os times (Home + Away)
-    all_teams = pd.unique(df[['Home', 'Away']].values.ravel())
-
-    for team in all_teams:
-        # ---------------- HOME ----------------
-        mask_home = df['Home'] == team
-        if mask_home.sum() > 2:  # precisa de histórico mínimo
-            series = df.loc[mask_home, 'HandScore_Home'].astype(float).rolling(window, min_periods=2).mean()
-            zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
-            df.loc[mask_home, 'MT_H'] = zscore
-
-        # ---------------- AWAY ----------------
-        mask_away = df['Away'] == team
-        if mask_away.sum() > 2:
-            series = df.loc[mask_away, 'HandScore_Away'].astype(float).rolling(window, min_periods=2).mean()
-            zscore = (series - series.mean()) / (series.std(ddof=0) if series.std(ddof=0) != 0 else 1)
-            df.loc[mask_away, 'MT_A'] = zscore
-
-    # Preenche eventuais NaN com 0 (neutro)
-    df['MT_H'] = df['MT_H'].fillna(0)
-    df['MT_A'] = df['MT_A'].fillna(0)
-
-    return df
-
-# ✅ Aplicar antes do cálculo 3D
-history = calcular_momentum_time(history)
-games_today = calcular_momentum_time(games_today)
-
-
-
-
 
 
 # ---------------- CÁLCULO DE DISTÂNCIAS 3D (Aggression × M × MT) ----------------
@@ -544,10 +438,10 @@ def plot_quadrantes_16(df, side="Home"):
 
     # Definir cores por categoria
     cores_categorias = {
-        'Fav Forte': 'gold',
-        'Fav Moderado': 'blue', 
-        'Under Moderado': 'black',
-        'Under Forte': 'red'
+        'Fav Forte': 'lightcoral',
+        'Fav Moderado': 'lightpink', 
+        'Under Moderado': 'lightblue',
+        'Under Forte': 'lightsteelblue'
     }
 
     # Plotar cada ponto com cor da categoria
@@ -606,6 +500,102 @@ with col2:
     st.pyplot(plot_quadrantes_16(games_today, "Away"))
 ########################################
 
+
+    # ==================================================
+#  REGRESSÃO À MÉDIA — PACOTE COMPLETO (2025)
+# ==================================================
+
+def adicionar_regressao_media_completa(df):
+    """
+    Adiciona 7 features + 2 ajustes que implementam mean reversion de forma brutalmente eficaz
+    """
+    df = df.copy()
+    
+    # ------------------------------------------------------------------
+    # 1 MT_Reversion_Score — a feature mais poderosa que você vai ter
+    # ------------------------------------------------------------------
+    # Ideia: quanto mais longe o time está da própria média (em número de jogos),
+    #         maior a probabilidade de regressão
+    df['MT_H_Abs'] = df['MT_H'].abs()
+    df['MT_A_Abs'] = df['MT_A'].abs()
+    
+    # Conta quantos jogos seguidos o time está "extremo" (acima de 1.5 σ)
+    df['Streak_Extremo_H'] = 0.0
+    df['Streak_Extremo_A'] = 0.0
+    df['Games_Above_Expected_H'] = 0.0
+    df['Games_Above_Expected_A'] = 0.0
+
+    all_teams = pd.unique(df[['Home', 'Away']].values.ravel())
+
+    for team in all_teams:
+        mask_h = df['Home'] == team
+        mask_a = df['Away'] == team
+        
+        if mask_h.sum() > 5:
+            extremo = (df.loc[mask_h, 'MT_H'].abs() > 1.5)
+            df.loc[mask_h, 'Streak_Extremo_H'] = extremo.groupby((~extremo).cumsum()).cumcount() + 1
+            df.loc[mask_h, 'Games_Above_Expected_H'] = (df.loc[mask_h, 'MT_H'] > 1.abs() > 1.8).cumsum()
+        
+        if mask_a.sum() > 5:
+            extremo = (df.loc[mask_a, 'MT_A'].abs() > 1.5)
+            df.loc[mask_a, 'Streak_Extremo_A'] = extremo.groupby((~extremo).cumsum()).cumcount() + 1
+            df.loc[mask_a, 'Games_Above_Expected_A'] = (df.loc[mask_a, 'MT_A'].abs() > 1.8).cumsum()
+
+    # Feature final: quanto mais jogos em extremo → maior penalidade
+    df['MT_Reversion_Score_H'] = np.where(
+        df['MT_H'] > 1.8,
+        -0.5 - 0.15 * df['Streak_Extremo_H'],   # cada jogo extra tira 15% de confiança
+        np.where(df['MT_H'] < -1.8, 0.4 + 0.12 * df['Streak_Extremo_H'], 0)
+    )
+    df['MT_Reversion_Score_A'] = np.where(
+        df['MT_A'] > 1.8,
+        -0.5 - 0.15 * df['Streak_Extremo_A'],
+        np.where(df['MT_A'] < -1.8, 0.4 + 0.12 * df['Streak_Extremo_A'], 0)
+    )
+
+    # ------------------------------------------------------------------
+    # 2 HandScore Deviation Penalty (quadrantes falsos)
+    # ------------------------------------------------------------------
+    df['HS_Dev_H'] = abs(df.get('HandScore_Home', 0))
+    df['HS_Dev_A'] = abs(df.get('HandScore_Away', 0))
+    
+    # Se HandScore está > 50 mas o time tem MT_H muito negativo → provável regressão
+    df['HS_Reversion_Penalty_H'] = np.where(
+        (df['HS_Dev_H'] > 45) & (df['MT_H'] < -1.0), -0.6, 
+        np.where((df['HS_Dev_H'] < -45) & (df['MT_H'] > 1.5), 0.5, 0)
+    )
+    df['HS_Reversion_Penalty_A'] = np.where(
+        (df['HS_Dev_A'] > 45) & (df['MT_A'] < -1.0), -0.6, 
+        np.where((df['HS_Dev_A'] < -45) & (df['MT_A'] > 1.5), 0.5, 0)
+    )
+
+    # ------------------------------------------------------------------
+    # 3 Bayesian Average nos scores dos quadrantes (eversion_score
+    # ------------------------------------------------------------------
+    # Evita dar 90 pontos para quadrante com só 3 jogos
+    prior_mean = 50
+    prior_weight = 20  # equivale a 20 jogos "fictícios"
+    
+    def bayesian_score(group):
+        if len(group) == 0:
+            return prior_mean
+        return (group['Target_AH_Home'].mean() * len(group) + prior_mean * prior_weight) / (len(group) + prior_weight)
+    
+    # Só no histórico!
+    if 'Quadrante_Home' in df.columns and not df.empty:
+        bayes_scores = df.groupby('Quadrante_Home')['Target_AH_Home'].apply(bayesian_score).to_dict()
+        df['Quadrante_Bayes_Score_H'] = df['Quadrante_Home'].map(bayes_scores).fillna(50)
+
+    # ------------------------------------------------------------------
+    # 4 Shrinkage nas odds implícitas (evita ser enganado por streak)
+    # ------------------------------------------------------------------
+    if 'Imp_H_OP_Norm' in df.columns:
+        shrinkage = 0.15  # 15% de mistura com 1/3 (flat)
+        df['Imp_H_Shrinked'] = (1 - shrinkage) * df['Imp_H_OP_Norm'] + shrinkage * (1/3)
+        df['Imp_A_Shrinked'] = (1 - shrinkage) * df['Imp_A_OP_Norm'] + shrinkage * (1/3)
+        df['Imp_D_Shrinked'] = (1 - shrinkage) * df['Imp_D_OP_Norm'] + shrinkage * (1/3)
+
+    return df
 
 
 # ---------------- VISUALIZAÇÃO INTERATIVA 3D COM TAMANHO FIXO ----------------
@@ -965,7 +955,11 @@ st.markdown("""
 # ✅ NOVO (seguro)
 history, games_today = aplicar_clusterizacao_3d_segura(history, games_today, n_clusters=5)
 
+# === ONDE VOCÊ VAI CHAMAR ===
+# Depois de calcular_momentum_time e antes do treino do modelo:
 
+history = adicionar_regressao_media_completa(history)
+games_today = adicionar_regressao_media_completa(games_today)
 
 
 def treinar_modelo_3d_clusters_single(history, games_today):
@@ -1008,7 +1002,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     # ----------------------------
     odds_features = pd.DataFrame()
     if use_opening_odds:
-        for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP']:
+        for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP','Odd_H','Odd_D','Odd_A']:
             if col not in history.columns:
                 history[col] = np.nan
 
@@ -1021,8 +1015,11 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         history['Imp_H_OP_Norm'] = history['Imp_H_OP'] / sum_probs
         history['Imp_D_OP_Norm'] = history['Imp_D_OP'] / sum_probs
         history['Imp_A_OP_Norm'] = history['Imp_A_OP'] / sum_probs
+        history['Diff_Odd_H'] = history['Odd_H_OP'] - history['Odd_H']
+        history['Diff_Odd_D'] = history['Odd_D_OP'] - history['Odd_D']
+        history['Diff_Odd_A'] = history['Odd_A_OP'] - history['Odd_A']
 
-        odds_features = history[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm']].fillna(0)
+        odds_features = history[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm','Diff_Odd_H','Diff_Odd_D','Diff_Odd_A']].fillna(0)
 
     # ----------------------------
     # 🧩 Montagem final do dataset
@@ -1055,7 +1052,7 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     extras_today = games_today[features_3d].fillna(0)
 
     if use_opening_odds:
-        for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP']:
+        for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP','Odd_H','Odd_D','Odd_A']:
             if col not in games_today.columns:
                 games_today[col] = np.nan
 
@@ -1068,8 +1065,11 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         games_today['Imp_H_OP_Norm'] = games_today['Imp_H_OP'] / sum_today
         games_today['Imp_D_OP_Norm'] = games_today['Imp_D_OP'] / sum_today
         games_today['Imp_A_OP_Norm'] = games_today['Imp_A_OP'] / sum_today
+        games_today['Diff_Odd_H'] = games_today['Odd_H_OP'] - games_today['Odd_H']
+        games_today['Diff_Odd_D'] = games_today['Odd_D_OP'] - games_today['Odd_D']
+        games_today['Diff_Odd_A'] = games_today['Odd_A_OP'] - games_today['Odd_A']
 
-        odds_today = games_today[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm']].fillna(0)
+        odds_today = games_today[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm','Diff_Odd_H','Diff_Odd_D','Diff_Odd_A']].fillna(0)
         X_today = pd.concat([ligas_today, clusters_today, extras_today, odds_today], axis=1)
     else:
         X_today = pd.concat([ligas_today, clusters_today, extras_today], axis=1)
@@ -1184,30 +1184,30 @@ def adicionar_indicadores_explicativos_3d_16_dual(df):
 
         # Padrões 3D específicos incorporando momentum
         if 'Fav Forte' in home_q and 'Under Forte' in away_q and momentum_h > 1.0:
-            return f'1 - 💪 FAVORITO HOME SUPER FORTE (+Momentum) ({score_home:.1%})'
+            return f'💪 FAVORITO HOME SUPER FORTE (+Momentum) ({score_home:.1%})'
         elif 'Under Forte' in home_q and 'Fav Forte' in away_q and momentum_a > 1.0:
-            return f'2 - 💪 FAVORITO AWAY SUPER FORTE (+Momentum) ({score_away:.1%})'
+            return f'💪 FAVORITO AWAY SUPER FORTE (+Momentum) ({score_away:.1%})'
         elif 'Fav Moderado' in home_q and 'Under Moderado' in away_q and momentum_h > 0.5:
-            return f'1 - 🎯 VALUE NO HOME (+Momentum) ({score_home:.1%})'
+            return f'🎯 VALUE NO HOME (+Momentum) ({score_home:.1%})'
         elif 'Under Moderado' in home_q and 'Fav Moderado' in away_q and momentum_a > 0.5:
-            return f'2 - 🎯 VALUE NO AWAY (+Momentum) ({score_away:.1%})'
+            return f'🎯 VALUE NO AWAY (+Momentum) ({score_away:.1%})'
         elif ml_side == 'HOME' and score_home >= 0.60 and momentum_h > 0:
-            return f'1 - 📈 MODELO CONFIA HOME (+Momentum) ({score_home:.1%})'
+            return f'📈 MODELO CONFIA HOME (+Momentum) ({score_home:.1%})'
         elif ml_side == 'AWAY' and score_away >= 0.60 and momentum_a > 0:
-            return f'2 - 📈 MODELO CONFIA AWAY (+Momentum) ({score_away:.1%})'
+            return f'📈 MODELO CONFIA AWAY (+Momentum) ({score_away:.1%})'
         elif momentum_h < -1.0 and score_away >= 0.55:
-            return f'2 - 🔻 HOME EM MOMENTUM NEGATIVO → AWAY ({score_away:.1%})'
+            return f'🔻 HOME EM MOMENTUM NEGATIVO → AWAY ({score_away:.1%})'
         elif momentum_a < -1.0 and score_home >= 0.55:
-            return f'1 - 🔻 AWAY EM MOMENTUM NEGATIVO → HOME ({score_home:.1%})'
+            return f'🔻 AWAY EM MOMENTUM NEGATIVO → HOME ({score_home:.1%})'
         elif 'Neutro' in home_q and score_away >= 0.58 and momentum_a > 0:
-            return f'2 - 🔄 AWAY EM NEUTRO (+Momentum) ({score_away:.1%})'
+            return f'🔄 AWAY EM NEUTRO (+Momentum) ({score_away:.1%})'
         elif 'Neutro' in away_q and score_home >= 0.58 and momentum_h > 0:
-            return f'1 - 🔄 HOME EM NEUTRO (+Momentum) ({score_home:.1%})'
+            return f'🔄 HOME EM NEUTRO (+Momentum) ({score_home:.1%})'
             # ADICIONAR ESTA CONDIÇÃO ANTES DO "else":
         elif score_home >= 0.75 and momentum_h >= -0.5:  # Score alto, momentum não muito negativo
-            return f'1 - 🎯 VALUE HOME (Score Alto) ({score_home:.1%})'
+            return f'🎯 VALUE HOME (Score Alto) ({score_home:.1%})'
         elif score_away >= 0.75 and momentum_a >= -0.5:
-            return f'2 - 🎯 VALUE AWAY (Score Alto) ({score_away:.1%})'
+            return f'🎯 VALUE AWAY (Score Alto) ({score_away:.1%})'
         else:
             return f'⚖️ ANALISAR (H:{score_home:.1%} A:{score_away:.1%})'
 
@@ -1495,10 +1495,11 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         recomendacao_str = str(recomendacao).upper()
     
         is_home_bet = any(k in recomendacao_str for k in [
-            '1 - '
+            'HOME', '→ HOME', 'FAVORITO HOME', 'VALUE NO HOME',
+            'MODELO CONFIA HOME', 'H:', 'HOME)'
         ])
         is_away_bet = any(k in recomendacao_str for k in [
-            'AWAY','2 - ', 'FAVORITO AWAY', 'VALUE NO AWAY',
+            'AWAY', '→ AWAY', 'FAVORITO AWAY', 'VALUE NO AWAY',
             'MODELO CONFIA AWAY', 'A:', 'AWAY)'
         ])
     
@@ -2338,6 +2339,361 @@ def resumo_3d_16_quadrantes_hoje(df):
 
 if not games_today.empty and 'Classificacao_Potencial_3D' in games_today.columns:
     resumo_3d_16_quadrantes_hoje(games_today)
+
+
+
+
+# =====================================================
+# 🧠 ML2 – MOVIMENTO DE MERCADO (Market Bias Model)
+# =====================================================
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, roc_auc_score
+
+def treinar_ml_movimento_mercado(history, games_today):
+    """
+    Treina modelo secundário para prever se o movimento de odds (open→close)
+    indica corretamente o lado vencedor e detecta divergências modelo x mercado.
+    """
+
+    df = history.copy()
+
+    # -------------------------------------------------
+    # ⚙️ 1️⃣ Cria Outcome e linha de abertura (Home)
+    # -------------------------------------------------
+    if "Outcome_Home_FT" not in df.columns:
+        if {"Goals_H_FT", "Goals_A_FT"}.issubset(df.columns):
+            df["Outcome_Home_FT"] = np.sign(df["Goals_H_FT"] - df["Goals_A_FT"]).astype("Int64")
+        else:
+            st.warning("⚠️ ML2: sem FT no histórico — modelo ignorado.")
+            return None, games_today
+
+    for df_tmp in (df, games_today):
+        if "Asian_Line_OP" in df_tmp.columns and "Asian_Line_OP_Decimal" not in df_tmp.columns:
+            df_tmp["Asian_Line_OP_Decimal"] = df_tmp["Asian_Line_OP"].apply(convert_asian_line_to_decimal)
+
+    # -------------------------------------------------
+    # ⚙️ 2️⃣ Probabilidades implícitas normalizadas
+    # -------------------------------------------------
+    for prefix in ["OP", ""]:
+        suffix = f"_{prefix}" if prefix else ""
+        df[f"Imp_H{suffix}_Norm"] = 1 / df[f"Odd_H{suffix}"]
+        df[f"Imp_D{suffix}_Norm"] = 1 / df[f"Odd_D{suffix}"]
+        df[f"Imp_A{suffix}_Norm"] = 1 / df[f"Odd_A{suffix}"]
+        soma = df[[f"Imp_H{suffix}_Norm", f"Imp_D{suffix}_Norm", f"Imp_A{suffix}_Norm"]].sum(axis=1).replace(0, np.nan)
+        df[[f"Imp_H{suffix}_Norm", f"Imp_D{suffix}_Norm", f"Imp_A{suffix}_Norm"]] = (
+            df[[f"Imp_H{suffix}_Norm", f"Imp_D{suffix}_Norm", f"Imp_A{suffix}_Norm"]].div(soma, axis=0).fillna(0)
+        )
+
+    # -------------------------------------------------
+    # ⚙️ 3️⃣ Cria variações (Δ)
+    # -------------------------------------------------
+    df["Δ_Imp_H"] = df["Imp_H_Norm"] - df["Imp_H_OP_Norm"]
+    df["Δ_Imp_A"] = df["Imp_A_Norm"] - df["Imp_A_OP_Norm"]
+    df["Δ_Spread_HA"] = df["Δ_Imp_H"] - df["Δ_Imp_A"]
+    if "Asian_Line_OP_Decimal" in df.columns:
+        df["Δ_Asian_Line"] = df["Asian_Line_Decimal"] - df["Asian_Line_OP_Decimal"]
+    else:
+        df["Δ_Asian_Line"] = 0.0
+
+    # -------------------------------------------------
+    # ⚙️ 4️⃣ Target: movimento certo?
+    # -------------------------------------------------
+    df = df.dropna(subset=["Δ_Imp_H", "Δ_Imp_A", "Outcome_Home_FT"])
+    df["Target_Market_Correct"] = np.where(
+        ((df["Δ_Imp_H"] > 0) & (df["Outcome_Home_FT"] == 1)) |
+        ((df["Δ_Imp_H"] < 0) & (df["Outcome_Home_FT"] == -1)),
+        1, 0
+    )
+
+    # -------------------------------------------------
+    # ⚙️ 5️⃣ Features dinâmicas
+    # -------------------------------------------------
+    base_features = [
+        "Δ_Imp_H", "Δ_Imp_A", "Δ_Spread_HA",
+        "Imp_H_OP_Norm", "Imp_A_OP_Norm",
+        "Imp_H_Norm", "Imp_A_Norm",
+        "Δ_Asian_Line", "Asian_Line_Decimal",
+        "M_H", "M_A", "MT_H", "MT_A", "Diff_Power"
+    ]
+    features = [f for f in base_features if f in df.columns]
+    if not features:
+        st.warning("⚠️ ML2: nenhuma feature encontrada.")
+        return None, games_today
+
+    X = df[features].fillna(0)
+    y = df["Target_Market_Correct"]
+
+    # -------------------------------------------------
+    # ⚙️ 6️⃣ Treina RandomForest
+    # -------------------------------------------------
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
+    model_market = RandomForestClassifier(n_estimators=450, max_depth=10, class_weight='balanced', random_state=42)
+    model_market.fit(X_train, y_train)
+
+    y_pred = model_market.predict(X_test)
+    y_prob = model_market.predict_proba(X_test)[:, 1]
+    acc = accuracy_score(y_test, y_pred)
+    auc = roc_auc_score(y_test, y_prob)
+
+    st.markdown(f"""
+    ### 📊 ML2 – Market Movement Model
+    - Accuracy: **{acc:.3f}**
+    - ROC-AUC: **{auc:.3f}**
+    - Amostras: {len(df)}
+    """)
+
+    # -------------------------------------------------
+    # ⚙️ 7️⃣ Aplica aos jogos do dia
+    # -------------------------------------------------
+    if not games_today.empty:
+        temp = games_today.copy()
+
+        for prefix in ["OP", ""]:
+            suffix = f"_{prefix}" if prefix else ""
+            temp[f"Imp_H{suffix}_Norm"] = 1 / temp[f"Odd_H{suffix}"]
+            temp[f"Imp_D{suffix}_Norm"] = 1 / temp[f"Odd_D{suffix}"]
+            temp[f"Imp_A{suffix}_Norm"] = 1 / temp[f"Odd_A{suffix}"]
+            soma = temp[[f"Imp_H{suffix}_Norm", f"Imp_D{suffix}_Norm", f"Imp_A{suffix}_Norm"]].sum(axis=1).replace(0, np.nan)
+            temp[[f"Imp_H{suffix}_Norm", f"Imp_D{suffix}_Norm", f"Imp_A{suffix}_Norm"]] = (
+                temp[[f"Imp_H{suffix}_Norm", f"Imp_D{suffix}_Norm", f"Imp_A{suffix}_Norm"]].div(soma, axis=0).fillna(0)
+            )
+
+        temp["Δ_Imp_H"] = temp["Imp_H_Norm"] - temp["Imp_H_OP_Norm"]
+        temp["Δ_Imp_A"] = temp["Imp_A_Norm"] - temp["Imp_A_OP_Norm"]
+        temp["Δ_Spread_HA"] = temp["Δ_Imp_H"] - temp["Δ_Imp_A"]
+        if "Asian_Line_OP_Decimal" in temp.columns:
+            temp["Δ_Asian_Line"] = temp["Asian_Line_Decimal"] - temp["Asian_Line_OP_Decimal"]
+        else:
+            temp["Δ_Asian_Line"] = 0.0
+
+        temp = temp.fillna(0)
+        X_today = temp[[f for f in features if f in temp.columns]]
+        preds = model_market.predict_proba(X_today)[:, 1]
+        temp["Market_Pred_Confidence"] = preds
+        temp["Market_Pred_Side"] = np.where(temp["Δ_Imp_H"] > 0, "HOME", "AWAY")
+
+        # -------------------------------------------------
+        # ⚙️ 8️⃣ Divergência modelo x mercado
+        # -------------------------------------------------
+        if "ML_Side" in temp.columns:
+            temp["Market_Model_Divergence"] = np.where(
+                temp["ML_Side"].str.upper() == temp["Market_Pred_Side"], 1, -1
+            )
+        else:
+            temp["Market_Model_Divergence"] = np.nan
+
+        temp["Value_Bet_MarketBias"] = np.where(
+            (temp["Market_Model_Divergence"] == -1) & (temp["Market_Pred_Confidence"] >= 0.60),
+            True, False
+        )
+
+        games_today = temp.copy()
+
+    return model_market, games_today
+
+
+modelo_mercado, games_today = treinar_ml_movimento_mercado(history, games_today)
+
+
+# =====================================================
+# 🧩 BLOCO FINAL – SINERGIA ML1 + ML2
+# =====================================================
+
+import plotly.express as px
+
+# -------------------------------------------------
+# ⚙️ 1️⃣ Cria Score_Model_Chosen com base no lado previsto pela ML1
+# -------------------------------------------------
+if {"Quadrante_ML_Score_Home", "Quadrante_ML_Score_Away", "ML_Side"}.issubset(games_today.columns):
+    games_today["Score_Model_Chosen"] = np.where(
+        games_today["ML_Side"].str.upper() == "HOME",
+        games_today["Quadrante_ML_Score_Home"],
+        games_today["Quadrante_ML_Score_Away"]
+    )
+else:
+    st.warning("⚠️ Colunas de score 3D não encontradas para gerar Score_Model_Chosen.")
+    games_today["Score_Model_Chosen"] = np.nan
+
+
+# -------------------------------------------------
+# ⚙️ 2️⃣ Função principal de fusão ML1+ML2
+# -------------------------------------------------
+def combinar_modelos_ml1_ml2(games_today, lim_conf_modelo=0.55, lim_conf_mercado=0.50):
+    """
+    Integra previsões da ML1 (modelo 3D) e ML2 (movimento de mercado),
+    calculando sinergia e consenso probabilístico.
+    """
+    df = games_today.copy()
+
+    # -------------------------------------------------
+    # ⚙️ 3️⃣ Verificação mínima
+    # -------------------------------------------------
+    if not {"ML_Side", "Score_Model_Chosen", "Market_Pred_Side", "Market_Pred_Confidence"}.issubset(df.columns):
+        st.warning("⚠️ Fusão ML1+ML2: colunas necessárias não encontradas.")
+        return df
+
+    # -------------------------------------------------
+    # ⚙️ 4️⃣ Concordância e divergência
+    # -------------------------------------------------
+    df["ML_Agree_Market"] = np.where(
+        (df["ML_Side"].str.upper() == df["Market_Pred_Side"]) &
+        (df["Score_Model_Chosen"] >= lim_conf_modelo) &
+        (df["Market_Pred_Confidence"] >= lim_conf_mercado),
+        True, False
+    )
+
+    df["ML_Diverge_Market"] = np.where(
+        (df["ML_Side"].str.upper() != df["Market_Pred_Side"]) &
+        (df["Score_Model_Chosen"] >= lim_conf_modelo) &
+        (df["Market_Pred_Confidence"] >= lim_conf_mercado),
+        True, False
+    )
+
+    # -------------------------------------------------
+    # ⚙️ 5️⃣ Consensus Score
+    # -------------------------------------------------
+    df["Consensus_Score"] = (
+        df["Score_Model_Chosen"] * 0.5 + df["Market_Pred_Confidence"] * 0.5
+    ).round(3)
+
+    # -------------------------------------------------
+    # ⚙️ 6️⃣ Classificação do sinal
+    # -------------------------------------------------
+    df["Consensus_Label"] = np.select(
+        [
+            df["ML_Agree_Market"],
+            df["ML_Diverge_Market"]
+        ],
+        [
+            "✅ Full Agreement",
+            "⚠️ Divergente Value"
+        ],
+        default="❕ Indefinido"
+    )
+
+    # -------------------------------------------------
+    # ⚙️ 7️⃣ Painel Streamlit – Tabela
+    # -------------------------------------------------
+    st.markdown("## 🔄 Sinergia entre Modelo 3D e Mercado (ML1 + ML2)")
+
+    df_exibir = df[
+        [
+            "League", "Home", "Away",'Goals_H_Today','Goals_A_Today',
+            "ML_Side", "Market_Pred_Side",
+            "Score_Model_Chosen", "Market_Pred_Confidence",
+            "Consensus_Score", "Consensus_Label"
+        ]
+    ].sort_values("Consensus_Score", ascending=False)
+
+    st.dataframe(
+        df_exibir.style.applymap(
+            lambda v: "background-color:#1e90ff; color:white;" if v == "✅ Full Agreement" else
+                      ("background-color:#ff8c00; color:white;" if v == "⚠️ Divergente Value" else None),
+            subset=["Consensus_Label"]
+        ).format({
+            "Goals_H_Today": "{:.0f}",
+            "Goals_A_Today": "{:.0f}",
+            "Score_Model_Chosen": "{:.2f}",
+            "Market_Pred_Confidence": "{:.2f}",
+            "Consensus_Score": "{:.2f}"
+        })
+    )
+
+    # -------------------------------------------------
+    # ⚙️ 8️⃣ Estatísticas e gráfico de proporção
+    # -------------------------------------------------
+    total = len(df)
+    n_agree = df["ML_Agree_Market"].sum()
+    n_div = df["ML_Diverge_Market"].sum()
+
+    st.markdown(f"""
+    ### 📈 Estatísticas de Sinergia
+    - Total de jogos: **{total}**
+    - Convergentes (modelo + mercado): **{n_agree} ({n_agree/total:.1%})**
+    - Divergentes (value bets potenciais): **{n_div} ({n_div/total:.1%})**
+    """)
+
+    # Gráfico de proporção
+    counts = df["Consensus_Label"].value_counts().reset_index()
+    counts.columns = ["Tipo", "Qtd"]
+    fig = px.bar(
+        counts, x="Tipo", y="Qtd",
+        color="Tipo",
+        color_discrete_map={
+            "✅ Full Agreement": "#1e90ff",
+            "⚠️ Divergente Value": "#ff8c00",
+            "❕ Indefinido": "#808080"
+        },
+        title="Distribuição de Concordância ML1 vs ML2"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    return df
+
+
+# -------------------------------------------------
+# ⚙️ 9️⃣ Execução final
+# -------------------------------------------------
+games_today = combinar_modelos_ml1_ml2(games_today)
+
+
+# =====================================================
+# 📊 ANÁLISE DE MOVIMENTO DE ODDS (Abertura → Fecho)
+# =====================================================
+
+if {"Odd_H", "Odd_D", "Odd_A", "Odd_H_OP", "Odd_D_OP", "Odd_A_OP"}.issubset(games_today.columns):
+
+    # Diferenças absolutas e percentuais
+    games_today["ΔOdd_H_%"] = ((games_today["Odd_H"] - games_today["Odd_H_OP"]) / games_today["Odd_H_OP"] * 100).round(2)
+    games_today["ΔOdd_D_%"] = ((games_today["Odd_D"] - games_today["Odd_D_OP"]) / games_today["Odd_D_OP"] * 100).round(2)
+    games_today["ΔOdd_A_%"] = ((games_today["Odd_A"] - games_today["Odd_A_OP"]) / games_today["Odd_A_OP"] * 100).round(2)
+
+    # Label interpretativo
+    def interpretar_movimento(r):
+        movimentos = []
+        if r["ΔOdd_H_%"] < -2:
+            movimentos.append("📉 Home caiu")
+        elif r["ΔOdd_H_%"] > 2:
+            movimentos.append("📈 Home subiu")
+
+        if r["ΔOdd_A_%"] < -2:
+            movimentos.append("📉 Away caiu")
+        elif r["ΔOdd_A_%"] > 2:
+            movimentos.append("📈 Away subiu")
+
+        if r["ΔOdd_D_%"] < -2:
+            movimentos.append("📉 Draw caiu")
+        elif r["ΔOdd_D_%"] > 2:
+            movimentos.append("📈 Draw subiu")
+
+        return ", ".join(movimentos) if movimentos else "⚖️ Estável"
+
+    games_today["Market_Move_Label"] = games_today.apply(interpretar_movimento, axis=1)
+
+    # Mostra tabela resumida no Streamlit
+    st.markdown("## 📊 Movimento de Odds – Abertura → Fecho")
+    st.dataframe(
+        games_today[
+            ["League", "Home", "Away", "ML_Side", "Market_Pred_Side",'Goals_H_Today','Goals_A_Today',
+             "Odd_H_OP", "Odd_H", "ΔOdd_H_%",
+             "Odd_D_OP", "Odd_D", "ΔOdd_D_%",
+             "Odd_A_OP", "Odd_A", "ΔOdd_A_%",
+             "Market_Move_Label"]
+        ].sort_values("ΔOdd_H_%", ascending=True)
+        .style.format({
+            "Goals_H_Today": "{:.0f}",
+            "Goals_A_Today": "{:.0f}",
+            "Odd_H_OP": "{:.2f}", "Odd_H": "{:.2f}", "ΔOdd_H_%": "{:+.2f}%",
+            "Odd_D_OP": "{:.2f}", "Odd_D": "{:.2f}", "ΔOdd_D_%": "{:+.2f}%",
+            "Odd_A_OP": "{:.2f}", "Odd_A": "{:.2f}", "ΔOdd_A_%": "{:+.2f}%"
+        })
+        .applymap(lambda v: "background-color:#228B22; color:white" if isinstance(v, float) and v < -2 else None, subset=["ΔOdd_H_%", "ΔOdd_D_%", "ΔOdd_A_%"])
+        .applymap(lambda v: "background-color:#B22222; color:white" if isinstance(v, float) and v > 2 else None, subset=["ΔOdd_H_%", "ΔOdd_D_%", "ΔOdd_A_%"])
+    )
+else:
+    st.warning("⚠️ Colunas de odds de abertura/fecho não encontradas para análise de movimento.")
 
 
 
