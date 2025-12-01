@@ -992,7 +992,14 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
         'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
         'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',
-        'Vector_Sign', 'Magnitude_3D'
+        'Vector_Sign', 'Magnitude_3D',
+        # <<< NOVAS FEATURES DE REGRESSÃO À MÉDIA >>>
+        'MT_Reversion_Score_H', 'MT_Reversion_Score_A',
+        'HS_Reversion_Penalty_H', 'HS_Reversion_Penalty_A',
+        'Streak_Extremo_H', 'Streak_Extremo_A',
+        'Games_Above_Expected_H', 'Games_Above_Expected_A',
+        'Quadrante_Bayes_Score_H',
+        'Imp_H_Shrinked', 'Imp_A_Shrinked'  # se usar odds
     ]
 
     extras_3d = history[features_3d].fillna(0)
