@@ -951,38 +951,69 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     history, games_today = aplicar_clusterizacao_3d_segura(history, games_today, n_clusters=5)
 
     # ----------------------------
-    # 🧠 Feature Engineering
+    # 🧠 Feature Engineering - COM SEGURANÇA
     # ----------------------------
+    # Garantir que as colunas de liga existem
+    if 'League' not in history.columns:
+        history['League'] = 'Unknown'
+    if 'League' not in games_today.columns:
+        games_today['League'] = 'Unknown'
+    
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
+    
+    # Garantir que clusters existem
+    if 'Cluster3D_Label' not in history.columns:
+        history['Cluster3D_Label'] = 0
+    if 'Cluster3D_Label' not in games_today.columns:
+        games_today['Cluster3D_Label'] = 0
+        
     clusters_dummies = pd.get_dummies(history['Cluster3D_Label'], prefix='C3D')
 
-    features_3d = [
+    # Lista de features 3D base (garantir que existem)
+    features_3d_base = [
         'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
         'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
         'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
         'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
         'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',
         'Vector_Sign', 'Magnitude_3D',
-        # <<< NOVAS FEATURES DE REGRESSÃO À MÉDIA >>>
+        # NOVAS FEATURES DE REGRESSÃO À MÉDIA
         'MT_Reversion_Score_H', 'MT_Reversion_Score_A',
         'HS_Reversion_Penalty_H', 'HS_Reversion_Penalty_A',
         'Streak_Extremo_H', 'Streak_Extremo_A',
-        'Games_Above_Expected_H', 'Games_Above_Expected_A',
-        'Quadrante_Bayes_Score_H',
-        'Imp_H_Shrinked', 'Imp_A_Shrinked'  # se usar odds
+        'Games_Above_Expected_H', 'Games_Above_Expected_A'
     ]
 
-    extras_3d = history[features_3d].fillna(0)
+    # 🆕 CRIAR COLUNAS FALTANTES DE FORMA SEGURA
+    for feature in features_3d_base:
+        if feature not in history.columns:
+            history[feature] = 0.0
+        if feature not in games_today.columns:
+            games_today[feature] = 0.0
+
+    # 🆕 CRIAR COLUNAS BAYESIANAS FALTANTES
+    if 'Quadrante_Bayes_Score_H' not in history.columns:
+        history['Quadrante_Bayes_Score_H'] = 0.5  # Valor neutro
+    if 'Quadrante_Bayes_Score_H' not in games_today.columns:
+        games_today['Quadrante_Bayes_Score_H'] = 0.5
+
+    # Selecionar apenas as features que realmente existem
+    features_3d_existentes = [f for f in features_3d_base + ['Quadrante_Bayes_Score_H'] if f in history.columns]
+    extras_3d = history[features_3d_existentes].fillna(0)
 
     # ----------------------------
     # 🎯 Features de Odds Implícitas Normalizadas
     # ----------------------------
     odds_features = pd.DataFrame()
     if use_opening_odds:
+        # 🆕 GARANTIR QUE COLUNAS DE ODDS EXISTEM
         for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP','Odd_H','Odd_D','Odd_A']:
             if col not in history.columns:
-                history[col] = np.nan
+                history[col] = 3.0  # Valor padrão neutro
+            if col not in games_today.columns:
+                games_today[col] = 3.0
 
+        # Calcular probabilidades implícitas
         history['Imp_H_OP'] = 1 / history['Odd_H_OP']
         history['Imp_D_OP'] = 1 / history['Odd_D_OP']
         history['Imp_A_OP'] = 1 / history['Odd_A_OP']
@@ -996,16 +1027,34 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         history['Diff_Odd_D'] = history['Odd_D_OP'] - history['Odd_D']
         history['Diff_Odd_A'] = history['Odd_A_OP'] - history['Odd_A']
 
-        odds_features = history[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm','Diff_Odd_H','Diff_Odd_D','Diff_Odd_A']].fillna(0)
+        # 🆕 CRIAR COLUNAS SHRINKED DE FORMA SEGURA
+        history['Imp_H_Shrinked'] = history['Imp_H_OP_Norm']  # Fallback sem shrinkage
+        history['Imp_A_Shrinked'] = history['Imp_A_OP_Norm']
+        
+        # Aplicar shrinkage se possível
+        shrinkage = 0.12
+        if 'Imp_H_OP_Norm' in history.columns:
+            history['Imp_H_Shrinked'] = (1 - shrinkage) * history['Imp_H_OP_Norm'] + shrinkage * (1/3)
+            history['Imp_A_Shrinked'] = (1 - shrinkage) * history['Imp_A_OP_Norm'] + shrinkage * (1/3)
+
+        # Coletar features de odds
+        odds_cols = ['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm','Diff_Odd_H','Diff_Odd_D','Diff_Odd_A','Imp_H_Shrinked','Imp_A_Shrinked']
+        odds_cols_existentes = [col for col in odds_cols if col in history.columns]
+        odds_features = history[odds_cols_existentes].fillna(0)
 
     # ----------------------------
     # 🧩 Montagem final do dataset
     # ----------------------------
-    if use_opening_odds:
+    if use_opening_odds and not odds_features.empty:
         X = pd.concat([ligas_dummies, clusters_dummies, extras_3d, odds_features], axis=1)
     else:
         X = pd.concat([ligas_dummies, clusters_dummies, extras_3d], axis=1)
 
+    # Garantir que o target existe
+    if 'Target_AH_Home' not in history.columns:
+        st.error("❌ Target_AH_Home não encontrado no histórico. Verifique os dados.")
+        return None, games_today
+        
     y_home = history['Target_AH_Home'].astype(int)
 
     # ----------------------------
@@ -1024,14 +1073,16 @@ def treinar_modelo_3d_clusters_single(history, games_today):
     # ----------------------------
     # 🔮 Previsões no dataset do dia
     # ----------------------------
+    # Preparar dados do dia com as mesmas colunas
     ligas_today = pd.get_dummies(games_today['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
     clusters_today = pd.get_dummies(games_today['Cluster3D_Label'], prefix='C3D').reindex(columns=clusters_dummies.columns, fill_value=0)
-    extras_today = games_today[features_3d].fillna(0)
+    extras_today = games_today[features_3d_existentes].fillna(0)
 
     if use_opening_odds:
+        # Preparar odds do dia
         for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP','Odd_H','Odd_D','Odd_A']:
             if col not in games_today.columns:
-                games_today[col] = np.nan
+                games_today[col] = 3.0
 
         games_today['Imp_H_OP'] = 1 / games_today['Odd_H_OP']
         games_today['Imp_D_OP'] = 1 / games_today['Odd_D_OP']
@@ -1046,10 +1097,24 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         games_today['Diff_Odd_D'] = games_today['Odd_D_OP'] - games_today['Odd_D']
         games_today['Diff_Odd_A'] = games_today['Odd_A_OP'] - games_today['Odd_A']
 
-        odds_today = games_today[['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm','Diff_Odd_H','Diff_Odd_D','Diff_Odd_A']].fillna(0)
+        # Shrinkage para dados do dia
+        games_today['Imp_H_Shrinked'] = games_today['Imp_H_OP_Norm']
+        games_today['Imp_A_Shrinked'] = games_today['Imp_A_OP_Norm']
+        if 'Imp_H_OP_Norm' in games_today.columns:
+            games_today['Imp_H_Shrinked'] = (1 - shrinkage) * games_today['Imp_H_OP_Norm'] + shrinkage * (1/3)
+            games_today['Imp_A_Shrinked'] = (1 - shrinkage) * games_today['Imp_A_OP_Norm'] + shrinkage * (1/3)
+
+        odds_today = games_today[odds_cols_existentes].fillna(0)
         X_today = pd.concat([ligas_today, clusters_today, extras_today, odds_today], axis=1)
     else:
         X_today = pd.concat([ligas_today, clusters_today, extras_today], axis=1)
+
+    # Garantir que X_today tem as mesmas colunas que X
+    missing_cols = set(X.columns) - set(X_today.columns)
+    for col in missing_cols:
+        X_today[col] = 0
+    
+    X_today = X_today[X.columns]  # Reordenar colunas
 
     # ----------------------------
     # 📈 Previsões
@@ -1088,8 +1153,6 @@ def treinar_modelo_3d_clusters_single(history, games_today):
         else:
             st.info("📊 As odds de abertura ainda não mostraram forte impacto.")
 
-    
-
     # ============================================================
     # 🧩 Segurança final
     # ============================================================
@@ -1111,8 +1174,6 @@ def treinar_modelo_3d_clusters_single(history, games_today):
 
     st.success("✅ Modelo 3D treinado (HOME) – com análise de viés integrada.")
     return model_home, games_today
-
-
 
 
 
