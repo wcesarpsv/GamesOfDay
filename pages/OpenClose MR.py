@@ -501,99 +501,69 @@ with col2:
 ########################################
 
 
-# ==================================================
-#  REGRESSÃO À MÉDIA — PACOTE COMPLETO (2025)
-# ==================================================
-
 def adicionar_regressao_media_completa(df):
-    """
-    Adiciona 7 features + 2 ajustes que implementam mean reversion de forma brutalmente eficaz
-    """
     df = df.copy()
     
     # ------------------------------------------------------------------
-    # 1 MT_Reversion_Score — a feature mais poderosa que você vai ter
+    # 1 Regressão à média no Momentum Time (MT)
     # ------------------------------------------------------------------
-    # Ideia: quanto mais longe o time está da própria média (em número de jogos),
-    #         maior a probabilidade de regressão
     df['MT_H_Abs'] = df['MT_H'].abs()
     df['MT_A_Abs'] = df['MT_A'].abs()
     
-    # Conta quantos jogos seguidos o time está "extremo" (acima de 1.5 σ)
-    df['Streak_Extremo_H'] = 0.0
-    df['Streak_Extremo_A'] = 0.0
-    df['Games_Above_Expected_H'] = 0.0
-    df['Games_Above_Expected_A'] = 0.0
+    df['Streak_Extremo_H'] = 0
+    df['Streak_Extremo_A'] = 0
+    df['Games_Above_Expected_H'] = 0
+    df['Games_Above_Expected_A'] = 0
 
-    all_teams = pd.unique(df[['Home', 'Away']].values.ravel())
+    all_teams = pd.unique(df[['Home', 'Away']].values.ravel('K'))
 
     for team in all_teams:
         mask_h = df['Home'] == team
         mask_a = df['Away'] == team
         
         if mask_h.sum() > 5:
-            extremo = (df.loc[mask_h, 'MT_H'].abs() > 1.5)
+            mt = df.loc[mask_h, 'MT_H']
+            extremo = mt.abs() > 1.5
             df.loc[mask_h, 'Streak_Extremo_H'] = extremo.groupby((~extremo).cumsum()).cumcount() + 1
-            df.loc[mask_h, 'Games_Above_Expected_H'] = (df.loc[mask_h, 'MT_H'] > 1.abs() > 1.8).cumsum()
-        
-        if mask_a.sum() > 5:
-            extremo = (df.loc[mask_a, 'MT_A'].abs() > 1.5)
-            df.loc[mask_a, 'Streak_Extremo_A'] = extremo.groupby((~extremo).cumsum()).cumcount() + 1
-            df.loc[mask_a, 'Games_Above_Expected_A'] = (df.loc[mask_a, 'MT_A'].abs() > 1.8).cumsum()
+            df.loc[mask_h, 'Games_Above_Expected_H'] = (mt > 1.8).cumsum()
 
-    # Feature final: quanto mais jogos em extremo → maior penalidade
+        if mask_a.sum() > 5:
+            mt = df.loc[mask_a, 'MT_A']
+            extremo = mt.abs() > 1.5
+            df.loc[mask_a, 'Streak_Extremo_A'] = extremo.groupby((~extremo).cumsum()).cumcount() + 1
+            df.loc[mask_a, 'Games_Above_Expected_A'] = (mt > 1.8).cumsum()
+
+    # Penalidade crescente quanto mais tempo o time está "quente demais"
     df['MT_Reversion_Score_H'] = np.where(
         df['MT_H'] > 1.8,
-        -0.5 - 0.15 * df['Streak_Extremo_H'],   # cada jogo extra tira 15% de confiança
-        np.where(df['MT_H'] < -1.8, 0.4 + 0.12 * df['Streak_Extremo_H'], 0)
+        -0.4 - 0.12 * df['Streak_Extremo_H'],
+        np.where(df['MT_H'] < -1.8, 0.3 + 0.10 * df['Streak_Extremo_H'], 0)
     )
     df['MT_Reversion_Score_A'] = np.where(
         df['MT_A'] > 1.8,
-        -0.5 - 0.15 * df['Streak_Extremo_A'],
-        np.where(df['MT_A'] < -1.8, 0.4 + 0.12 * df['Streak_Extremo_A'], 0)
+        -0.4 - 0.12 * df['Streak_Extremo_A'],
+        np.where(df['MT_A'] < -1.8, 0.3 + 0.10 * df['Streak_Extremo_A'], 0)
     )
 
     # ------------------------------------------------------------------
-    # 2 HandScore Deviation Penalty (quadrantes falsos)
+    # 2 HandScore extremo + MT contrário → forte sinal de regressão
     # ------------------------------------------------------------------
-    df['HS_Dev_H'] = abs(df.get('HandScore_Home', 0))
-    df['HS_Dev_A'] = abs(df.get('HandScore_Away', 0))
-    
-    # Se HandScore está > 50 mas o time tem MT_H muito negativo → provável regressão
     df['HS_Reversion_Penalty_H'] = np.where(
-        (df['HS_Dev_H'] > 45) & (df['MT_H'] < -1.0), -0.6, 
-        np.where((df['HS_Dev_H'] < -45) & (df['MT_H'] > 1.5), 0.5, 0)
+        (df.get('HandScore_Home', 0) > 45) & (df['MT_H'] < -0.8), -0.7,
+        np.where((df.get('HandScore_Home', 0) < -45) & (df['MT_H'] > 1.5), 0.6, 0)
     )
     df['HS_Reversion_Penalty_A'] = np.where(
-        (df['HS_Dev_A'] > 45) & (df['MT_A'] < -1.0), -0.6, 
-        np.where((df['HS_Dev_A'] < -45) & (df['MT_A'] > 1.5), 0.5, 0)
+        (df.get('HandScore_Away', 0) > 45) & (df['MT_A'] < -0.8), -0.7,
+        np.where((df.get('HandScore_Away', 0) < -45) & (df['MT_A'] > 1.5), 0.6, 0)
     )
 
     # ------------------------------------------------------------------
-    # 3 Bayesian Average nos scores dos quadrantes (eversion_score
-    # ------------------------------------------------------------------
-    # Evita dar 90 pontos para quadrante com só 3 jogos
-    prior_mean = 50
-    prior_weight = 20  # equivale a 20 jogos "fictícios"
-    
-    def bayesian_score(group):
-        if len(group) == 0:
-            return prior_mean
-        return (group['Target_AH_Home'].mean() * len(group) + prior_mean * prior_weight) / (len(group) + prior_weight)
-    
-    # Só no histórico!
-    if 'Quadrante_Home' in df.columns and not df.empty:
-        bayes_scores = df.groupby('Quadrante_Home')['Target_AH_Home'].apply(bayesian_score).to_dict()
-        df['Quadrante_Bayes_Score_H'] = df['Quadrante_Home'].map(bayes_scores).fillna(50)
-
-    # ------------------------------------------------------------------
-    # 4 Shrinkage nas odds implícitas (evita ser enganado por streak)
+    # 3 Bayesian shrinkage nas odds de abertura (opcional, mas recomendado)
     # ------------------------------------------------------------------
     if 'Imp_H_OP_Norm' in df.columns:
-        shrinkage = 0.15  # 15% de mistura com 1/3 (flat)
+        shrinkage = 0.12
         df['Imp_H_Shrinked'] = (1 - shrinkage) * df['Imp_H_OP_Norm'] + shrinkage * (1/3)
         df['Imp_A_Shrinked'] = (1 - shrinkage) * df['Imp_A_OP_Norm'] + shrinkage * (1/3)
-        df['Imp_D_Shrinked'] = (1 - shrinkage) * df['Imp_D_OP_Norm'] + shrinkage * (1/3)
 
     return df
 
