@@ -107,47 +107,73 @@ def calculate_ah_home_target(margin, asian_line_str):
     return 1 if margin > line_home else 0
 
 
+from sklearn.preprocessing import StandardScaler
+
 def aplicar_clusterizacao_3d_segura(history: pd.DataFrame,
                                     games_today: pd.DataFrame,
                                     n_clusters: int = 5):
     """
-    Clusterização temporalmente segura:
-    - Treina clusters apenas nos dados históricos
-    - Aplica nos dados históricos e nos jogos de hoje
+    Clusterização temporalmente segura COM SCALING:
+    - Normaliza os dados (StandardScaler) para que Aggression tenha peso igual ao Momentum.
+    - Treina clusters apenas nos dados históricos.
+    - Aplica nos dados históricos e nos jogos de hoje.
     """
     required_cols = ['Aggression_Home', 'Aggression_Away', 'M_H', 'M_A', 'MT_H', 'MT_A']
 
+    # Prepara cópias limpas para cálculo
     history_clean = history[required_cols].fillna(0).copy()
     games_today_clean = games_today[required_cols].fillna(0).copy()
 
-    # Diferenças espaciais
-    for df_name, df_clean in [('history', history_clean), ('games_today', games_today_clean)]:
+    # Cálculo das Dimensões 3D (Deltas)
+    # dx = Diferença de Agressividade (Quem é o favorito do mercado)
+    # dy = Diferença de Qualidade na Liga (Quem é melhor no campeonato)
+    # dz = Diferença de Momento Recente (Quem está em melhor fase)
+    for df_clean in [history_clean, games_today_clean]:
         df_clean['dx'] = df_clean['Aggression_Home'] - df_clean['Aggression_Away']
         df_clean['dy'] = df_clean['M_H'] - df_clean['M_A']
         df_clean['dz'] = df_clean['MT_H'] - df_clean['MT_A']
 
+    # Matrizes para o modelo
     X_train = history_clean[['dx', 'dy', 'dz']].values
+    X_today = games_today_clean[['dx', 'dy', 'dz']].values
 
+    # --- AJUSTE CRÍTICO: SCALING ---
+    # Isso coloca todas as 3 dimensões na mesma escala matemática.
+    scaler = StandardScaler()
+    
+    # Aprende a escala usando APENAS o histórico (para evitar vazamento do futuro/jogos de hoje)
+    X_train_scaled = scaler.fit_transform(X_train)
+    
+    # Aplica a mesma escala nos jogos de hoje
+    X_today_scaled = scaler.transform(X_today)
+
+    # Configuração do KMeans
     kmeans = KMeans(
         n_clusters=n_clusters,
         random_state=42,
         init='k-means++',
         n_init=10
     )
-    kmeans.fit(X_train)
+    
+    # Treina o KMeans nos dados ESCALADOS
+    kmeans.fit(X_train_scaled)
 
+    # Aplica as previsões nos dataframes originais
     history = history.copy()
     games_today = games_today.copy()
 
-    history['Cluster3D_Label'] = kmeans.predict(history_clean[['dx', 'dy', 'dz']].values)
-    games_today['Cluster3D_Label'] = kmeans.predict(games_today_clean[['dx', 'dy', 'dz']].values)
+    # Nota: Prevemos usando os dados escalados
+    history['Cluster3D_Label'] = kmeans.predict(X_train_scaled)
+    games_today['Cluster3D_Label'] = kmeans.predict(X_today_scaled)
 
+    # Descrições Humanas dos Clusters (Isso pode variar dependendo do resultado do treino, 
+    # mas mantemos a lógica semântica)
     cluster_descriptions = {
         0: '⚡ Agressivos + Momentum Positivo',
         1: '💤 Reativos + Momentum Negativo',
-        2: '⚖️ Equilibrados',
-        3: '🔥 Alta Variância',
-        4: '🌪️ Caóticos / Transição'
+        2: '⚖️ Equilibrados / Travados',
+        3: '🔥 Alta Variância (Favorito em má fase)',
+        4: '🌪️ Caóticos / Zebras em ascensão'
     }
 
     history['Cluster3D_Desc'] = history['Cluster3D_Label'].map(cluster_descriptions).fillna('🌀 Outro')
@@ -856,8 +882,9 @@ def treinar_modelo_3d_clusters_single(history: pd.DataFrame,
 
     model_home = RandomForestClassifier(
         n_estimators=500,
-        max_depth=12,
+        max_depth=10,
         random_state=42,
+        min_samples_leaf=5,
         class_weight='balanced_subsample',
         n_jobs=-1
     )
