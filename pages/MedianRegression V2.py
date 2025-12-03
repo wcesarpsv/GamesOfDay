@@ -794,13 +794,188 @@ history = adicionar_regressao_media_completa(history)
 games_today = adicionar_regressao_media_completa(games_today)
 
 
+# def treinar_modelo_3d_clusters_single(history: pd.DataFrame,
+#                                       games_today: pd.DataFrame):
+#     st.markdown("### ⚙️ Configuração do Treino 3D com Odds de Abertura")
+#     use_opening_odds = st.checkbox("📊 Incluir Odds de Abertura no Treino", value=True)
+
+#     history_local = calcular_distancias_3d(history)
+#     games_today_local = calcular_distancias_3d(games_today)
+#     history_local, games_today_local = aplicar_clusterizacao_3d_segura(history_local, games_today_local, n_clusters=5)
+
+#     for df in [history_local, games_today_local]:
+#         if 'League' not in df.columns:
+#             df['League'] = 'Unknown'
+
+#     ligas_dummies = pd.get_dummies(history_local['League'], prefix='League')
+#     clusters_dummies = pd.get_dummies(history_local['Cluster3D_Label'], prefix='C3D')
+
+#     features_3d_base = [
+#         'Quadrant_Dist_3D', 'Quadrant_Separation_3D',
+#         'Quadrant_Sin_XY', 'Quadrant_Cos_XY',
+#         'Quadrant_Sin_XZ', 'Quadrant_Cos_XZ',
+#         'Quadrant_Sin_YZ', 'Quadrant_Cos_YZ',
+#         'Quadrant_Sin_Combo', 'Quadrant_Cos_Combo',
+#         'Vector_Sign', 'Magnitude_3D',
+#         'MT_Reversion_Score_H', 'MT_Reversion_Score_A',
+#         'HS_Reversion_Penalty_H', 'HS_Reversion_Penalty_A',
+#         'Streak_Extremo_H', 'Streak_Extremo_A',
+#         'Games_Above_Expected_H', 'Games_Above_Expected_A'
+#     ]
+
+#     for feature in features_3d_base:
+#         for df in [history_local, games_today_local]:
+#             if feature not in df.columns:
+#                 df[feature] = 0.0
+
+#     for df in [history_local, games_today_local]:
+#         if 'Quadrante_Bayes_Score_H' not in df.columns:
+#             df['Quadrante_Bayes_Score_H'] = 0.5
+
+#     features_3d_existentes = [f for f in features_3d_base + ['Quadrante_Bayes_Score_H'] if f in history_local.columns]
+#     extras_3d = history_local[features_3d_existentes].fillna(0)
+
+#     odds_features = pd.DataFrame()
+#     if use_opening_odds:
+#         for df in [history_local, games_today_local]:
+#             for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP', 'Odd_H', 'Odd_D', 'Odd_A']:
+#                 if col not in df.columns:
+#                     df[col] = 3.0
+
+#         for df_tmp, name in [(history_local, "history"), (games_today_local, "games_today")]:
+#             df_tmp['Imp_H_OP'] = 1 / df_tmp['Odd_H_OP']
+#             df_tmp['Imp_D_OP'] = 1 / df_tmp['Odd_D_OP']
+#             df_tmp['Imp_A_OP'] = 1 / df_tmp['Odd_A_OP']
+#             df_tmp[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']] = df_tmp[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']].replace([np.inf, -np.inf], np.nan)
+
+#             sum_probs = df_tmp[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']].sum(axis=1).replace(0, np.nan)
+#             df_tmp['Imp_H_OP_Norm'] = df_tmp['Imp_H_OP'] / sum_probs
+#             df_tmp['Imp_D_OP_Norm'] = df_tmp['Imp_D_OP'] / sum_probs
+#             df_tmp['Imp_A_OP_Norm'] = df_tmp['Imp_A_OP'] / sum_probs
+
+#         history_local['Diff_Odd_H'] = history_local['Odd_H_OP'] - history_local['Odd_H']
+#         history_local['Diff_Odd_D'] = history_local['Odd_D_OP'] - history_local['Odd_D']
+#         history_local['Diff_Odd_A'] = history_local['Odd_A_OP'] - history_local['Odd_A']
+
+#         shrinkage = 0.12
+#         history_local['Imp_H_Shrinked'] = (1 - shrinkage) * history_local['Imp_H_OP_Norm'] + shrinkage * (1/3)
+#         history_local['Imp_A_Shrinked'] = (1 - shrinkage) * history_local['Imp_A_OP_Norm'] + shrinkage * (1/3)
+
+#         odds_cols = ['Imp_H_OP_Norm', 'Imp_D_OP_Norm', 'Imp_A_OP_Norm',
+#                      'Diff_Odd_H', 'Diff_Odd_D', 'Diff_Odd_A',
+#                      'Imp_H_Shrinked', 'Imp_A_Shrinked']
+#         odds_cols_existentes = [c for c in odds_cols if c in history_local.columns]
+#         odds_features = history_local[odds_cols_existentes].fillna(0)
+#     else:
+#         odds_cols_existentes = []
+
+#     if use_opening_odds and not odds_features.empty:
+#         X = pd.concat([ligas_dummies, clusters_dummies, extras_3d, odds_features], axis=1)
+#     else:
+#         X = pd.concat([ligas_dummies, clusters_dummies, extras_3d], axis=1)
+
+#     if 'Target_AH_Home' not in history_local.columns:
+#         st.error("❌ Target_AH_Home não encontrado no histórico. Verifique os dados.")
+#         return None, games_today_local
+
+#     y_home = history_local['Target_AH_Home'].astype(int)
+
+#     model_home = RandomForestClassifier(
+#         n_estimators=500,
+#         max_depth=10,
+#         random_state=42,
+#         min_samples_leaf=5,
+#         class_weight='balanced_subsample',
+#         n_jobs=-1
+#     )
+#     model_home.fit(X, y_home)
+
+#     ligas_today = pd.get_dummies(games_today_local['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
+#     clusters_today = pd.get_dummies(games_today_local['Cluster3D_Label'], prefix='C3D').reindex(columns=clusters_dummies.columns, fill_value=0)
+#     extras_today = games_today_local[features_3d_existentes].fillna(0)
+
+#     if use_opening_odds:
+#         games_today_local['Imp_H_OP'] = 1 / games_today_local['Odd_H_OP']
+#         games_today_local['Imp_D_OP'] = 1 / games_today_local['Odd_D_OP']
+#         games_today_local['Imp_A_OP'] = 1 / games_today_local['Odd_A_OP']
+#         games_today_local[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']] = games_today_local[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']].replace([np.inf, -np.inf], np.nan)
+
+#         sum_today = games_today_local[['Imp_H_OP', 'Imp_D_OP', 'Imp_A_OP']].sum(axis=1).replace(0, np.nan)
+#         games_today_local['Imp_H_OP_Norm'] = games_today_local['Imp_H_OP'] / sum_today
+#         games_today_local['Imp_D_OP_Norm'] = games_today_local['Imp_D_OP'] / sum_today
+#         games_today_local['Imp_A_OP_Norm'] = games_today_local['Imp_A_OP'] / sum_today
+
+#         games_today_local['Diff_Odd_H'] = games_today_local['Odd_H_OP'] - games_today_local['Odd_H']
+#         games_today_local['Diff_Odd_D'] = games_today_local['Odd_D_OP'] - games_today_local['Odd_D']
+#         games_today_local['Diff_Odd_A'] = games_today_local['Odd_A_OP'] - games_today_local['Odd_A']
+
+#         shrinkage = 0.12
+#         games_today_local['Imp_H_Shrinked'] = (1 - shrinkage) * games_today_local['Imp_H_OP_Norm'] + shrinkage * (1/3)
+#         games_today_local['Imp_A_Shrinked'] = (1 - shrinkage) * games_today_local['Imp_A_OP_Norm'] + shrinkage * (1/3)
+
+#         odds_today = games_today_local[odds_cols_existentes].fillna(0)
+#         X_today = pd.concat([ligas_today, clusters_today, extras_today, odds_today], axis=1)
+#     else:
+#         X_today = pd.concat([ligas_today, clusters_today, extras_today], axis=1)
+
+#     missing_cols = set(X.columns) - set(X_today.columns)
+#     for col in missing_cols:
+#         X_today[col] = 0
+#     X_today = X_today[X.columns]
+
+#     proba_home = model_home.predict_proba(X_today)[:, 1]
+#     proba_away = 1 - proba_home
+
+#     games_today_local['Prob_Home'] = proba_home
+#     games_today_local['Prob_Away'] = proba_away
+#     games_today_local['ML_Side'] = np.where(proba_home > proba_away, 'HOME', 'AWAY')
+#     games_today_local['ML_Confidence'] = np.maximum(proba_home, proba_away)
+#     games_today_local['Quadrante_ML_Score_Home'] = games_today_local['Prob_Home']
+#     games_today_local['Quadrante_ML_Score_Away'] = games_today_local['Prob_Away']
+#     games_today_local['Quadrante_ML_Score_Main'] = games_today_local['ML_Confidence']
+
+#     accuracy = model_home.score(X, y_home)
+#     st.metric("Accuracy (Treino)", f"{accuracy:.2%}")
+#     st.write("📘 Features usadas:", len(X.columns))
+
+#     importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
+#     top_feats = importances.head(25).to_frame("Importância")
+
+#     st.markdown("### 🔍 Top Features (Modelo Único – Home)")
+#     st.dataframe(top_feats, use_container_width=True)
+
+#     if "Quadrante_ML_Score_Home" not in games_today_local.columns:
+#         games_today_local["Quadrante_ML_Score_Home"] = np.nan
+#         games_today_local["Quadrante_ML_Score_Away"] = np.nan
+#         games_today_local["Quadrante_ML_Score_Main"] = np.nan
+#         games_today_local["ML_Side"] = "N/A"
+#         games_today_local["ML_Confidence"] = 0.0
+
+#     for col in ["League", "Home", "Away"]:
+#         if col not in games_today_local.columns:
+#             games_today_local[col] = "N/A"
+
+#     if games_today_local.empty:
+#         st.warning("⚠️ Nenhum jogo válido encontrado após o treino. Verifique o CSV e as odds.")
+#     else:
+#         st.success(f"✅ {len(games_today_local)} jogos processados e prontos para análise 3D.")
+
+#     st.success("✅ Modelo 3D treinado (HOME) – com análise de viés integrada.")
+#     return model_home, games_today_local
+
+
+from sklearn.calibration import CalibratedClassifierCV
+
 def treinar_modelo_3d_clusters_single(history: pd.DataFrame,
                                       games_today: pd.DataFrame):
-    st.markdown("### ⚙️ Configuração do Treino 3D com Odds de Abertura")
+    st.markdown("### ⚙️ Configuração do Treino 3D (Calibrado)")
     use_opening_odds = st.checkbox("📊 Incluir Odds de Abertura no Treino", value=True)
 
+    # ---------------- PREPARAÇÃO DOS DADOS (IDÊNTICO AO ANTERIOR) ----------------
     history_local = calcular_distancias_3d(history)
     games_today_local = calcular_distancias_3d(games_today)
+    
+    # Aplica a clusterização segura (COM O AJUSTE DE SCALING QUE FIZEMOS ANTES)
     history_local, games_today_local = aplicar_clusterizacao_3d_segura(history_local, games_today_local, n_clusters=5)
 
     for df in [history_local, games_today_local]:
@@ -837,6 +1012,7 @@ def treinar_modelo_3d_clusters_single(history: pd.DataFrame,
 
     odds_features = pd.DataFrame()
     if use_opening_odds:
+        # ... (Lógica de tratamento de Odds mantida igual) ...
         for df in [history_local, games_today_local]:
             for col in ['Odd_H_OP', 'Odd_D_OP', 'Odd_A_OP', 'Odd_H', 'Odd_D', 'Odd_A']:
                 if col not in df.columns:
@@ -880,21 +1056,42 @@ def treinar_modelo_3d_clusters_single(history: pd.DataFrame,
 
     y_home = history_local['Target_AH_Home'].astype(int)
 
-    model_home = RandomForestClassifier(
+    # ---------------- AQUI COMEÇA A MUDANÇA (CALIBRAÇÃO) ----------------
+    
+    # 1. Definimos o Modelo Base (Random Forest)
+    # Aumentei min_samples_leaf para 5 para evitar overfitting, como discutimos
+    base_rf = RandomForestClassifier(
         n_estimators=500,
-        max_depth=10,
+        max_depth=10, 
+        min_samples_leaf=5, 
         random_state=42,
-        min_samples_leaf=5,
         class_weight='balanced_subsample',
         n_jobs=-1
     )
-    model_home.fit(X, y_home)
 
+    # 2. Criamos o Wrapper Calibrado (Isotonic Regression)
+    # cv=3 fará validação cruzada interna para ajustar a curva de probabilidade
+    calibrated_model = CalibratedClassifierCV(
+        estimator=base_rf, 
+        method='isotonic', 
+        cv=3
+    )
+
+    with st.spinner("🧠 Treinando e Calibrando Modelo 3D..."):
+        # Treina o calibrado (será usado para previsões)
+        calibrated_model.fit(X, y_home)
+        
+        # Treina o base separadamente (apenas para pegar feature importances)
+        # O Calibrator não expõe feature_importances_ diretamente
+        base_rf.fit(X, y_home)
+
+    # ---------------- PREVISÃO NOS JOGOS DE HOJE ----------------
     ligas_today = pd.get_dummies(games_today_local['League'], prefix='League').reindex(columns=ligas_dummies.columns, fill_value=0)
     clusters_today = pd.get_dummies(games_today_local['Cluster3D_Label'], prefix='C3D').reindex(columns=clusters_dummies.columns, fill_value=0)
     extras_today = games_today_local[features_3d_existentes].fillna(0)
 
     if use_opening_odds:
+        # ... (Recalcula odds features para hoje - mantido igual) ...
         games_today_local['Imp_H_OP'] = 1 / games_today_local['Odd_H_OP']
         games_today_local['Imp_D_OP'] = 1 / games_today_local['Odd_D_OP']
         games_today_local['Imp_A_OP'] = 1 / games_today_local['Odd_A_OP']
@@ -923,7 +1120,8 @@ def treinar_modelo_3d_clusters_single(history: pd.DataFrame,
         X_today[col] = 0
     X_today = X_today[X.columns]
 
-    proba_home = model_home.predict_proba(X_today)[:, 1]
+    # USAMOS O MODELO CALIBRADO PARA PREVER PROBABILIDADES
+    proba_home = calibrated_model.predict_proba(X_today)[:, 1]
     proba_away = 1 - proba_home
 
     games_today_local['Prob_Home'] = proba_home
@@ -934,12 +1132,14 @@ def treinar_modelo_3d_clusters_single(history: pd.DataFrame,
     games_today_local['Quadrante_ML_Score_Away'] = games_today_local['Prob_Away']
     games_today_local['Quadrante_ML_Score_Main'] = games_today_local['ML_Confidence']
 
-    accuracy = model_home.score(X, y_home)
-    st.metric("Accuracy (Treino)", f"{accuracy:.2%}")
+    # Métricas de Acurácia (Usando modelo calibrado)
+    accuracy = calibrated_model.score(X, y_home)
+    st.metric("Accuracy (Treino Calibrado)", f"{accuracy:.2%}")
     st.write("📘 Features usadas:", len(X.columns))
 
-    importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
-    top_feats = importances.head(25).to_frame("Importância")
+    # Importâncias (Usando o modelo BASE, pois o calibrado não mostra)
+    importances = pd.Series(base_rf.feature_importances_, index=X.columns).sort_values(ascending=False)
+    top_feats = importances.head(25).to_frame("Importância (Ref. Base)")
 
     st.markdown("### 🔍 Top Features (Modelo Único – Home)")
     st.dataframe(top_feats, use_container_width=True)
@@ -956,12 +1156,11 @@ def treinar_modelo_3d_clusters_single(history: pd.DataFrame,
             games_today_local[col] = "N/A"
 
     if games_today_local.empty:
-        st.warning("⚠️ Nenhum jogo válido encontrado após o treino. Verifique o CSV e as odds.")
+        st.warning("⚠️ Nenhum jogo válido encontrado após o treino.")
     else:
-        st.success(f"✅ {len(games_today_local)} jogos processados e prontos para análise 3D.")
+        st.success(f"✅ {len(games_today_local)} jogos processados com Probabilidades Calibradas.")
 
-    st.success("✅ Modelo 3D treinado (HOME) – com análise de viés integrada.")
-    return model_home, games_today_local
+    return calibrated_model, games_today_local
 
 
 def adicionar_indicadores_explicativos_3d_16_dual(df: pd.DataFrame) -> pd.DataFrame:
