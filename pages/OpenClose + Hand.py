@@ -1032,7 +1032,7 @@ def treinar_modelo_3d_clusters_single(history: pd.DataFrame,
         'Games_Above_Expected_H', 'Games_Above_Expected_A',
         
         # 3. Precificação e Divergência (CRÍTICO PARA O MODELO "SMART")
-        'Asian_Line_Decimal',       # A Linha Real
+        #'Asian_Line_Decimal',       # A Linha Real
         'Fair_Line',                # A Linha Justa
         'Line_Crush_Index',         # O Erro da Bookie
         'Underestimation_Index_H',  # O Desrespeito ao Momentum
