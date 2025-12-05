@@ -12,6 +12,11 @@ tensorflow-cpu
 catboost
 shap
 tinydb
+streamlit-webrtc
+pyzbar
+opencv-python
+av
+
 
 
 
