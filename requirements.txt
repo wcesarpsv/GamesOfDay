@@ -16,6 +16,7 @@ streamlit-webrtc
 pyzbar
 opencv-python
 av
+streamlit-js-eval
 
 
 
