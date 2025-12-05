@@ -11,6 +11,8 @@ seaborn
 tensorflow-cpu
 catboost
 shap
+tinydb
+
 
 
 
