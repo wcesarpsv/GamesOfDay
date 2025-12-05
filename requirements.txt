@@ -17,6 +17,8 @@ pyzbar
 opencv-python
 av
 streamlit-js-eval
+streamlit-qrcode-scanner
+
 
 
 
