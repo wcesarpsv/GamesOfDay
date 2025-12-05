@@ -5,11 +5,8 @@ import os
 from datetime import datetime
 import pandas as pd
 
-# 🔴 NOVO: imports para o scanner
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
-from pyzbar.pyzbar import decode
-import cv2
-import av
+# 🔴 NOVO: scanner baseado em html5-qrcode
+from streamlit_qrcode_scanner import qrcode_scanner
 
 # ==========================
 # CONFIGURAÇÕES INICIAIS
@@ -75,7 +72,6 @@ def page_view_manual():
         st.info("Nenhum procedimento cadastrado ainda. Vá em **'➕ Cadastrar Procedimento'** para adicionar o primeiro.")
         return
 
-    # Filtro por categoria e por texto
     categorias = sorted(set(p.get("category", "Sem categoria") for p in procs))
     col1, col2 = st.columns([1, 2])
     with col1:
@@ -185,10 +181,7 @@ def page_add_steps():
             st.error("A descrição do passo é obrigatória.")
         else:
             existing = steps_table.search(Q.procedure_id == selected_pid)
-            if existing:
-                next_number = max(s.get("step_number", 0) for s in existing) + 1
-            else:
-                next_number = 1
+            next_number = max((s.get("step_number", 0) for s in existing), default=0) + 1
 
             img_path = None
             if step_image:
@@ -225,7 +218,7 @@ def page_parts_and_serials():
 
     tab1, tab2 = st.tabs(["📍 Peças na máquina", "🔢 Seriais das peças"])
 
-    # ----------------- TAB 1: PEÇAS -----------------
+    # -------- TAB 1: PEÇAS --------
     with tab1:
         st.subheader("📍 Cadastrar nova peça / componente")
 
@@ -282,9 +275,9 @@ def page_parts_and_serials():
         else:
             st.info("Nenhuma peça cadastrada ainda.")
 
-    # ----------------- TAB 2: SERIAIS -----------------
+    # -------- TAB 2: SERIAIS (manual ou digitado) --------
     with tab2:
-        st.subheader("🔢 Registrar serial number de peça")
+        st.subheader("🔢 Registrar serial number de peça (digitar)")
 
         mapping, labels = get_part_choices()
         if not labels:
@@ -313,7 +306,8 @@ def page_parts_and_serials():
                     "technician": technician,
                     "machine_tag": machine_tag,
                     "notes": serial_notes,
-                    "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")
+                    "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "source": "manual"
                 })
                 st.success("Serial registrado com sucesso!")
 
@@ -333,6 +327,7 @@ def page_parts_and_serials():
                     "Serial": s_doc.get("serial_text", ""),
                     "Técnico": s_doc.get("technician", ""),
                     "Data Registro": s_doc.get("created_at", ""),
+                    "Origem": s_doc.get("source", ""),
                     "Observações": s_doc.get("notes", "")
                 })
             df_serials = pd.DataFrame(rows)
@@ -360,6 +355,7 @@ def page_serial_report():
             "Serial Number": s_doc.get("serial_text", ""),
             "Técnico": s_doc.get("technician", ""),
             "Data Registro": s_doc.get("created_at", ""),
+            "Origem": s_doc.get("source", ""),
             "Observações": s_doc.get("notes", "")
         })
 
@@ -376,31 +372,11 @@ def page_serial_report():
         mime="text/csv"
     )
 
-    st.caption("Você pode abrir esse CSV no Excel ou Google Sheets e imprimir como relatório oficial.")
-
+    st.caption("Abra no Excel / Google Sheets para formatar igual à folha 'Component List' e imprimir.")
 
 # ==========================
-# 📷 PÁGINA DO SCANNER MOBILE
+# 📷 PÁGINA DO SCANNER MOBILE (html5-qrcode)
 # ==========================
-
-class SerialScanner(VideoProcessorBase):
-    def __init__(self):
-        self.last_serial = None
-
-    def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-
-        barcodes = decode(img)
-        for b in barcodes:
-            serial = b.data.decode("utf-8")
-            self.last_serial = serial
-
-            # desenha retângulo em volta do código
-            x, y, w, h = b.rect
-            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-
 
 def page_serial_scanner():
     st.header("📷 Scanner de Seriais (Mobile)")
@@ -419,44 +395,37 @@ def page_serial_scanner():
     with col2:
         technician = st.text_input("Técnico*", value="Wagner")
 
-    st.markdown("Toque em **‘Start’** abaixo e aponte a câmera para o código de barras do componente.")
+    st.markdown("Aponte a câmera do celular para o código de barras / QR da peça selecionada.")
 
-    ctx = webrtc_streamer(
-        key="serial-scanner",
-        video_processor_factory=SerialScanner,
-        media_stream_constraints={"video": True, "audio": False},
-        async_processing=True,
-    )
+    # 👇 Este componente abre a camera e retorna o texto do código lido
+    code = qrcode_scanner(key="barcode_scanner")
 
-    if ctx.video_processor:
-        serial = ctx.video_processor.last_serial
-        if serial:
-            st.session_state["scanned_serial"] = serial
+    if code:
+        st.success(f"Serial capturado: **{code}**")
+        st.session_state["scanned_code"] = code
 
     st.markdown("---")
-    st.subheader("Serial capturado")
+    st.subheader("Salvar serial capturado")
 
-    if "scanned_serial" in st.session_state:
-        st.success(f"Serial lido: **{st.session_state['scanned_serial']}**")
+    if "scanned_code" in st.session_state:
         serial_notes = st.text_area("Observações (opcional)", key="scanner_notes")
 
         if st.button("💾 Salvar este serial", type="primary"):
             if not machine_tag or not technician:
-                st.error("Preencha pelo menos Machine Tag e Técnico.")
+                st.error("Preencha Machine Tag e Técnico antes de salvar.")
             else:
                 serials_table.insert({
                     "part_id": part_id,
-                    "serial_text": st.session_state["scanned_serial"],
+                    "serial_text": st.session_state["scanned_code"],
                     "technician": technician,
                     "machine_tag": machine_tag,
                     "notes": serial_notes,
                     "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "source": "camera_scanner"
+                    "source": "scanner_mobile"
                 })
                 st.success("Serial salvo no banco de dados!")
     else:
-        st.info("Ainda nenhum código detectado. Aponte a câmera para o barcode.")
-
+        st.info("Ainda nenhum código detectado. Mire a câmera no código da peça.")
 
 # ==========================
 # NAVEGAÇÃO
