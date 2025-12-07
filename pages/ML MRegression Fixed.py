@@ -230,59 +230,51 @@ def aplicar_clusterizacao_3d(df, max_clusters=5, random_state=42):
 from sklearn.linear_model import LogisticRegression
 
 def build_team_handicap_profile(history):
-    """
-    Cria para cada time um modelo de regressão logística:
-        P(cobrir | linha asiática)
-    Retorna:
-        team_models: dict com curvas individuais por time
-        league_models: dict com curvas médias por liga
-    """
-
     team_models = {}
     league_models = {}
 
-    # --- MODELAR POR LIGA ---
+    # --- MODELO POR LIGA ---
     for league in history['League'].dropna().unique():
         df_league = history[history['League'] == league]
 
-        if len(df_league) >= 40:
+        if len(df_league) >= 20:
             X = df_league[['Asian_Line_Decimal']].astype(float)
             y = df_league['Target_AH_Home'].astype(int)
 
             try:
-                model = LogisticRegression()
-                model.fit(X, y)
-                league_models[league] = model
+                m = LogisticRegression()
+                m.fit(X, y)
+                league_models[league] = m
             except:
                 pass
 
-    # --- MODELAR POR TIME ---
+    # --- MODELO POR TIME ---
     all_teams = pd.unique(history[['Home', 'Away']].values.ravel())
 
     for team in all_teams:
         df_team = history[(history['Home'] == team) | (history['Away'] == team)]
 
-        if len(df_team) < 12:
-            continue
-        
-        X = df_team[['Asian_Line_Decimal']].astype(float)
-        y = df_team['Target_AH_Home'].astype(int)
+        if len(df_team) >= 3:  # AGORA mínimo 3
+            X = df_team[['Asian_Line_Decimal']].astype(float)
+            y = df_team['Target_AH_Home'].astype(int)
 
-        try:
-            model = LogisticRegression()
-            model.fit(X, y)
+            try:
+                m = LogisticRegression()
+                m.fit(X, y)
 
-            league = df_team['League'].mode()[0] if 'League' in df_team else None
+                league = df_team['League'].mode()[0]
 
-            team_models[team] = {
-                'model': model,
-                'games': len(df_team),
-                'league': league
-            }
-        except:
-            pass
+                team_models[team] = {
+                    'model': m,
+                    'games': len(df_team),
+                    'league': league
+                }
+
+            except:
+                pass
 
     return team_models, league_models
+
 
 
 
@@ -295,13 +287,18 @@ def predict_handicap_ability(team, handicap, team_models, league_models):
     """
 
     # ---- 1) Melhor cenário: modelo do time ----
+    # 1) Modelo individual do time
     if team in team_models:
         entry = team_models[team]
-        model = entry['model']
-        
-        prob = model.predict_proba(np.array([[handicap]]))[:,1][0]
-        confidence = min(1.0, entry['games'] / 50)
-
+        m = entry['model']
+        games = entry['games']
+    
+        prob = m.predict_proba(np.array([[handicap]]))[:,1][0]
+    
+        # confiança proporcional aos jogos
+        confidence = min(1.0, games / 20)
+        confidence = max(confidence, 0.15)
+    
         return {"prob": prob, "confidence": confidence, "source": "team_model"}
 
     # ---- 2) Fallback para modelo da liga ----
