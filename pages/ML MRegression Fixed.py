@@ -1306,7 +1306,11 @@ def treinar_modelo_inteligente(history, games_today):
         'momentum_confirma_home', 'momentum_confirma_away',
         'momentum_negativo_alarmante_home', 'momentum_negativo_alarmante_away',
         'padrao_fav_forte_vs_under_forte', 'padrao_fav_moderado_vs_under_moderado',
-        'score_confianca_composto'
+        'score_confianca_composto',
+        'HCR_Home',
+        'HCR_Away',
+        'HCR_Diff',
+        'HCR_Conf'
     ]
 
     # Garantir que todas as features existem
