@@ -224,6 +224,132 @@ def aplicar_clusterizacao_3d(df, max_clusters=5, random_state=42):
     st.dataframe(cluster_stats)
 
     return df
+
+
+
+from sklearn.linear_model import LogisticRegression
+
+def build_team_handicap_profile(history):
+    """
+    Cria para cada time um modelo de regressão logística:
+        P(cobrir | linha asiática)
+    Retorna:
+        team_models: dict com curvas individuais por time
+        league_models: dict com curvas médias por liga
+    """
+
+    team_models = {}
+    league_models = {}
+
+    # --- MODELAR POR LIGA ---
+    for league in history['League'].dropna().unique():
+        df_league = history[history['League'] == league]
+
+        if len(df_league) >= 40:
+            X = df_league[['Asian_Line_Decimal']].astype(float)
+            y = df_league['Target_AH_Home'].astype(int)
+
+            try:
+                model = LogisticRegression()
+                model.fit(X, y)
+                league_models[league] = model
+            except:
+                pass
+
+    # --- MODELAR POR TIME ---
+    all_teams = pd.unique(history[['Home', 'Away']].values.ravel())
+
+    for team in all_teams:
+        df_team = history[(history['Home'] == team) | (history['Away'] == team)]
+
+        if len(df_team) < 12:
+            continue
+        
+        X = df_team[['Asian_Line_Decimal']].astype(float)
+        y = df_team['Target_AH_Home'].astype(int)
+
+        try:
+            model = LogisticRegression()
+            model.fit(X, y)
+
+            league = df_team['League'].mode()[0] if 'League' in df_team else None
+
+            team_models[team] = {
+                'model': model,
+                'games': len(df_team),
+                'league': league
+            }
+        except:
+            pass
+
+    return team_models, league_models
+
+
+
+def predict_handicap_ability(team, handicap, team_models, league_models):
+    """
+    Retorna:
+        prob: probabilidade do time cobrir a linha
+        confidence: quão confiável é a previsão
+        source: de onde veio o dado (time/league/fallback)
+    """
+
+    # ---- 1) Melhor cenário: modelo do time ----
+    if team in team_models:
+        entry = team_models[team]
+        model = entry['model']
+        
+        prob = model.predict_proba(np.array([[handicap]]))[:,1][0]
+        confidence = min(1.0, entry['games'] / 50)
+
+        return {"prob": prob, "confidence": confidence, "source": "team_model"}
+
+    # ---- 2) Fallback para modelo da liga ----
+    for lg, mdl in league_models.items():
+        # Sem forma perfeita de mapear time→liga, então usamos heuristicamente:
+        if lg in team:  
+            prob = mdl.predict_proba(np.array([[handicap]]))[:,1][0]
+            return {"prob": prob, "confidence": 0.5, "source": "league_model"}
+
+    # ---- 3) Fallback final (função logística global) ----
+    fallback = 1 / (1 + np.exp(-(-2 * handicap)))  # curva decrescente para favoritos
+
+    return {"prob": fallback, "confidence": 0.2, "source": "global_fallback"}
+
+
+
+
+def adicionar_features_hcr(games_today, team_models, league_models):
+    games_today = games_today.copy()
+
+    h_home = []
+    h_away = []
+    c_home = []
+    c_away = []
+
+    for _, row in games_today.iterrows():
+        teamH = row['Home']
+        teamA = row['Away']
+        line = row['Asian_Line_Decimal']
+
+        # perspectiva HOME
+        resH = predict_handicap_ability(teamH, line, team_models, league_models)
+
+        # perspectiva AWAY → handicap invertido
+        resA = predict_handicap_ability(teamA, -line, team_models, league_models)
+
+        h_home.append(resH['prob'])
+        h_away.append(resA['prob'])
+        c_home.append(resH['confidence'])
+        c_away.append(resA['confidence'])
+
+    games_today['HCR_Home'] = h_home
+    games_today['HCR_Away'] = h_away
+    games_today['HCR_Diff'] = games_today['HCR_Home'] - games_today['HCR_Away']
+    games_today['HCR_Conf'] = (np.array(c_home) + np.array(c_away)) / 2
+
+    return games_today
+
 # ---------------- Carregar Dados ----------------
 st.info("📂 Carregando dados para análise 3D de 16 quadrantes...")
 
@@ -1140,11 +1266,15 @@ def treinar_modelo_inteligente(history, games_today):
     history = adicionar_features_inteligentes_ml(history)
     games_today = adicionar_features_inteligentes_ml(games_today)
     
+    
     # Garantir features 3D e clusters
     history = calcular_distancias_3d(history)
     games_today = calcular_distancias_3d(games_today)
     history = aplicar_clusterizacao_3d(history)
     games_today = aplicar_clusterizacao_3d(games_today)
+
+    # 3️⃣ Aplicar HRC (Handicap Response Curve)
+    games_today = adicionar_features_hcr(games_today, team_models, league_models)
 
     # Features categóricas
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
@@ -1823,6 +1953,10 @@ def generate_live_summary_3d(df):
 
 #########################################
 
+team_models, league_models = build_team_handicap_profile(history)
+st.success("📈 Handicap Response Curves carregadas com sucesso!")
+
+
 # ---------------- EXECUÇÃO PRINCIPAL 3D CORRIGIDA ----------------
 # Executar treinamento 3D INTELIGENTE
 if not history.empty:
@@ -1854,6 +1988,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
     # Ordenar por score final 3D
     ranking_3d = ranking_3d.sort_values('Score_Final_3D', ascending=False)
+    ranking_3d = adicionar_features_hcr(ranking_3d, team_models, league_models)
 
     # Colunas para exibição 3D
     colunas_3d = [
@@ -1874,7 +2009,11 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         'score_confianca_composto',
         # Colunas Live Score
         'Asian_Line_Decimal', 'Handicap_Result',
-        'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante'
+        'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante',
+        'HCR_Home',
+        'HCR_Away',
+        'HCR_Diff',
+        'HCR_Conf'
     ]
 
     # Filtrar colunas existentes
