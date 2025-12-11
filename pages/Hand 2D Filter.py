@@ -253,6 +253,10 @@ history["Target_AH_Home"] = history.apply(
     axis=1
 )
 
+history["Target_AH_Away"] = history.apply(
+    lambda r: 1 if calc_handicap_result(r["Margin"], r["Asian_Line_Decimal"]) < 0.5 else 0, 
+    axis=1
+)
 # ---------------- SISTEMA DE 8 QUADRANTES ----------------
 st.markdown("## 🎯 Sistema de 8 Quadrantes")
 
@@ -768,7 +772,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     ligas_dummies = pd.get_dummies(history['League'], prefix='League')
 
     # 🔹 Novas features contínuas (Distância, Separação e Ângulo)
-    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized']].fillna(0)
+    extras = history[['Quadrant_Dist', 'Quadrant_Separation', 'Quadrant_Angle_Geometric', 'Quadrant_Angle_Normalized','Aggression_Home','Aggression_Away' ]].fillna(0)
 
     # Combinar todas as features
     X = pd.concat([ligas_dummies, extras,quadrantes_home, quadrantes_away], axis=1)
@@ -776,7 +780,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
 
     # Targets
     y_home = history['Target_AH_Home']
-    y_away = 1 - y_home  # inverso lógico
+    y_away = history['Target_AH_Away']
 
     # -------------------------------
     # 🔹 Treinar modelos
@@ -800,7 +804,7 @@ def treinar_modelo_quadrantes_dual(history, games_today):
     extras_today = games_today[['Quadrant_Dist', 
                             'Quadrant_Separation', 
                             'Quadrant_Angle_Geometric', 
-                            'Quadrant_Angle_Normalized']].fillna(0)
+                            'Quadrant_Angle_Normalized','Aggression_Home','Aggression_Away']].fillna(0)
 
     X_today = pd.concat([ligas_today, extras_today,qh_today, qa_today], axis=1)
     # qh_today, qa_today,
