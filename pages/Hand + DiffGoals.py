@@ -1406,7 +1406,7 @@ def treinar_modelo_inteligente(history, games_today):
     games_today['Pred_GoalDiff'] = pred_goal_diff
 
     # Margem esperada vs linha asiática (perspectiva HOME)
-    games_today['Pred_GoalDiff_minus_AH'] = games_today['Pred_GoalDiff'] - games_today['Asian_Line_Decimal'].fillna(0)
+    games_today['Pred_GoalDiff_minus_AH'] = games_today['Pred_GoalDiff'] + games_today['Asian_Line_Decimal'].fillna(0)
 
     # -------- 13) Importância de features (classificação) --------
     importances = pd.Series(model_home.feature_importances_, index=X.columns).sort_values(ascending=False)
