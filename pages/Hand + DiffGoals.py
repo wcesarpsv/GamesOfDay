@@ -2049,7 +2049,7 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
 
     # Colunas para exibição 3D
     colunas_3d = [
-        'League', 'Time',
+        'League', 'Time','Asian_Line_Decimal','Pred_GoalDiff','Pred_GoalDiff_minus_AH',
         'Home', 'Away', 'Goals_H_Today', 'Goals_A_Today', 'Recomendacao','ML_Side','Cluster3D_Desc',
         'Quadrante_Home_Label', 'Quadrante_Away_Label',
         'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 
@@ -2065,9 +2065,9 @@ if not games_today.empty and 'Quadrante_ML_Score_Home' in games_today.columns:
         'eh_forte_melhora_home', 'eh_forte_melhora_away',
         'score_confianca_composto',
         # Colunas Live Score
-        'Asian_Line_Decimal', 'Handicap_Result',
+         'Handicap_Result',
         'Home_Red', 'Away_Red', 'Quadrante_Correct', 'Profit_Quadrante',
-        'HCR_Home','HCR_Away','HCR_Diff','HCR_Conf','Pred_GoalDiff','Pred_GoalDiff_minus_AH'
+        'HCR_Home','HCR_Away','HCR_Diff','HCR_Conf'
     ]
 
     # Filtrar colunas existentes
