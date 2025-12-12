@@ -1316,7 +1316,7 @@ def treinar_modelo_inteligente(history, games_today):
         'momentum_negativo_alarmante_home', 'momentum_negativo_alarmante_away',
         'padrao_fav_forte_vs_under_forte', 'padrao_fav_moderado_vs_under_moderado',
         'score_confianca_composto',
-        'HCR_Home', 'HCR_Away', 'HCR_Diff', 'HCR_Conf'
+        'HCR_Home', 'HCR_Away', 'HCR_Diff', 'HCR_Conf','Pred_GoalDiff','Pred_GoalDiff_minus_AH'
     ]
 
     # Garante que as colunas existem no histórico
