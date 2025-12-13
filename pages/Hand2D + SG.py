@@ -1384,7 +1384,7 @@ gold_matches = ranking_quadrantes[ranking_quadrantes['Confidence_Score'] >= 0.75
 
 if not gold_matches.empty:
     st.dataframe(
-        gold_matches[['League', 'Home', 'Away', 'Goals_H_Today','Goals_A_Today', 'Recomendacao', 
+        gold_matches[['League','Time', 'Home', 'Away', 'Goals_H_Today','Goals_A_Today', 'Recomendacao', 
                       'Quadrante_ML_Score_Home', 'Quadrante_ML_Score_Away', 'Confidence_Score']]
         .sort_values('Confidence_Score', ascending=False)
         .style.format({
